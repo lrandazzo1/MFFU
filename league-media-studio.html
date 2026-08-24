@@ -1061,9 +1061,13 @@
           <label class="stream-toggle"><input type="checkbox" class="rd-v-stream" data-stream="scores" checked> Weekly matchup scores</label>
           <label class="stream-toggle"><input type="checkbox" class="rd-v-stream" data-stream="news" checked> League news &amp; blunder blurbs</label>
           <label class="stream-toggle"><input type="checkbox" class="rd-v-stream" data-stream="records" checked> All-time records &amp; streaks</label>
-          <div class="pt-1">
-            <label class="field-label">Custom ticker line (optional)</label>
-            <input type="text" id="rd-v-custom" placeholder="e.g. TRADE DEADLINE FRIDAY AT NOON" maxlength="120">
+          <div class="pt-2">
+            <label class="field-label">Custom headlines</label>
+            <div class="flex gap-2 mt-1">
+              <input type="text" id="rd-v-custom" placeholder="e.g. TRADE DEADLINE FRIDAY AT NOON" maxlength="120" style="flex:1;">
+              <button id="rd-v-addCustom" class="btn-ghost px-3 py-1.5 rounded-md text-[11px] uppercase tracking-wide whitespace-nowrap">+ Add</button>
+            </div>
+            <div id="rd-v-customChips" class="flex flex-wrap gap-1.5 mt-2"></div>
           </div>
           <div class="pt-1">
             <label class="field-label">Scroll speed · <span id="rd-v-speedLabel" class="font-mono">160</span> px/s</label>
@@ -3158,8 +3162,9 @@ function tickerItems(){
     }
   }
 
-  const custom = (($('rd-v-custom')||{}).value || '').trim();
-  if(custom) items.push({ badge:'DESK', text:custom.toUpperCase() });
+  (window._customTickerItems || []).forEach(txt=>{
+    items.push({ badge:'DESK', text:txt.toUpperCase() });
+  });
 
   // Nothing loaded yet — the ticker still has to have something to say.
   if(!items.length){
@@ -3346,10 +3351,43 @@ speedEl.addEventListener('input', ()=> $('rd-v-speedLabel').textContent = speedE
 let cachedLayout = null;
 function invalidateTicker(){ cachedLayout = null; }
 document.querySelectorAll('.rd-v-stream').forEach(cb=> cb.addEventListener('change', invalidateTicker));
-$('rd-v-custom').addEventListener('input', invalidateTicker);
 ['rd-b-line1','rd-b-line2','rd-sc-blunder'].forEach(id=>{
   const el = $(id);
   if(el) el.addEventListener('input', invalidateTicker);
+});
+
+window._customTickerItems = [];
+function renderCustomChips(){
+  const container = $('rd-v-customChips');
+  container.innerHTML = '';
+  _customTickerItems.forEach((txt, i)=>{
+    const chip = document.createElement('span');
+    chip.style.cssText = 'display:inline-flex;align-items:center;gap:5px;background:#1a2030;border:1px solid var(--rd-line);border-radius:999px;padding:4px 10px 4px 12px;font-size:12px;color:#F2F4F8;font-family:"JetBrains Mono",monospace;line-height:1.1;';
+    chip.textContent = txt;
+    const del = document.createElement('button');
+    del.textContent = '✕';
+    del.style.cssText = 'background:none;border:none;color:var(--rd-muted);cursor:pointer;font-size:13px;padding:0 2px;line-height:1;';
+    del.addEventListener('click', ()=>{
+      _customTickerItems.splice(i, 1);
+      renderCustomChips();
+      invalidateTicker();
+    });
+    chip.appendChild(del);
+    container.appendChild(chip);
+  });
+}
+function addCustomTickerItem(){
+  const input = $('rd-v-custom');
+  const val = (input.value || '').trim();
+  if(!val) return;
+  _customTickerItems.push(val);
+  input.value = '';
+  renderCustomChips();
+  invalidateTicker();
+}
+$('rd-v-addCustom').addEventListener('click', addCustomTickerItem);
+$('rd-v-custom').addEventListener('keydown', e=>{
+  if(e.key === 'Enter'){ e.preventDefault(); addCustomTickerItem(); }
 });
 
 function currentOptions(ctx){
@@ -3445,7 +3483,8 @@ $('rd-v-fromPress').addEventListener('click', ()=>{
   });
   const ticker = $('rd-p-ticker');
   if(ticker && ticker.value){
-    $('rd-v-custom').value = ticker.value;
+    _customTickerItems.push(ticker.value.trim());
+    renderCustomChips();
     invalidateTicker();
   }
   toast('Copied the Press Conference Tag into the video chyron.');
