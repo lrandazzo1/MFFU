@@ -1022,8 +1022,8 @@
   <section id="rd-tab-broadcast" class="rd-panel hidden">
     <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
       <div>
-        <p class="font-display text-sm text-[var(--rd-amber)] tracking-wide">ANIMATED BROADCAST EXPORTER</p>
-        <p class="text-[11px] text-[var(--rd-muted)] font-mono mt-1">Lower third slides up · ticker runs the whole league across the bottom</p>
+        <p class="font-display text-sm text-[var(--rd-amber)] tracking-wide">ESPN L-BAR BROADCAST EXPORTER</p>
+        <p class="text-[11px] text-[var(--rd-muted)] font-mono mt-1">Left-side topic wheel + bottom ticker · L-Bar overlay runs full duration</p>
       </div>
       <p class="text-[11px] font-mono text-[var(--rd-muted)]">EXPORT · 1080×1920 · 60 FPS · ALPHA WEBM / CHROMA MP4</p>
     </div>
@@ -1033,8 +1033,45 @@
       <!-- ---- CONTROL COLUMN ---- -->
       <div class="panel rounded-xl p-5 h-fit">
 
-        <!-- Chyron content -->
-        <p class="section-label text-[10px] uppercase tracking-[.15em] mb-3">01 · Chyron</p>
+        <!-- L-Bar Header Pill -->
+        <p class="section-label text-[10px] uppercase tracking-[.15em] mb-3">01 · L-Bar Header</p>
+        <div class="space-y-3.5 mb-4">
+          <div><label class="field-label">Broadcast badge</label><input type="text" id="rd-v-badge" value="MFFL TOTAL ACCESS · LIVE" maxlength="40"></div>
+          <div class="grid grid-cols-2 gap-3">
+            <div class="flex items-end gap-3">
+              <input type="color" id="rd-v-color" value="#F5A623">
+              <div class="pb-1"><label class="field-label block">Accent</label></div>
+            </div>
+            <div class="flex items-end gap-3">
+              <input type="color" id="rd-v-color2" value="#E8232B">
+              <div class="pb-1"><label class="field-label block">Active highlight</label></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Topic Carousel -->
+        <p class="section-label text-[10px] uppercase tracking-[.15em] mb-3">02 · Segment Topics</p>
+        <div class="panel-2 rounded-lg p-3 mb-4 space-y-2">
+          <p class="text-[11px] font-mono text-[var(--rd-muted)] mb-1">Enter 4–6 topics for the left-side rundown wheel</p>
+          <div class="space-y-1.5" id="rd-v-topicList">
+            <div class="flex items-center gap-2"><span class="text-[11px] font-mono text-[var(--rd-muted)] w-4">1.</span><input type="text" class="rd-v-topic flex-1" value="Opening Statement" maxlength="28" placeholder="Topic 1"></div>
+            <div class="flex items-center gap-2"><span class="text-[11px] font-mono text-[var(--rd-muted)] w-4">2.</span><input type="text" class="rd-v-topic flex-1" value="Keeper Drama" maxlength="28" placeholder="Topic 2"></div>
+            <div class="flex items-center gap-2"><span class="text-[11px] font-mono text-[var(--rd-muted)] w-4">3.</span><input type="text" class="rd-v-topic flex-1" value="Trade Fallout" maxlength="28" placeholder="Topic 3"></div>
+            <div class="flex items-center gap-2"><span class="text-[11px] font-mono text-[var(--rd-muted)] w-4">4.</span><input type="text" class="rd-v-topic flex-1" value="Waiver Heist" maxlength="28" placeholder="Topic 4"></div>
+            <div class="flex items-center gap-2"><span class="text-[11px] font-mono text-[var(--rd-muted)] w-4">5.</span><input type="text" class="rd-v-topic flex-1" value="Floor Questions" maxlength="28" placeholder="Topic 5"></div>
+          </div>
+          <div class="flex gap-2 pt-1">
+            <button id="rd-v-addTopic" class="btn-ghost flex-1 py-1.5 rounded-md text-[11px] uppercase tracking-wide">+ Add topic</button>
+            <button id="rd-v-removeTopic" class="btn-ghost flex-1 py-1.5 rounded-md text-[11px] uppercase tracking-wide">− Remove last</button>
+          </div>
+          <div class="pt-1">
+            <label class="field-label">Topic advance interval · <span id="rd-v-topicIntervalLabel" class="font-mono">3.0</span>s</label>
+            <input type="range" id="rd-v-topicInterval" min="1.5" max="8" step="0.5" value="3.0">
+          </div>
+        </div>
+
+        <!-- Chyron content (lower-third manager card) -->
+        <p class="section-label text-[10px] uppercase tracking-[.15em] mb-3">03 · Chyron Card</p>
         <div class="panel-2 rounded-lg p-3 mb-4 space-y-2" data-league-block>
           <p class="field-label">Pull from league data</p>
           <select id="rd-v-source"><option value="">No league data loaded…</option></select>
@@ -1047,16 +1084,12 @@
           <div><label class="field-label">Team name</label><input type="text" id="rd-v-team" value="THE GRIDIRON GAMBLERS" maxlength="30"></div>
           <div class="grid grid-cols-2 gap-3">
             <div><label class="field-label">Record</label><input type="text" id="rd-v-record" value="4-3-0" maxlength="10"></div>
-            <div class="flex items-end gap-3">
-              <input type="color" id="rd-v-color" value="#F5A623">
-              <div class="pb-1"><label class="field-label block">Accent</label></div>
-            </div>
           </div>
           <div><label class="field-label">Chyron subline</label><input type="text" id="rd-v-subline" value="WEEK 7 · POSTGAME PRESSER" maxlength="60"></div>
         </div>
 
         <!-- Ticker stream -->
-        <p class="section-label text-[10px] uppercase tracking-[.15em] mt-6 mb-3">02 · Ticker stream</p>
+        <p class="section-label text-[10px] uppercase tracking-[.15em] mt-6 mb-3">04 · Ticker stream</p>
         <div class="panel-2 rounded-lg p-3 space-y-2.5">
           <label class="stream-toggle"><input type="checkbox" class="rd-v-stream" data-stream="scores" checked> Weekly matchup scores</label>
           <label class="stream-toggle"><input type="checkbox" class="rd-v-stream" data-stream="news" checked> League news &amp; blunder blurbs</label>
@@ -1073,12 +1106,13 @@
         </div>
 
         <!-- Export -->
-        <p class="section-label text-[10px] uppercase tracking-[.15em] mt-6 mb-3">03 · Export</p>
+        <p class="section-label text-[10px] uppercase tracking-[.15em] mt-6 mb-3">05 · Export</p>
         <label class="field-label">Clip length</label>
-        <div class="grid grid-cols-3 gap-2 mt-1.5 mb-4">
+        <div class="grid grid-cols-4 gap-2 mt-1.5 mb-4">
           <button class="rd-v-dur seg-btn" data-dur="5" data-active="false">5s</button>
           <button class="rd-v-dur seg-btn" data-dur="10" data-active="true">10s</button>
           <button class="rd-v-dur seg-btn" data-dur="15" data-active="false">15s</button>
+          <button class="rd-v-dur seg-btn" data-dur="30" data-active="false">30s</button>
         </div>
 
         <label class="field-label">Background mode</label>
@@ -1122,7 +1156,8 @@
         </div>
         <p class="text-[11px] font-mono text-[var(--rd-muted)] text-center max-w-[420px] leading-relaxed">
           Checkerboard = transparent area. The preview loops the same frames the recorder writes:
-          banner and manager card ease up over the first 0.8s, the ticker never stops.
+          L-Bar topic wheel slides in from the left, chyron card and ticker rise from the bottom over 0.8s.
+          Topics auto-advance on the set interval; the ticker never stops.
         </p>
       </div>
     </div>
@@ -3063,14 +3098,14 @@ document.querySelectorAll('.rd-copy-btn').forEach(btn=>{
 })();
 </script>
 
-<!-- ============ TAB 02 LOGIC · BROADCAST VIDEO EXPORTER ============ -->
+<!-- ============ TAB 02 LOGIC · ESPN L-BAR BROADCAST EXPORTER ============ -->
 <script>
 /* ============================================================
-   ANIMATED BROADCAST EXPORTER (tab 02, sub-tab 03)
-   One 1080x1920 canvas renderer used twice: once by the on-page
-   preview loop, once by the MediaRecorder pass. Both call the
-   same drawFrame(ctx, t, opts), so what plays in the phone
-   mock-up is exactly what lands in the file.
+   ESPN L-BAR BROADCAST EXPORTER (tab 02, sub-tab 03)
+   Full-duration L-Bar overlay: left-side animated topic carousel
+   with auto-advancing highlight + bottom scrolling ticker.
+   One 1080x1920 canvas renderer used for both the on-page preview
+   and the MediaRecorder pass via shared drawFrame(ctx, t, opts).
 ============================================================ */
 (function(){
 const LD = window.LeagueData;
@@ -3079,16 +3114,22 @@ const toast = (msg)=> (window.studioToast ? window.studioToast(msg) : console.lo
 
 const W = 1080, H = 1920;
 
-/* ---- Stage geometry. The ticker owns 1680-1780; everything else
-   stacks upward from it so the whole lower third moves as one. ---- */
-const TICKER_Y = 1680, TICKER_H = 100;
-const RULE_H   = 5;                       // accent rule sitting on the ticker
-const SUB_Y    = 1636, SUB_H  = 34;       // subline strip
-const CARD_H   = 180, CARD_BOTTOM = SUB_Y - 4;
-const CARD_Y   = CARD_BOTTOM - CARD_H;    // 1452
-const BAR_H    = 10, BAR_W = 520;         // accent bar capping the card
-const GROUP_TOP = CARD_Y - BAR_H;
-const ENTRANCE = 0.8;                     // seconds of slide-up
+/* ---- L-Bar geometry ---- */
+const LBAR_X = 40, LBAR_W = 320;  // left rail: 40px to 360px
+const LBAR_TOP = 260;
+const HEADER_H = 56;
+const TOPIC_H = 72, TOPIC_GAP = 6, TOPIC_RADIUS = 10;
+const POINTER_W = 8;
+
+/* ---- Bottom ticker ---- */
+const TICKER_Y = 1720, TICKER_H = 120;
+const TICKER_RULE_H = 5;
+
+/* ---- Lower-third chyron card (right of L-bar) ---- */
+const CARD_X = 400, CARD_Y = 1520, CARD_W = 640, CARD_H = 160;
+const SUB_Y = CARD_Y + CARD_H + 4, SUB_H = 30;
+
+const ENTRANCE = 0.8;
 
 const BADGE_COLORS = {
   'FINAL':'#E8232B',
@@ -3100,8 +3141,31 @@ const BADGE_COLORS = {
 };
 
 /* ============================================================
-   TICKER STREAM — chains badges, live scores, news blurbs and
-   record-book lines into one flat list of pills.
+   TOPIC ADD / REMOVE
+============================================================ */
+$('rd-v-addTopic').addEventListener('click', ()=>{
+  const list = $('rd-v-topicList');
+  const count = list.querySelectorAll('.rd-v-topic').length;
+  if(count >= 6) { toast('Maximum 6 topics.'); return; }
+  const row = document.createElement('div');
+  row.className = 'flex items-center gap-2';
+  row.innerHTML = `<span class="text-[11px] font-mono text-[var(--rd-muted)] w-4">${count+1}.</span><input type="text" class="rd-v-topic flex-1" value="" maxlength="28" placeholder="Topic ${count+1}">`;
+  list.appendChild(row);
+});
+$('rd-v-removeTopic').addEventListener('click', ()=>{
+  const list = $('rd-v-topicList');
+  const rows = list.querySelectorAll('.flex');
+  if(rows.length <= 4) { toast('Minimum 4 topics.'); return; }
+  list.removeChild(rows[rows.length - 1]);
+});
+
+const topicIntervalEl = $('rd-v-topicInterval');
+topicIntervalEl.addEventListener('input', ()=>{
+  $('rd-v-topicIntervalLabel').textContent = parseFloat(topicIntervalEl.value).toFixed(1);
+});
+
+/* ============================================================
+   TICKER STREAM
 ============================================================ */
 function tickerItems(){
   const wanted = {};
@@ -3109,7 +3173,6 @@ function tickerItems(){
   const items = [];
   const week = LD.meta.week || '';
 
-  // ---- weekly matchup scores ----
   if(wanted.scores && LD.hasLive()){
     LD.getWeekMatchups(week).forEach(g=>{
       const decided = g.winner && g.winner !== 'UNDECIDED';
@@ -3120,14 +3183,12 @@ function tickerItems(){
     });
   }
 
-  // ---- league news + blunder blurbs ----
   if(wanted.news){
     if(LD.hasLive()){
       const { low, high } = LD.getWeekExtremes(week);
       if(high) items.push({ badge:'LEAGUE NEWS', text:`${high.team.name} tops the week with ${high.score.toFixed(1)}`.toUpperCase() });
       if(low)  items.push({ badge:'LEAGUE NEWS', text:`${low.team.name} bottoms out at ${low.score.toFixed(1)}`.toUpperCase() });
     }
-    // Whatever is currently loaded in the chyron / desk-notes forms rides along.
     const l1 = ($('rd-b-line1')||{}).value || '';
     const l2 = ($('rd-b-line2')||{}).value || '';
     if(l1 || l2) items.push({ badge:'LEAGUE NEWS', text:`${l1} ${l2}`.trim().toUpperCase() });
@@ -3135,7 +3196,6 @@ function tickerItems(){
     if(blunder) items.push({ badge:'LEAGUE NEWS', text:blunder.toUpperCase() });
   }
 
-  // ---- all-time records and streaks ----
   if(wanted.records){
     const r = LD.leagueHistory && LD.leagueHistory.records;
     if(r){
@@ -3161,7 +3221,6 @@ function tickerItems(){
   const custom = (($('rd-v-custom')||{}).value || '').trim();
   if(custom) items.push({ badge:'DESK', text:custom.toUpperCase() });
 
-  // Nothing loaded yet — the ticker still has to have something to say.
   if(!items.length){
     items.push(
       { badge:'MATCHUP',         text:'LOAD LEAGUE DATA ON THE GRAPHIC GENERATOR TAB' },
@@ -3186,23 +3245,20 @@ function roundRect(ctx, x, y, w, h, r){
   ctx.closePath();
 }
 
-const BADGE_FONT = '700 26px "JetBrains Mono", monospace';
-const ITEM_FONT  = '600 30px Inter, sans-serif';
-const ITEM_GAP   = 64;
+const BADGE_FONT = '700 24px "JetBrains Mono", monospace';
+const ITEM_FONT  = '600 28px Inter, sans-serif';
+const ITEM_GAP   = 56;
 
-/* Measure once per frame batch: badge pill + label, laid end to end.
-   `total` is the seamless loop width — draw the same strip again at
-   +total and the wrap is invisible. */
 function layoutTicker(ctx, items){
   const parts = [];
   let x = 0;
   items.forEach(it=>{
     ctx.font = BADGE_FONT;
-    const badgeW = ctx.measureText(it.badge).width + 34;
+    const badgeW = ctx.measureText(it.badge).width + 30;
     ctx.font = ITEM_FONT;
     const textW = ctx.measureText(it.text).width;
-    parts.push({ badge:it.badge, text:it.text, x, badgeW, textW, w: badgeW + 18 + textW });
-    x += badgeW + 18 + textW + ITEM_GAP;
+    parts.push({ badge:it.badge, text:it.text, x, badgeW, textW, w: badgeW + 16 + textW });
+    x += badgeW + 16 + textW + ITEM_GAP;
   });
   return { parts, total: Math.max(x, W + 1) };
 }
@@ -3211,29 +3267,125 @@ function drawTickerStrip(ctx, layout, originX, accent){
   const midY = TICKER_Y + TICKER_H/2;
   layout.parts.forEach(p=>{
     const x = originX + p.x;
-    if(x > W || x + p.w < 0) return;               // fully off-stage
-    // badge pill
+    if(x > W || x + p.w < 0) return;
     ctx.fillStyle = BADGE_COLORS[p.badge] || accent;
-    roundRect(ctx, x, midY - 22, p.badgeW, 44, 8);
+    roundRect(ctx, x, midY - 20, p.badgeW, 40, 7);
     ctx.fill();
     ctx.fillStyle = '#0A0D14';
     ctx.font = BADGE_FONT;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    ctx.fillText(p.badge, x + 17, midY + 1);
-    // label
+    ctx.fillText(p.badge, x + 15, midY + 1);
     ctx.fillStyle = '#FFFFFF';
     ctx.font = ITEM_FONT;
-    ctx.fillText(p.text, x + p.badgeW + 18, midY + 1);
-    // separator before the next item
+    ctx.fillText(p.text, x + p.badgeW + 16, midY + 1);
     ctx.fillStyle = 'rgba(255,255,255,0.22)';
-    ctx.fillRect(x + p.w + ITEM_GAP/2 - 1.5, midY - 13, 3, 26);
+    ctx.fillRect(x + p.w + ITEM_GAP/2 - 1.5, midY - 12, 3, 24);
   });
 }
 
 const easeOutCubic = (p)=> 1 - Math.pow(1 - p, 3);
+const easeInOutCubic = (p)=> p < 0.5 ? 4*p*p*p : 1 - Math.pow(-2*p+2, 3)/2;
 
-/* One frame of the broadcast. `t` is seconds since the clip started. */
+/* ---- Draw the left-side topic carousel ---- */
+function drawTopicWheel(ctx, t, o){
+  const topics = o.topics;
+  const n = topics.length;
+  if(!n) return;
+
+  const interval = o.topicInterval;
+  const transitionDur = 0.4;
+
+  // Active topic index with transition progress
+  const elapsed = Math.max(0, t - ENTRANCE);
+  const rawIndex = elapsed / interval;
+  const activeIdx = Math.min(Math.floor(rawIndex), n - 1);
+  const transProgress = Math.min(1, (rawIndex - activeIdx) * interval / transitionDur);
+
+  const lx = LBAR_X;
+  const ly = LBAR_TOP;
+  const lw = LBAR_W;
+
+  // Header pill
+  ctx.fillStyle = 'rgba(10,13,20,0.92)';
+  roundRect(ctx, lx, ly, lw, HEADER_H, 10);
+  ctx.fill();
+  ctx.fillStyle = o.highlight;
+  ctx.fillRect(lx, ly, lw, 4);
+  ctx.font = '700 18px "JetBrains Mono", monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillText(o.badge, lx + lw/2, ly + HEADER_H/2 + 2);
+
+  // Topic blocks
+  const topicsTop = ly + HEADER_H + 14;
+  for(let i = 0; i < n; i++){
+    const ty = topicsTop + i * (TOPIC_H + TOPIC_GAP);
+    const isActive = (i === activeIdx);
+    const isNext = (i === activeIdx + 1 && activeIdx < n - 1);
+
+    // Smooth highlight transition
+    let highlightAlpha = 0;
+    if(isActive){
+      highlightAlpha = transProgress < 1 ? 1 : 1 - easeInOutCubic(transProgress);
+      if(activeIdx >= n - 1) highlightAlpha = 1;
+    }
+    if(isNext && transProgress > 0 && activeIdx < n - 1){
+      highlightAlpha = easeInOutCubic(transProgress);
+    }
+
+    // Block background
+    if(highlightAlpha > 0){
+      ctx.fillStyle = o.highlight;
+      ctx.globalAlpha = highlightAlpha * 0.85;
+      roundRect(ctx, lx, ty, lw, TOPIC_H, TOPIC_RADIUS);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+
+    ctx.fillStyle = highlightAlpha > 0.5 ? 'rgba(10,13,20,0.15)' : 'rgba(10,13,20,0.82)';
+    if(highlightAlpha <= 0.5){
+      roundRect(ctx, lx, ty, lw, TOPIC_H, TOPIC_RADIUS);
+      ctx.fill();
+    }
+
+    // Active pointer bar
+    if(highlightAlpha > 0){
+      ctx.fillStyle = o.accent;
+      ctx.globalAlpha = highlightAlpha;
+      roundRect(ctx, lx, ty, POINTER_W, TOPIC_H, TOPIC_RADIUS/2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+
+    // Number circle
+    const cx = lx + 32;
+    const cy = ty + TOPIC_H/2;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 16, 0, Math.PI*2);
+    ctx.fillStyle = highlightAlpha > 0.5 ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.08)';
+    ctx.fill();
+    ctx.font = '700 18px "JetBrains Mono", monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = highlightAlpha > 0.5 ? '#FFFFFF' : 'rgba(255,255,255,0.6)';
+    ctx.fillText(String(i+1), cx, cy + 1);
+
+    // Topic text
+    ctx.font = highlightAlpha > 0.5 ? '700 22px Inter, sans-serif' : '500 22px Inter, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = highlightAlpha > 0.5 ? '#FFFFFF' : 'rgba(255,255,255,0.55)';
+    ctx.fillText(topics[i].toUpperCase(), lx + 58, cy + 1);
+  }
+
+  // Vertical rail line behind topics
+  ctx.fillStyle = 'rgba(255,255,255,0.06)';
+  ctx.fillRect(lx + 3, topicsTop, 2, n * (TOPIC_H + TOPIC_GAP) - TOPIC_GAP);
+}
+
+/* One frame of the L-Bar broadcast. */
 function drawFrame(ctx, t, o){
   ctx.setTransform(1,0,0,1,0,0);
   ctx.clearRect(0,0,W,H);
@@ -3244,60 +3396,79 @@ function drawFrame(ctx, t, o){
 
   const accent = o.accent || '#F5A623';
 
-  // Entrance: the whole lower third rides up from under the frame.
+  // Entrance: entire L-Bar slides in from the left and bottom
   const p = Math.min(1, Math.max(0, t / ENTRANCE));
-  const slide = (1 - easeOutCubic(p)) * (H - GROUP_TOP);
+  const ease = easeOutCubic(p);
+  const fadeIn = Math.min(1, t / 0.35);
   ctx.save();
-  ctx.globalAlpha = Math.min(1, t / 0.35);
-  ctx.translate(0, slide);
+  ctx.globalAlpha = fadeIn;
 
-  // ---- accent bar + manager card ----
+  // ---- LEFT TOPIC WHEEL (slides in from left) ----
+  ctx.save();
+  ctx.translate((1 - ease) * -(LBAR_X + LBAR_W + 20), 0);
+  drawTopicWheel(ctx, t, o);
+  ctx.restore();
+
+  // ---- LOWER-THIRD CHYRON CARD (slides up from bottom) ----
+  const cardSlide = (1 - ease) * (H - CARD_Y + 40);
+  ctx.save();
+  ctx.translate(0, cardSlide);
+
   ctx.fillStyle = accent;
-  ctx.fillRect(60, CARD_Y - BAR_H, BAR_W, BAR_H);
+  ctx.fillRect(CARD_X, CARD_Y - 8, CARD_W * 0.5, 8);
 
   ctx.fillStyle = 'rgba(10,13,20,0.90)';
-  ctx.fillRect(60, CARD_Y, W - 120, CARD_H);
+  ctx.fillRect(CARD_X, CARD_Y, CARD_W, CARD_H);
   ctx.fillStyle = accent;
-  ctx.fillRect(60, CARD_Y, 10, CARD_H);
+  ctx.fillRect(CARD_X, CARD_Y, 8, CARD_H);
 
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
   ctx.fillStyle = accent;
-  ctx.font = '700 26px "JetBrains Mono", monospace';
-  ctx.fillText(o.team, 104, CARD_Y + 52);
+  ctx.font = '700 22px "JetBrains Mono", monospace';
+  ctx.fillText(o.team, CARD_X + 36, CARD_Y + 44);
 
   ctx.fillStyle = '#FFFFFF';
-  ctx.font = '64px Anton, sans-serif';
-  ctx.fillText(o.name, 104, CARD_Y + 138);
+  ctx.font = '56px Anton, sans-serif';
+  ctx.fillText(o.name, CARD_X + 36, CARD_Y + 118);
   const nameW = ctx.measureText(o.name).width;
 
   if(o.record){
-    ctx.font = '500 30px "JetBrains Mono", monospace';
+    ctx.font = '500 26px "JetBrains Mono", monospace';
     const recW = ctx.measureText(o.record).width;
-    const pillX = Math.min(104 + nameW + 22, W - 80 - recW - 32);
+    const pillX = Math.min(CARD_X + 36 + nameW + 18, CARD_X + CARD_W - 20 - recW - 28);
     ctx.fillStyle = 'rgba(255,255,255,0.12)';
-    roundRect(ctx, pillX, CARD_Y + 96, recW + 32, 52, 6);
+    roundRect(ctx, pillX, CARD_Y + 82, recW + 28, 44, 6);
     ctx.fill();
     ctx.fillStyle = '#FFFFFF';
-    ctx.fillText(o.record, pillX + 16, CARD_Y + 133);
+    ctx.fillText(o.record, pillX + 14, CARD_Y + 114);
   }
 
-  // ---- subline strip ----
   if(o.subline){
     ctx.fillStyle = 'rgba(10,13,20,0.92)';
-    ctx.fillRect(60, SUB_Y, W - 120, SUB_H);
+    ctx.fillRect(CARD_X, SUB_Y, CARD_W, SUB_H);
     ctx.fillStyle = accent;
-    ctx.font = '500 20px "JetBrains Mono", monospace';
-    ctx.fillText(o.subline, 76, SUB_Y + 24);
+    ctx.font = '500 17px "JetBrains Mono", monospace';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(o.subline, CARD_X + 14, SUB_Y + SUB_H/2);
   }
 
-  // ---- ticker bed ----
+  ctx.restore();
+
+  // ---- BOTTOM TICKER BAR (slides up from bottom) ----
+  const tickerSlide = (1 - ease) * (H - TICKER_Y + 20);
+  ctx.save();
+  ctx.translate(0, tickerSlide);
+
+  // Accent rule above ticker
   ctx.fillStyle = accent;
-  ctx.fillRect(0, TICKER_Y - RULE_H, W, RULE_H);
+  ctx.fillRect(0, TICKER_Y - TICKER_RULE_H, W, TICKER_RULE_H);
+
+  // Ticker bed
   ctx.fillStyle = '#0A0D14';
   ctx.fillRect(0, TICKER_Y, W, TICKER_H);
 
-  // ---- scrolling stream, clipped to the bed ----
+  // Scrolling stream
   ctx.save();
   ctx.beginPath();
   ctx.rect(0, TICKER_Y, W, TICKER_H);
@@ -3309,7 +3480,25 @@ function drawFrame(ctx, t, o){
   }
   ctx.restore();
 
+  ctx.restore(); // ticker slide
+
+  // ---- L-shaped connector: vertical bar from left rail down to ticker ----
+  ctx.save();
+  const lbarBottomSlide = (1 - ease) * -(LBAR_X + LBAR_W + 20);
+  const connectorX = LBAR_X;
+  const topics = o.topics;
+  const topicsBottom = LBAR_TOP + HEADER_H + 14 + topics.length * (TOPIC_H + TOPIC_GAP);
+  const connectorTop = topicsBottom + lbarBottomSlide;
+  const connectorBottom = TICKER_Y - TICKER_RULE_H + tickerSlide;
+  if(connectorBottom > connectorTop){
+    ctx.fillStyle = accent;
+    ctx.globalAlpha = fadeIn * 0.4;
+    ctx.fillRect(connectorX, connectorTop, 4, connectorBottom - connectorTop);
+    ctx.globalAlpha = 1;
+  }
   ctx.restore();
+
+  ctx.restore(); // master fade
 }
 
 /* ============================================================
@@ -3342,7 +3531,6 @@ document.querySelectorAll('.rd-v-bg').forEach(btn=>{
 const speedEl = $('rd-v-speed');
 speedEl.addEventListener('input', ()=> $('rd-v-speedLabel').textContent = speedEl.value);
 
-/* Re-measure the stream whenever anything that feeds it changes. */
 let cachedLayout = null;
 function invalidateTicker(){ cachedLayout = null; }
 document.querySelectorAll('.rd-v-stream').forEach(cb=> cb.addEventListener('change', invalidateTicker));
@@ -3352,6 +3540,12 @@ $('rd-v-custom').addEventListener('input', invalidateTicker);
   if(el) el.addEventListener('input', invalidateTicker);
 });
 
+function getTopics(){
+  return Array.from(document.querySelectorAll('.rd-v-topic'))
+    .map(el => el.value.trim())
+    .filter(v => v.length > 0);
+}
+
 function currentOptions(ctx){
   if(!cachedLayout){
     const items = tickerItems();
@@ -3359,19 +3553,23 @@ function currentOptions(ctx){
     $('rd-v-streamCount').textContent = `${items.length} item${items.length===1?'':'s'} queued in the ticker.`;
   }
   return {
-    name:    ($('rd-v-name').value || '').toUpperCase(),
-    team:    ($('rd-v-team').value || '').toUpperCase(),
-    record:  $('rd-v-record').value || '',
-    subline: ($('rd-v-subline').value || '').toUpperCase(),
-    accent:  $('rd-v-color').value,
-    speed:   parseInt(speedEl.value, 10),
-    bg:      bgMode,
-    layout:  cachedLayout,
+    name:          ($('rd-v-name').value || '').toUpperCase(),
+    team:          ($('rd-v-team').value || '').toUpperCase(),
+    record:        $('rd-v-record').value || '',
+    subline:       ($('rd-v-subline').value || '').toUpperCase(),
+    accent:        $('rd-v-color').value,
+    highlight:     $('rd-v-color2').value,
+    badge:         ($('rd-v-badge').value || '').toUpperCase(),
+    topics:        getTopics(),
+    topicInterval: parseFloat(topicIntervalEl.value) || 3.0,
+    speed:         parseInt(speedEl.value, 10),
+    bg:            bgMode,
+    layout:        cachedLayout,
   };
 }
 
 /* ============================================================
-   PREVIEW LOOP — loops the clip so the entrance replays.
+   PREVIEW LOOP
 ============================================================ */
 const previewCanvas = $('rd-v-previewCanvas');
 const previewCtx = previewCanvas.getContext('2d');
@@ -3390,7 +3588,7 @@ function previewTick(now){
 requestAnimationFrame(previewTick);
 
 /* ============================================================
-   SHARED DATA WIRING — same store the rest of the studio reads.
+   SHARED DATA WIRING
 ============================================================ */
 const vSource = $('rd-v-source');
 let vOptions = [];
@@ -3452,8 +3650,7 @@ $('rd-v-fromPress').addEventListener('click', ()=>{
 });
 
 /* ============================================================
-   RECORDING — captureStream(60) into MediaRecorder, driven by
-   the same rAF renderer as the preview.
+   RECORDING
 ============================================================ */
 function pickMime(){
   const candidates = bgMode === 'alpha'
@@ -3493,15 +3690,15 @@ recordBtn.addEventListener('click', async ()=>{
   const mime = pickMime();
   if(!mime){ toast('No supported recording format in this browser.'); return; }
 
-  // Web fonts must be resident before the first frame or the clip opens in fallback type.
   try{
     await document.fonts.ready;
     await Promise.all([
-      document.fonts.load('64px Anton'),
-      document.fonts.load('700 26px "JetBrains Mono"'),
-      document.fonts.load('600 30px Inter'),
+      document.fonts.load('56px Anton'),
+      document.fonts.load('700 24px "JetBrains Mono"'),
+      document.fonts.load('600 28px Inter'),
+      document.fonts.load('700 22px Inter'),
     ]);
-  }catch(e){ /* fonts already resolved or unsupported — draw anyway */ }
+  }catch(e){}
 
   recording = true;
   const btnHtml = recordBtn.innerHTML;
@@ -3509,7 +3706,6 @@ recordBtn.addEventListener('click', async ()=>{
   recordBtn.innerHTML = 'Recording…';
   $('rd-v-previewState').textContent = 'RECORDING';
 
-  // Hidden 1080x1920 stage — offscreen, full resolution, never scaled.
   const canvas = document.createElement('canvas');
   canvas.width = W; canvas.height = H;
   canvas.style.cssText = 'position:fixed; left:-99999px; top:0; width:1080px; height:1920px;';
@@ -3517,7 +3713,7 @@ recordBtn.addEventListener('click', async ()=>{
   const ctx = canvas.getContext('2d', { alpha: true });
 
   const opts = currentOptions(ctx);
-  cachedLayout = null;                       // preview re-measures on its own context
+  cachedLayout = null;
   const stream = canvas.captureStream(60);
   const chunks = [];
   let recorder;
@@ -3532,7 +3728,7 @@ recordBtn.addEventListener('click', async ()=>{
     recorder.onstop = ()=> resolve(new Blob(chunks, { type: mime.split(';')[0] }));
   });
 
-  drawFrame(ctx, 0, opts);                   // first frame before the tape rolls
+  drawFrame(ctx, 0, opts);
   recorder.start(200);
   const started = performance.now();
 
@@ -3562,7 +3758,7 @@ recordBtn.addEventListener('click', async ()=>{
   const link = document.createElement('a');
   const stamp = new Date().toISOString().replace(/[:.]/g,'-');
   link.href = url;
-  link.download = `broadcast-${bgMode === 'alpha' ? 'alpha' : 'chroma'}-${duration}s-${stamp}.${extFor(mime)}`;
+  link.download = `lbar-${bgMode === 'alpha' ? 'alpha' : 'chroma'}-${duration}s-${stamp}.${extFor(mime)}`;
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
@@ -3570,7 +3766,7 @@ recordBtn.addEventListener('click', async ()=>{
 
   const mb = (blob.size / (1024*1024)).toFixed(1);
   setProgress(100, `Done — ${duration}s .${extFor(mime)} downloaded (${mb} MB).`, 'done');
-  toast(`Exported a ${duration}s ${extFor(mime).toUpperCase()} clip.`);
+  toast(`Exported a ${duration}s ${extFor(mime).toUpperCase()} L-Bar clip.`);
 
   recording = false;
   recordBtn.disabled = false;
