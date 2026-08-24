@@ -399,6 +399,10 @@
             <span class="block text-[10px] font-mono text-white">TEMPLATE F</span>
             <span class="block font-display text-sm mt-1">RECORD<br>BOOK</span>
           </button>
+          <button data-template="G" class="tmpl-btn rounded-lg p-3 text-left">
+            <span class="block text-[10px] font-mono text-[var(--green)]">TEMPLATE G</span>
+            <span class="block font-display text-sm mt-1">FRANCHISE<br>RESUME</span>
+          </button>
         </div>
       </div>
 
@@ -514,6 +518,14 @@
           <input data-f="f_owner" placeholder="Manager / team name" class="input-field w-full rounded px-3 py-2 text-sm">
           <input data-f="f_meta" placeholder="Meta (2022 · WEEK 5)" class="input-field w-full rounded px-3 py-2 text-sm font-mono">
           <input data-f-img="f_img" type="file" accept="image/*" class="text-xs w-full">
+        </div>
+      </div>
+
+      <!-- Template G fields -->
+      <div id="fields-G" class="tmpl-fields hidden space-y-3">
+        <div class="card rounded-lg p-4 space-y-3">
+          <p class="section-label text-[var(--green)]">Franchise Resume</p>
+          <p class="text-[11px] text-gray-500">Select a manager to auto-generate their full franchise history card.</p>
         </div>
       </div>
 
@@ -758,6 +770,81 @@
                 <p id="f-owner" class="font-display text-white text-[36px]">MANAGER NAME</p>
               </div>
               <p id="f-meta" class="font-mono text-[var(--gold)] text-[22px]">2022 · WEEK 5</p>
+            </div>
+          </div>
+
+          <div class="absolute bottom-[50px] left-0 right-0 text-center font-mono text-[16px] tracking-[0.3em] text-gray-500">GRIDIRON GRAPHICS · LEAGUE NETWORK</div>
+        </div>
+
+        <!-- TEMPLATE G — FRANCHISE RESUME -->
+        <div id="tpl-G" class="tpl absolute inset-0 hidden">
+          <div class="absolute inset-0" style="background:radial-gradient(ellipse at 50% 0%, #0a1a10 0%, #05070a 55%);"></div>
+          <div class="absolute inset-0" style="background-image:repeating-linear-gradient(0deg, transparent 0 38px, rgba(57,255,140,0.04) 38px 39px), repeating-linear-gradient(90deg, transparent 0 38px, rgba(57,255,140,0.04) 38px 39px);"></div>
+          <div class="absolute top-0 left-0 right-0 h-[10px]" style="background:linear-gradient(90deg,var(--green),var(--cyan),var(--green));"></div>
+
+          <!-- Header -->
+          <div class="absolute top-[50px] left-[56px] right-[56px] flex items-center gap-5">
+            <div class="w-[120px] h-[120px] rounded-full overflow-hidden bg-[#1a2230] flex items-center justify-center shrink-0" style="box-shadow:0 0 0 3px #05070a, 0 0 0 5px var(--green);">
+              <img id="g-avatar" class="w-full h-full object-cover hidden">
+              <span id="g-avatar-ph" class="font-display text-[48px] text-[var(--green)]">?</span>
+            </div>
+            <div class="min-w-0">
+              <h2 id="g-manager-name" class="font-display text-white text-[42px] leading-none truncate">MANAGER NAME</h2>
+              <p id="g-team-name" class="font-condensed text-gray-400 text-[24px] mt-1 truncate">TEAM NAME</p>
+              <p class="font-mono text-[var(--green)] text-[14px] tracking-[0.25em] mt-2">FRANCHISE RESUME · ALL-TIME HISTORY</p>
+            </div>
+          </div>
+
+          <!-- Average Finish -->
+          <div class="absolute top-[230px] left-[56px] right-[56px] rounded-2xl p-6 text-center" style="background:rgba(16,20,28,0.85); border:1px solid rgba(57,255,140,0.25);">
+            <p class="font-mono text-[var(--green)] text-[16px] tracking-[0.2em]">AVERAGE FINISHING POSITION</p>
+            <p id="g-avg-finish" class="font-display text-white text-[80px] leading-none mt-2 glow-green">--</p>
+          </div>
+
+          <!-- SVG Trajectory Chart -->
+          <div class="absolute top-[440px] left-[56px] right-[56px]" style="height:420px;">
+            <p class="font-mono text-gray-500 text-[14px] tracking-[0.15em] mb-2">YEAR-BY-YEAR RANK TRAJECTORY</p>
+            <svg id="g-chart" width="968" height="390" viewBox="0 0 968 390" fill="none" xmlns="http://www.w3.org/2000/svg"></svg>
+          </div>
+
+          <!-- Career Hardware Grid -->
+          <div class="absolute top-[900px] left-[56px] right-[56px] grid grid-cols-3 gap-4">
+            <div class="rounded-xl p-5 text-center" style="background:rgba(16,20,28,0.85); border:1px solid rgba(57,255,140,0.2);">
+              <p class="font-mono text-gray-500 text-[13px] tracking-[0.1em]">CHAMP. WON</p>
+              <p id="g-champs" class="font-display text-[var(--green)] text-[56px] leading-none mt-2 glow-green">0</p>
+            </div>
+            <div class="rounded-xl p-5 text-center" style="background:rgba(16,20,28,0.85); border:1px solid rgba(57,255,140,0.2);">
+              <p class="font-mono text-gray-500 text-[13px] tracking-[0.1em]">PLAYOFF APP.</p>
+              <p id="g-playoffs" class="font-display text-[var(--cyan)] text-[56px] leading-none mt-2 glow-cyan">0</p>
+            </div>
+            <div class="rounded-xl p-5 text-center" style="background:rgba(16,20,28,0.85); border:1px solid rgba(57,255,140,0.2);">
+              <p class="font-mono text-gray-500 text-[13px] tracking-[0.1em]">TOP 3 FINISHES</p>
+              <p id="g-podium" class="font-display text-[var(--gold)] text-[56px] leading-none mt-2 glow-gold">0</p>
+            </div>
+          </div>
+
+          <!-- Year-by-Year Labels -->
+          <div class="absolute top-[1090px] left-[56px] right-[56px]">
+            <p class="font-mono text-gray-500 text-[14px] tracking-[0.15em] mb-3">SEASON-BY-SEASON RESULTS</p>
+            <div id="g-year-pills" class="flex flex-wrap gap-2"></div>
+          </div>
+
+          <!-- Franchise Totals Table -->
+          <div class="absolute top-[1300px] left-[56px] right-[56px] rounded-2xl overflow-hidden" style="border:1px solid rgba(57,255,140,0.2);">
+            <div class="flex items-center justify-between px-6 py-4" style="background:rgba(57,255,140,0.08); border-bottom:1px solid rgba(57,255,140,0.15);">
+              <p class="font-mono text-[var(--green)] text-[14px] tracking-[0.15em]">FRANCHISE TOTALS</p>
+            </div>
+            <div class="px-6 py-4 flex items-center justify-between" style="background:rgba(16,20,28,0.85); border-bottom:1px solid rgba(255,255,255,0.06);">
+              <p class="font-condensed text-gray-400 text-[22px]">All-Time Record</p>
+              <p id="g-record" class="font-mono text-white text-[22px]">0-0-0</p>
+            </div>
+            <div class="px-6 py-4 flex items-center justify-between" style="background:rgba(16,20,28,0.85); border-bottom:1px solid rgba(255,255,255,0.06);">
+              <p class="font-condensed text-gray-400 text-[22px]">Total Matchups Played</p>
+              <p id="g-matchups" class="font-mono text-white text-[22px]">0</p>
+            </div>
+            <div class="px-6 py-4 flex items-center justify-between" style="background:rgba(16,20,28,0.85);">
+              <p class="font-condensed text-gray-400 text-[22px]">Seasons Played</p>
+              <p id="g-seasons" class="font-mono text-white text-[22px]">0</p>
             </div>
           </div>
 
@@ -1330,6 +1417,10 @@ const state = {
     e_a_name:'MANAGER A', e_a_img:null, e_b_name:'MANAGER B', e_b_img:null,
     e_series:'8-4', e_diff:'+142.6', e_last:'2024 · WK9 · WON 118.4–101.2', e_streak:'ON A 3-GAME STREAK',
     f_kicker:'ALL-TIME RECORD', f_headline:'184.6 PTS', f_subtext:'Highest single-game score in league history', f_owner:'MANAGER NAME', f_meta:'2022 · WEEK 5', f_img:null,
+    g_manager_id:null, g_manager_name:'MANAGER NAME', g_team_name:'TEAM NAME', g_avatar:null,
+    g_avg_finish:'--', g_champs:'0', g_playoffs:'0', g_podium:'0',
+    g_record:'0-0-0', g_matchups:'0', g_seasons:'0',
+    g_year_standings:[], g_chart_data:[],
   },
   ranks: [
     {rank:1, name:'Dynasty Warriors', record:'8-2', diff:'+142.5'},
@@ -1546,6 +1637,230 @@ function render(){
   document.getElementById('f-meta').textContent = f.f_meta || '';
   const fImg = document.getElementById('f-img');
   if(f.f_img){ fImg.src = f.f_img; fImg.classList.remove('hidden'); } else { fImg.classList.add('hidden'); }
+
+  // Template G — Franchise Resume
+  document.getElementById('g-manager-name').textContent = f.g_manager_name || 'MANAGER NAME';
+  document.getElementById('g-team-name').textContent = f.g_team_name || 'TEAM NAME';
+  document.getElementById('g-avg-finish').textContent = f.g_avg_finish || '--';
+  document.getElementById('g-champs').textContent = f.g_champs || '0';
+  document.getElementById('g-playoffs').textContent = f.g_playoffs || '0';
+  document.getElementById('g-podium').textContent = f.g_podium || '0';
+  document.getElementById('g-record').textContent = f.g_record || '0-0-0';
+  document.getElementById('g-matchups').textContent = f.g_matchups || '0';
+  document.getElementById('g-seasons').textContent = f.g_seasons || '0';
+  setImgOrPlaceholder('g-avatar','g-avatar-ph', f.g_avatar);
+
+  // Year pills
+  const yearPillsEl = document.getElementById('g-year-pills');
+  yearPillsEl.innerHTML = '';
+  (f.g_year_standings || []).forEach(ys => {
+    const pill = document.createElement('span');
+    pill.className = 'inline-block px-3 py-1.5 rounded-lg font-mono text-[16px]';
+    const rank = ys.rank;
+    if(rank === 1){ pill.style.cssText = 'background:rgba(255,196,0,0.15); border:1px solid rgba(255,196,0,0.4); color:var(--gold);'; }
+    else if(rank <= 3){ pill.style.cssText = 'background:rgba(0,224,255,0.1); border:1px solid rgba(0,224,255,0.3); color:var(--cyan);'; }
+    else { pill.style.cssText = 'background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.1); color:var(--off);'; }
+    pill.textContent = ys.label;
+    yearPillsEl.appendChild(pill);
+  });
+
+  // SVG Trajectory Chart
+  renderTrajectoryChart(f.g_chart_data || []);
+}
+
+function renderTrajectoryChart(data){
+  const svg = document.getElementById('g-chart');
+  if(!data.length){ svg.innerHTML = '<text x="484" y="195" text-anchor="middle" fill="#5b667a" font-family="Space Mono" font-size="16">No data loaded</text>'; return; }
+
+  const W = 968, H = 390, padL = 50, padR = 30, padT = 20, padB = 50;
+  const chartW = W - padL - padR, chartH = H - padT - padB;
+  const maxTeams = Math.max(12, ...data.map(d => d.rank));
+  const xStep = data.length > 1 ? chartW / (data.length - 1) : 0;
+
+  let svgContent = '';
+
+  // Defs for glow and gradient
+  svgContent += `<defs>
+    <filter id="glow-g"><feGaussianBlur stdDeviation="4" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#39ff8c" stop-opacity="0.25"/>
+      <stop offset="100%" stop-color="#39ff8c" stop-opacity="0.02"/>
+    </linearGradient>
+  </defs>`;
+
+  // Grid lines & Y-axis labels (inverted: 1 at top)
+  for(let r = 1; r <= maxTeams; r++){
+    const y = padT + ((r - 1) / (maxTeams - 1)) * chartH;
+    svgContent += `<line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>`;
+    if(r === 1 || r === Math.ceil(maxTeams/2) || r === maxTeams){
+      svgContent += `<text x="${padL - 12}" y="${y + 5}" text-anchor="end" fill="#5b667a" font-family="Space Mono" font-size="13">${r}</text>`;
+    }
+  }
+
+  // Build points
+  const points = data.map((d, i) => {
+    const x = padL + (data.length > 1 ? i * xStep : chartW / 2);
+    const y = padT + ((d.rank - 1) / (maxTeams - 1)) * chartH;
+    return { x, y, year: d.year, rank: d.rank };
+  });
+
+  // Area fill
+  const areaPath = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ')
+    + ` L${points[points.length-1].x},${padT + chartH} L${points[0].x},${padT + chartH} Z`;
+  svgContent += `<path d="${areaPath}" fill="url(#areaGrad)"/>`;
+
+  // Line
+  const linePath = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ');
+  svgContent += `<path d="${linePath}" stroke="#39ff8c" stroke-width="3" fill="none" filter="url(#glow-g)"/>`;
+
+  // Data points & labels
+  points.forEach(p => {
+    svgContent += `<circle cx="${p.x}" cy="${p.y}" r="8" fill="#05070a" stroke="#39ff8c" stroke-width="3" filter="url(#glow-g)"/>`;
+    svgContent += `<circle cx="${p.x}" cy="${p.y}" r="4" fill="#39ff8c"/>`;
+    svgContent += `<text x="${p.x}" y="${padT + chartH + 30}" text-anchor="middle" fill="#c7cdd8" font-family="Space Mono" font-size="14">'${String(p.year).slice(-2)}</text>`;
+    svgContent += `<text x="${p.x}" y="${p.y - 16}" text-anchor="middle" fill="#39ff8c" font-family="Space Mono" font-size="13" font-weight="700">${p.rank}${ordSuffix(p.rank)}</text>`;
+  });
+
+  svg.innerHTML = svgContent;
+}
+
+function ordSuffix(n){
+  const s = ['th','st','nd','rd'];
+  const v = n % 100;
+  return s[(v-20)%10] || s[v] || s[0];
+}
+
+/* Compute a single manager's franchise resume from leagueHistory + the raw
+   yearsData that fed it. We re-derive per-year standings from the game log
+   because the aggregated stats don't store per-year rank. */
+function computeFranchiseResume(ownerId){
+  const hist = state.leagueHistory;
+  if(!hist || !hist.managers[ownerId]) return null;
+
+  const mgr = hist.managers[ownerId];
+  const gameLog = hist.perManagerGameLog[ownerId] || [];
+
+  // Group games by year
+  const byYear = {};
+  gameLog.forEach(g => {
+    if(!byYear[g.year]) byYear[g.year] = { wins:0, losses:0, ties:0 };
+    if(g.result === 'W') byYear[g.year].wins++;
+    else if(g.result === 'L') byYear[g.year].losses++;
+    else byYear[g.year].ties++;
+  });
+
+  // All managers' records per year, so we can rank them
+  const allManagerIds = Object.keys(hist.perManagerGameLog);
+  const allByYear = {};
+  allManagerIds.forEach(mid => {
+    (hist.perManagerGameLog[mid] || []).forEach(g => {
+      if(!allByYear[g.year]) allByYear[g.year] = {};
+      if(!allByYear[g.year][mid]) allByYear[g.year][mid] = { wins:0, losses:0, ties:0 };
+      if(g.result === 'W') allByYear[g.year][mid].wins++;
+      else if(g.result === 'L') allByYear[g.year][mid].losses++;
+      else allByYear[g.year][mid].ties++;
+    });
+  });
+
+  // Determine rank per year (by wins desc, then ties desc, then losses asc)
+  const years = Object.keys(byYear).map(Number).sort();
+  const standings = [];
+  let totalWins = 0, totalLosses = 0, totalTies = 0, totalGames = 0;
+  let champs = 0, playoffApps = 0, podium = 0;
+
+  years.forEach(yr => {
+    const yearManagers = allByYear[yr] || {};
+    const sorted = Object.entries(yearManagers)
+      .map(([mid, rec]) => ({ mid, wins: rec.wins, losses: rec.losses, ties: rec.ties, wp: rec.wins / Math.max(1, rec.wins + rec.losses + rec.ties) }))
+      .sort((a, b) => b.wp - a.wp || b.wins - a.wins || a.losses - b.losses);
+
+    const rank = sorted.findIndex(s => s.mid === ownerId) + 1;
+    const shortYr = "'" + String(yr).slice(-2);
+    standings.push({ year: yr, rank, label: `${shortYr}: ${rank}${ordSuffix(rank)}` });
+
+    const rec = byYear[yr];
+    totalWins += rec.wins;
+    totalLosses += rec.losses;
+    totalTies += rec.ties;
+    totalGames += rec.wins + rec.losses + rec.ties;
+
+    if(rank === 1) champs++;
+    if(rank <= 3) podium++;
+  });
+
+  // Playoff appearances: count years where this manager played any playoff game
+  // We need to look at h2h meetings for this
+  const playoffYears = new Set();
+  Object.values(hist.h2h).forEach(rec => {
+    const isA = rec.a === ownerId;
+    const isB = rec.b === ownerId;
+    if(!isA && !isB) return;
+    rec.meetings.forEach(m => {
+      if(m.isPlayoff && (m.winnerOwnerId === ownerId || (isA ? true : true))) {
+        playoffYears.add(m.year);
+      }
+    });
+  });
+  playoffApps = playoffYears.size;
+
+  const avgFinish = standings.length ? (standings.reduce((s, r) => s + r.rank, 0) / standings.length) : 0;
+  const avgRounded = Math.round(avgFinish);
+
+  return {
+    name: mgr.name,
+    teamName: Object.values(mgr.teamNamesByYear).pop() || mgr.name,
+    logo: Object.values(mgr.logoByYear).pop() || null,
+    avgFinish: avgRounded ? `${avgRounded}${ordSuffix(avgRounded)} AVG FINISH` : '--',
+    champs, playoffApps, podium,
+    record: `${totalWins}-${totalLosses}-${totalTies}`,
+    matchups: totalGames,
+    seasons: years.length,
+    standings,
+    chartData: standings.map(s => ({ year: s.year, rank: s.rank })),
+  };
+}
+
+function renderResumePicker(){
+  const managers = Object.values(state.leagueHistory.managers).sort((a,b)=> a.name.localeCompare(b.name));
+  if(!managers.length){
+    espnPickerBody.innerHTML = `<p class="text-xs text-gray-500">No managers found across the loaded seasons.</p>`;
+    return;
+  }
+  const options = managers.map(m=> `<option value="${escapeHtml(m.id)}">${escapeHtml(m.name)}</option>`).join('');
+  espnPickerBody.innerHTML = `
+    <select id="pickResumeManager" class="input-field w-full rounded px-2 py-1.5 text-xs">
+      <option value="">Select a manager…</option>
+      ${options}
+    </select>
+    <button id="applyResume" class="btn-ghost w-full rounded py-1.5 text-xs mt-2">LOAD FRANCHISE RESUME</button>
+  `;
+  document.getElementById('applyResume').addEventListener('click', ()=>{
+    const id = document.getElementById('pickResumeManager').value;
+    if(!id){ showToast('Pick a manager first.'); return; }
+    applyFranchiseResume(id);
+  });
+}
+
+function applyFranchiseResume(ownerId, silent){
+  const resume = computeFranchiseResume(ownerId);
+  if(!resume){ if(!silent) showToast('Could not compute resume for this manager.'); return; }
+
+  state.fields.g_manager_id = ownerId;
+  state.fields.g_manager_name = resume.name.toUpperCase();
+  state.fields.g_team_name = resume.teamName.toUpperCase();
+  state.fields.g_avatar = resume.logo;
+  state.fields.g_avg_finish = resume.avgFinish;
+  state.fields.g_champs = String(resume.champs);
+  state.fields.g_playoffs = String(resume.playoffApps);
+  state.fields.g_podium = String(resume.podium);
+  state.fields.g_record = resume.record;
+  state.fields.g_matchups = String(resume.matchups);
+  state.fields.g_seasons = String(resume.seasons);
+  state.fields.g_year_standings = resume.standings;
+  state.fields.g_chart_data = resume.chartData;
+
+  syncInputsFromState();
+  if(!silent){ render(); showToast('Loaded franchise resume for ' + resume.name + '.'); }
 }
 
 function syncInputsFromState(){
@@ -1757,7 +2072,7 @@ function applyLeagueHistory(yearsData, skipped, sourceLabel){
   // Fill the two history-driven templates right away so the canvas reflects
   // the new data without the user having to re-pick anything.
   autofillHistoryTemplates();
-  if(state.template === 'E' || state.template === 'F') renderEspnPicker();
+  if(state.template === 'E' || state.template === 'F' || state.template === 'G') renderEspnPicker();
   render();
 
   return { seasons: yearsData.length, matchups: matchupCount, managers: managerCount };
@@ -2003,11 +2318,12 @@ function findLowestScorerForWeek(week){
 }
 
 function renderEspnPicker(){
-  if(state.template === 'E' || state.template === 'F'){
+  if(state.template === 'E' || state.template === 'F' || state.template === 'G'){
     if(!state.leagueHistory){ espnPicker.classList.add('hidden'); return; }
     espnPicker.classList.remove('hidden');
     if(state.template === 'E') renderRivalryPicker();
-    else renderRecordBookPicker();
+    else if(state.template === 'F') renderRecordBookPicker();
+    else renderResumePicker();
     return;
   }
 
@@ -2296,6 +2612,10 @@ function autofillHistoryTemplates(){
   ];
   const firstAvailable = order.find(([, value])=> !!value);
   if(firstAvailable) applyRecordMilestone(firstAvailable[0], true);
+
+  // Template G — auto-select the first manager alphabetically.
+  const sortedManagers = Object.values(hist.managers).sort((a,b)=> a.name.localeCompare(b.name));
+  if(sortedManagers.length) applyFranchiseResume(sortedManagers[0].id, true);
 }
 
 /* ============================================================
@@ -2585,7 +2905,7 @@ downloadBtn.addEventListener('click', async ()=>{
       useCORS: true,
     });
     const link = document.createElement('a');
-    const tplNames = {A:'matchup', B:'power-rankings', C:'breaking-news', D:'hot-seat', E:'rivalry-vault', F:'record-book'};
+    const tplNames = {A:'matchup', B:'power-rankings', C:'breaking-news', D:'hot-seat', E:'rivalry-vault', F:'record-book', G:'franchise-resume'};
     link.download = `gridiron-graphics-${tplNames[state.template]}-${Date.now()}.png`;
     link.href = canvas.toDataURL('image/png');
     link.click();
