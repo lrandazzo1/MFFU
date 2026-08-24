@@ -444,9 +444,16 @@
 
       <!-- Template B fields -->
       <div id="fields-B" class="tmpl-fields hidden space-y-3">
+        <div class="card rounded-lg p-4 space-y-2">
+          <p class="section-label text-[var(--gold)]">Mode</p>
+          <div class="flex gap-1 p-1 bg-[#0b0e14] rounded-lg border border-white/10">
+            <button id="rankModeWeekly" class="rank-mode-btn flex-1 py-2 rounded-md text-[10px] font-semibold tracking-wide bg-[var(--gold)] text-[#04150a]">IN-SEASON WEEKLY</button>
+            <button id="rankModeAllTime" class="rank-mode-btn flex-1 py-2 rounded-md text-[10px] font-semibold tracking-wide text-gray-400">ALL-TIME FRANCHISE</button>
+          </div>
+        </div>
         <div class="card rounded-lg p-4 space-y-3">
           <div class="flex items-center justify-between">
-            <p class="section-label text-[var(--gold)]">Rankings (# / Name / Record / Diff / Δ)</p>
+            <p class="section-label text-[var(--gold)]">Rankings (# / Name / Mgr / Record / Diff / Δ)</p>
             <button id="addRankRow" class="btn-ghost rounded px-2 py-1 text-xs">+ ADD</button>
           </div>
           <div id="rankRows" class="space-y-2 max-h-[420px] overflow-y-auto pr-1"></div>
@@ -633,11 +640,12 @@
           <div class="absolute inset-0" style="background:radial-gradient(ellipse at 50% -5%, #1a1508 0%, #0a0c10 40%, #05070a 70%);"></div>
           <div class="absolute inset-0" style="background-image:repeating-linear-gradient(180deg, transparent 0 3px, rgba(255,196,0,0.012) 3px 4px);"></div>
           <div class="absolute top-0 left-0 right-0 h-[8px]" style="background:linear-gradient(90deg,var(--gold),#ff8a00,var(--gold));"></div>
-          <div class="absolute top-[44px] left-0 right-0 text-center">
-            <p class="font-mono text-[var(--gold)] text-[22px] tracking-[0.35em]" id="b-week-label">WEEK 7</p>
-            <h2 id="rank-title" class="font-display text-white text-[56px] leading-none mt-1 glow-gold px-10">POWER RANKINGS</h2>
+          <div class="absolute top-[38px] left-0 right-0 text-center">
+            <p class="font-mono text-[var(--gold)] text-[20px] tracking-[0.35em]" id="b-week-label">WEEK 7</p>
+            <h2 id="rank-title" class="font-display text-white text-[52px] leading-none mt-1 glow-gold px-10">POWER RANKINGS</h2>
+            <p id="b-subtitle" class="font-mono text-[13px] tracking-[0.2em] text-gray-500 mt-2">ESPN FANTASY · UPDATED WEEKLY</p>
           </div>
-          <div id="rank-list" class="absolute top-[185px] left-[40px] right-[40px]" style="display:flex; flex-direction:column; gap:6px;"></div>
+          <div id="rank-list" class="absolute top-[200px] left-[40px] right-[40px]" style="display:flex; flex-direction:column; gap:0;"></div>
           <div class="absolute bottom-[28px] left-0 right-0 text-center">
             <div style="height:1px; background:linear-gradient(90deg, transparent, rgba(255,196,0,0.3), transparent); margin:0 80px 10px;"></div>
             <p class="font-mono text-[14px] tracking-[0.25em] text-gray-500">GRIDIRON POWER INDEX · UPDATED WEEKLY</p>
@@ -1473,19 +1481,20 @@ const state = {
     f_kicker:'ALL-TIME RECORD', f_headline:'184.6 PTS', f_subtext:'Highest single-game score in league history', f_owner:'MANAGER NAME', f_meta:'2022 · WEEK 5', f_img:null,
     g_team:'TEAM NAME', g_manager:'Manager Name', g_avg:'--', g_champs:'0', g_top3:'0', g_playoffs:'0', g_record:'0-0-0', g_seasons:'0', g_img:null, g_yearRanks:[],
   },
+  rankMode: 'weekly',
   ranks: [
-    {rank:1, name:'Dynasty Warriors', record:'8-2', diff:'+142.5', delta:'+1', manager:'JR'},
-    {rank:2, name:'Gridiron Gurus', record:'7-3', diff:'+98.1', delta:'0', manager:'MK'},
-    {rank:3, name:'The Comeback Kids', record:'6-4', diff:'+40.2', delta:'-2', manager:'LR'},
-    {rank:4, name:'Waiver Wire Bandits', record:'6-4', diff:'+22.0', delta:'+3', manager:'TS'},
-    {rank:5, name:'Touchdown Titans', record:'5-5', diff:'+10.4', delta:'0', manager:'AB'},
-    {rank:6, name:'The Commish', record:'5-5', diff:'-8.2', delta:'-1', manager:'DC'},
-    {rank:7, name:'Monday Night Miracles', record:'5-5', diff:'-15.6', delta:'+2', manager:'KW'},
-    {rank:8, name:'Bench Warmers Club', record:'4-6', diff:'-28.3', delta:'-1', manager:'PL'},
-    {rank:9, name:'Bye Week Blunders', record:'4-6', diff:'-44.1', delta:'-2', manager:'GH'},
-    {rank:10, name:'Autodraft Legends', record:'3-7', diff:'-62.8', delta:'0', manager:'NF'},
-    {rank:11, name:'Fantasy Frauds', record:'3-7', diff:'-80.5', delta:'+1', manager:'BM'},
-    {rank:12, name:'Last Place Larry', record:'2-8', diff:'-112.0', delta:'-1', manager:'EJ'},
+    {rank:1, name:'Dynasty Warriors', record:'8-2', diff:'+142.5', delta:'+1', manager:'Jake Rivera', logo:null, winPct:''},
+    {rank:2, name:'Gridiron Gurus', record:'7-3', diff:'+98.1', delta:'0', manager:'Mike Kim', logo:null, winPct:''},
+    {rank:3, name:'The Comeback Kids', record:'6-4', diff:'+40.2', delta:'-2', manager:'Leo Randazzo', logo:null, winPct:''},
+    {rank:4, name:'Waiver Wire Bandits', record:'6-4', diff:'+22.0', delta:'+3', manager:'Tom Sullivan', logo:null, winPct:''},
+    {rank:5, name:'Touchdown Titans', record:'5-5', diff:'+10.4', delta:'0', manager:'Alex Brown', logo:null, winPct:''},
+    {rank:6, name:'The Commish', record:'5-5', diff:'-8.2', delta:'-1', manager:'Dan Carter', logo:null, winPct:''},
+    {rank:7, name:'Monday Night Miracles', record:'5-5', diff:'-15.6', delta:'+2', manager:'Kyle West', logo:null, winPct:''},
+    {rank:8, name:'Bench Warmers Club', record:'4-6', diff:'-28.3', delta:'-1', manager:'Pat Lee', logo:null, winPct:''},
+    {rank:9, name:'Bye Week Blunders', record:'4-6', diff:'-44.1', delta:'-2', manager:'Greg Hill', logo:null, winPct:''},
+    {rank:10, name:'Autodraft Legends', record:'3-7', diff:'-62.8', delta:'0', manager:'Nick Ford', logo:null, winPct:''},
+    {rank:11, name:'Fantasy Frauds', record:'3-7', diff:'-80.5', delta:'+1', manager:'Brian Moore', logo:null, winPct:''},
+    {rank:12, name:'Last Place Larry', record:'2-8', diff:'-112.0', delta:'-1', manager:'Eli Jones', logo:null, winPct:''},
   ]
 };
 
@@ -1583,16 +1592,22 @@ function renderRankRows(){
   state.ranks.forEach((r, i)=>{
     if(!r.delta) r.delta = '0';
     if(!r.manager) r.manager = '';
+    if(!r.winPct) r.winPct = '';
     const row = document.createElement('div');
-    row.className = 'flex items-center gap-1.5 bg-[#0b0e14] border border-white/10 rounded p-2';
+    row.className = 'bg-[#0b0e14] border border-white/10 rounded p-2 space-y-1';
     row.innerHTML = `
-      <input type="number" value="${r.rank}" class="input-field w-10 rounded px-1 py-1 text-xs font-mono text-center" data-rr="rank" title="Rank">
-      <input type="text" value="${escapeHtml(r.name)}" placeholder="Team" class="input-field flex-1 rounded px-2 py-1 text-xs" data-rr="name" title="Team name">
-      <input type="text" value="${escapeHtml(r.manager||'')}" placeholder="Mgr" class="input-field w-14 rounded px-1 py-1 text-xs" data-rr="manager" title="Manager initials">
-      <input type="text" value="${escapeHtml(r.record)}" placeholder="W-L" class="input-field w-14 rounded px-1 py-1 text-xs font-mono" data-rr="record">
-      <input type="text" value="${escapeHtml(r.diff)}" placeholder="+diff" class="input-field w-16 rounded px-1 py-1 text-xs font-mono" data-rr="diff">
-      <input type="text" value="${escapeHtml(r.delta||'0')}" placeholder="Δ" class="input-field w-10 rounded px-1 py-1 text-xs font-mono text-center" data-rr="delta" title="Rank change (+2, -3, 0)">
-      <button class="text-gray-500 hover:text-[var(--pink)] text-xs px-1" data-rr="del">✕</button>
+      <div class="flex items-center gap-1.5">
+        <input type="number" value="${r.rank}" class="input-field w-10 rounded px-1 py-1 text-xs font-mono text-center" data-rr="rank" title="Rank">
+        <input type="text" value="${escapeHtml(r.name)}" placeholder="Team name" class="input-field flex-1 rounded px-2 py-1 text-xs" data-rr="name">
+        <input type="text" value="${escapeHtml(r.record)}" placeholder="W-L" class="input-field w-14 rounded px-1 py-1 text-xs font-mono" data-rr="record">
+        <input type="text" value="${escapeHtml(r.delta||'0')}" placeholder="Δ" class="input-field w-10 rounded px-1 py-1 text-xs font-mono text-center" data-rr="delta" title="Rank change">
+        <button class="text-gray-500 hover:text-[var(--pink)] text-xs px-1" data-rr="del">✕</button>
+      </div>
+      <div class="flex items-center gap-1.5">
+        <input type="text" value="${escapeHtml(r.manager||'')}" placeholder="Manager full name" class="input-field flex-1 rounded px-2 py-1 text-xs" data-rr="manager">
+        <input type="text" value="${escapeHtml(r.diff)}" placeholder="+diff" class="input-field w-16 rounded px-1 py-1 text-xs font-mono" data-rr="diff">
+        <input type="text" value="${escapeHtml(r.winPct||'')}" placeholder="Win%" class="input-field w-14 rounded px-1 py-1 text-xs font-mono" data-rr="winPct" title="Win % (.583)">
+      </div>
     `;
     row.querySelectorAll('[data-rr]').forEach(el=>{
       const attr = el.dataset.rr;
@@ -1862,43 +1877,55 @@ function render(){
   setImgOrPlaceholder('b-img','b-img-ph', f.b_img);
 
   // Template B
-  document.getElementById('rank-title').textContent = f.rank_title || 'POWER RANKINGS';
-  document.getElementById('b-week-label').textContent = f.rank_week || 'WEEK';
+  const isAllTime = state.rankMode === 'alltime';
+  document.getElementById('rank-title').textContent = f.rank_title || (isAllTime ? 'ALL-TIME POWER RANKINGS' : 'POWER RANKINGS');
+  document.getElementById('b-week-label').textContent = f.rank_week || (isAllTime ? 'ALL-TIME STANDINGS' : 'WEEK');
+  document.getElementById('b-subtitle').textContent = isAllTime ? 'HISTORICAL FRANCHISE STANDINGS (2019–PRESENT)' : 'ESPN FANTASY · UPDATED WEEKLY';
   const list = document.getElementById('rank-list');
   list.innerHTML = '';
   const sorted = [...state.ranks].sort((a,b)=>a.rank-b.rank);
-  const totalRows = Math.min(sorted.length, 12);
+  const rowCount = Math.min(sorted.length, 12);
+  const availH = 1920 - 200 - 70;
+  const rowH = rowCount > 0 ? Math.floor(availH / rowCount) : 130;
+  const gap = Math.max(0, Math.min(8, rowH - 120));
+  list.style.gap = gap + 'px';
+
   sorted.slice(0, 12).forEach((r)=>{
     const isChamp = r.rank <= 3;
     const isPlayoff = r.rank >= 4 && r.rank <= 8;
     const isBasement = r.rank >= 9;
 
-    // Tier-specific styling
-    let bg, border, rankColor, nameColor, nameSize, rankSize, rankGlow, cardPy, avatarBg, avatarBorder;
+    let bg, border, rankColor, nameColor, nameSize, rankSize, rankGlow, avatarBg, avatarBorder, mgrColor;
     if(isChamp){
-      bg = r.rank === 1
+      const isFirst = r.rank === 1;
+      const isThird = r.rank === 3;
+      bg = isFirst
         ? 'linear-gradient(135deg, rgba(255,196,0,0.18) 0%, rgba(255,138,0,0.08) 100%)'
-        : 'linear-gradient(135deg, rgba(0,224,255,0.12) 0%, rgba(0,180,220,0.05) 100%)';
-      border = r.rank === 1 ? '2px solid rgba(255,196,0,0.6)' : '2px solid rgba(0,224,255,0.45)';
-      rankColor = r.rank === 1 ? 'var(--gold)' : 'var(--cyan)';
-      rankGlow = r.rank === 1
+        : isThird
+          ? 'linear-gradient(135deg, rgba(201,151,74,0.14) 0%, rgba(160,120,50,0.06) 100%)'
+          : 'linear-gradient(135deg, rgba(0,224,255,0.12) 0%, rgba(0,180,220,0.05) 100%)';
+      border = isFirst ? '2px solid rgba(255,196,0,0.6)' : isThird ? '2px solid rgba(201,151,74,0.45)' : '2px solid rgba(0,224,255,0.45)';
+      rankColor = isFirst ? 'var(--gold)' : isThird ? 'var(--bronze)' : 'var(--cyan)';
+      rankGlow = isFirst
         ? 'text-shadow:0 0 24px rgba(255,196,0,0.7), 0 0 48px rgba(255,196,0,0.3)'
-        : 'text-shadow:0 0 24px rgba(0,224,255,0.7), 0 0 48px rgba(0,224,255,0.3)';
+        : isThird
+          ? 'text-shadow:0 0 20px rgba(201,151,74,0.5), 0 0 40px rgba(201,151,74,0.2)'
+          : 'text-shadow:0 0 24px rgba(0,224,255,0.7), 0 0 48px rgba(0,224,255,0.3)';
       nameColor = '#fff';
-      nameSize = '28px';
-      rankSize = '46px';
-      cardPy = '14px';
-      avatarBg = r.rank === 1 ? 'rgba(255,196,0,0.15)' : 'rgba(0,224,255,0.12)';
-      avatarBorder = r.rank === 1 ? '2px solid rgba(255,196,0,0.6)' : '2px solid rgba(0,224,255,0.5)';
+      nameSize = '26px';
+      rankSize = '44px';
+      mgrColor = '#8892a6';
+      avatarBg = isFirst ? 'rgba(255,196,0,0.15)' : isThird ? 'rgba(201,151,74,0.12)' : 'rgba(0,224,255,0.12)';
+      avatarBorder = isFirst ? '2px solid rgba(255,196,0,0.6)' : isThird ? '2px solid rgba(201,151,74,0.5)' : '2px solid rgba(0,224,255,0.5)';
     } else if(isPlayoff){
       bg = 'rgba(22,28,39,0.9)';
       border = '1px solid rgba(255,255,255,0.08)';
       rankColor = '#8892a6';
       rankGlow = '';
       nameColor = '#e8ecf2';
-      nameSize = '24px';
-      rankSize = '36px';
-      cardPy = '10px';
+      nameSize = '23px';
+      rankSize = '34px';
+      mgrColor = '#5b667a';
       avatarBg = 'rgba(255,255,255,0.06)';
       avatarBorder = '1px solid rgba(255,255,255,0.12)';
     } else {
@@ -1907,51 +1934,70 @@ function render(){
       rankColor = '#4a4e5a';
       rankGlow = '';
       nameColor = '#6b7080';
-      nameSize = '22px';
-      rankSize = '32px';
-      cardPy = '8px';
+      nameSize = '21px';
+      rankSize = '30px';
+      mgrColor = '#3d4250';
       avatarBg = 'rgba(255,255,255,0.03)';
       avatarBorder = '1px solid rgba(255,255,255,0.06)';
     }
 
-    // Delta pill
-    const deltaVal = parseInt(r.delta) || 0;
-    let deltaPill;
-    if(deltaVal > 0){
-      deltaPill = `<span style="background:rgba(57,255,140,0.15); color:var(--green); border:1px solid rgba(57,255,140,0.3); border-radius:20px; padding:2px 10px; font-family:'Space Mono',monospace; font-size:14px; white-space:nowrap;">▲ +${deltaVal}</span>`;
-    } else if(deltaVal < 0){
-      deltaPill = `<span style="background:rgba(255,45,109,0.12); color:var(--pink); border:1px solid rgba(255,45,109,0.25); border-radius:20px; padding:2px 10px; font-family:'Space Mono',monospace; font-size:14px; white-space:nowrap;">▼ ${deltaVal}</span>`;
+    // Right column content depends on mode
+    let rightCol;
+    if(isAllTime){
+      const wp = r.winPct || r.diff || '';
+      const wpColor = isChamp ? rankColor : '#8892a6';
+      rightCol = `
+        <span style="font-family:'Anton',sans-serif; font-size:22px; color:${wpColor}; line-height:1;">${escapeHtml(wp)}</span>
+        <span style="font-family:'Space Mono',monospace; font-size:12px; color:#5b667a; line-height:1;">${escapeHtml(r.record)}</span>
+      `;
     } else {
-      deltaPill = `<span style="background:rgba(255,255,255,0.05); color:#5b667a; border:1px solid rgba(255,255,255,0.08); border-radius:20px; padding:2px 10px; font-family:'Space Mono',monospace; font-size:14px;">—</span>`;
+      const deltaVal = parseInt(r.delta) || 0;
+      let deltaPill;
+      if(deltaVal > 0){
+        deltaPill = `<span style="background:rgba(57,255,140,0.15); color:var(--green); border:1px solid rgba(57,255,140,0.3); border-radius:20px; padding:2px 10px; font-family:'Space Mono',monospace; font-size:13px; white-space:nowrap;">▲ +${deltaVal}</span>`;
+      } else if(deltaVal < 0){
+        deltaPill = `<span style="background:rgba(255,45,109,0.12); color:var(--pink); border:1px solid rgba(255,45,109,0.25); border-radius:20px; padding:2px 10px; font-family:'Space Mono',monospace; font-size:13px; white-space:nowrap;">▼ ${deltaVal}</span>`;
+      } else {
+        deltaPill = `<span style="background:rgba(255,255,255,0.05); color:#5b667a; border:1px solid rgba(255,255,255,0.08); border-radius:20px; padding:2px 10px; font-family:'Space Mono',monospace; font-size:13px;">—</span>`;
+      }
+      rightCol = `
+        <span style="font-family:'Space Mono',monospace; font-size:15px; color:${isBasement ? '#4a4e5a' : rankColor}; font-weight:700; line-height:1;">${escapeHtml(r.record)}</span>
+        ${deltaPill}
+      `;
     }
 
     // Basement warning dot
     const warningDot = isBasement
-      ? `<span style="width:8px; height:8px; border-radius:50%; background:${r.rank >= 11 ? 'var(--pink)' : '#f59e0b'}; box-shadow:0 0 8px ${r.rank >= 11 ? 'rgba(255,45,109,0.6)' : 'rgba(245,158,11,0.6)'}; display:inline-block; margin-right:6px; flex-shrink:0;"></span>`
+      ? `<span style="width:7px; height:7px; border-radius:50%; background:${r.rank >= 11 ? 'var(--pink)' : '#f59e0b'}; box-shadow:0 0 8px ${r.rank >= 11 ? 'rgba(255,45,109,0.6)' : 'rgba(245,158,11,0.6)'}; display:inline-block; margin-right:4px; flex-shrink:0;"></span>`
       : '';
 
-    // Manager avatar (initials)
-    const initials = (r.manager || r.name.split(' ').map(w=>w[0]).join('').slice(0,2)).toUpperCase();
+    // Avatar: use logo if available, else manager initials
+    const mgrName = r.manager || '';
+    const initials = mgrName ? mgrName.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase() : r.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+    const hasLogo = r.logo && r.logo.startsWith && (r.logo.startsWith('http') || r.logo.startsWith('data:'));
+    const avatarInner = hasLogo
+      ? `<img src="${r.logo}" style="width:100%;height:100%;object-fit:cover;" crossorigin="anonymous">`
+      : `<span style="font-family:'Teko',sans-serif; font-size:17px; font-weight:600; color:${rankColor}; letter-spacing:0.02em;">${escapeHtml(initials)}</span>`;
 
+    const cardPad = Math.max(6, Math.min(12, rowH - 115));
     const row = document.createElement('div');
-    row.style.cssText = `display:flex; align-items:center; gap:14px; border-radius:14px; padding:${cardPy} 18px; background:${bg}; border:${border}; backdrop-filter:blur(4px);`;
+    row.style.cssText = `display:flex; align-items:center; gap:12px; border-radius:12px; padding:${cardPad}px 16px; background:${bg}; border:${border}; backdrop-filter:blur(4px);`;
     row.innerHTML = `
-      <div style="font-family:'Anton',sans-serif; font-size:${rankSize}; width:56px; text-align:center; color:${rankColor}; flex-shrink:0; ${rankGlow}">${r.rank}</div>
+      <div style="font-family:'Anton',sans-serif; font-size:${rankSize}; width:50px; text-align:center; color:${rankColor}; flex-shrink:0; ${rankGlow}">${r.rank}</div>
       <div style="width:44px; height:44px; border-radius:50%; background:${avatarBg}; border:${avatarBorder}; display:flex; align-items:center; justify-content:center; flex-shrink:0; overflow:hidden;">
-        <span style="font-family:'Teko',sans-serif; font-size:18px; font-weight:600; color:${rankColor}; letter-spacing:0.02em;">${escapeHtml(initials)}</span>
+        ${avatarInner}
       </div>
       <div style="flex:1; min-width:0;">
-        <div style="display:flex; align-items:center; gap:8px;">
+        <div style="display:flex; align-items:center; gap:5px;">
           ${warningDot}
-          <span style="font-family:'Anton',sans-serif; font-size:${nameSize}; color:${nameColor}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(r.name)}</span>
+          <span style="font-family:'Anton',sans-serif; font-size:${nameSize}; color:${nameColor}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; line-height:1.1;">${escapeHtml(r.name)}</span>
         </div>
-        <div style="font-family:'Space Mono',monospace; font-size:14px; color:#5b667a; margin-top:1px;">
-          <span>${escapeHtml(r.record)}</span>
+        <div style="font-family:'Teko',sans-serif; font-size:16px; color:${mgrColor}; margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; line-height:1;">
+          ${escapeHtml(mgrName)}
         </div>
       </div>
-      <div style="display:flex; flex-direction:column; align-items:flex-end; gap:4px; flex-shrink:0;">
-        <span style="font-family:'Space Mono',monospace; font-size:16px; color:${isBasement ? '#4a4e5a' : rankColor}; font-weight:700;">${escapeHtml(r.diff)}</span>
-        ${deltaPill}
+      <div style="display:flex; flex-direction:column; align-items:flex-end; gap:3px; flex-shrink:0;">
+        ${rightCol}
       </div>
     `;
     list.appendChild(row);
@@ -2525,7 +2571,7 @@ function renderEspnPicker(){
         const wins = parseInt((t.record||'0-0').split('-')[0], 10) || 0;
         return { t, wins };
       }).sort((a,b)=> b.wins - a.wins);
-      state.ranks = withWins.map((x,i)=>({rank:i+1, name:x.t.name.toUpperCase(), record:x.t.record, diff:'+0.0', delta:'0', manager:''}));
+      state.ranks = withWins.map((x,i)=>({rank:i+1, name:x.t.name.toUpperCase(), record:x.t.record, diff:'+0.0', delta:'0', manager:'', logo:x.t.logo||null, winPct:''}));
       renderRankRows();
       render();
       showToast('Loaded teams into rankings, sorted by record — set point differentials manually.');
@@ -2842,10 +2888,15 @@ function loadAllTimePowerRankings(){
     name: r.name.toUpperCase(),
     record: `${r.wins}-${r.losses}-${r.ties}`,
     diff: '.' + (r.winPct * 1000).toFixed(0).padStart(3,'0'),
+    winPct: '.' + (r.winPct * 1000).toFixed(0).padStart(3,'0'),
     delta: '0',
-    manager: '',
+    manager: r.name,
+    logo: null,
   }));
 
+  state.rankMode = 'alltime';
+  document.getElementById('rankModeAllTime').className = 'rank-mode-btn flex-1 py-2 rounded-md text-[10px] font-semibold tracking-wide bg-[var(--gold)] text-[#04150a]';
+  document.getElementById('rankModeWeekly').className = 'rank-mode-btn flex-1 py-2 rounded-md text-[10px] font-semibold tracking-wide text-gray-400';
   state.fields.rank_title = 'ALL-TIME POWER RANKINGS';
   state.fields.rank_week = 'ALL-TIME STANDINGS';
   syncInputsFromState();
@@ -2907,8 +2958,22 @@ document.querySelectorAll('[data-f-img]').forEach(inp=>{
 });
 
 addRankRowBtn.addEventListener('click', ()=>{
-  state.ranks.push({rank: state.ranks.length+1, name:'New Team', record:'0-0', diff:'+0.0', delta:'0', manager:''});
+  state.ranks.push({rank: state.ranks.length+1, name:'New Team', record:'0-0', diff:'+0.0', delta:'0', manager:'', logo:null, winPct:''});
   renderRankRows();
+  render();
+});
+
+// Template B mode toggle
+document.getElementById('rankModeWeekly').addEventListener('click', ()=>{
+  state.rankMode = 'weekly';
+  document.getElementById('rankModeWeekly').className = 'rank-mode-btn flex-1 py-2 rounded-md text-[10px] font-semibold tracking-wide bg-[var(--gold)] text-[#04150a]';
+  document.getElementById('rankModeAllTime').className = 'rank-mode-btn flex-1 py-2 rounded-md text-[10px] font-semibold tracking-wide text-gray-400';
+  render();
+});
+document.getElementById('rankModeAllTime').addEventListener('click', ()=>{
+  state.rankMode = 'alltime';
+  document.getElementById('rankModeAllTime').className = 'rank-mode-btn flex-1 py-2 rounded-md text-[10px] font-semibold tracking-wide bg-[var(--gold)] text-[#04150a]';
+  document.getElementById('rankModeWeekly').className = 'rank-mode-btn flex-1 py-2 rounded-md text-[10px] font-semibold tracking-wide text-gray-400';
   render();
 });
 
@@ -3163,6 +3228,9 @@ resetBtn.addEventListener('click', ()=>{
   ['a_img','b_img','news_img','hs_img','e_a_img','e_b_img','f_img','g_img'].forEach(k=> state.fields[k]=null);
   state.fields.g_yearRanks = [];
   state.ranks = [];
+  state.rankMode = 'weekly';
+  document.getElementById('rankModeWeekly').className = 'rank-mode-btn flex-1 py-2 rounded-md text-[10px] font-semibold tracking-wide bg-[var(--gold)] text-[#04150a]';
+  document.getElementById('rankModeAllTime').className = 'rank-mode-btn flex-1 py-2 rounded-md text-[10px] font-semibold tracking-wide text-gray-400';
   renderRankRows();
   render();
   showToast('Cleared.');
