@@ -399,6 +399,10 @@
             <span class="block text-[10px] font-mono text-white">TEMPLATE F</span>
             <span class="block font-display text-sm mt-1">RECORD<br>BOOK</span>
           </button>
+          <button data-template="G" class="tmpl-btn rounded-lg p-3 text-left">
+            <span class="block text-[10px] font-mono text-[var(--cyan)]">TEMPLATE G</span>
+            <span class="block font-display text-sm mt-1">FRANCHISE<br>RESUME</span>
+          </button>
         </div>
       </div>
 
@@ -514,6 +518,22 @@
           <input data-f="f_owner" placeholder="Manager / team name" class="input-field w-full rounded px-3 py-2 text-sm">
           <input data-f="f_meta" placeholder="Meta (2022 · WEEK 5)" class="input-field w-full rounded px-3 py-2 text-sm font-mono">
           <input data-f-img="f_img" type="file" accept="image/*" class="text-xs w-full">
+        </div>
+      </div>
+
+      <!-- Template G fields — Franchise Resume -->
+      <div id="fields-G" class="tmpl-fields hidden space-y-3">
+        <div class="card rounded-lg p-4 space-y-3">
+          <p class="section-label text-[var(--cyan)]">Franchise Resume</p>
+          <input data-f="g_team" placeholder="Team name" class="input-field w-full rounded px-3 py-2 text-sm">
+          <input data-f="g_manager" placeholder="Manager name" class="input-field w-full rounded px-3 py-2 text-sm">
+          <input data-f="g_avg" placeholder="Avg finishing position (e.g. 4.2)" class="input-field w-full rounded px-3 py-2 text-sm font-mono">
+          <input data-f="g_champs" placeholder="Championships (e.g. 2)" class="input-field w-full rounded px-3 py-2 text-sm font-mono">
+          <input data-f="g_top3" placeholder="Top 3 finishes (e.g. 5)" class="input-field w-full rounded px-3 py-2 text-sm font-mono">
+          <input data-f="g_playoffs" placeholder="Playoff appearances (e.g. 4)" class="input-field w-full rounded px-3 py-2 text-sm font-mono">
+          <input data-f="g_record" placeholder="All-time record (42-54-0)" class="input-field w-full rounded px-3 py-2 text-sm font-mono">
+          <input data-f="g_seasons" placeholder="Seasons played (e.g. 7)" class="input-field w-full rounded px-3 py-2 text-sm font-mono">
+          <input data-f-img="g_img" type="file" accept="image/*" class="text-xs w-full">
         </div>
       </div>
 
@@ -758,6 +778,60 @@
                 <p id="f-owner" class="font-display text-white text-[36px]">MANAGER NAME</p>
               </div>
               <p id="f-meta" class="font-mono text-[var(--gold)] text-[22px]">2022 · WEEK 5</p>
+            </div>
+          </div>
+
+          <div class="absolute bottom-[50px] left-0 right-0 text-center font-mono text-[16px] tracking-[0.3em] text-gray-500">GRIDIRON GRAPHICS · LEAGUE NETWORK</div>
+        </div>
+
+        <!-- TEMPLATE G — FRANCHISE RESUME -->
+        <div id="tpl-G" class="tpl absolute inset-0 hidden">
+          <div class="absolute inset-0" style="background:radial-gradient(ellipse at 50% 0%, #0a1520 0%, #05070a 55%);"></div>
+          <div class="absolute top-0 left-0 right-0 h-[10px]" style="background:linear-gradient(90deg,var(--cyan),var(--green));"></div>
+
+          <div class="absolute top-[50px] left-0 right-0 text-center">
+            <p class="font-mono text-[var(--cyan)] text-[22px] tracking-[0.35em]">FRANCHISE RESUME</p>
+            <h2 id="g-team-title" class="font-display text-white text-[48px] leading-none mt-2 glow-cyan px-10">TEAM NAME</h2>
+            <p id="g-manager-title" class="font-condensed text-gray-400 text-[26px] mt-1">Manager Name</p>
+          </div>
+
+          <!-- Avatar -->
+          <div class="absolute top-[240px] left-1/2 -translate-x-1/2">
+            <div class="w-[200px] h-[200px] rounded-full overflow-hidden bg-[#1a2230] avatar-frame text-[var(--cyan)] flex items-center justify-center">
+              <img id="g-img" class="w-full h-full object-cover hidden">
+              <span id="g-img-ph" class="font-display text-[80px] text-[var(--cyan)]">?</span>
+            </div>
+          </div>
+
+          <!-- Stats grid -->
+          <div class="absolute top-[490px] left-[56px] right-[56px] space-y-3">
+            <div class="flex items-center justify-between rounded-xl px-6 py-4" style="background:rgba(16,20,28,0.85); border:1px solid rgba(0,224,255,0.2);">
+              <span class="section-label text-[var(--cyan)]">AVG FINISH</span>
+              <span id="g-avg" class="font-display text-white text-[40px]">--</span>
+            </div>
+            <div class="flex items-center justify-between rounded-xl px-6 py-4" style="background:rgba(16,20,28,0.85); border:1px solid rgba(255,196,0,0.2);">
+              <span class="section-label text-[var(--gold)]">CHAMPIONSHIPS</span>
+              <span id="g-champs" class="font-display text-[var(--gold)] text-[40px] glow-gold">0</span>
+            </div>
+            <div class="flex items-center justify-between rounded-xl px-6 py-4" style="background:rgba(16,20,28,0.85); border:1px solid rgba(255,255,255,0.08);">
+              <span class="section-label">TOP 3 FINISHES</span>
+              <span id="g-top3" class="font-display text-white text-[40px]">0</span>
+            </div>
+            <div class="flex items-center justify-between rounded-xl px-6 py-4" style="background:rgba(16,20,28,0.85); border:1px solid rgba(255,255,255,0.08);">
+              <span class="section-label">PLAYOFF APPEARANCES</span>
+              <span id="g-playoffs" class="font-display text-white text-[40px]">0</span>
+            </div>
+            <div class="flex items-center justify-between rounded-xl px-6 py-4" style="background:rgba(16,20,28,0.85); border:1px solid rgba(255,255,255,0.08);">
+              <span class="section-label">ALL-TIME RECORD</span>
+              <span id="g-record" class="font-mono text-white text-[30px]">0-0-0</span>
+            </div>
+          </div>
+
+          <!-- Year-by-year line chart -->
+          <div class="absolute top-[1060px] left-[56px] right-[56px]">
+            <p class="section-label mb-3 text-[var(--cyan)]">YEAR-BY-YEAR FINAL RANK</p>
+            <div class="rounded-xl px-6 py-5" style="background:rgba(16,20,28,0.85); border:1px solid rgba(0,224,255,0.15);">
+              <svg id="g-chart" width="968" height="320" viewBox="0 0 968 320"></svg>
             </div>
           </div>
 
@@ -1365,6 +1439,7 @@ const state = {
     e_a_name:'MANAGER A', e_a_img:null, e_b_name:'MANAGER B', e_b_img:null,
     e_series:'8-4', e_diff:'+142.6', e_last:'2024 · WK9 · WON 118.4–101.2', e_streak:'ON A 3-GAME STREAK',
     f_kicker:'ALL-TIME RECORD', f_headline:'184.6 PTS', f_subtext:'Highest single-game score in league history', f_owner:'MANAGER NAME', f_meta:'2022 · WEEK 5', f_img:null,
+    g_team:'TEAM NAME', g_manager:'Manager Name', g_avg:'--', g_champs:'0', g_top3:'0', g_playoffs:'0', g_record:'0-0-0', g_seasons:'0', g_img:null, g_yearRanks:[],
   },
   ranks: [
     {rank:1, name:'Dynasty Warriors', record:'8-2', diff:'+142.5'},
@@ -1508,6 +1583,146 @@ function escapeHtml(str){
   return LeagueData.esc(str);
 }
 
+function renderFranchiseChart(yearRanks){
+  const svg = document.getElementById('g-chart');
+  if(!svg) return;
+  svg.innerHTML = '';
+  if(!yearRanks.length) {
+    const t = document.createElementNS('http://www.w3.org/2000/svg','text');
+    t.setAttribute('x','484'); t.setAttribute('y','160'); t.setAttribute('text-anchor','middle');
+    t.setAttribute('fill','#5b667a'); t.setAttribute('font-family','Space Mono,monospace'); t.setAttribute('font-size','14');
+    t.textContent = 'Load league history to populate chart';
+    svg.appendChild(t);
+    return;
+  }
+  const W=968, H=320, padL=50, padR=20, padT=30, padB=40;
+  const n=yearRanks.length;
+  const maxRank=12;
+  const xStep = n>1 ? (W-padL-padR)/(n-1) : 0;
+  const yScale = (H-padT-padB)/(maxRank-1);
+
+  // grid lines
+  [1,3,6,12].forEach(r=>{
+    const y=padT+(r-1)*yScale;
+    const line=document.createElementNS('http://www.w3.org/2000/svg','line');
+    line.setAttribute('x1',padL); line.setAttribute('x2',W-padR);
+    line.setAttribute('y1',y); line.setAttribute('y2',y);
+    line.setAttribute('stroke','rgba(255,255,255,0.08)'); line.setAttribute('stroke-width','1');
+    svg.appendChild(line);
+    const label=document.createElementNS('http://www.w3.org/2000/svg','text');
+    label.setAttribute('x',padL-8); label.setAttribute('y',y+4);
+    label.setAttribute('text-anchor','end'); label.setAttribute('fill','#5b667a');
+    label.setAttribute('font-family','Space Mono,monospace'); label.setAttribute('font-size','11');
+    label.textContent=String(r);
+    svg.appendChild(label);
+  });
+
+  // line path
+  const points = yearRanks.map((yr,i)=>{
+    const x=padL+(n>1?i*xStep:((W-padL-padR)/2));
+    const y=padT+(yr.rank-1)*yScale;
+    return {x,y,year:yr.year,rank:yr.rank};
+  });
+
+  if(points.length>1){
+    const pathD = points.map((p,i)=> (i===0?'M':'L')+p.x+','+p.y).join(' ');
+    const path=document.createElementNS('http://www.w3.org/2000/svg','path');
+    path.setAttribute('d',pathD); path.setAttribute('fill','none');
+    path.setAttribute('stroke','var(--cyan)'); path.setAttribute('stroke-width','3');
+    path.setAttribute('stroke-linejoin','round');
+    svg.appendChild(path);
+  }
+
+  // dots + labels
+  points.forEach(p=>{
+    const c=document.createElementNS('http://www.w3.org/2000/svg','circle');
+    c.setAttribute('cx',p.x); c.setAttribute('cy',p.y); c.setAttribute('r','6');
+    c.setAttribute('fill', p.rank===1?'var(--gold)': p.rank<=3?'var(--cyan)':'#5b667a');
+    svg.appendChild(c);
+    const rl=document.createElementNS('http://www.w3.org/2000/svg','text');
+    rl.setAttribute('x',p.x); rl.setAttribute('y',p.y-12); rl.setAttribute('text-anchor','middle');
+    rl.setAttribute('fill','#fff'); rl.setAttribute('font-family','Anton,sans-serif'); rl.setAttribute('font-size','14');
+    rl.textContent='#'+p.rank;
+    svg.appendChild(rl);
+    const yl=document.createElementNS('http://www.w3.org/2000/svg','text');
+    yl.setAttribute('x',p.x); yl.setAttribute('y',H-8); yl.setAttribute('text-anchor','middle');
+    yl.setAttribute('fill','#5b667a'); yl.setAttribute('font-family','Space Mono,monospace'); yl.setAttribute('font-size','10');
+    yl.textContent=String(p.year).slice(-2);
+    svg.appendChild(yl);
+  });
+}
+
+function computeFranchiseResume(ownerId){
+  const hist = state.leagueHistory;
+  if(!hist) return null;
+  const m = hist.managers[ownerId];
+  if(!m) return null;
+
+  const yearRanks = [];
+  let totalWins=0, totalLosses=0, totalTies=0, champs=0, top3=0, playoffApps=0;
+  const yearsPlayed = Object.keys(m.teamNamesByYear).map(Number).sort((a,b)=>a-b);
+
+  // We need the raw leagueHistory yearsData — stored on LeagueData
+  const rawHistory = window._franchiseYearsData;
+  if(!rawHistory) return null;
+
+  yearsPlayed.forEach(year=>{
+    const seasonEntry = rawHistory.find(yd=> yd.year === year);
+    if(!seasonEntry) return;
+    const ld = seasonEntry.leagueData;
+    if(!ld || !ld.teams) return;
+
+    const team = ld.teams.find(t=>{
+      const tid = t.primaryOwner || (t.owners && t.owners[0]) || '';
+      return tid === ownerId;
+    });
+    if(!team) return;
+
+    const rank = team.rankCalculatedFinal;
+    if(typeof rank === 'number' && rank > 0){
+      yearRanks.push({ year, rank });
+      if(rank === 1) champs++;
+      if(rank <= 3) top3++;
+    }
+
+    // Record
+    const rec = team.record && team.record.overall;
+    if(rec){
+      totalWins += rec.wins || 0;
+      totalLosses += rec.losses || 0;
+      totalTies += rec.ties || 0;
+    }
+
+    // Playoff appearances
+    const playoffTeamCount = (ld.settings && ld.settings.scheduleSettings && ld.settings.scheduleSettings.playoffTeamCount) || 6;
+    if(typeof team.playoffSeed === 'number' && team.playoffSeed > 0 && team.playoffSeed <= playoffTeamCount){
+      playoffApps++;
+    } else {
+      // Fallback: check schedule for WINNERS_BRACKET games
+      const schedule = ld.schedule || [];
+      const inBracket = schedule.some(g=>{
+        if(g.playoffTierType !== 'WINNERS_BRACKET') return false;
+        const hid = g.home && g.home.teamId;
+        const aid = g.away && g.away.teamId;
+        return hid === team.id || aid === team.id;
+      });
+      if(inBracket) playoffApps++;
+    }
+  });
+
+  const avgFinish = yearRanks.length ? (yearRanks.reduce((s,yr)=>s+yr.rank,0)/yearRanks.length) : null;
+
+  return {
+    yearRanks,
+    avgFinish: avgFinish !== null ? avgFinish.toFixed(1) : '--',
+    champs,
+    top3,
+    playoffApps,
+    record: `${totalWins}-${totalLosses}-${totalTies}`,
+    seasons: yearsPlayed.length,
+  };
+}
+
 function render(){
   const f = state.fields;
 
@@ -1581,6 +1796,17 @@ function render(){
   document.getElementById('f-meta').textContent = f.f_meta || '';
   const fImg = document.getElementById('f-img');
   if(f.f_img){ fImg.src = f.f_img; fImg.classList.remove('hidden'); } else { fImg.classList.add('hidden'); }
+
+  // Template G — Franchise Resume
+  document.getElementById('g-team-title').textContent = f.g_team || 'TEAM NAME';
+  document.getElementById('g-manager-title').textContent = f.g_manager || 'Manager Name';
+  document.getElementById('g-avg').textContent = f.g_avg || '--';
+  document.getElementById('g-champs').textContent = f.g_champs || '0';
+  document.getElementById('g-top3').textContent = f.g_top3 || '0';
+  document.getElementById('g-playoffs').textContent = f.g_playoffs || '0';
+  document.getElementById('g-record').textContent = f.g_record || '0-0-0';
+  setImgOrPlaceholder('g-img','g-img-ph', f.g_img);
+  renderFranchiseChart(f.g_yearRanks || []);
 }
 
 function syncInputsFromState(){
@@ -1774,6 +2000,7 @@ function hideHistorySuccessBanner(){
 /* Shared by the fetch button, the paste box, and the .json upload: run the
    aggregator over the parsed seasons, store it, and report what landed. */
 function applyLeagueHistory(yearsData, skipped, sourceLabel){
+  window._franchiseYearsData = yearsData;
   state.leagueHistory = computeLeagueHistoryStats(yearsData);
   const managerCount = Object.keys(state.leagueHistory.managers).length;
   const matchupCount = countMatchups(state.leagueHistory);
@@ -1792,7 +2019,7 @@ function applyLeagueHistory(yearsData, skipped, sourceLabel){
   // Fill the two history-driven templates right away so the canvas reflects
   // the new data without the user having to re-pick anything.
   autofillHistoryTemplates();
-  if(state.template === 'E' || state.template === 'F') renderEspnPicker();
+  if(state.template === 'E' || state.template === 'F' || state.template === 'G') renderEspnPicker();
   render();
 
   return { seasons: yearsData.length, matchups: matchupCount, managers: managerCount };
@@ -2038,11 +2265,12 @@ function findLowestScorerForWeek(week){
 }
 
 function renderEspnPicker(){
-  if(state.template === 'E' || state.template === 'F'){
+  if(state.template === 'E' || state.template === 'F' || state.template === 'G'){
     if(!state.leagueHistory){ espnPicker.classList.add('hidden'); return; }
     espnPicker.classList.remove('hidden');
     if(state.template === 'E') renderRivalryPicker();
-    else renderRecordBookPicker();
+    else if(state.template === 'F') renderRecordBookPicker();
+    else renderFranchiseResumePicker();
     return;
   }
 
@@ -2089,7 +2317,11 @@ function renderEspnPicker(){
       showToast('Applied live ESPN matchup data.');
     });
   } else if(state.template === 'B'){
-    espnPickerBody.innerHTML = `<button id="applyPickB" class="btn-ghost w-full rounded py-1.5 text-xs">LOAD ALL TEAMS INTO RANKINGS</button>`;
+    let html = `<button id="applyPickB" class="btn-ghost w-full rounded py-1.5 text-xs">LOAD ALL TEAMS INTO RANKINGS</button>`;
+    if(state.leagueHistory){
+      html += `<button id="applyAllTimePR" class="btn-ghost w-full rounded py-1.5 text-xs mt-2" style="border-color:rgba(201,151,74,0.5); color:var(--bronze);">LOAD ALL-TIME FRANCHISE POWER RANKINGS</button>`;
+    }
+    espnPickerBody.innerHTML = html;
     document.getElementById('applyPickB').addEventListener('click', ()=>{
       const withWins = teams.map(t=>{
         const wins = parseInt((t.record||'0-0').split('-')[0], 10) || 0;
@@ -2100,6 +2332,8 @@ function renderEspnPicker(){
       render();
       showToast('Loaded teams into rankings, sorted by record — set point differentials manually.');
     });
+    const allTimeBtn = document.getElementById('applyAllTimePR');
+    if(allTimeBtn) allTimeBtn.addEventListener('click', loadAllTimePowerRankings);
   } else if(state.template === 'D'){
     const week = weekNumInput.value.trim();
     espnPickerBody.innerHTML = `
@@ -2319,6 +2553,10 @@ function autofillHistoryTemplates(){
   const topRivalry = Object.values(hist.h2h).sort((x,y)=> y.meetings.length - x.meetings.length)[0];
   if(topRivalry) applyRivalryMatchup(topRivalry.a, topRivalry.b, true);
 
+  // Template G — first manager's franchise resume
+  const allManagers = Object.keys(hist.managers);
+  if(allManagers.length) applyFranchiseResume(allManagers[0], true);
+
   // Template F — first milestone that actually computed.
   const r = hist.records;
   const order = [
@@ -2331,6 +2569,89 @@ function autofillHistoryTemplates(){
   ];
   const firstAvailable = order.find(([, value])=> !!value);
   if(firstAvailable) applyRecordMilestone(firstAvailable[0], true);
+}
+
+/* Template G picker — manager dropdown; applying computes franchise resume */
+function renderFranchiseResumePicker(){
+  const managers = Object.values(state.leagueHistory.managers).sort((a,b)=> a.name.localeCompare(b.name));
+  if(managers.length < 1){
+    espnPickerBody.innerHTML = `<p class="text-xs text-gray-500">No managers found in loaded history.</p>`;
+    return;
+  }
+  const options = managers.map(m=> `<option value="${escapeHtml(m.id)}">${escapeHtml(m.name)}</option>`).join('');
+  espnPickerBody.innerHTML = `
+    <select id="pickResumeManager" class="input-field w-full rounded px-2 py-1.5 text-xs"><option value="">Select manager…</option>${options}</select>
+    <button id="applyResume" class="btn-ghost w-full rounded py-1.5 text-xs mt-2">LOAD FRANCHISE RESUME</button>
+  `;
+  document.getElementById('applyResume').addEventListener('click', ()=>{
+    const id = document.getElementById('pickResumeManager').value;
+    if(!id){ showToast('Pick a manager first.'); return; }
+    applyFranchiseResume(id);
+  });
+}
+
+function applyFranchiseResume(ownerId, silent){
+  const resume = computeFranchiseResume(ownerId);
+  if(!resume){ if(!silent) showToast('Could not compute franchise resume.'); return; }
+  const info = managerLatestInfo(ownerId);
+  state.fields.g_team = (info.teamName || info.name).toUpperCase();
+  state.fields.g_manager = info.name;
+  state.fields.g_avg = resume.avgFinish;
+  state.fields.g_champs = String(resume.champs);
+  state.fields.g_top3 = String(resume.top3);
+  state.fields.g_playoffs = String(resume.playoffApps);
+  state.fields.g_record = resume.record;
+  state.fields.g_seasons = String(resume.seasons);
+  state.fields.g_yearRanks = resume.yearRanks;
+  if(info.logo) state.fields.g_img = info.logo;
+  syncInputsFromState();
+  if(!silent){ render(); showToast('Loaded franchise resume for ' + info.name + '.'); }
+}
+
+/* All-Time Power Rankings — computes career W-L-T and win % from leagueHistory */
+function loadAllTimePowerRankings(){
+  const hist = state.leagueHistory;
+  if(!hist){ showToast('Load league history first.'); return; }
+  const rawHistory = window._franchiseYearsData;
+  if(!rawHistory){ showToast('No raw history data available.'); return; }
+
+  const managerStats = {};
+  rawHistory.forEach(({year, leagueData})=>{
+    if(!leagueData || !leagueData.teams) return;
+    leagueData.teams.forEach(t=>{
+      const oid = t.primaryOwner || (t.owners && t.owners[0]) || '';
+      if(!oid) return;
+      if(!managerStats[oid]) managerStats[oid] = {wins:0, losses:0, ties:0};
+      const rec = t.record && t.record.overall;
+      if(rec){
+        managerStats[oid].wins += rec.wins || 0;
+        managerStats[oid].losses += rec.losses || 0;
+        managerStats[oid].ties += rec.ties || 0;
+      }
+    });
+  });
+
+  const ranked = Object.keys(managerStats).map(oid=>{
+    const s = managerStats[oid];
+    const total = s.wins + s.losses + s.ties;
+    const winPct = total > 0 ? s.wins / total : 0;
+    const info = managerLatestInfo(oid);
+    return { ownerId:oid, name:info.name, wins:s.wins, losses:s.losses, ties:s.ties, winPct, total };
+  }).sort((a,b)=> b.winPct - a.winPct || b.wins - a.wins);
+
+  state.ranks = ranked.map((r,i)=>({
+    rank: i+1,
+    name: r.name.toUpperCase(),
+    record: `${r.wins}-${r.losses}-${r.ties}`,
+    diff: '.' + (r.winPct * 1000).toFixed(0).padStart(3,'0'),
+  }));
+
+  state.fields.rank_title = 'ALL-TIME POWER RANKINGS';
+  state.fields.rank_week = 'ALL-TIME STANDINGS';
+  syncInputsFromState();
+  renderRankRows();
+  render();
+  showToast('Loaded all-time power rankings by career win %.');
 }
 
 /* ============================================================
@@ -2620,7 +2941,7 @@ downloadBtn.addEventListener('click', async ()=>{
       useCORS: true,
     });
     const link = document.createElement('a');
-    const tplNames = {A:'matchup', B:'power-rankings', C:'breaking-news', D:'hot-seat', E:'rivalry-vault', F:'record-book'};
+    const tplNames = {A:'matchup', B:'power-rankings', C:'breaking-news', D:'hot-seat', E:'rivalry-vault', F:'record-book', G:'franchise-resume'};
     link.download = `gridiron-graphics-${tplNames[state.template]}-${Date.now()}.png`;
     link.href = canvas.toDataURL('image/png');
     link.click();
@@ -2639,7 +2960,8 @@ resetBtn.addEventListener('click', ()=>{
   if(!confirm('Clear all fields and images?')) return;
   document.querySelectorAll('[data-f]').forEach(inp=>{ inp.value=''; state.fields[inp.dataset.f]=''; });
   document.querySelectorAll('[data-f-img]').forEach(inp=> inp.value='');
-  ['a_img','b_img','news_img','hs_img','e_a_img','e_b_img','f_img'].forEach(k=> state.fields[k]=null);
+  ['a_img','b_img','news_img','hs_img','e_a_img','e_b_img','f_img','g_img'].forEach(k=> state.fields[k]=null);
+  state.fields.g_yearRanks = [];
   state.ranks = [];
   renderRankRows();
   render();
