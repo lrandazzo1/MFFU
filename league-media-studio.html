@@ -579,37 +579,65 @@
         <div id="tpl-A" class="tpl absolute inset-0 hidden">
           <div class="absolute inset-0" style="background:radial-gradient(ellipse at 50% 0%, #101823 0%, #05070a 60%);"></div>
           <div class="absolute top-0 left-0 right-0 h-[10px]" style="background:linear-gradient(90deg,var(--cyan),var(--pink));"></div>
-          <div class="absolute top-[70px] left-0 right-0 text-center">
-            <p class="font-mono text-[var(--cyan)] text-[26px] tracking-[0.3em]" id="a-week">WEEK 7</p>
-            <h2 class="font-display text-white text-[56px] leading-none mt-2 glow-cyan">TALE OF THE TAPE</h2>
+          <div class="absolute top-[50px] left-0 right-0 text-center">
+            <p class="font-mono text-[var(--cyan)] text-[24px] tracking-[0.3em]" id="a-week">WEEK 7</p>
+            <h2 class="font-display text-white text-[52px] leading-none mt-1 glow-cyan">TALE OF THE TAPE</h2>
           </div>
 
           <!-- Team A -->
-          <div class="absolute top-[280px] left-0 w-1/2 flex flex-col items-center px-8">
-            <div class="w-[280px] h-[280px] rounded-full overflow-hidden bg-[#1a2230] avatar-frame text-[var(--cyan)] flex items-center justify-center">
-              <img id="a-img" class="w-full h-full object-cover hidden">
-              <span id="a-img-ph" class="font-display text-[110px] text-[var(--cyan)]">A</span>
+          <div class="absolute top-[210px] left-0 w-1/2 flex flex-col items-center px-6">
+            <div class="w-[240px] h-[240px] rounded-full overflow-hidden bg-[#1a2230] avatar-frame text-[var(--cyan)]" style="position:relative;">
+              <img id="a-img" class="w-full h-full object-cover hidden" style="position:absolute;inset:0;">
+              <span id="a-img-ph" class="font-display text-[95px] text-[var(--cyan)]" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;">A</span>
             </div>
-            <h3 id="a-name" class="font-display text-white text-[46px] text-center mt-8 leading-tight">HOME TEAM</h3>
-            <p id="a-owner" class="font-condensed text-gray-400 text-[26px] mt-1">Manager Name</p>
-            <p id="a-record" class="font-mono text-[var(--cyan)] text-[24px] mt-2 px-4 py-1 border border-[var(--cyan)]/40 rounded-full">7-3</p>
+            <h3 id="a-name" class="font-display text-white text-[40px] text-center mt-5 leading-tight">HOME TEAM</h3>
+            <p id="a-owner" class="font-condensed text-gray-400 text-[24px] mt-1">Manager Name</p>
+            <p id="a-record" class="font-mono text-[var(--cyan)] text-[22px] mt-2 px-4 py-1 border border-[var(--cyan)]/40 rounded-full">7-3</p>
           </div>
 
           <!-- Team B -->
-          <div class="absolute top-[280px] right-0 w-1/2 flex flex-col items-center px-8">
-            <div class="w-[280px] h-[280px] rounded-full overflow-hidden bg-[#1a2230] avatar-frame text-[var(--pink)] flex items-center justify-center">
-              <img id="b-img" class="w-full h-full object-cover hidden">
-              <span id="b-img-ph" class="font-display text-[110px] text-[var(--pink)]">B</span>
+          <div class="absolute top-[210px] right-0 w-1/2 flex flex-col items-center px-6">
+            <div class="w-[240px] h-[240px] rounded-full overflow-hidden bg-[#1a2230] avatar-frame text-[var(--pink)]" style="position:relative;">
+              <img id="b-img" class="w-full h-full object-cover hidden" style="position:absolute;inset:0;">
+              <span id="b-img-ph" class="font-display text-[95px] text-[var(--pink)]" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;">B</span>
             </div>
-            <h3 id="b-name" class="font-display text-white text-[46px] text-center mt-8 leading-tight">AWAY TEAM</h3>
-            <p id="b-owner" class="font-condensed text-gray-400 text-[26px] mt-1">Manager Name</p>
-            <p id="b-record" class="font-mono text-[var(--pink)] text-[24px] mt-2 px-4 py-1 border border-[var(--pink)]/40 rounded-full">5-5</p>
+            <h3 id="b-name" class="font-display text-white text-[40px] text-center mt-5 leading-tight">AWAY TEAM</h3>
+            <p id="b-owner" class="font-condensed text-gray-400 text-[24px] mt-1">Manager Name</p>
+            <p id="b-record" class="font-mono text-[var(--pink)] text-[22px] mt-2 px-4 py-1 border border-[var(--pink)]/40 rounded-full">5-5</p>
           </div>
 
-          <div class="absolute top-[380px] left-1/2 -translate-x-1/2 font-display text-white text-[64px] glow-cyan">VS</div>
+          <div class="absolute top-[300px] left-1/2 -translate-x-1/2 font-display text-white text-[58px] glow-cyan">VS</div>
+
+          <!-- Matchup Comparison Grid -->
+          <div id="a-matchup-grid" class="absolute left-[60px] right-[60px]" style="top:700px;">
+            <div style="display:flex; flex-direction:column; gap:0;">
+              <div style="display:flex; align-items:center; padding:22px 24px; background:rgba(16,20,28,0.7); border:1px solid rgba(255,255,255,0.06); border-radius:14px 14px 0 0;">
+                <span class="font-mono" style="font-size:16px; color:#5b667a; letter-spacing:0.12em; flex:1;">ALL-TIME H2H</span>
+                <span id="a-h2h-a" class="font-display" style="font-size:36px; color:var(--cyan); width:120px; text-align:right;">--</span>
+                <span class="font-mono" style="font-size:18px; color:#3a4356; width:40px; text-align:center;">—</span>
+                <span id="a-h2h-b" class="font-display" style="font-size:36px; color:var(--pink); width:120px; text-align:left;">--</span>
+              </div>
+              <div style="display:flex; align-items:center; padding:22px 24px; background:rgba(12,16,22,0.8); border:1px solid rgba(255,255,255,0.04); border-top:none;">
+                <span class="font-mono" style="font-size:16px; color:#5b667a; letter-spacing:0.12em; flex:1;">PTS PER GAME</span>
+                <span id="a-ppg-a" class="font-mono" style="font-size:30px; color:var(--cyan); width:120px; text-align:right; font-weight:700;">--</span>
+                <span class="font-mono" style="font-size:18px; color:#3a4356; width:40px; text-align:center;">—</span>
+                <span id="a-ppg-b" class="font-mono" style="font-size:30px; color:var(--pink); width:120px; text-align:left; font-weight:700;">--</span>
+              </div>
+              <div style="display:flex; align-items:center; padding:22px 24px; background:rgba(16,20,28,0.7); border:1px solid rgba(255,255,255,0.06); border-top:none;">
+                <span class="font-mono" style="font-size:16px; color:#5b667a; letter-spacing:0.12em; flex:1;">CURRENT STREAK</span>
+                <span id="a-streak" class="font-condensed" style="font-size:28px; color:#e8ecf2; width:280px; text-align:center;" colspan="3">--</span>
+              </div>
+              <div style="display:flex; align-items:center; padding:22px 24px; background:rgba(12,16,22,0.8); border:1px solid rgba(255,255,255,0.04); border-top:none; border-radius:0 0 14px 14px;">
+                <span class="font-mono" style="font-size:16px; color:#5b667a; letter-spacing:0.12em; flex:1;">CURRENT RANK</span>
+                <span id="a-rank-a" class="font-display" style="font-size:36px; color:var(--cyan); width:120px; text-align:right;">--</span>
+                <span class="font-mono" style="font-size:18px; color:#3a4356; width:40px; text-align:center;">—</span>
+                <span id="a-rank-b" class="font-display" style="font-size:36px; color:var(--pink); width:120px; text-align:left;">--</span>
+              </div>
+            </div>
+          </div>
 
           <!-- Score panel -->
-          <div class="absolute bottom-[140px] left-[60px] right-[60px] card rounded-2xl p-8" style="background:rgba(16,20,28,0.85); border:1px solid rgba(255,255,255,0.1);">
+          <div class="absolute left-[60px] right-[60px] card rounded-2xl p-8" style="top:1120px; background:rgba(16,20,28,0.85); border:1px solid rgba(255,255,255,0.1);">
             <div class="grid grid-cols-2 gap-6 text-center">
               <div>
                 <p class="section-label mb-2">PROJECTED</p>
@@ -624,11 +652,11 @@
             <div class="grid grid-cols-2 gap-6 text-center">
               <div>
                 <p class="section-label mb-2 text-[var(--cyan)]">ACTUAL</p>
-                <p id="a-actual" class="font-display text-[var(--cyan)] text-[64px] glow-cyan">--</p>
+                <p id="a-actual" class="font-display text-[var(--cyan)] text-[72px] glow-cyan">--</p>
               </div>
               <div>
                 <p class="section-label mb-2 text-[var(--pink)]">ACTUAL</p>
-                <p id="b-actual" class="font-display text-[var(--pink)] text-[64px] glow-pink">--</p>
+                <p id="b-actual" class="font-display text-[var(--pink)] text-[72px] glow-pink">--</p>
               </div>
             </div>
           </div>
@@ -645,9 +673,9 @@
             <h2 id="rank-title" class="font-display text-white text-[52px] leading-none mt-1 glow-gold px-10">POWER RANKINGS</h2>
             <p id="b-subtitle" class="font-mono text-[13px] tracking-[0.2em] text-gray-500 mt-2">ESPN FANTASY · UPDATED WEEKLY</p>
           </div>
-          <div id="rank-list" class="absolute top-[200px] left-[40px] right-[40px]" style="display:flex; flex-direction:column; gap:0;"></div>
-          <div class="absolute bottom-[28px] left-0 right-0 text-center">
-            <div style="height:1px; background:linear-gradient(90deg, transparent, rgba(255,196,0,0.3), transparent); margin:0 80px 10px;"></div>
+          <div id="rank-list" class="absolute top-[180px] left-[36px] right-[36px] bottom-[80px]" style="display:flex; flex-direction:column; gap:0;"></div>
+          <div class="absolute bottom-[22px] left-0 right-0 text-center">
+            <div style="height:1px; background:linear-gradient(90deg, transparent, rgba(255,196,0,0.3), transparent); margin:0 80px 8px;"></div>
             <p class="font-mono text-[14px] tracking-[0.25em] text-gray-500">GRIDIRON POWER INDEX · UPDATED WEEKLY</p>
           </div>
         </div>
@@ -655,8 +683,8 @@
         <!-- TEMPLATE C -->
         <div id="tpl-C" class="tpl absolute inset-0 hidden">
           <div class="absolute inset-0 bg-[#05070a]"></div>
-          <img id="c-img" class="absolute inset-0 w-full h-full object-cover hidden">
-          <div id="c-img-ph" class="absolute inset-0 flex items-center justify-center" style="background:linear-gradient(160deg,#1a0d14,#05070a);">
+          <img id="c-img" class="absolute inset-0 w-full h-full object-cover hidden" style="z-index:1;">
+          <div id="c-img-ph" class="absolute inset-0" style="background:linear-gradient(160deg,#1a0d14,#05070a); z-index:1; display:flex; align-items:center; justify-content:center;">
             <span class="font-display text-[220px] text-[var(--pink)]/20">?</span>
           </div>
           <div class="absolute inset-0" style="background:linear-gradient(0deg, rgba(5,7,10,1) 15%, rgba(5,7,10,0.2) 45%, rgba(5,7,10,0.55) 100%);"></div>
@@ -682,27 +710,51 @@
         <div id="tpl-D" class="tpl absolute inset-0 hidden">
           <div class="absolute inset-0" style="background:radial-gradient(ellipse at 50% 30%, #0a1a10 0%, #05070a 60%);"></div>
           <div class="absolute top-0 left-0 right-0 h-[10px]" style="background:repeating-linear-gradient(45deg, var(--green) 0 20px, #05070a 20px 40px);"></div>
-          <div class="absolute top-[70px] left-0 right-0 text-center">
-            <p class="font-mono text-[var(--green)] text-[24px] tracking-[0.35em]" id="d-week">WEEK 7</p>
-            <h2 class="font-display text-white text-[68px] leading-none mt-3 glow-green">HOT SEAT</h2>
-            <p class="font-condensed text-gray-400 text-[28px] mt-1 tracking-widest">FRAUD ALERT · LOWEST SCORE</p>
+          <div class="absolute top-[50px] left-0 right-0 text-center">
+            <p class="font-mono text-[var(--green)] text-[22px] tracking-[0.35em]" id="d-week">WEEK 7</p>
+            <h2 class="font-display text-white text-[64px] leading-none mt-2 glow-green">HOT SEAT</h2>
+            <p class="font-condensed text-gray-400 text-[26px] mt-1 tracking-widest">FRAUD ALERT · LOWEST SCORE</p>
           </div>
 
-          <div class="absolute top-[340px] left-1/2 -translate-x-1/2">
-            <div class="w-[420px] h-[420px] rounded-lg overflow-hidden bg-[#1a2230] flex items-center justify-center" style="box-shadow:0 0 0 6px #05070a, 0 0 0 12px var(--green), 0 30px 70px rgba(0,0,0,0.7); filter:grayscale(0.4) contrast(1.1);">
-              <img id="d-img" class="w-full h-full object-cover hidden">
-              <span id="d-img-ph" class="font-display text-[160px] text-[var(--green)]">?</span>
+          <div class="absolute top-[270px] left-1/2 -translate-x-1/2">
+            <div class="w-[380px] h-[380px] rounded-lg overflow-hidden bg-[#1a2230]" style="box-shadow:0 0 0 6px #05070a, 0 0 0 12px var(--green), 0 30px 70px rgba(0,0,0,0.7); filter:grayscale(0.4) contrast(1.1); position:relative;">
+              <img id="d-img" class="w-full h-full object-cover hidden" style="position:absolute;inset:0;">
+              <span id="d-img-ph" class="font-display text-[140px] text-[var(--green)]" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;">?</span>
             </div>
-            <div class="absolute -bottom-6 left-1/2 -translate-x-1/2 bg-[var(--green)] text-[#04150a] font-display text-[26px] px-6 py-2 rounded tracking-wide whitespace-nowrap">WANTED FOR FANTASY FRAUD</div>
+            <div class="absolute -bottom-6 left-1/2 -translate-x-1/2 bg-[var(--green)] text-[#04150a] font-display text-[24px] px-6 py-2 rounded tracking-wide whitespace-nowrap">WANTED FOR FANTASY FRAUD</div>
           </div>
 
-          <div class="absolute top-[860px] left-0 right-0 text-center">
-            <h3 id="d-name" class="font-display text-white text-[52px] px-10 leading-tight">MANAGER NAME</h3>
-            <p class="font-mono text-[var(--green)] text-[22px] mt-3 tracking-widest">SCORED ONLY</p>
-            <p id="d-score" class="font-display text-[var(--green)] text-[120px] leading-none glow-green">58.2</p>
+          <div class="absolute top-[740px] left-0 right-0 text-center">
+            <h3 id="d-name" class="font-display text-white text-[48px] px-10 leading-tight">MANAGER NAME</h3>
+            <p class="font-mono text-[var(--green)] text-[20px] mt-2 tracking-widest">SCORED ONLY</p>
+            <p id="d-score" class="font-display text-[var(--green)] text-[110px] leading-none glow-green">58.2</p>
           </div>
 
-          <div class="absolute bottom-[130px] left-[70px] right-[70px] card rounded-xl p-6" style="background:rgba(16,20,28,0.85); border:1px solid rgba(57,255,140,0.25);">
+          <!-- Crime Sheet / Bench Blunder Box -->
+          <div class="absolute left-[60px] right-[60px]" style="top:1060px;">
+            <div style="border-radius:16px; overflow:hidden; border:1px solid rgba(57,255,140,0.2);">
+              <div style="background:rgba(57,255,140,0.12); padding:14px 24px; display:flex; align-items:center; gap:10px;">
+                <span style="font-size:20px;">🚨</span>
+                <span class="font-display" style="font-size:22px; color:var(--green); letter-spacing:0.12em;">CRIME SHEET</span>
+              </div>
+              <div style="background:rgba(16,20,28,0.85); padding:20px 24px;">
+                <div style="display:flex; align-items:center; justify-content:space-between; padding:12px 0; border-bottom:1px solid rgba(255,255,255,0.06);">
+                  <span class="font-mono" style="font-size:15px; color:#5b667a; letter-spacing:0.1em;">LEAGUE AVG THIS WEEK</span>
+                  <span id="d-league-avg" class="font-mono" style="font-size:24px; color:#8892a6; font-weight:700;">--</span>
+                </div>
+                <div style="display:flex; align-items:center; justify-content:space-between; padding:12px 0; border-bottom:1px solid rgba(255,255,255,0.06);">
+                  <span class="font-mono" style="font-size:15px; color:#5b667a; letter-spacing:0.1em;">POINTS BELOW AVG</span>
+                  <span id="d-below-avg" class="font-mono" style="font-size:24px; color:var(--pink); font-weight:700;">--</span>
+                </div>
+                <div style="display:flex; align-items:center; justify-content:space-between; padding:12px 0;">
+                  <span class="font-mono" style="font-size:15px; color:#5b667a; letter-spacing:0.1em;">WEEK HIGH SCORE</span>
+                  <span id="d-week-high" class="font-mono" style="font-size:24px; color:var(--cyan); font-weight:700;">--</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="absolute left-[60px] right-[60px] card rounded-xl p-6" style="top:1420px; background:rgba(16,20,28,0.85); border:1px solid rgba(57,255,140,0.25);">
             <p class="section-label mb-2 text-[var(--green)]">THE CHARGE</p>
             <p id="d-roast" class="font-condensed text-white text-[28px] leading-snug">Benched their best player. Started a bye-week ghost. Guilty as charged.</p>
           </div>
@@ -722,29 +774,29 @@
 
           <!-- Manager A -->
           <div class="absolute top-[260px] left-0 w-1/2 flex flex-col items-center px-8">
-            <div class="w-[240px] h-[240px] rounded-full overflow-hidden bg-[#1a1608] flex items-center justify-center" style="box-shadow:0 0 0 4px #05070a, 0 0 0 7px var(--bronze), 0 20px 50px rgba(0,0,0,0.6);">
-              <img id="e-a-img" class="w-full h-full object-cover hidden">
-              <span id="e-a-img-ph" class="font-display text-[90px] text-[var(--bronze)]">A</span>
+            <div class="w-[240px] h-[240px] rounded-full overflow-hidden bg-[#1a1608]" style="box-shadow:0 0 0 4px #05070a, 0 0 0 7px var(--bronze), 0 20px 50px rgba(0,0,0,0.6); position:relative;">
+              <img id="e-a-img" class="w-full h-full object-cover hidden" style="position:absolute;inset:0;">
+              <span id="e-a-img-ph" class="font-display text-[90px] text-[var(--bronze)]" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;">A</span>
             </div>
             <h3 id="e-a-name" class="font-display text-white text-[38px] text-center mt-6 leading-tight">MANAGER A</h3>
           </div>
 
           <!-- Manager B -->
           <div class="absolute top-[260px] right-0 w-1/2 flex flex-col items-center px-8">
-            <div class="w-[240px] h-[240px] rounded-full overflow-hidden bg-[#1a1608] flex items-center justify-center" style="box-shadow:0 0 0 4px #05070a, 0 0 0 7px var(--bronze), 0 20px 50px rgba(0,0,0,0.6);">
-              <img id="e-b-img" class="w-full h-full object-cover hidden">
-              <span id="e-b-img-ph" class="font-display text-[90px] text-[var(--bronze)]">B</span>
+            <div class="w-[240px] h-[240px] rounded-full overflow-hidden bg-[#1a1608]" style="box-shadow:0 0 0 4px #05070a, 0 0 0 7px var(--bronze), 0 20px 50px rgba(0,0,0,0.6); position:relative;">
+              <img id="e-b-img" class="w-full h-full object-cover hidden" style="position:absolute;inset:0;">
+              <span id="e-b-img-ph" class="font-display text-[90px] text-[var(--bronze)]" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;">B</span>
             </div>
             <h3 id="e-b-name" class="font-display text-white text-[38px] text-center mt-6 leading-tight">MANAGER B</h3>
           </div>
 
           <!-- Series score -->
-          <div class="absolute top-[640px] left-0 right-0 text-center">
+          <div class="absolute top-[600px] left-0 right-0 text-center">
             <p class="section-label mb-2">ALL-TIME SERIES</p>
-            <p id="e-series" class="font-display text-[var(--bronze)] text-[140px] leading-none glow-bronze">8-4</p>
+            <p id="e-series" class="font-display text-[var(--bronze)] text-[120px] leading-none glow-bronze">8-4</p>
           </div>
 
-          <div class="absolute top-[900px] left-[70px] right-[70px] card rounded-2xl p-8 space-y-5" style="background:rgba(16,20,28,0.85); border:1px solid rgba(201,151,74,0.3);">
+          <div class="absolute top-[830px] left-[60px] right-[60px] card rounded-2xl p-7 space-y-4" style="background:rgba(16,20,28,0.85); border:1px solid rgba(201,151,74,0.3);">
             <div class="flex items-center justify-between">
               <p class="section-label">POINT DIFFERENTIAL</p>
               <p id="e-diff" class="font-mono text-[var(--bronze)] text-[26px]">+142.6</p>
@@ -761,6 +813,17 @@
             </div>
           </div>
 
+          <!-- Last 3 Matchups Breakdown -->
+          <div class="absolute left-[60px] right-[60px]" style="top:1260px;">
+            <p class="font-display" style="font-size:20px; letter-spacing:0.15em; color:var(--bronze); margin-bottom:12px;">LAST 3 MATCHUPS</p>
+            <div id="e-last3" style="display:flex; flex-direction:column; gap:8px;">
+              <div style="display:flex; align-items:center; padding:18px 22px; background:rgba(16,20,28,0.75); border:1px solid rgba(201,151,74,0.15); border-radius:12px;">
+                <span class="font-mono" style="font-size:16px; color:#5b667a; width:120px;">NO DATA</span>
+                <span class="font-condensed" style="font-size:24px; color:#3a4356; flex:1; text-align:center;">Load history to populate</span>
+              </div>
+            </div>
+          </div>
+
           <div class="absolute bottom-[50px] left-0 right-0 text-center font-mono text-[16px] tracking-[0.3em] text-gray-500">GRIDIRON GRAPHICS · LEAGUE NETWORK</div>
         </div>
 
@@ -772,24 +835,58 @@
 
           <div class="absolute top-0 left-0 right-0 h-[10px]" style="background:linear-gradient(90deg,var(--gold),var(--pink),var(--cyan));"></div>
 
-          <div class="absolute top-[130px] left-0 right-0 text-center px-10">
-            <span id="f-kicker" class="tag-pill inline-block bg-white text-[#0a0c10] px-5 py-2 rounded font-bold text-[20px] tracking-widest">ALL-TIME RECORD</span>
-            <p class="font-mono text-gray-500 text-[20px] tracking-[0.3em] mt-8">GRIDIRON GRAPHICS PRESENTS</p>
-            <h2 class="font-display text-white text-[46px] mt-2 tracking-wide">THE LEAGUE RECORD BOOK</h2>
+          <div class="absolute top-[60px] left-0 right-0 text-center px-10">
+            <span id="f-kicker" class="tag-pill inline-block bg-white text-[#0a0c10] px-6 py-3 rounded font-bold text-[24px] tracking-widest">ALL-TIME RECORD</span>
+            <p class="font-mono text-gray-500 text-[22px] tracking-[0.3em] mt-6">GRIDIRON GRAPHICS PRESENTS</p>
+            <h2 class="font-display text-white text-[52px] mt-2 tracking-wide">THE LEAGUE RECORD BOOK</h2>
           </div>
 
-          <div class="absolute top-[560px] left-0 right-0 text-center px-6">
-            <p id="f-headline" class="font-display text-white text-[130px] leading-none glow-gold">184.6 PTS</p>
-            <p id="f-subtext" class="font-condensed text-gray-300 text-[32px] mt-6 leading-snug px-12">Highest single-game score in league history</p>
+          <div class="absolute top-[380px] left-0 right-0 text-center px-6">
+            <p id="f-headline" class="font-display text-white text-[140px] leading-none glow-gold">184.6 PTS</p>
+            <p id="f-subtext" class="font-condensed text-gray-300 text-[36px] mt-6 leading-snug px-12">Highest single-game score in league history</p>
           </div>
 
-          <div class="absolute bottom-[220px] left-[70px] right-[70px] card rounded-2xl p-8" style="background:rgba(16,20,28,0.85); border:1px solid rgba(255,255,255,0.1);">
+          <div class="absolute left-[60px] right-[60px] card rounded-2xl p-8" style="top:720px; background:rgba(16,20,28,0.85); border:1px solid rgba(255,255,255,0.1);">
             <div class="flex items-center justify-between">
               <div>
-                <p class="section-label mb-2">RECORD HOLDER</p>
-                <p id="f-owner" class="font-display text-white text-[36px]">MANAGER NAME</p>
+                <p class="font-display" style="font-size:22px; letter-spacing:0.12em; color:var(--gold);">RECORD HOLDER</p>
+                <p id="f-owner" class="font-display text-white text-[42px] mt-1">MANAGER NAME</p>
               </div>
-              <p id="f-meta" class="font-mono text-[var(--gold)] text-[22px]">2022 · WEEK 5</p>
+              <p id="f-meta" class="font-mono text-[var(--gold)] text-[26px]">2022 · WEEK 5</p>
+            </div>
+          </div>
+
+          <!-- Record Comparison Stats -->
+          <div class="absolute left-[60px] right-[60px]" style="top:950px;">
+            <p class="font-display" style="font-size:22px; letter-spacing:0.15em; color:var(--gold); margin-bottom:16px;">BY THE NUMBERS</p>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+              <div style="border-radius:14px; padding:28px 24px; text-align:center; background:rgba(16,20,28,0.85); border:1px solid rgba(255,196,0,0.2);">
+                <p id="f-league-avg" class="font-display" style="font-size:64px; color:var(--gold); line-height:1;">--</p>
+                <p class="font-display" style="font-size:18px; letter-spacing:0.1em; color:#8a95a9; margin-top:10px;">LEAGUE AVG</p>
+              </div>
+              <div style="border-radius:14px; padding:28px 24px; text-align:center; background:rgba(16,20,28,0.85); border:1px solid rgba(255,196,0,0.2);">
+                <p id="f-above-avg" class="font-display" style="font-size:64px; color:var(--green); line-height:1;">--</p>
+                <p class="font-display" style="font-size:18px; letter-spacing:0.1em; color:#8a95a9; margin-top:10px;">ABOVE AVG</p>
+              </div>
+              <div style="border-radius:14px; padding:28px 24px; text-align:center; background:rgba(16,20,28,0.85); border:1px solid rgba(255,196,0,0.2);">
+                <p id="f-season-high" class="font-display" style="font-size:64px; color:var(--cyan); line-height:1;">--</p>
+                <p class="font-display" style="font-size:18px; letter-spacing:0.1em; color:#8a95a9; margin-top:10px;">SEASON HIGH</p>
+              </div>
+              <div style="border-radius:14px; padding:28px 24px; text-align:center; background:rgba(16,20,28,0.85); border:1px solid rgba(255,196,0,0.2);">
+                <p id="f-season-low" class="font-display" style="font-size:64px; color:var(--pink); line-height:1;">--</p>
+                <p class="font-display" style="font-size:18px; letter-spacing:0.1em; color:#8a95a9; margin-top:10px;">SEASON LOW</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Runner Up -->
+          <div class="absolute left-[60px] right-[60px] card rounded-xl p-6" style="top:1480px; background:rgba(16,20,28,0.75); border:1px solid rgba(255,255,255,0.08);">
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="font-display" style="font-size:18px; letter-spacing:0.1em; color:#5b667a;">RUNNER-UP</p>
+                <p id="f-runner" class="font-condensed text-white" style="font-size:30px; margin-top:4px;">--</p>
+              </div>
+              <p id="f-runner-score" class="font-mono" style="font-size:28px; color:#8a95a9;">--</p>
             </div>
           </div>
 
@@ -810,9 +907,9 @@
               <div style="position:relative; width:160px; height:160px; flex-shrink:0;">
                 <div style="position:absolute; inset:-6px; border-radius:50%; background:conic-gradient(from 0deg, #4a5568, #a0aec0, #e2e8f0, #a0aec0, #4a5568); padding:5px;">
                   <div style="width:100%; height:100%; border-radius:50%; background:#0a0e16; padding:3px;">
-                    <div style="width:100%; height:100%; border-radius:50%; overflow:hidden; background:#1a2230; display:flex; align-items:center; justify-content:center;">
-                      <img id="g-img" class="hidden" style="width:100%; height:100%; object-fit:cover;">
-                      <span id="g-img-ph" class="font-display" style="font-size:64px; color:var(--cyan);">?</span>
+                    <div style="width:100%; height:100%; border-radius:50%; overflow:hidden; background:#1a2230; position:relative;">
+                      <img id="g-img" class="hidden" style="width:100%; height:100%; object-fit:cover; position:absolute; inset:0;">
+                      <span id="g-img-ph" class="font-display" style="font-size:64px; color:var(--cyan); position:absolute; inset:0; display:flex; align-items:center; justify-content:center;">?</span>
                     </div>
                   </div>
                 </div>
@@ -868,14 +965,14 @@
           </div>
 
           <!-- ===== TRAJECTORY LINE GRAPH (full bottom half) ===== -->
-          <div class="absolute" style="top:810px; left:56px; right:56px; bottom:70px;">
-            <p class="font-display" style="font-size:20px; letter-spacing:0.15em; color:var(--cyan); margin-bottom:14px;">YEAR-BY-YEAR RANK TRAJECTORY</p>
-            <div style="border-radius:18px; padding:28px 24px 40px 24px; height:calc(100% - 38px); background:rgba(12,16,24,0.88); border:1px solid rgba(0,224,255,0.15);">
-              <svg id="g-chart" width="100%" height="100%" viewBox="0 0 920 740" preserveAspectRatio="xMidYMid meet"></svg>
+          <div class="absolute" style="top:780px; left:56px; right:56px; bottom:55px;">
+            <p class="font-display" style="font-size:22px; letter-spacing:0.15em; color:var(--cyan); margin-bottom:14px;">YEAR-BY-YEAR RANK TRAJECTORY</p>
+            <div style="border-radius:18px; padding:28px 24px 40px 24px; height:calc(100% - 40px); background:rgba(12,16,24,0.88); border:1px solid rgba(0,224,255,0.15);">
+              <svg id="g-chart" width="100%" height="100%" viewBox="0 0 920 820" preserveAspectRatio="xMidYMid meet"></svg>
             </div>
           </div>
 
-          <div class="absolute bottom-[22px] left-0 right-0 text-center font-mono" style="font-size:15px; letter-spacing:0.3em; color:#3a4356;">GRIDIRON GRAPHICS · LEAGUE NETWORK</div>
+          <div class="absolute bottom-[16px] left-0 right-0 text-center font-mono" style="font-size:14px; letter-spacing:0.3em; color:#3a4356;">GRIDIRON GRAPHICS · LEAGUE NETWORK</div>
         </div>
 
       </div>
@@ -1719,16 +1816,21 @@ function setImgOrPlaceholder(imgId, phId, dataUrl, initials, accentColor){
   if(dataUrl){
     const safeSrc = dataUrl.replace(/^http:\/\//i, 'https://');
     img.crossOrigin = 'anonymous';
-    img.onload = ()=>{ img.classList.remove('hidden'); if(ph) ph.classList.add('hidden'); };
+    img.classList.add('hidden');
+    if(ph){ ph.classList.add('hidden'); ph.style.background = ''; ph.innerHTML = ''; }
+    img.onload = ()=>{
+      img.classList.remove('hidden');
+      if(ph){ ph.classList.add('hidden'); ph.style.background = ''; ph.innerHTML = ''; }
+    };
     img.onerror = ()=>{
       img.classList.add('hidden');
+      img.removeAttribute('src');
       if(ph){ ph.classList.remove('hidden'); renderMonogramPlaceholder(ph, initials, accentColor); }
     };
     img.src = safeSrc;
-    img.classList.remove('hidden');
-    if(ph) ph.classList.add('hidden');
   } else {
     img.classList.add('hidden');
+    img.removeAttribute('src');
     if(ph){ ph.classList.remove('hidden'); renderMonogramPlaceholder(ph, initials, accentColor); }
   }
 }
@@ -1764,13 +1866,13 @@ function renderFranchiseChart(yearRanks){
   svg.innerHTML = '';
   if(!yearRanks.length) {
     const t = document.createElementNS('http://www.w3.org/2000/svg','text');
-    t.setAttribute('x','460'); t.setAttribute('y','370'); t.setAttribute('text-anchor','middle');
+    t.setAttribute('x','460'); t.setAttribute('y','410'); t.setAttribute('text-anchor','middle');
     t.setAttribute('fill','#5b667a'); t.setAttribute('font-family','Space Mono,monospace'); t.setAttribute('font-size','18');
     t.textContent = 'Load league history to populate chart';
     svg.appendChild(t);
     return;
   }
-  const W=920, H=740, padL=70, padR=40, padT=70, padB=90;
+  const W=920, H=820, padL=70, padR=40, padT=70, padB=90;
   const n=yearRanks.length;
   const maxRank=12;
   const xStep = n>1 ? (W-padL-padR)/(n-1) : 0;
@@ -1806,8 +1908,8 @@ function renderFranchiseChart(yearRanks){
   // Zone label
   const zl1 = document.createElementNS('http://www.w3.org/2000/svg','text');
   zl1.setAttribute('x', W-padR-8); zl1.setAttribute('y', zoneChampY1+20);
-  zl1.setAttribute('text-anchor','end'); zl1.setAttribute('fill','rgba(255,196,0,0.2)');
-  zl1.setAttribute('font-family','Oswald,sans-serif'); zl1.setAttribute('font-size','14');
+  zl1.setAttribute('text-anchor','end'); zl1.setAttribute('fill','rgba(255,196,0,0.35)');
+  zl1.setAttribute('font-family','Oswald,sans-serif'); zl1.setAttribute('font-size','18'); zl1.setAttribute('font-weight','700');
   zl1.textContent='CHAMPIONSHIP ZONE';
   svg.appendChild(zl1);
 
@@ -1821,8 +1923,8 @@ function renderFranchiseChart(yearRanks){
   svg.appendChild(zoneP);
   const zl2 = document.createElementNS('http://www.w3.org/2000/svg','text');
   zl2.setAttribute('x', W-padR-8); zl2.setAttribute('y', zonePlayY1+20);
-  zl2.setAttribute('text-anchor','end'); zl2.setAttribute('fill','rgba(0,224,255,0.15)');
-  zl2.setAttribute('font-family','Oswald,sans-serif'); zl2.setAttribute('font-size','14');
+  zl2.setAttribute('text-anchor','end'); zl2.setAttribute('fill','rgba(0,224,255,0.3)');
+  zl2.setAttribute('font-family','Oswald,sans-serif'); zl2.setAttribute('font-size','18'); zl2.setAttribute('font-weight','700');
   zl2.textContent='PLAYOFF CUT LINE';
   svg.appendChild(zl2);
 
@@ -1836,8 +1938,8 @@ function renderFranchiseChart(yearRanks){
   svg.appendChild(zoneB);
   const zl3 = document.createElementNS('http://www.w3.org/2000/svg','text');
   zl3.setAttribute('x', W-padR-8); zl3.setAttribute('y', zoneBasY1+20);
-  zl3.setAttribute('text-anchor','end'); zl3.setAttribute('fill','rgba(255,45,109,0.18)');
-  zl3.setAttribute('font-family','Oswald,sans-serif'); zl3.setAttribute('font-size','14');
+  zl3.setAttribute('text-anchor','end'); zl3.setAttribute('fill','rgba(255,45,109,0.3)');
+  zl3.setAttribute('font-family','Oswald,sans-serif'); zl3.setAttribute('font-size','18'); zl3.setAttribute('font-weight','700');
   zl3.textContent='CONSOLATION BRACKET';
   svg.appendChild(zl3);
 
@@ -2037,6 +2139,63 @@ function render(){
   setImgOrPlaceholder('a-img','a-img-ph', f.a_img, initialsFrom(f.a_name || f.a_owner), '#00e0ff');
   setImgOrPlaceholder('b-img','b-img-ph', f.b_img, initialsFrom(f.b_name || f.b_owner), '#ff2d6d');
 
+  // Template A — matchup comparison grid
+  {
+    const hist = state.leagueHistory;
+    let h2hA='--', h2hB='--', ppgA='--', ppgB='--', streak='--', rankA='--', rankB='--';
+    if(hist && state.espnData){
+      const teams = getTeams();
+      const teamA = teams.find(t=> t.name.toUpperCase() === (f.a_name||'').toUpperCase());
+      const teamB = teams.find(t=> t.name.toUpperCase() === (f.b_name||'').toUpperCase());
+      if(teamA && teamB){
+        const recA = (teamA.record||'0-0').split('-');
+        const recB = (teamB.record||'0-0').split('-');
+        const winsA = parseInt(recA[0])||0, lossA = parseInt(recA[1])||0;
+        const winsB = parseInt(recB[0])||0, lossB = parseInt(recB[1])||0;
+        const totalA = winsA+lossA, totalB = winsB+lossB;
+        rankA = '#' + (teams.slice().sort((a,b)=>{
+          const wa = parseInt((a.record||'0-0').split('-')[0])||0;
+          const wb = parseInt((b.record||'0-0').split('-')[0])||0;
+          return wb-wa;
+        }).findIndex(t=>t.id===teamA.id)+1);
+        rankB = '#' + (teams.slice().sort((a,b)=>{
+          const wa = parseInt((a.record||'0-0').split('-')[0])||0;
+          const wb = parseInt((b.record||'0-0').split('-')[0])||0;
+          return wb-wa;
+        }).findIndex(t=>t.id===teamB.id)+1);
+      }
+      if(teamA && teamB){
+        const ownerA = state.espnData.teams.find(t=>t.id===teamA.id);
+        const ownerB = state.espnData.teams.find(t=>t.id===teamB.id);
+        if(ownerA && ownerB){
+          const oidA = ownerA.primaryOwner||(ownerA.owners&&ownerA.owners[0])||'';
+          const oidB = ownerB.primaryOwner||(ownerB.owners&&ownerB.owners[0])||'';
+          const h = getH2H(oidA, oidB);
+          if(h){
+            h2hA = String(h.winsFor); h2hB = String(h.winsAgainst);
+            const meetA = h.winsFor+h.winsAgainst+(h.ties||0);
+            if(meetA>0){
+              ppgA = (h.pointsFor/meetA).toFixed(1);
+              ppgB = (h.pointsAgainst/meetA).toFixed(1);
+            }
+            if(h.streakCount>0){
+              const who = h.streakOwnerId===oidA ? (f.a_name||'A') : (f.b_name||'B');
+              streak = `${who} · ${h.streakCount}W STREAK`;
+            }
+          }
+        }
+      }
+    }
+    const el = (id)=> document.getElementById(id);
+    if(el('a-h2h-a')) el('a-h2h-a').textContent = h2hA;
+    if(el('a-h2h-b')) el('a-h2h-b').textContent = h2hB;
+    if(el('a-ppg-a')) el('a-ppg-a').textContent = ppgA;
+    if(el('a-ppg-b')) el('a-ppg-b').textContent = ppgB;
+    if(el('a-streak')) el('a-streak').textContent = streak;
+    if(el('a-rank-a')) el('a-rank-a').textContent = rankA;
+    if(el('a-rank-b')) el('a-rank-b').textContent = rankB;
+  }
+
   // Template B
   const isAllTime = state.rankMode === 'alltime';
   document.getElementById('rank-title').textContent = f.rank_title || (isAllTime ? 'ALL-TIME POWER RANKINGS' : 'POWER RANKINGS');
@@ -2046,10 +2205,10 @@ function render(){
   list.innerHTML = '';
   const sorted = [...state.ranks].sort((a,b)=>a.rank-b.rank);
   const rowCount = Math.min(sorted.length, 12);
-  const availH = 1920 - 200 - 70;
-  const rowH = rowCount > 0 ? Math.floor(availH / rowCount) : 130;
-  const gap = Math.max(0, Math.min(8, rowH - 120));
-  list.style.gap = gap + 'px';
+  const availH = 1920 - 180 - 80;
+  const totalGap = rowCount > 1 ? (rowCount - 1) * 6 : 0;
+  const rowH = rowCount > 0 ? Math.floor((availH - totalGap) / rowCount) : 136;
+  list.style.gap = '6px';
 
   sorted.slice(0, 12).forEach((r)=>{
     const isChamp = r.rank <= 3;
@@ -2138,15 +2297,16 @@ function render(){
     const safeLogoSrc = hasLogo ? escapeHtml(r.logo.replace(/^http:\/\//i, 'https://')) : '';
     const monogramUrl = buildMonogramDataUrl(initials, rankColor === 'var(--gold)' ? '#ffc400' : rankColor === 'var(--bronze)' ? '#c9974a' : rankColor === 'var(--cyan)' ? '#00e0ff' : '#5b667a', 88);
     const avatarInner = hasLogo
-      ? `<img src="${safeLogoSrc}" style="width:100%;height:100%;object-fit:cover;" crossorigin="anonymous" onerror="this.src='${monogramUrl}'">`
-      : `<img src="${monogramUrl}" style="width:100%;height:100%;object-fit:cover;">`;
+      ? `<img src="${safeLogoSrc}" style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0;" crossorigin="anonymous" onerror="this.onerror=null;this.src='${monogramUrl}'">`
+      : `<img src="${monogramUrl}" style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0;">`;
 
-    const cardPad = Math.max(6, Math.min(12, rowH - 115));
+    const cardPad = Math.max(8, Math.min(16, Math.floor((rowH - 50) / 2)));
+    const avatarSize = Math.max(44, Math.min(64, rowH - cardPad * 2 - 8));
     const row = document.createElement('div');
-    row.style.cssText = `display:flex; align-items:center; gap:12px; border-radius:12px; padding:${cardPad}px 16px; background:${bg}; border:${border}; backdrop-filter:blur(4px);`;
+    row.style.cssText = `display:flex; align-items:center; gap:14px; border-radius:12px; padding:${cardPad}px 18px; background:${bg}; border:${border}; backdrop-filter:blur(4px); height:${rowH}px; box-sizing:border-box;`;
     row.innerHTML = `
-      <div style="font-family:'Anton',sans-serif; font-size:${rankSize}; width:50px; text-align:center; color:${rankColor}; flex-shrink:0; ${rankGlow}">${r.rank}</div>
-      <div style="width:44px; height:44px; border-radius:50%; background:${avatarBg}; border:${avatarBorder}; display:flex; align-items:center; justify-content:center; flex-shrink:0; overflow:hidden;">
+      <div style="font-family:'Anton',sans-serif; font-size:${rankSize}; width:52px; text-align:center; color:${rankColor}; flex-shrink:0; ${rankGlow}">${r.rank}</div>
+      <div style="width:${avatarSize}px; height:${avatarSize}px; border-radius:50%; background:${avatarBg}; border:${avatarBorder}; flex-shrink:0; overflow:hidden; position:relative;">
         ${avatarInner}
       </div>
       <div style="flex:1; min-width:0;">
@@ -2154,7 +2314,7 @@ function render(){
           ${warningDot}
           <span style="font-family:'Anton',sans-serif; font-size:${nameSize}; color:${nameColor}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; line-height:1.1;">${escapeHtml(r.name)}</span>
         </div>
-        <div style="font-family:'Teko',sans-serif; font-size:16px; color:${mgrColor}; margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; line-height:1;">
+        <div style="font-family:'Teko',sans-serif; font-size:18px; color:${mgrColor}; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; line-height:1;">
           ${escapeHtml(mgrName)}
         </div>
       </div>
@@ -2179,6 +2339,31 @@ function render(){
   document.getElementById('d-roast').textContent = f.hs_roast || '';
   setImgOrPlaceholder('d-img','d-img-ph', f.hs_img, initialsFrom(f.hs_name), '#39ff8c');
 
+  // Template D — Crime Sheet stats
+  {
+    const el = (id)=> document.getElementById(id);
+    let leagueAvg='--', belowAvg='--', weekHigh='--';
+    if(state.espnData){
+      const week = weekNumInput.value.trim();
+      const extremes = LeagueData.getWeekExtremes(week);
+      const games = LeagueData.getWeekMatchups(week);
+      if(games.length){
+        let totalPts=0, count=0;
+        games.forEach(g=>{
+          totalPts += parseFloat(g.homeScore)||0; count++;
+          totalPts += parseFloat(g.awayScore)||0; count++;
+        });
+        if(count>0) leagueAvg = (totalPts/count).toFixed(1);
+        const hsScore = parseFloat(f.hs_score)||0;
+        if(leagueAvg!=='--') belowAvg = '-' + (parseFloat(leagueAvg)-hsScore).toFixed(1);
+      }
+      if(extremes.high) weekHigh = extremes.high.score.toFixed(1);
+    }
+    if(el('d-league-avg')) el('d-league-avg').textContent = leagueAvg;
+    if(el('d-below-avg')) el('d-below-avg').textContent = belowAvg;
+    if(el('d-week-high')) el('d-week-high').textContent = weekHigh;
+  }
+
   // Template E — Rivalry Vault
   document.getElementById('e-a-name').textContent = f.e_a_name || 'MANAGER A';
   document.getElementById('e-b-name').textContent = f.e_b_name || 'MANAGER B';
@@ -2188,6 +2373,47 @@ function render(){
   document.getElementById('e-streak').textContent = f.e_streak || '';
   setImgOrPlaceholder('e-a-img','e-a-img-ph', f.e_a_img, initialsFrom(f.e_a_name), '#c9974a');
   setImgOrPlaceholder('e-b-img','e-b-img-ph', f.e_b_img, initialsFrom(f.e_b_name), '#c9974a');
+
+  // Template E — Last 3 Matchups
+  {
+    const container = document.getElementById('e-last3');
+    if(container){
+      container.innerHTML = '';
+      let meetings = [];
+      if(state.leagueHistory){
+        const managers = Object.values(state.leagueHistory.managers);
+        const mgrA = managers.find(m=> m.name.toUpperCase() === (f.e_a_name||'').toUpperCase());
+        const mgrB = managers.find(m=> m.name.toUpperCase() === (f.e_b_name||'').toUpperCase());
+        if(mgrA && mgrB){
+          const key = [mgrA.id, mgrB.id].sort().join('__');
+          const rec = state.leagueHistory.h2h[key];
+          if(rec){
+            const aIsRecA = mgrA.id === rec.a;
+            meetings = rec.meetings.slice().sort((x,y)=> y.year-x.year || y.week-x.week).slice(0,3);
+            meetings.forEach(m=>{
+              const scoreFor = aIsRecA ? m.scoreA : m.scoreB;
+              const scoreAgainst = aIsRecA ? m.scoreB : m.scoreA;
+              const won = m.winnerOwnerId === mgrA.id;
+              const row = document.createElement('div');
+              row.style.cssText = 'display:flex; align-items:center; padding:18px 22px; border-radius:12px; border:1px solid ' + (won ? 'rgba(57,255,140,0.2)' : 'rgba(255,45,109,0.15)') + '; background:' + (won ? 'rgba(57,255,140,0.05)' : 'rgba(255,45,109,0.04)') + ';';
+              row.innerHTML = `
+                <span class="font-mono" style="font-size:16px; color:#5b667a; width:120px; flex-shrink:0;">${m.year} · WK${m.week}</span>
+                <span class="font-display" style="font-size:28px; color:${won?'var(--green)':'var(--pink)'}; width:60px; text-align:center; flex-shrink:0;">${won?'W':'L'}</span>
+                <span class="font-mono" style="font-size:26px; color:#e8ecf2; flex:1; text-align:right; font-weight:700;">${scoreFor.toFixed(1)} - ${scoreAgainst.toFixed(1)}</span>
+              `;
+              container.appendChild(row);
+            });
+          }
+        }
+      }
+      if(!meetings.length){
+        const empty = document.createElement('div');
+        empty.style.cssText = 'display:flex; align-items:center; padding:18px 22px; background:rgba(16,20,28,0.75); border:1px solid rgba(201,151,74,0.15); border-radius:12px;';
+        empty.innerHTML = '<span class="font-condensed" style="font-size:24px; color:#3a4356; flex:1; text-align:center;">Load history to populate</span>';
+        container.appendChild(empty);
+      }
+    }
+  }
 
   // Template F — League Record Book
   document.getElementById('f-kicker').textContent = f.f_kicker || 'ALL-TIME RECORD';
@@ -2203,6 +2429,25 @@ function render(){
     fImg.onerror = ()=> fImg.classList.add('hidden');
     fImg.classList.remove('hidden');
   } else { fImg.classList.add('hidden'); }
+
+  // Template F comparison stats
+  {
+    const ld = window.LeagueData && window.LeagueData.get();
+    if(ld && ld.scores){
+      const allScores = Object.values(ld.scores).flat().filter(s=> s > 0);
+      if(allScores.length){
+        const avg = (allScores.reduce((a,b)=>a+b,0)/allScores.length).toFixed(1);
+        const headline = parseFloat(f.f_headline) || 0;
+        const diff = headline > 0 ? '+' + (headline - parseFloat(avg)).toFixed(1) : '--';
+        document.getElementById('f-league-avg').textContent = avg;
+        document.getElementById('f-above-avg').textContent = diff;
+        document.getElementById('f-season-high').textContent = Math.max(...allScores).toFixed(1);
+        document.getElementById('f-season-low').textContent = Math.min(...allScores).toFixed(1);
+      }
+    }
+    document.getElementById('f-runner').textContent = f.f_runner || '--';
+    document.getElementById('f-runner-score').textContent = f.f_runner_score || '--';
+  }
 
   // Template G — Franchise Resume
   document.getElementById('g-team-title').textContent = f.g_team || 'TEAM NAME';
