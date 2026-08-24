@@ -1,0 +1,3586 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LEAGUE MEDIA STUDIO // Graphics + Video Desk</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Teko:wght@400;500;600;700&family=Oswald:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  /* ============================================================
+     GLOBAL TOKENS — Gridiron Graphics palette owns the document.
+     The Rundown (video) palette is redeclared scoped to .rd so the
+     two colour systems can share one page without collisions.
+  ============================================================ */
+  :root{
+    --ink:#080a0e;
+    --panel:#10141c;
+    --panel-2:#161c27;
+    --line: rgba(255,255,255,0.08);
+    --green:#39ff8c;
+    --pink:#ff2d6d;
+    --cyan:#00e0ff;
+    --gold:#ffc400;
+    --bronze:#c9974a;
+    --off:#c7cdd8;
+    --shell-header: 104px;
+  }
+  *{box-sizing:border-box;}
+  html,body{background:var(--ink); color:var(--off); font-family:'Oswald',sans-serif;}
+  .font-display{font-family:'Anton',sans-serif; letter-spacing:0.01em;}
+  .font-condensed{font-family:'Teko',sans-serif;}
+  .font-mono{font-family:'Space Mono',monospace;}
+  ::-webkit-scrollbar{width:8px; height:8px;}
+  ::-webkit-scrollbar-track{background:var(--panel);}
+  ::-webkit-scrollbar-thumb{background:#2a3242; border-radius:4px;}
+
+  /* ---- Unified shell / master tabs ---- */
+  .master-tab{
+    font-family:'Space Mono',monospace; font-size:11px; letter-spacing:.12em;
+    border:1px solid var(--line); border-bottom:none; background:#0b0e14; color:#5b667a;
+    transition:all .15s;
+  }
+  .master-tab:hover{color:var(--off);}
+  .master-tab[data-active="true"]{background:var(--panel-2); color:#fff; box-shadow:inset 0 2px 0 0 var(--green);}
+  .master-tab[data-active="true"][data-master="video"]{box-shadow:inset 0 2px 0 0 #F5A623;}
+  .data-chip{font-family:'Space Mono',monospace; font-size:10px; letter-spacing:.08em;}
+
+  /* ============================================================
+     GRIDIRON GRAPHICS (tab 1)
+  ============================================================ */
+  .control-panel{background:linear-gradient(180deg,var(--panel) 0%, #0d1017 100%); border-right:1px solid var(--line);}
+  .card{background:var(--panel-2); border:1px solid var(--line);}
+  .input-field{
+    background:#0b0e14; border:1px solid var(--line); color:var(--off);
+    transition:border-color .15s, box-shadow .15s;
+  }
+  .input-field:focus{outline:none; border-color:var(--green); box-shadow:0 0 0 3px rgba(57,255,140,0.12);}
+  .tmpl-btn{border:1px solid var(--line); background:#0b0e14; transition:all .15s;}
+  .tmpl-btn.active{border-color:var(--green); background:rgba(57,255,140,0.08); box-shadow:0 0 0 1px var(--green) inset;}
+  .tmpl-btn:hover:not(.active){border-color:#3a4356;}
+  .btn-primary{background:var(--green); color:#04150a; font-weight:700; transition:filter .15s, transform .1s;}
+  .btn-primary:hover{filter:brightness(1.1);}
+  .btn-primary:active{transform:scale(0.98);}
+  .btn-ghost{background:transparent; border:1px solid var(--line); color:var(--off);}
+  .btn-ghost:hover{border-color:#4a5468; background:rgba(255,255,255,0.03);}
+  /* Drag-and-drop target for the ESPN history .json file */
+  .dropzone{
+    border:1.5px dashed rgba(212,160,74,0.45);
+    background:linear-gradient(180deg, rgba(212,160,74,0.06), rgba(212,160,74,0.02));
+    border-radius:10px; cursor:pointer;
+    transition:border-color .15s, background .15s, transform .1s;
+  }
+  .dropzone:hover{border-color:rgba(212,160,74,0.85); background:rgba(212,160,74,0.09);}
+  .dropzone.dragover{
+    border-color:var(--green); background:rgba(57,255,140,0.10);
+    box-shadow:0 0 0 3px rgba(57,255,140,0.12); transform:scale(1.01);
+  }
+  .success-banner{
+    background:rgba(57,255,140,0.10);
+    border:1px solid rgba(57,255,140,0.45);
+    color:var(--green);
+    border-radius:8px;
+  }
+  .tag-pill{font-family:'Space Mono',monospace; font-size:10px; letter-spacing:.08em;}
+  .section-label{font-family:'Space Mono',monospace; font-size:10px; letter-spacing:.15em; color:#5b667a; text-transform:uppercase;}
+
+  .canvas-stage{
+    background-image:
+      linear-gradient(rgba(57,255,140,0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(57,255,140,0.05) 1px, transparent 1px);
+    background-size:24px 24px;
+  }
+
+  /* ---- The 1080x1920 export canvas ---- */
+  #export-root{ width:1080px; height:1920px; position:relative; overflow:hidden; background:#05070a; }
+  .noise-overlay{
+    position:absolute; inset:0; pointer-events:none; opacity:0.04; mix-blend-mode:overlay;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  .scanline{
+    position:absolute; inset:0; pointer-events:none;
+    background:repeating-linear-gradient(0deg, rgba(255,255,255,0.015) 0px, rgba(255,255,255,0.015) 1px, transparent 1px, transparent 3px);
+  }
+  .glow-green{ text-shadow: 0 0 30px rgba(57,255,140,0.55); }
+  .glow-pink{ text-shadow: 0 0 30px rgba(255,45,109,0.6); }
+  .glow-cyan{ text-shadow: 0 0 30px rgba(0,224,255,0.55); }
+  .glow-gold{ text-shadow: 0 0 30px rgba(255,196,0,0.5); }
+  .glow-bronze{ text-shadow: 0 0 30px rgba(201,151,74,0.55); }
+
+  .avatar-frame{ box-shadow:0 0 0 4px #05070a, 0 0 0 7px currentColor, 0 20px 50px rgba(0,0,0,0.6); }
+  .stat-line{ background:linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent); height:1px; }
+
+  input[type="file"]::file-selector-button{
+    background:#1b2230; color:#c7cdd8; border:1px solid var(--line); border-radius:6px; padding:6px 10px; margin-right:10px; cursor:pointer; font-family:'Oswald'; font-size:12px;
+  }
+  input[type="file"]::file-selector-button:hover{ background:#242c3d; }
+
+  .toast{ transition:opacity .3s, transform .3s; }
+
+  .spinner{
+    width:14px; height:14px; border-radius:50%;
+    border:2px solid rgba(4,21,10,0.25); border-top-color:#04150a;
+    animation:spin .7s linear infinite; display:inline-block;
+  }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+  .btn-primary:disabled{ opacity:0.75; cursor:wait; }
+
+  @media (max-width: 1024px){
+    .layout-grid{ grid-template-columns: 1fr; }
+    .control-panel{ border-right:none; border-bottom:1px solid var(--line); max-height:none; }
+  }
+
+  /* ============================================================
+     RUNDOWN PRODUCTION DESK (tab 2) — every rule scoped to .rd so
+     the amber/JetBrains system never leaks into the graphics tab.
+  ============================================================ */
+  .rd{
+    --rd-ink:#0A0D14;
+    --rd-panel:#12161F;
+    --rd-panel-2:#171C27;
+    --rd-line:#242B3A;
+    --rd-text:#F2F4F8;
+    --rd-muted:#828AA0;
+    --rd-amber:#F5A623;
+    --rd-red:#E8232B;
+    --rd-green:#28D07A;
+    --rd-blue:#3B82F6;
+    background:
+      radial-gradient(1200px 600px at 15% -10%, rgba(59,130,246,0.06), transparent 60%),
+      radial-gradient(1000px 500px at 100% 0%, rgba(245,166,35,0.05), transparent 60%),
+      var(--rd-ink);
+    color:var(--rd-text);
+    font-family:'Inter',sans-serif;
+    min-height:calc(100vh - var(--shell-header));
+  }
+  .rd.scanlines{
+    background-image: repeating-linear-gradient(to bottom, rgba(255,255,255,0.025) 0px, rgba(255,255,255,0.025) 1px, transparent 1px, transparent 3px);
+  }
+  .rd .font-mono{font-family:'JetBrains Mono',monospace;}
+  .rd .panel{background:var(--rd-panel); border:1px solid var(--rd-line);}
+  .rd .panel-2{background:var(--rd-panel-2); border:1px solid var(--rd-line);}
+  .rd .checker-cells{
+    background-image:
+      linear-gradient(45deg, #2a3140 25%, transparent 25%),
+      linear-gradient(-45deg, #2a3140 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, #2a3140 75%),
+      linear-gradient(-45deg, transparent 75%, #2a3140 75%);
+    background-size: 20px 20px;
+    background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+    background-color:#1a1e28;
+  }
+  .rd .tab-pill{transition:all .15s ease;}
+  .rd .tab-pill[data-active="true"]{background:var(--rd-amber); color:#0A0D14; font-weight:700;}
+  .rd .tab-pill[data-active="false"]{background:transparent; color:var(--rd-muted);}
+  .rd .field-label{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--rd-muted);font-weight:600;}
+  .rd input[type=text], .rd input[type=number], .rd textarea, .rd select{
+    background:#0D1119; border:1px solid var(--rd-line); color:var(--rd-text);
+    border-radius:6px; padding:9px 11px; width:100%; font-size:14px;
+  }
+  .rd input[type=text]:focus, .rd input[type=number]:focus, .rd textarea:focus, .rd select:focus{outline:none;border-color:var(--rd-amber);}
+  .rd input[type=color]{-webkit-appearance:none;appearance:none;width:38px;height:38px;border:1px solid var(--rd-line);border-radius:6px;background:none;padding:2px;}
+  .rd input[type=color]::-webkit-color-swatch{border-radius:4px;border:none;}
+  .rd .btn-primary{background:var(--rd-amber);color:#0A0D14;font-weight:800;}
+  .rd .btn-primary:hover{filter:brightness(1.08);}
+  .rd .btn-ghost{background:transparent;border:1px solid var(--rd-line);color:var(--rd-text);}
+  .rd .btn-ghost:hover{border-color:var(--rd-amber);color:var(--rd-amber);background:transparent;}
+  .rd .section-label{color:var(--rd-muted);font-family:'JetBrains Mono',monospace;}
+  .rd .copy-flash{animation:flash .5s ease;}
+  @keyframes flash{0%{background:rgba(245,166,35,.25);}100%{background:transparent;}}
+  .rec-dot{width:8px;height:8px;border-radius:999px;background:#E8232B;box-shadow:0 0 8px #E8232B;animation:pulse 1.6s infinite;}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.35;}}
+  .rd .league-strip{
+    border:1px dashed rgba(245,166,35,0.35);
+    background:rgba(245,166,35,0.06);
+    border-radius:8px;
+  }
+  .rd .league-strip[data-has-data="true"]{
+    border-style:solid;
+    border-color:rgba(40,208,122,0.45);
+    background:rgba(40,208,122,0.07);
+  }
+
+  /* ---- Broadcast video exporter (tab 2, sub-tab 03) ---- */
+  .rd .seg-btn{
+    background:transparent; border:1px solid var(--rd-line); color:var(--rd-muted);
+    font-family:'JetBrains Mono',monospace; font-size:12px; letter-spacing:.06em;
+    border-radius:6px; padding:8px 0; transition:all .15s ease; cursor:pointer;
+  }
+  .rd .seg-btn:hover{color:var(--rd-text); border-color:#39435a;}
+  .rd .seg-btn[data-active="true"]{background:var(--rd-amber); border-color:var(--rd-amber); color:#0A0D14; font-weight:700;}
+  .rd .mode-btn{
+    background:#0D1119; border:1px solid var(--rd-line); color:var(--rd-muted);
+    border-radius:8px; padding:10px 12px; text-align:left; transition:all .15s ease; cursor:pointer;
+  }
+  .rd .mode-btn:hover{border-color:#39435a; color:var(--rd-text);}
+  .rd .mode-btn[data-active="true"]{border-color:var(--rd-amber); background:rgba(245,166,35,0.08); color:var(--rd-text);}
+  .rd .progress-track{height:8px; background:#0D1119; border:1px solid var(--rd-line); border-radius:999px; overflow:hidden;}
+  .rd .progress-fill{height:100%; width:0%; background:linear-gradient(90deg,var(--rd-amber),#ffd27a); transition:width .12s linear;}
+  .rd .progress-fill[data-state="recording"]{background:linear-gradient(90deg,var(--rd-red),#ff7a7f);}
+  .rd .progress-fill[data-state="done"]{background:linear-gradient(90deg,var(--rd-green),#7af0b4);}
+  .rd .stream-toggle{display:flex; align-items:center; gap:9px; font-size:13px; cursor:pointer;}
+  .rd .stream-toggle input{accent-color:var(--rd-amber); width:15px; height:15px;}
+  .rd input[type=range]{width:100%; accent-color:var(--rd-amber);}
+</style>
+</head>
+<body class="min-h-screen">
+
+<!-- ============ UNIFIED HEADER + MASTER TABS ============ -->
+<header class="border-b border-white/10 bg-[#0b0e14]/95 backdrop-blur sticky top-0 z-50">
+  <div class="max-w-[1600px] mx-auto px-5 pt-3 flex items-center justify-between gap-4">
+    <div class="flex items-center gap-3">
+      <div class="w-9 h-9 rounded bg-[var(--green)] flex items-center justify-center font-display text-[#04150a] text-lg">L</div>
+      <div>
+        <h1 class="font-display text-lg leading-none tracking-wide">LEAGUE <span class="text-[var(--green)]">MEDIA STUDIO</span></h1>
+        <p class="section-label mt-1">GRAPHICS · OVERLAYS · TELEPROMPTER</p>
+      </div>
+    </div>
+    <div class="hidden sm:flex items-center gap-2">
+      <span id="connStatus" class="tag-pill px-2.5 py-1 rounded-full border border-white/10 text-gray-400">● NO DATA SOURCE</span>
+      <span id="histChip" class="data-chip px-2.5 py-1 rounded-full border border-white/10 text-gray-500">◇ NO HISTORY</span>
+      <span id="liveClock" class="data-chip px-2.5 py-1 rounded-full border border-white/10 text-gray-500">--:--:--</span>
+    </div>
+  </div>
+  <nav class="max-w-[1600px] mx-auto px-5 flex gap-1 mt-3">
+    <button class="master-tab px-5 py-2.5 rounded-t-md" data-master="graphics" data-active="true">01 · GRAPHIC GENERATOR</button>
+    <button class="master-tab px-5 py-2.5 rounded-t-md" data-master="video" data-active="false">02 · VIDEO OVERLAYS &amp; TELEPROMPTER</button>
+  </nav>
+</header>
+
+<!-- ==================== TAB 01 · GRAPHIC GENERATOR ==================== -->
+<section id="tab-graphics" class="master-panel">
+<div class="layout-grid grid" style="grid-template-columns: 420px 1fr;">
+
+  <!-- ============ LEFT CONTROL PANEL ============ -->
+  <aside class="control-panel p-5 space-y-6 max-h-[calc(100vh-var(--shell-header))] overflow-y-auto">
+
+    <!-- TABS -->
+    <div class="flex gap-1 p-1 bg-[#0b0e14] rounded-lg border border-white/10">
+      <button data-panel-tab="data" class="ptab flex-1 py-2 rounded-md text-xs font-semibold tracking-wide">DATA SOURCE</button>
+      <button data-panel-tab="content" class="ptab flex-1 py-2 rounded-md text-xs font-semibold tracking-wide">CONTENT</button>
+      <button data-panel-tab="style" class="ptab flex-1 py-2 rounded-md text-xs font-semibold tracking-wide">EXPORT</button>
+    </div>
+
+    <!-- ===== DATA SOURCE PANEL ===== -->
+    <section data-panel="data" class="space-y-4">
+      <div class="card rounded-lg p-4 space-y-3">
+        <p class="section-label">ESPN Fantasy Connection</p>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="text-xs text-gray-400 mb-1 block">League ID</label>
+            <input id="leagueId" type="text" placeholder="123456" class="input-field w-full rounded px-3 py-2 text-sm font-mono">
+          </div>
+          <div>
+            <label class="text-xs text-gray-400 mb-1 block">Season Year</label>
+            <input id="seasonYear" type="text" placeholder="2026" class="input-field w-full rounded px-3 py-2 text-sm font-mono">
+            <p class="text-[10px] text-gray-600 mt-1">Past seasons (e.g. 2025 or earlier) route through ESPN's leagueHistory endpoint automatically.</p>
+          </div>
+        </div>
+        <div>
+          <label class="text-xs text-gray-400 mb-1 block">Week</label>
+          <input id="weekNum" type="number" min="1" max="18" placeholder="1" class="input-field w-full rounded px-3 py-2 text-sm font-mono">
+        </div>
+        <div>
+          <label class="text-xs text-gray-400 mb-1 block flex items-center justify-between">
+            <span>SWID <span class="text-gray-600">(private leagues)</span></span>
+          </label>
+          <input id="swid" type="text" placeholder="{XXXXXXXX-XXXX-...}" class="input-field w-full rounded px-3 py-2 text-sm font-mono">
+        </div>
+        <div>
+          <label class="text-xs text-gray-400 mb-1 block">espn_s2 cookie <span class="text-gray-600">(private leagues)</span></label>
+          <input id="espnS2" type="text" placeholder="AEB...long string" class="input-field w-full rounded px-3 py-2 text-sm font-mono">
+        </div>
+        <button id="fetchBtn" class="btn-primary w-full rounded py-2.5 text-sm mt-1 flex items-center justify-center gap-2">
+          <span id="fetchBtnSpinner" class="spinner hidden"></span>
+          <span id="fetchBtnLabel">FETCH LEAGUE DATA</span>
+        </button>
+        <p id="fetchStatus" class="text-xs text-gray-500 leading-relaxed"></p>
+      </div>
+
+      <div class="card rounded-lg p-4 space-y-2">
+        <p class="section-label">How the connection works</p>
+        <p class="text-xs text-gray-400 leading-relaxed">
+          The fetch button routes the ESPN request through a public CORS proxy (trying a couple in sequence) so the browser doesn't block reading the response — this makes public leagues fetch directly with no setup. For private leagues, SWID/espn_s2 are attached to the request; ESPN's own read API only recognizes them as real cookies, and browsers won't let page JavaScript set a <span class="font-mono text-gray-300">Cookie</span> header on any request, proxied or not — so authentication can still fail depending on which proxy is reachable at the moment. If that happens, the app auto-falls-back to: open the API URL below in a browser tab while logged into ESPN, copy the JSON, paste it in the box below.
+        </p>
+        <button id="showUrlBtn" class="text-xs text-[var(--cyan)] underline underline-offset-2">Show me the API URL to open manually →</button>
+        <p id="apiUrlDisplay" class="hidden text-[11px] font-mono text-gray-500 break-all bg-[#0b0e14] p-2 rounded border border-white/10"></p>
+      </div>
+
+      <div class="card rounded-lg p-4 space-y-2">
+        <p class="section-label">Paste raw JSON (fallback)</p>
+        <textarea id="jsonPaste" rows="4" placeholder="Paste ESPN API JSON response here..." class="input-field w-full rounded px-3 py-2 text-xs font-mono"></textarea>
+        <button id="parseJsonBtn" class="btn-ghost w-full rounded py-2 text-xs">PARSE PASTED JSON</button>
+      </div>
+
+      <div class="card rounded-lg p-4">
+        <label class="flex items-center justify-between cursor-pointer">
+          <span class="text-sm">Use manual entry only</span>
+          <input id="manualToggle" type="checkbox" class="w-4 h-4 accent-[var(--green)]">
+        </label>
+        <p class="text-xs text-gray-500 mt-1">Skip ESPN entirely and type everything into the Content tab.</p>
+      </div>
+
+      <div class="card rounded-lg p-4 space-y-3">
+        <p class="section-label text-[var(--bronze)]">League History (all-time)</p>
+        <p class="text-xs text-gray-400 leading-relaxed">
+          One request, every past season. ESPN's <span class="font-mono text-gray-300">leagueHistory</span> endpoint returns an array of
+          <em>all</em> completed seasons when it's called without a <span class="font-mono text-gray-300">seasonId</span> — so there's no
+          year-by-year loop to get rate-limited. That single array feeds the Rivalry Vault (all-time H2H) and the League Record Book.
+          Requires League ID above.
+        </p>
+        <button id="loadHistoryBtn" class="btn-primary w-full rounded py-2.5 text-sm flex items-center justify-center gap-2" style="background:var(--bronze); color:#1a1206;">
+          <span id="loadHistorySpinner" class="spinner hidden" style="border-color:rgba(26,18,6,0.25); border-top-color:#1a1206;"></span>
+          <span id="loadHistoryLabel">LOAD LEAGUE HISTORY</span>
+        </button>
+        <p id="historyStatus" class="text-xs text-gray-500 leading-relaxed"></p>
+        <a id="historyUrlLink" href="#" target="_blank" rel="noopener" class="block text-xs text-[var(--cyan)] underline underline-offset-2">Show All-Time History API Link →</a>
+        <p id="historyUrlDisplay" class="hidden text-[11px] font-mono text-gray-500 break-all bg-[#0b0e14] p-2 rounded border border-white/10"></p>
+      </div>
+
+      <div class="card rounded-lg p-4 space-y-3">
+        <p class="section-label text-[var(--bronze)]">Upload ESPN History (.json)</p>
+        <div id="historyDropzone" role="button" tabindex="0" aria-label="Upload ESPN History JSON file" class="dropzone px-4 py-6 text-center space-y-2">
+          <svg class="mx-auto w-7 h-7 text-[var(--bronze)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 16V4"></path><path d="m7 9 5-5 5 5"></path><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"></path>
+          </svg>
+          <p class="text-sm font-semibold text-gray-200">Upload ESPN History (.json)</p>
+          <p class="text-xs text-gray-500">Drag &amp; drop the file here, or click to browse</p>
+          <input id="historyFileInput" type="file" accept=".json,application/json" class="hidden">
+        </div>
+        <p class="text-xs text-gray-400 leading-relaxed">
+          Save the ESPN History API tab as a <span class="font-mono text-gray-300">.json</span> file
+          (<span class="font-mono text-gray-300">Ctrl+S</span> / <span class="font-mono text-gray-300">Cmd+S</span>), then drop it here.
+          Parsing happens locally in your browser — the file never leaves your machine.
+        </p>
+        <div id="historySuccessBanner" class="success-banner hidden px-3 py-2 text-xs font-semibold leading-relaxed"></div>
+      </div>
+
+      <div class="card rounded-lg p-4 space-y-2">
+        <p class="section-label text-[var(--bronze)]">Paste Multi-Year JSON (fallback)</p>
+        <p class="text-xs text-gray-400 leading-relaxed">
+          If the proxy is rate-limited, open the link above in a tab (logged into ESPN for private leagues), copy the whole
+          <span class="font-mono text-gray-300">[ &#123;seasonId: 2019&#125;, &#123;seasonId: 2020&#125;, … ]</span> array, paste it here, and hit calculate.
+        </p>
+        <textarea id="historyJsonPaste" rows="4" placeholder="Paste the full leagueHistory JSON array here..." class="input-field w-full rounded px-3 py-2 text-xs font-mono"></textarea>
+        <button id="parseHistoryJsonBtn" class="btn-ghost w-full rounded py-2 text-xs">PASTE MULTI-YEAR JSON &amp; CALCULATE</button>
+      </div>
+    </section>
+
+    <!-- ===== CONTENT PANEL ===== -->
+    <section data-panel="content" class="space-y-4 hidden">
+
+      <div>
+        <p class="section-label mb-2">Choose a template</p>
+        <div class="grid grid-cols-2 gap-2">
+          <button data-template="A" class="tmpl-btn rounded-lg p-3 text-left">
+            <span class="block text-[10px] font-mono text-[var(--cyan)]">TEMPLATE A</span>
+            <span class="block font-display text-sm mt-1">TALE OF<br>THE TAPE</span>
+          </button>
+          <button data-template="B" class="tmpl-btn rounded-lg p-3 text-left">
+            <span class="block text-[10px] font-mono text-[var(--gold)]">TEMPLATE B</span>
+            <span class="block font-display text-sm mt-1">POWER<br>RANKINGS</span>
+          </button>
+          <button data-template="C" class="tmpl-btn rounded-lg p-3 text-left">
+            <span class="block text-[10px] font-mono text-[var(--pink)]">TEMPLATE C</span>
+            <span class="block font-display text-sm mt-1">BREAKING<br>NEWS</span>
+          </button>
+          <button data-template="D" class="tmpl-btn rounded-lg p-3 text-left">
+            <span class="block text-[10px] font-mono text-[var(--green)]">TEMPLATE D</span>
+            <span class="block font-display text-sm mt-1">HOT SEAT /<br>FRAUD ALERT</span>
+          </button>
+          <button data-template="E" class="tmpl-btn rounded-lg p-3 text-left">
+            <span class="block text-[10px] font-mono text-[var(--bronze)]">TEMPLATE E</span>
+            <span class="block font-display text-sm mt-1">RIVALRY<br>VAULT</span>
+          </button>
+          <button data-template="F" class="tmpl-btn rounded-lg p-3 text-left">
+            <span class="block text-[10px] font-mono text-white">TEMPLATE F</span>
+            <span class="block font-display text-sm mt-1">RECORD<br>BOOK</span>
+          </button>
+        </div>
+      </div>
+
+      <div id="espnDataPicker" class="card rounded-lg p-4 space-y-2 hidden">
+        <p class="section-label">Load from fetched ESPN data</p>
+        <div id="espnPickerBody" class="text-xs text-gray-400">No data loaded yet.</div>
+      </div>
+
+      <!-- Template A fields -->
+      <div id="fields-A" class="tmpl-fields hidden space-y-3">
+        <div class="card rounded-lg p-4 space-y-3">
+          <p class="section-label text-[var(--cyan)]">Team A</p>
+          <input data-f="a_name" placeholder="Team Name" class="input-field w-full rounded px-3 py-2 text-sm">
+          <div class="grid grid-cols-2 gap-2">
+            <input data-f="a_record" placeholder="Record (7-3)" class="input-field w-full rounded px-3 py-2 text-sm">
+            <input data-f="a_owner" placeholder="Manager name" class="input-field w-full rounded px-3 py-2 text-sm">
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <input data-f="a_proj" placeholder="Projected pts" class="input-field w-full rounded px-3 py-2 text-sm font-mono">
+            <input data-f="a_actual" placeholder="Actual pts" class="input-field w-full rounded px-3 py-2 text-sm font-mono">
+          </div>
+          <input data-f-img="a_img" type="file" accept="image/*" class="text-xs w-full">
+        </div>
+        <div class="card rounded-lg p-4 space-y-3">
+          <p class="section-label text-[var(--pink)]">Team B</p>
+          <input data-f="b_name" placeholder="Team Name" class="input-field w-full rounded px-3 py-2 text-sm">
+          <div class="grid grid-cols-2 gap-2">
+            <input data-f="b_record" placeholder="Record (5-5)" class="input-field w-full rounded px-3 py-2 text-sm">
+            <input data-f="b_owner" placeholder="Manager name" class="input-field w-full rounded px-3 py-2 text-sm">
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <input data-f="b_proj" placeholder="Projected pts" class="input-field w-full rounded px-3 py-2 text-sm font-mono">
+            <input data-f="b_actual" placeholder="Actual pts" class="input-field w-full rounded px-3 py-2 text-sm font-mono">
+          </div>
+          <input data-f-img="b_img" type="file" accept="image/*" class="text-xs w-full">
+        </div>
+        <input data-f="matchup_week" placeholder="Week label (WEEK 7)" class="input-field w-full rounded px-3 py-2 text-sm">
+      </div>
+
+      <!-- Template B fields -->
+      <div id="fields-B" class="tmpl-fields hidden space-y-3">
+        <div class="card rounded-lg p-4 space-y-3">
+          <div class="flex items-center justify-between">
+            <p class="section-label text-[var(--gold)]">Rankings (drag order via # field)</p>
+            <button id="addRankRow" class="btn-ghost rounded px-2 py-1 text-xs">+ ADD</button>
+          </div>
+          <div id="rankRows" class="space-y-2 max-h-[420px] overflow-y-auto pr-1"></div>
+        </div>
+        <input data-f="rank_title" placeholder="Headline (POWER RANKINGS)" class="input-field w-full rounded px-3 py-2 text-sm">
+        <input data-f="rank_week" placeholder="Week label (WEEK 7)" class="input-field w-full rounded px-3 py-2 text-sm">
+      </div>
+
+      <!-- Template C fields -->
+      <div id="fields-C" class="tmpl-fields hidden space-y-3">
+        <div class="card rounded-lg p-4 space-y-3">
+          <p class="section-label text-[var(--pink)]">Breaking News</p>
+          <select data-f="news_tag" class="input-field w-full rounded px-3 py-2 text-sm">
+            <option>TRADE ALERT</option>
+            <option>BREAKING NEWS</option>
+            <option>INJURY REPORT</option>
+            <option>WAIVER WIRE</option>
+            <option>LEAGUE ALERT</option>
+          </select>
+          <input data-f="news_headline" placeholder="Headline" class="input-field w-full rounded px-3 py-2 text-sm">
+          <textarea data-f="news_sub" rows="2" placeholder="Subheadline / details" class="input-field w-full rounded px-3 py-2 text-sm"></textarea>
+          <input data-f="news_manager" placeholder="Manager / reporter name" class="input-field w-full rounded px-3 py-2 text-sm">
+          <input data-f-img="news_img" type="file" accept="image/*" class="text-xs w-full">
+        </div>
+      </div>
+
+      <!-- Template D fields -->
+      <div id="fields-D" class="tmpl-fields hidden space-y-3">
+        <div class="card rounded-lg p-4 space-y-3">
+          <p class="section-label text-[var(--green)]">Hot Seat / Fraud Alert</p>
+          <input data-f="hs_name" placeholder="Team / manager name" class="input-field w-full rounded px-3 py-2 text-sm">
+          <div class="grid grid-cols-2 gap-2">
+            <input data-f="hs_score" placeholder="Score (58.2)" class="input-field w-full rounded px-3 py-2 text-sm font-mono">
+            <input data-f="hs_week" placeholder="Week label (WEEK 7)" class="input-field w-full rounded px-3 py-2 text-sm">
+          </div>
+          <textarea data-f="hs_roast" rows="3" placeholder="Roast / charge text" class="input-field w-full rounded px-3 py-2 text-sm"></textarea>
+          <input data-f-img="hs_img" type="file" accept="image/*" class="text-xs w-full">
+        </div>
+      </div>
+
+      <!-- Template E fields -->
+      <div id="fields-E" class="tmpl-fields hidden space-y-3">
+        <div class="card rounded-lg p-4 space-y-3">
+          <p class="section-label text-[var(--bronze)]">Manager A</p>
+          <input data-f="e_a_name" placeholder="Manager A name" class="input-field w-full rounded px-3 py-2 text-sm">
+          <input data-f-img="e_a_img" type="file" accept="image/*" class="text-xs w-full">
+        </div>
+        <div class="card rounded-lg p-4 space-y-3">
+          <p class="section-label text-[var(--bronze)]">Manager B</p>
+          <input data-f="e_b_name" placeholder="Manager B name" class="input-field w-full rounded px-3 py-2 text-sm">
+          <input data-f-img="e_b_img" type="file" accept="image/*" class="text-xs w-full">
+        </div>
+        <div class="card rounded-lg p-4 space-y-3">
+          <p class="section-label text-[var(--bronze)]">Series details</p>
+          <input data-f="e_series" placeholder="All-time series (8-4)" class="input-field w-full rounded px-3 py-2 text-sm font-mono">
+          <input data-f="e_diff" placeholder="Point differential (+142.6)" class="input-field w-full rounded px-3 py-2 text-sm font-mono">
+          <input data-f="e_last" placeholder="Last meeting (2024 · WK9 · WON 118.4-101.2)" class="input-field w-full rounded px-3 py-2 text-sm">
+          <input data-f="e_streak" placeholder="Current streak (ON A 3-GAME STREAK)" class="input-field w-full rounded px-3 py-2 text-sm">
+        </div>
+      </div>
+
+      <!-- Template F fields -->
+      <div id="fields-F" class="tmpl-fields hidden space-y-3">
+        <div class="card rounded-lg p-4 space-y-3">
+          <p class="section-label">Record Book</p>
+          <input data-f="f_kicker" placeholder="Kicker (ALL-TIME RECORD)" class="input-field w-full rounded px-3 py-2 text-sm">
+          <input data-f="f_headline" placeholder="Headline stat (184.6 PTS)" class="input-field w-full rounded px-3 py-2 text-sm font-mono">
+          <textarea data-f="f_subtext" rows="2" placeholder="What the record is" class="input-field w-full rounded px-3 py-2 text-sm"></textarea>
+          <input data-f="f_owner" placeholder="Manager / team name" class="input-field w-full rounded px-3 py-2 text-sm">
+          <input data-f="f_meta" placeholder="Meta (2022 · WEEK 5)" class="input-field w-full rounded px-3 py-2 text-sm font-mono">
+          <input data-f-img="f_img" type="file" accept="image/*" class="text-xs w-full">
+        </div>
+      </div>
+
+    </section>
+
+
+    <!-- ===== EXPORT PANEL ===== -->
+    <section data-panel="style" class="space-y-4 hidden">
+      <div class="card rounded-lg p-4 space-y-3">
+        <p class="section-label">Export</p>
+        <p class="text-xs text-gray-400">Renders the canvas at true 1080×1920 regardless of on-screen zoom.</p>
+        <p class="text-xs text-gray-500">If a team logo was auto-loaded from ESPN's CDN, some browsers will block the export ("tainted canvas") since ESPN's images aren't served with permissive CORS headers. If Download fails after using a live logo, right-click → save that logo and re-upload it manually — uploaded files always export cleanly.</p>
+        <button id="downloadBtn" class="btn-primary w-full rounded py-3 text-sm">⬇ DOWNLOAD PNG</button>
+        <p id="exportStatus" class="text-xs text-gray-500"></p>
+      </div>
+      <div class="card rounded-lg p-4 space-y-3">
+        <p class="section-label">Preview zoom</p>
+        <input id="zoomRange" type="range" min="0.2" max="0.6" step="0.02" value="0.36" class="w-full accent-[var(--green)]">
+      </div>
+      <div class="card rounded-lg p-4 space-y-2">
+        <p class="section-label">Reset</p>
+        <button id="resetBtn" class="btn-ghost w-full rounded py-2 text-xs">CLEAR ALL FIELDS</button>
+      </div>
+    </section>
+
+  </aside>
+
+  <!-- ============ RIGHT PREVIEW STAGE ============ -->
+  <main class="canvas-stage flex items-start justify-center p-10 overflow-auto min-h-[calc(100vh-var(--shell-header))]">
+    <div id="stageWrap" class="shrink-0" style="width:389px; height:691px;">
+      <div id="export-root" class="origin-top-left" style="transform:scale(0.36);">
+        <div class="noise-overlay"></div>
+        <div class="scanline"></div>
+
+        <!-- TEMPLATE A -->
+        <div id="tpl-A" class="tpl absolute inset-0 hidden">
+          <div class="absolute inset-0" style="background:radial-gradient(ellipse at 50% 0%, #101823 0%, #05070a 60%);"></div>
+          <div class="absolute top-0 left-0 right-0 h-[10px]" style="background:linear-gradient(90deg,var(--cyan),var(--pink));"></div>
+          <div class="absolute top-[70px] left-0 right-0 text-center">
+            <p class="font-mono text-[var(--cyan)] text-[26px] tracking-[0.3em]" id="a-week">WEEK 7</p>
+            <h2 class="font-display text-white text-[56px] leading-none mt-2 glow-cyan">TALE OF THE TAPE</h2>
+          </div>
+
+          <!-- Team A -->
+          <div class="absolute top-[280px] left-0 w-1/2 flex flex-col items-center px-8">
+            <div class="w-[280px] h-[280px] rounded-full overflow-hidden bg-[#1a2230] avatar-frame text-[var(--cyan)] flex items-center justify-center">
+              <img id="a-img" class="w-full h-full object-cover hidden">
+              <span id="a-img-ph" class="font-display text-[110px] text-[var(--cyan)]">A</span>
+            </div>
+            <h3 id="a-name" class="font-display text-white text-[46px] text-center mt-8 leading-tight">HOME TEAM</h3>
+            <p id="a-owner" class="font-condensed text-gray-400 text-[26px] mt-1">Manager Name</p>
+            <p id="a-record" class="font-mono text-[var(--cyan)] text-[24px] mt-2 px-4 py-1 border border-[var(--cyan)]/40 rounded-full">7-3</p>
+          </div>
+
+          <!-- Team B -->
+          <div class="absolute top-[280px] right-0 w-1/2 flex flex-col items-center px-8">
+            <div class="w-[280px] h-[280px] rounded-full overflow-hidden bg-[#1a2230] avatar-frame text-[var(--pink)] flex items-center justify-center">
+              <img id="b-img" class="w-full h-full object-cover hidden">
+              <span id="b-img-ph" class="font-display text-[110px] text-[var(--pink)]">B</span>
+            </div>
+            <h3 id="b-name" class="font-display text-white text-[46px] text-center mt-8 leading-tight">AWAY TEAM</h3>
+            <p id="b-owner" class="font-condensed text-gray-400 text-[26px] mt-1">Manager Name</p>
+            <p id="b-record" class="font-mono text-[var(--pink)] text-[24px] mt-2 px-4 py-1 border border-[var(--pink)]/40 rounded-full">5-5</p>
+          </div>
+
+          <div class="absolute top-[380px] left-1/2 -translate-x-1/2 font-display text-white text-[64px] glow-cyan">VS</div>
+
+          <!-- Score panel -->
+          <div class="absolute bottom-[140px] left-[60px] right-[60px] card rounded-2xl p-8" style="background:rgba(16,20,28,0.85); border:1px solid rgba(255,255,255,0.1);">
+            <div class="grid grid-cols-2 gap-6 text-center">
+              <div>
+                <p class="section-label mb-2">PROJECTED</p>
+                <p id="a-proj" class="font-mono text-white text-[40px]">112.4</p>
+              </div>
+              <div>
+                <p class="section-label mb-2">PROJECTED</p>
+                <p id="b-proj" class="font-mono text-white text-[40px]">108.9</p>
+              </div>
+            </div>
+            <div class="stat-line my-6"></div>
+            <div class="grid grid-cols-2 gap-6 text-center">
+              <div>
+                <p class="section-label mb-2 text-[var(--cyan)]">ACTUAL</p>
+                <p id="a-actual" class="font-display text-[var(--cyan)] text-[64px] glow-cyan">--</p>
+              </div>
+              <div>
+                <p class="section-label mb-2 text-[var(--pink)]">ACTUAL</p>
+                <p id="b-actual" class="font-display text-[var(--pink)] text-[64px] glow-pink">--</p>
+              </div>
+            </div>
+          </div>
+          <div class="absolute bottom-[50px] left-0 right-0 text-center font-mono text-[16px] tracking-[0.3em] text-gray-500">GRIDIRON GRAPHICS · LEAGUE NETWORK</div>
+        </div>
+
+        <!-- TEMPLATE B -->
+        <div id="tpl-B" class="tpl absolute inset-0 hidden">
+          <div class="absolute inset-0" style="background:radial-gradient(ellipse at 50% 0%, #1a1508 0%, #05070a 55%);"></div>
+          <div class="absolute top-0 left-0 right-0 h-[10px]" style="background:linear-gradient(90deg,var(--gold),#ff8a00);"></div>
+          <div class="absolute top-[64px] left-0 right-0 text-center">
+            <p class="font-mono text-[var(--gold)] text-[24px] tracking-[0.3em]" id="b-week-label">WEEK 7</p>
+            <h2 id="rank-title" class="font-display text-white text-[52px] leading-none mt-2 glow-gold px-10">POWER RANKINGS</h2>
+          </div>
+          <div id="rank-list" class="absolute top-[260px] left-[56px] right-[56px] space-y-3"></div>
+          <div class="absolute bottom-[50px] left-0 right-0 text-center font-mono text-[16px] tracking-[0.3em] text-gray-500">GRIDIRON GRAPHICS · LEAGUE NETWORK</div>
+        </div>
+
+        <!-- TEMPLATE C -->
+        <div id="tpl-C" class="tpl absolute inset-0 hidden">
+          <div class="absolute inset-0 bg-[#05070a]"></div>
+          <img id="c-img" class="absolute inset-0 w-full h-full object-cover hidden">
+          <div id="c-img-ph" class="absolute inset-0 flex items-center justify-center" style="background:linear-gradient(160deg,#1a0d14,#05070a);">
+            <span class="font-display text-[220px] text-[var(--pink)]/20">?</span>
+          </div>
+          <div class="absolute inset-0" style="background:linear-gradient(0deg, rgba(5,7,10,1) 15%, rgba(5,7,10,0.2) 45%, rgba(5,7,10,0.55) 100%);"></div>
+
+          <div class="absolute top-[90px] left-[56px]">
+            <span id="c-tag" class="tag-pill inline-block bg-[var(--pink)] text-[#1a0209] px-4 py-2 rounded font-bold text-[20px] tracking-widest">TRADE ALERT</span>
+          </div>
+
+          <div class="absolute bottom-0 left-0 right-0">
+            <div class="h-[10px]" style="background:linear-gradient(90deg,var(--pink),#ff7a00);"></div>
+            <div class="p-8 pb-16" style="background:linear-gradient(180deg, rgba(5,7,10,0.4), rgba(5,7,10,0.97) 30%);">
+              <h2 id="c-headline" class="font-display text-white text-[58px] leading-[1.02] glow-pink">TRADE SHAKES UP THE LEAGUE</h2>
+              <p id="c-sub" class="font-condensed text-gray-300 text-[30px] mt-4 leading-snug">Details of the deal go here, subheadline text wraps naturally across lines.</p>
+              <div class="flex items-center gap-3 mt-8">
+                <div class="w-[10px] h-[10px] rounded-full bg-[var(--pink)]"></div>
+                <p id="c-manager" class="font-mono text-gray-400 text-[20px] tracking-wide">REPORTED BY MANAGER NAME</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TEMPLATE D -->
+        <div id="tpl-D" class="tpl absolute inset-0 hidden">
+          <div class="absolute inset-0" style="background:radial-gradient(ellipse at 50% 30%, #0a1a10 0%, #05070a 60%);"></div>
+          <div class="absolute top-0 left-0 right-0 h-[10px]" style="background:repeating-linear-gradient(45deg, var(--green) 0 20px, #05070a 20px 40px);"></div>
+          <div class="absolute top-[70px] left-0 right-0 text-center">
+            <p class="font-mono text-[var(--green)] text-[24px] tracking-[0.35em]" id="d-week">WEEK 7</p>
+            <h2 class="font-display text-white text-[68px] leading-none mt-3 glow-green">HOT SEAT</h2>
+            <p class="font-condensed text-gray-400 text-[28px] mt-1 tracking-widest">FRAUD ALERT · LOWEST SCORE</p>
+          </div>
+
+          <div class="absolute top-[340px] left-1/2 -translate-x-1/2">
+            <div class="w-[420px] h-[420px] rounded-lg overflow-hidden bg-[#1a2230] flex items-center justify-center" style="box-shadow:0 0 0 6px #05070a, 0 0 0 12px var(--green), 0 30px 70px rgba(0,0,0,0.7); filter:grayscale(0.4) contrast(1.1);">
+              <img id="d-img" class="w-full h-full object-cover hidden">
+              <span id="d-img-ph" class="font-display text-[160px] text-[var(--green)]">?</span>
+            </div>
+            <div class="absolute -bottom-6 left-1/2 -translate-x-1/2 bg-[var(--green)] text-[#04150a] font-display text-[26px] px-6 py-2 rounded tracking-wide whitespace-nowrap">WANTED FOR FANTASY FRAUD</div>
+          </div>
+
+          <div class="absolute top-[860px] left-0 right-0 text-center">
+            <h3 id="d-name" class="font-display text-white text-[52px] px-10 leading-tight">MANAGER NAME</h3>
+            <p class="font-mono text-[var(--green)] text-[22px] mt-3 tracking-widest">SCORED ONLY</p>
+            <p id="d-score" class="font-display text-[var(--green)] text-[120px] leading-none glow-green">58.2</p>
+          </div>
+
+          <div class="absolute bottom-[130px] left-[70px] right-[70px] card rounded-xl p-6" style="background:rgba(16,20,28,0.85); border:1px solid rgba(57,255,140,0.25);">
+            <p class="section-label mb-2 text-[var(--green)]">THE CHARGE</p>
+            <p id="d-roast" class="font-condensed text-white text-[28px] leading-snug">Benched their best player. Started a bye-week ghost. Guilty as charged.</p>
+          </div>
+          <div class="absolute bottom-[50px] left-0 right-0 text-center font-mono text-[16px] tracking-[0.3em] text-gray-500">GRIDIRON GRAPHICS · LEAGUE NETWORK</div>
+        </div>
+
+        <!-- TEMPLATE E — RIVALRY VAULT -->
+        <div id="tpl-E" class="tpl absolute inset-0 hidden">
+          <div class="absolute inset-0" style="background:radial-gradient(ellipse at 50% 0%, #1a1608 0%, #05070a 55%);"></div>
+          <div class="absolute inset-0" style="background-image:repeating-linear-gradient(0deg, transparent 0 38px, rgba(201,151,74,0.05) 38px 39px), repeating-linear-gradient(90deg, transparent 0 38px, rgba(201,151,74,0.05) 38px 39px);"></div>
+          <div class="absolute top-0 left-0 right-0 h-[10px]" style="background:linear-gradient(90deg,var(--bronze),#7a5a25,var(--bronze));"></div>
+
+          <div class="absolute top-[64px] left-0 right-0 text-center">
+            <p class="font-mono text-[var(--bronze)] text-[24px] tracking-[0.35em]">ALL-TIME HEAD-TO-HEAD</p>
+            <h2 class="font-display text-white text-[62px] leading-none mt-2 glow-bronze">THE RIVALRY VAULT</h2>
+          </div>
+
+          <!-- Manager A -->
+          <div class="absolute top-[260px] left-0 w-1/2 flex flex-col items-center px-8">
+            <div class="w-[240px] h-[240px] rounded-full overflow-hidden bg-[#1a1608] flex items-center justify-center" style="box-shadow:0 0 0 4px #05070a, 0 0 0 7px var(--bronze), 0 20px 50px rgba(0,0,0,0.6);">
+              <img id="e-a-img" class="w-full h-full object-cover hidden">
+              <span id="e-a-img-ph" class="font-display text-[90px] text-[var(--bronze)]">A</span>
+            </div>
+            <h3 id="e-a-name" class="font-display text-white text-[38px] text-center mt-6 leading-tight">MANAGER A</h3>
+          </div>
+
+          <!-- Manager B -->
+          <div class="absolute top-[260px] right-0 w-1/2 flex flex-col items-center px-8">
+            <div class="w-[240px] h-[240px] rounded-full overflow-hidden bg-[#1a1608] flex items-center justify-center" style="box-shadow:0 0 0 4px #05070a, 0 0 0 7px var(--bronze), 0 20px 50px rgba(0,0,0,0.6);">
+              <img id="e-b-img" class="w-full h-full object-cover hidden">
+              <span id="e-b-img-ph" class="font-display text-[90px] text-[var(--bronze)]">B</span>
+            </div>
+            <h3 id="e-b-name" class="font-display text-white text-[38px] text-center mt-6 leading-tight">MANAGER B</h3>
+          </div>
+
+          <!-- Series score -->
+          <div class="absolute top-[640px] left-0 right-0 text-center">
+            <p class="section-label mb-2">ALL-TIME SERIES</p>
+            <p id="e-series" class="font-display text-[var(--bronze)] text-[140px] leading-none glow-bronze">8-4</p>
+          </div>
+
+          <div class="absolute top-[900px] left-[70px] right-[70px] card rounded-2xl p-8 space-y-5" style="background:rgba(16,20,28,0.85); border:1px solid rgba(201,151,74,0.3);">
+            <div class="flex items-center justify-between">
+              <p class="section-label">POINT DIFFERENTIAL</p>
+              <p id="e-diff" class="font-mono text-[var(--bronze)] text-[26px]">+142.6</p>
+            </div>
+            <div class="stat-line"></div>
+            <div class="flex items-center justify-between gap-4">
+              <p class="section-label shrink-0">LAST MEETING</p>
+              <p id="e-last" class="font-condensed text-white text-[24px] text-right">2024 · WK9 · WON 118.4–101.2</p>
+            </div>
+            <div class="stat-line"></div>
+            <div class="flex items-center justify-between gap-4">
+              <p class="section-label shrink-0">CURRENT STREAK</p>
+              <p id="e-streak" class="font-condensed text-[var(--bronze)] text-[24px] text-right">ON A 3-GAME STREAK</p>
+            </div>
+          </div>
+
+          <div class="absolute bottom-[50px] left-0 right-0 text-center font-mono text-[16px] tracking-[0.3em] text-gray-500">GRIDIRON GRAPHICS · LEAGUE NETWORK</div>
+        </div>
+
+        <!-- TEMPLATE F — LEAGUE RECORD BOOK -->
+        <div id="tpl-F" class="tpl absolute inset-0 hidden">
+          <div class="absolute inset-0" style="background:linear-gradient(180deg,#0c0e13 0%, #05070a 60%);"></div>
+          <img id="f-img" class="absolute inset-0 w-full h-full object-cover opacity-25 hidden">
+          <div class="absolute inset-0" style="background:linear-gradient(180deg, rgba(5,7,10,0.4) 0%, rgba(5,7,10,0.95) 55%, rgba(5,7,10,1) 100%);"></div>
+
+          <div class="absolute top-0 left-0 right-0 h-[10px]" style="background:linear-gradient(90deg,var(--gold),var(--pink),var(--cyan));"></div>
+
+          <div class="absolute top-[130px] left-0 right-0 text-center px-10">
+            <span id="f-kicker" class="tag-pill inline-block bg-white text-[#0a0c10] px-5 py-2 rounded font-bold text-[20px] tracking-widest">ALL-TIME RECORD</span>
+            <p class="font-mono text-gray-500 text-[20px] tracking-[0.3em] mt-8">GRIDIRON GRAPHICS PRESENTS</p>
+            <h2 class="font-display text-white text-[46px] mt-2 tracking-wide">THE LEAGUE RECORD BOOK</h2>
+          </div>
+
+          <div class="absolute top-[560px] left-0 right-0 text-center px-6">
+            <p id="f-headline" class="font-display text-white text-[130px] leading-none glow-gold">184.6 PTS</p>
+            <p id="f-subtext" class="font-condensed text-gray-300 text-[32px] mt-6 leading-snug px-12">Highest single-game score in league history</p>
+          </div>
+
+          <div class="absolute bottom-[220px] left-[70px] right-[70px] card rounded-2xl p-8" style="background:rgba(16,20,28,0.85); border:1px solid rgba(255,255,255,0.1);">
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="section-label mb-2">RECORD HOLDER</p>
+                <p id="f-owner" class="font-display text-white text-[36px]">MANAGER NAME</p>
+              </div>
+              <p id="f-meta" class="font-mono text-[var(--gold)] text-[22px]">2022 · WEEK 5</p>
+            </div>
+          </div>
+
+          <div class="absolute bottom-[50px] left-0 right-0 text-center font-mono text-[16px] tracking-[0.3em] text-gray-500">GRIDIRON GRAPHICS · LEAGUE NETWORK</div>
+        </div>
+
+      </div>
+    </div>
+  </main>
+</div>
+</section>
+
+<!-- ==================== TAB 02 · VIDEO OVERLAYS & TELEPROMPTER ==================== -->
+<section id="tab-video" class="rd scanlines master-panel hidden">
+<main class="max-w-[1400px] mx-auto px-5 py-6">
+
+  <!-- Shared data engine readout -->
+  <div id="rd-leagueStrip" class="league-strip px-4 py-3 mb-5 flex flex-wrap items-center justify-between gap-3" data-has-data="false">
+    <div class="flex items-center gap-3">
+      <span class="rec-dot"></span>
+      <div>
+        <p class="font-mono text-[11px] uppercase tracking-[.14em] text-[var(--rd-muted)]">Shared league data</p>
+        <p id="rd-leagueStripText" class="text-sm font-semibold">No league data loaded — pull it in on the Graphic Generator tab and it lands here automatically.</p>
+      </div>
+    </div>
+    <button id="rd-goToData" class="btn-ghost text-[11px] px-3 py-1.5 rounded-md uppercase tracking-wide">Open data source →</button>
+  </div>
+
+  <!-- Video sub-tab switcher -->
+  <div class="flex gap-1 mb-5 border-b border-[var(--rd-line)]">
+    <button class="rd-subtab tab-pill px-4 py-2 rounded-t-md text-sm" data-subtab="overlay" data-active="true">01 · Overlay Generator</button>
+    <button class="rd-subtab tab-pill px-4 py-2 rounded-t-md text-sm" data-subtab="script" data-active="false">02 · Script &amp; Soundbite Prompter</button>
+    <button class="rd-subtab tab-pill px-4 py-2 rounded-t-md text-sm" data-subtab="broadcast" data-active="false">03 · Broadcast Video Exporter</button>
+  </div>
+
+  <!-- ============ SUB-TAB: OVERLAY GENERATOR ============ -->
+  <section id="rd-tab-overlay" class="rd-panel">
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+      <div class="flex gap-2 flex-wrap">
+        <button class="rd-overlay-pill tab-pill px-3.5 py-1.5 rounded-full text-xs uppercase tracking-wide border border-[var(--rd-line)]" data-overlay="press" data-active="true">Press Conference Tag</button>
+        <button class="rd-overlay-pill tab-pill px-3.5 py-1.5 rounded-full text-xs uppercase tracking-wide border border-[var(--rd-line)]" data-overlay="breaking" data-active="false">Breaking News Chyron</button>
+        <button class="rd-overlay-pill tab-pill px-3.5 py-1.5 rounded-full text-xs uppercase tracking-wide border border-[var(--rd-line)]" data-overlay="score" data-active="false">Tale of the Tape Score Bug</button>
+      </div>
+      <p class="text-[11px] font-mono text-[var(--rd-muted)]">EXPORT · 1080×1920 · TRANSPARENT PNG</p>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-[380px_1fr] gap-6">
+
+      <!-- ---- FORM COLUMN ---- -->
+      <div class="panel rounded-xl p-5 h-fit">
+
+        <!-- PRESS CONFERENCE FORM -->
+        <div class="rd-overlay-form" data-form="press">
+          <p class="font-display text-sm text-[var(--rd-amber)] mb-4 tracking-wide">PRESS CONFERENCE TAG</p>
+
+          <div class="panel-2 rounded-lg p-3 mb-4 space-y-2" data-league-block>
+            <p class="field-label">Pull from league data</p>
+            <select id="rd-p-source"><option value="">No league data loaded…</option></select>
+            <button id="rd-p-apply" class="btn-ghost w-full py-2 rounded-md text-[11px] uppercase tracking-wide">Fill manager, team &amp; record</button>
+          </div>
+
+          <div class="space-y-3.5">
+            <div><label class="field-label">Manager name</label><input type="text" id="rd-p-name" value="DAVE MARTINEZ" maxlength="24"></div>
+            <div><label class="field-label">Team name</label><input type="text" id="rd-p-team" value="THE GRIDIRON GAMBLERS" maxlength="30"></div>
+            <div><label class="field-label">Current record</label><input type="text" id="rd-p-record" value="4-3-0" maxlength="10"></div>
+            <div><label class="field-label">Ticker / subtext</label><input type="text" id="rd-p-ticker" value="COMING OFF A 40-POINT BLOWOUT LOSS · BENCH QB1 RUMORS SWIRLING" maxlength="120"></div>
+            <div class="flex items-center gap-3 pt-1">
+              <input type="color" id="rd-p-color" value="#F5A623">
+              <div><label class="field-label block">Accent color</label><p class="text-[11px] text-[var(--rd-muted)]">Team / league color</p></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- BREAKING NEWS FORM -->
+        <div class="rd-overlay-form hidden" data-form="breaking">
+          <p class="font-display text-sm text-[var(--rd-amber)] mb-4 tracking-wide">BREAKING NEWS CHYRON</p>
+
+          <div class="panel-2 rounded-lg p-3 mb-4 space-y-2" data-league-block>
+            <p class="field-label">Pull from league data</p>
+            <button id="rd-b-blunder" class="btn-ghost w-full py-2 rounded-md text-[11px] uppercase tracking-wide">Headline this week's blunder</button>
+            <button id="rd-b-topscore" class="btn-ghost w-full py-2 rounded-md text-[11px] uppercase tracking-wide">Headline this week's top score</button>
+            <button id="rd-b-record" class="btn-ghost w-full py-2 rounded-md text-[11px] uppercase tracking-wide">Headline an all-time record</button>
+          </div>
+
+          <div class="space-y-3.5">
+            <div>
+              <label class="field-label">Alert level</label>
+              <select id="rd-b-level">
+                <option value="BREAKING NEWS">BREAKING NEWS (Red)</option>
+                <option value="DEVELOPING STORY">DEVELOPING STORY (Amber)</option>
+                <option value="LEAGUE ALERT">LEAGUE ALERT (Blue)</option>
+              </select>
+            </div>
+            <div><label class="field-label">Headline — line 1</label><input type="text" id="rd-b-line1" value="SOURCES: DAVE CONSIDERING" maxlength="40"></div>
+            <div><label class="field-label">Headline — line 2</label><input type="text" id="rd-b-line2" value="BENCHING QB1 AFTER WEEK 7 DISASTER" maxlength="40"></div>
+            <div><label class="field-label">Byline / credit</label><input type="text" id="rd-b-byline" value="LEAGUE INSIDER REPORT" maxlength="40"></div>
+          </div>
+        </div>
+
+        <!-- SCORE BUG FORM -->
+        <div class="rd-overlay-form hidden" data-form="score">
+          <p class="font-display text-sm text-[var(--rd-amber)] mb-4 tracking-wide">TALE OF THE TAPE — SCORE BUG</p>
+
+          <div class="panel-2 rounded-lg p-3 mb-4 space-y-2" data-league-block>
+            <p class="field-label">Pull from league data</p>
+            <select id="rd-s-source"><option value="">No matchups loaded…</option></select>
+            <button id="rd-s-apply" class="btn-ghost w-full py-2 rounded-md text-[11px] uppercase tracking-wide">Fill abbreviations &amp; live scores</button>
+          </div>
+
+          <div class="space-y-3.5">
+            <div class="grid grid-cols-2 gap-3">
+              <div><label class="field-label">Team A abbr.</label><input type="text" id="rd-s-a-abbr" value="GAM" maxlength="5"></div>
+              <div><label class="field-label">Team A score</label><input type="text" id="rd-s-a-score" value="112.4" maxlength="7"></div>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+              <div><label class="field-label">Team B abbr.</label><input type="text" id="rd-s-b-abbr" value="ICE" maxlength="5"></div>
+              <div><label class="field-label">Team B score</label><input type="text" id="rd-s-b-score" value="98.7" maxlength="7"></div>
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+              <div><label class="field-label">Week</label><input type="text" id="rd-s-week" value="WK 7" maxlength="8"></div>
+              <div>
+                <label class="field-label">Status</label>
+                <select id="rd-s-status">
+                  <option value="LIVE">LIVE</option>
+                  <option value="FINAL">FINAL</option>
+                  <option value="HALFTIME">HALFTIME</option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <button id="rd-exportBtn" class="btn-primary w-full mt-6 py-3 rounded-lg text-sm uppercase tracking-wide flex items-center justify-center gap-2">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 21h16"/></svg>
+          Export Transparent PNG
+        </button>
+        <p class="text-[11px] text-[var(--rd-muted)] mt-2 text-center font-mono">Drops straight into CapCut / Premiere as an overlay track</p>
+      </div>
+
+      <!-- ---- PREVIEW COLUMN ---- -->
+      <div class="panel rounded-xl p-6 flex flex-col items-center justify-center gap-4">
+        <div class="relative">
+          <div class="relative rounded-2xl p-3 panel-2" style="width:322px;">
+            <div class="flex items-center justify-between mb-2 px-1">
+              <span class="font-mono text-[10px] text-[var(--rd-muted)]">MON · 9:16</span>
+              <span class="font-mono text-[10px] text-[var(--rd-green)] flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-[var(--rd-green)]"></span>PREVIEW</span>
+            </div>
+            <div class="relative overflow-hidden rounded-lg checker-cells" style="width:298px; height:530px;">
+              <div id="rd-previewStage" style="width:1080px; height:1920px; transform: scale(0.27593); transform-origin: top left;">
+
+                <!-- ===== OVERLAY: PRESS CONFERENCE ===== -->
+                <div id="rd-overlay-press" class="rd-overlay-node" style="position:relative; width:1080px; height:1920px; font-family:'Inter',sans-serif;">
+                  <div style="position:absolute; left:0; right:0; bottom:210px; padding:0 60px;">
+                    <div id="rd-p-color-bar" style="height:10px; width:520px; background:#F5A623; margin-bottom:0;"></div>
+                    <div style="background:rgba(10,13,20,0.88); border-left:10px solid; border-color:#F5A623; padding:28px 34px;" id="rd-p-card">
+                      <p id="rd-p-preview-team" style="font-family:'JetBrains Mono',monospace; font-size:26px; letter-spacing:0.12em; color:#F5A623; font-weight:700; margin:0 0 6px 0; text-transform:uppercase;">THE GRIDIRON GAMBLERS</p>
+                      <div style="display:flex; align-items:baseline; gap:22px;">
+                        <p id="rd-p-preview-name" style="font-family:'Anton',sans-serif; font-size:64px; color:#ffffff; margin:0; letter-spacing:0.01em; line-height:1;">DAVE MARTINEZ</p>
+                        <p id="rd-p-preview-record" style="font-family:'JetBrains Mono',monospace; font-size:30px; color:#ffffff; background:rgba(255,255,255,0.12); padding:6px 16px; border-radius:6px; margin:0;">4-3-0</p>
+                      </div>
+                    </div>
+                  </div>
+                  <div style="position:absolute; left:0; right:0; bottom:150px; background:#0A0D14; padding:14px 0; overflow:hidden; white-space:nowrap;">
+                    <p id="rd-p-preview-ticker" style="font-family:'JetBrains Mono',monospace; font-size:22px; color:#ffffff; margin:0; padding-left:60px; letter-spacing:0.02em;">COMING OFF A 40-POINT BLOWOUT LOSS · BENCH QB1 RUMORS SWIRLING</p>
+                  </div>
+                </div>
+
+                <!-- ===== OVERLAY: BREAKING NEWS ===== -->
+                <div id="rd-overlay-breaking" class="rd-overlay-node hidden" style="position:relative; width:1080px; height:1920px; font-family:'Inter',sans-serif;">
+                  <div style="position:absolute; left:0; right:0; bottom:240px;">
+                    <div id="rd-b-tagbar" style="background:#E8232B; display:inline-block; padding:14px 40px; margin-left:60px;">
+                      <p id="rd-b-preview-level" style="font-family:'Anton',sans-serif; font-size:34px; color:#ffffff; margin:0; letter-spacing:0.06em;">BREAKING NEWS</p>
+                    </div>
+                    <div style="background:rgba(10,13,20,0.92); padding:30px 60px 22px 60px;">
+                      <p id="rd-b-preview-line1" style="font-family:'Anton',sans-serif; font-size:50px; color:#ffffff; margin:0; line-height:1.08;">SOURCES: DAVE CONSIDERING</p>
+                      <p id="rd-b-preview-line2" style="font-family:'Anton',sans-serif; font-size:50px; color:#F5A623; margin:6px 0 0 0; line-height:1.08;">BENCHING QB1 AFTER WEEK 7 DISASTER</p>
+                    </div>
+                    <div style="background:#111520; padding:12px 60px; display:flex; justify-content:space-between; align-items:center;">
+                      <p id="rd-b-preview-byline" style="font-family:'JetBrains Mono',monospace; font-size:20px; color:#828AA0; margin:0; letter-spacing:0.08em;">LEAGUE INSIDER REPORT</p>
+                      <p style="font-family:'JetBrains Mono',monospace; font-size:20px; color:#828AA0; margin:0;">● LIVE</p>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- ===== OVERLAY: SCORE BUG ===== -->
+                <div id="rd-overlay-score" class="rd-overlay-node hidden" style="position:relative; width:1080px; height:1920px; font-family:'Inter',sans-serif;">
+                  <div style="position:absolute; left:60px; right:60px; bottom:260px; background:rgba(10,13,20,0.9); border:2px solid #F5A623; border-radius:10px; overflow:hidden;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; padding:14px 26px; background:rgba(245,166,35,0.14);">
+                      <p id="rd-s-preview-week" style="font-family:'JetBrains Mono',monospace; font-size:22px; color:#F5A623; margin:0; letter-spacing:0.1em;">WK 7</p>
+                      <p id="rd-s-preview-status" style="font-family:'JetBrains Mono',monospace; font-size:22px; color:#E8232B; margin:0; letter-spacing:0.1em;">● LIVE</p>
+                    </div>
+                    <div style="display:flex;">
+                      <div style="flex:1; padding:22px 26px; border-right:1px solid rgba(255,255,255,0.15);">
+                        <p id="rd-s-preview-a-abbr" style="font-family:'Anton',sans-serif; font-size:38px; color:#ffffff; margin:0;">GAM</p>
+                        <p id="rd-s-preview-a-score" style="font-family:'JetBrains Mono',monospace; font-size:52px; color:#F5A623; margin:4px 0 0 0; font-weight:700;">112.4</p>
+                      </div>
+                      <div style="flex:1; padding:22px 26px;">
+                        <p id="rd-s-preview-b-abbr" style="font-family:'Anton',sans-serif; font-size:38px; color:#ffffff; margin:0; text-align:right;">ICE</p>
+                        <p id="rd-s-preview-b-score" style="font-family:'JetBrains Mono',monospace; font-size:52px; color:#ffffff; margin:4px 0 0 0; font-weight:700; text-align:right;">98.7</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          </div>
+        </div>
+        <p class="text-[11px] font-mono text-[var(--rd-muted)]">Checkerboard = transparent area · not included in export</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ SUB-TAB: SCRIPT PROMPTER ============ -->
+  <section id="rd-tab-script" class="rd-panel hidden">
+    <div class="grid grid-cols-1 lg:grid-cols-[380px_1fr] gap-6">
+
+      <div class="panel rounded-xl p-5 h-fit">
+        <p class="font-display text-sm text-[var(--rd-amber)] mb-4 tracking-wide">WEEKLY DESK NOTES</p>
+
+        <div class="panel-2 rounded-lg p-3 mb-4 space-y-2" data-league-block>
+          <p class="field-label">Pull from league data</p>
+          <button id="rd-sc-autofill" class="btn-ghost w-full py-2 rounded-md text-[11px] uppercase tracking-wide">Autofill week, blunder &amp; top scorer</button>
+          <p id="rd-sc-autofillNote" class="text-[11px] text-[var(--rd-muted)] font-mono leading-relaxed">Uses the fetched week's low and high scores, plus the all-time record book.</p>
+        </div>
+
+        <div class="space-y-3.5">
+          <div><label class="field-label">Week number</label><input type="text" id="rd-sc-week" value="7" maxlength="6"></div>
+          <div><label class="field-label">Biggest blunder</label><textarea id="rd-sc-blunder" rows="2" maxlength="140">Dave benched his 30-point RB for a bye-week ghost</textarea></div>
+          <div><label class="field-label">Top scorer (name + pts)</label><input type="text" id="rd-sc-scorer" value="Priya's WR corps — 178.3 pts" maxlength="100"></div>
+          <div><label class="field-label">Worst trade offer</label><textarea id="rd-sc-trade" rows="2" maxlength="140">Marcus offered a bye-week kicker for a top-5 WR</textarea></div>
+          <div><label class="field-label">Presser host name</label><input type="text" id="rd-sc-host" value="Coach Dave" maxlength="40"></div>
+        </div>
+        <button id="rd-generateScriptBtn" class="btn-primary w-full mt-6 py-3 rounded-lg text-sm uppercase tracking-wide flex items-center justify-center gap-2">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z"/></svg>
+          Generate Script
+        </button>
+        <button id="rd-regenScriptBtn" class="btn-ghost w-full mt-2 py-2.5 rounded-lg text-xs uppercase tracking-wide">Reroll phrasing</button>
+      </div>
+
+      <div class="space-y-5">
+        <div class="panel rounded-xl p-5">
+          <div class="flex items-center justify-between mb-3">
+            <p class="font-display text-sm text-[var(--rd-amber)] tracking-wide">30-SEC TELEPROMPTER SCRIPT</p>
+            <button class="rd-copy-btn btn-ghost text-[11px] px-3 py-1.5 rounded-md uppercase" data-target="rd-scriptOutput">Copy</button>
+          </div>
+          <div id="rd-scriptOutput" class="font-mono text-[15px] leading-relaxed whitespace-pre-wrap panel-2 rounded-lg p-4 min-h-[160px] text-[var(--rd-text)]">Fill in the desk notes and hit "Generate Script" to build your presser intro.</div>
+        </div>
+
+        <div class="panel rounded-xl p-5">
+          <div class="flex items-center justify-between mb-3">
+            <p class="font-display text-sm text-[var(--rd-amber)] tracking-wide">3 REPORTER QUESTIONS</p>
+            <button class="rd-copy-btn btn-ghost text-[11px] px-3 py-1.5 rounded-md uppercase" data-target="rd-questionsOutput">Copy</button>
+          </div>
+          <div id="rd-questionsOutput" class="font-mono text-[15px] leading-relaxed whitespace-pre-wrap panel-2 rounded-lg p-4 min-h-[120px] text-[var(--rd-text)]">Questions will appear here after you generate the script.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ SUB-TAB: BROADCAST VIDEO EXPORTER ============ -->
+  <section id="rd-tab-broadcast" class="rd-panel hidden">
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+      <div>
+        <p class="font-display text-sm text-[var(--rd-amber)] tracking-wide">ANIMATED BROADCAST EXPORTER</p>
+        <p class="text-[11px] text-[var(--rd-muted)] font-mono mt-1">Lower third slides up · ticker runs the whole league across the bottom</p>
+      </div>
+      <p class="text-[11px] font-mono text-[var(--rd-muted)]">EXPORT · 1080×1920 · 60 FPS · ALPHA WEBM / CHROMA MP4</p>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-[380px_1fr] gap-6">
+
+      <!-- ---- CONTROL COLUMN ---- -->
+      <div class="panel rounded-xl p-5 h-fit">
+
+        <!-- Chyron content -->
+        <p class="section-label text-[10px] uppercase tracking-[.15em] mb-3">01 · Chyron</p>
+        <div class="panel-2 rounded-lg p-3 mb-4 space-y-2" data-league-block>
+          <p class="field-label">Pull from league data</p>
+          <select id="rd-v-source"><option value="">No league data loaded…</option></select>
+          <button id="rd-v-apply" class="btn-ghost w-full py-2 rounded-md text-[11px] uppercase tracking-wide">Fill manager, team &amp; record</button>
+          <button id="rd-v-fromPress" class="btn-ghost w-full py-2 rounded-md text-[11px] uppercase tracking-wide">Copy the Press Conference Tag</button>
+        </div>
+
+        <div class="space-y-3.5">
+          <div><label class="field-label">Manager name</label><input type="text" id="rd-v-name" value="DAVE MARTINEZ" maxlength="24"></div>
+          <div><label class="field-label">Team name</label><input type="text" id="rd-v-team" value="THE GRIDIRON GAMBLERS" maxlength="30"></div>
+          <div class="grid grid-cols-2 gap-3">
+            <div><label class="field-label">Record</label><input type="text" id="rd-v-record" value="4-3-0" maxlength="10"></div>
+            <div class="flex items-end gap-3">
+              <input type="color" id="rd-v-color" value="#F5A623">
+              <div class="pb-1"><label class="field-label block">Accent</label></div>
+            </div>
+          </div>
+          <div><label class="field-label">Chyron subline</label><input type="text" id="rd-v-subline" value="WEEK 7 · POSTGAME PRESSER" maxlength="60"></div>
+        </div>
+
+        <!-- Ticker stream -->
+        <p class="section-label text-[10px] uppercase tracking-[.15em] mt-6 mb-3">02 · Ticker stream</p>
+        <div class="panel-2 rounded-lg p-3 space-y-2.5">
+          <label class="stream-toggle"><input type="checkbox" class="rd-v-stream" data-stream="scores" checked> Weekly matchup scores</label>
+          <label class="stream-toggle"><input type="checkbox" class="rd-v-stream" data-stream="news" checked> League news &amp; blunder blurbs</label>
+          <label class="stream-toggle"><input type="checkbox" class="rd-v-stream" data-stream="records" checked> All-time records &amp; streaks</label>
+          <div class="pt-1">
+            <label class="field-label">Custom ticker line (optional)</label>
+            <input type="text" id="rd-v-custom" placeholder="e.g. TRADE DEADLINE FRIDAY AT NOON" maxlength="120">
+          </div>
+          <div class="pt-1">
+            <label class="field-label">Scroll speed · <span id="rd-v-speedLabel" class="font-mono">160</span> px/s</label>
+            <input type="range" id="rd-v-speed" min="60" max="320" step="10" value="160">
+          </div>
+          <p id="rd-v-streamCount" class="text-[11px] font-mono text-[var(--rd-muted)]">3 items queued in the ticker.</p>
+        </div>
+
+        <!-- Export -->
+        <p class="section-label text-[10px] uppercase tracking-[.15em] mt-6 mb-3">03 · Export</p>
+        <label class="field-label">Clip length</label>
+        <div class="grid grid-cols-3 gap-2 mt-1.5 mb-4">
+          <button class="rd-v-dur seg-btn" data-dur="5" data-active="false">5s</button>
+          <button class="rd-v-dur seg-btn" data-dur="10" data-active="true">10s</button>
+          <button class="rd-v-dur seg-btn" data-dur="15" data-active="false">15s</button>
+        </div>
+
+        <label class="field-label">Background mode</label>
+        <div class="grid grid-cols-1 gap-2 mt-1.5">
+          <button class="rd-v-bg mode-btn" data-bg="alpha" data-active="true">
+            <span class="block text-[13px] font-semibold">Transparent WebM</span>
+            <span class="block text-[11px] font-mono text-[var(--rd-muted)]">Alpha channel · drop straight onto a video track</span>
+          </button>
+          <button class="rd-v-bg mode-btn" data-bg="chroma" data-active="false">
+            <span class="block text-[13px] font-semibold">Chroma Green Screen</span>
+            <span class="block text-[11px] font-mono text-[var(--rd-muted)]">#00FF00 fill · key it in CapCut / Premiere</span>
+          </button>
+        </div>
+
+        <button id="rd-v-recordBtn" class="btn-primary w-full mt-5 py-3 rounded-lg text-sm uppercase tracking-wide flex items-center justify-center gap-2">
+          <span class="rec-dot"></span>
+          Record &amp; Download Video
+        </button>
+
+        <div class="mt-3">
+          <div class="progress-track"><div id="rd-v-progressFill" class="progress-fill"></div></div>
+          <p id="rd-v-progressText" class="text-[11px] font-mono text-[var(--rd-muted)] mt-2 text-center">Idle — nothing recorded yet.</p>
+        </div>
+        <p id="rd-v-formatNote" class="text-[11px] text-[var(--rd-muted)] mt-2 text-center font-mono leading-relaxed"></p>
+      </div>
+
+      <!-- ---- PREVIEW COLUMN ---- -->
+      <div class="panel rounded-xl p-6 flex flex-col items-center justify-center gap-4">
+        <div class="relative rounded-2xl p-3 panel-2" style="width:322px;">
+          <div class="flex items-center justify-between mb-2 px-1">
+            <span class="font-mono text-[10px] text-[var(--rd-muted)]">MON · 9:16 · 60FPS</span>
+            <span class="font-mono text-[10px] text-[var(--rd-green)] flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-[var(--rd-green)]"></span><span id="rd-v-previewState">LOOPING</span></span>
+          </div>
+          <div class="relative overflow-hidden rounded-lg checker-cells" style="width:298px; height:530px;">
+            <canvas id="rd-v-previewCanvas" width="1080" height="1920" style="width:298px; height:530px; display:block;"></canvas>
+          </div>
+          <div class="flex items-center justify-between mt-2 px-1">
+            <button id="rd-v-replay" class="btn-ghost text-[10px] px-2.5 py-1 rounded uppercase tracking-wide">Replay entrance</button>
+            <span id="rd-v-clock" class="font-mono text-[10px] text-[var(--rd-muted)]">0.00s / 10.00s</span>
+          </div>
+        </div>
+        <p class="text-[11px] font-mono text-[var(--rd-muted)] text-center max-w-[420px] leading-relaxed">
+          Checkerboard = transparent area. The preview loops the same frames the recorder writes:
+          banner and manager card ease up over the first 0.8s, the ticker never stops.
+        </p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="max-w-[1400px] mx-auto px-5 pb-8 pt-2 text-center">
+  <p class="text-[11px] font-mono text-[var(--rd-muted)]">RUNDOWN DESK · Built for league desks that take the bit too far</p>
+</footer>
+</section>
+
+<div id="toast" class="toast fixed bottom-6 right-6 bg-[#151b26] border border-white/10 text-white px-4 py-3 rounded-lg text-sm opacity-0 translate-y-2 pointer-events-none z-50"></div>
+
+<!-- ============================================================
+     SHARED DATA ENGINE
+     One store for everything pulled out of ESPN — the live weekly
+     fetch AND the multi-season history upload. The Graphic
+     Generator writes into it; both tabs read from it. Anything
+     that changes calls publish(), and every subscriber (the video
+     desk pickers, the header chips) re-renders itself.
+============================================================ -->
+<script>
+window.LeagueData = (function(){
+  const subs = [];
+
+  const store = {
+    espnData: null,        // one season's league object (mTeam/mMatchup views)
+    leagueHistory: null,   // { managers, h2h, perManagerGameLog, records }
+    meta: { leagueId:'', season:'', week:'' },
+
+    /* ---- pub/sub ---- */
+    subscribe(fn){ subs.push(fn); try{ fn(store); }catch(e){ console.error(e); } return fn; },
+    publish(){ subs.forEach(fn=>{ try{ fn(store); }catch(e){ console.error(e); } }); },
+    setEspnData(d){ store.espnData = d; store.publish(); },
+    setLeagueHistory(h){ store.leagueHistory = h; store.publish(); },
+    setMeta(key, value){ store.meta[key] = value; store.publish(); },
+
+    hasLive(){ return !!(store.espnData && store.espnData.teams && store.espnData.teams.length); },
+    hasHistory(){ return !!(store.leagueHistory && Object.keys(store.leagueHistory.managers||{}).length); },
+
+    esc(str){
+      const div = document.createElement('div');
+      div.textContent = str ?? '';
+      return div.innerHTML;
+    },
+
+    /* ---- live season helpers ---- */
+    getTeams(){
+      const d = store.espnData;
+      if(!d || !d.teams) return [];
+      const memberNames = {};
+      (d.members || []).forEach(m=>{
+        const full = [m.firstName, m.lastName].filter(Boolean).join(' ').trim();
+        memberNames[m.id] = full || m.displayName || m.id;
+      });
+      return d.teams.map(t=>{
+        const name = ((t.location||'') + ' ' + (t.nickname||'')).trim() || t.name || ('Team ' + t.id);
+        const ownerId = t.primaryOwner || (t.owners && t.owners[0]) || '';
+        const rec = t.record && t.record.overall;
+        return {
+          id: t.id,
+          name,
+          abbrev: t.abbrev || name.replace(/[^A-Za-z]/g,'').slice(0,3).toUpperCase() || 'TM',
+          logo: t.logo || '',
+          record: rec ? `${rec.wins}-${rec.losses}${rec.ties ? '-' + rec.ties : ''}` : '',
+          owner: memberNames[ownerId] || '',
+        };
+      });
+    },
+
+    /* Every game for a given week, each side joined back to its full team
+       record. Falls back to the whole schedule when nothing matches the
+       requested matchupPeriodId — some leagues report scoringPeriodId and
+       matchupPeriodId a step apart. */
+    getWeekMatchups(week){
+      const sched = (store.espnData && store.espnData.schedule) || [];
+      const teams = store.getTeams();
+      const teamById = (id)=> teams.find(t=> t.id === id) || null;
+
+      const inWeek = sched.filter(g=> !week || String(g.matchupPeriodId) === String(week));
+      const source = inWeek.length ? inWeek : sched;
+
+      return source.map(game=>{
+        const home = game.home || {};
+        const away = game.away || {};
+        const homeProjected = typeof home.totalPointsLive === 'number' ? home.totalPointsLive.toFixed(1)
+                             : (typeof home.totalProjectedPoints === 'number' ? home.totalProjectedPoints.toFixed(1) : '');
+        const awayProjected = typeof away.totalPointsLive === 'number' ? away.totalPointsLive.toFixed(1)
+                             : (typeof away.totalProjectedPoints === 'number' ? away.totalProjectedPoints.toFixed(1) : '');
+        return {
+          matchupPeriodId: game.matchupPeriodId,
+          homeScore: Number(home.totalPoints || 0).toFixed(1),
+          awayScore: Number(away.totalPoints || 0).toFixed(1),
+          homeProjected, awayProjected,
+          winner: game.winner || '',
+          homeTeam: teamById(home.teamId),
+          awayTeam: teamById(away.teamId),
+        };
+      }).filter(g=> g.homeTeam && g.awayTeam); // drop byes / malformed entries
+    },
+
+    /* Lowest and highest single-team score across every game in the week —
+       the Hot Seat card, the blunder chyron and the teleprompter all read it. */
+    getWeekExtremes(week){
+      const games = store.getWeekMatchups(week);
+      let low = null, high = null;
+      games.forEach(g=>{
+        [{ team:g.homeTeam, score:parseFloat(g.homeScore) }, { team:g.awayTeam, score:parseFloat(g.awayScore) }].forEach(entry=>{
+          if(!entry.team || isNaN(entry.score)) return;
+          if(!low  || entry.score < low.score)  low  = entry;
+          if(!high || entry.score > high.score) high = entry;
+        });
+      });
+      return { low, high };
+    },
+
+    /* ---- multi-season history helpers ---- */
+    getManagers(){
+      if(!store.leagueHistory) return [];
+      return Object.values(store.leagueHistory.managers).sort((a,b)=> a.name.localeCompare(b.name));
+    },
+
+    /* A manager's most recent known team name/logo — "how do we label this
+       person today" rather than in one specific year. */
+    managerLatestInfo(ownerId){
+      const m = store.leagueHistory && store.leagueHistory.managers[ownerId];
+      if(!m) return { name: ownerId, teamName:'', logo:'' };
+      const years = Object.keys(m.teamNamesByYear).map(Number).sort((a,b)=> b - a);
+      const latestYear = years[0];
+      return {
+        name: m.name,
+        teamName: latestYear!==undefined ? m.teamNamesByYear[latestYear] : '',
+        logo: latestYear!==undefined ? (m.logoByYear[latestYear]||'') : '',
+      };
+    },
+
+    seasonCount(){
+      if(!store.leagueHistory) return 0;
+      const years = new Set();
+      Object.values(store.leagueHistory.managers).forEach(m=>{
+        Object.keys(m.teamNamesByYear).forEach(y=> years.add(y));
+      });
+      return years.size;
+    },
+
+    matchupCount(){
+      if(!store.leagueHistory) return 0;
+      return Object.values(store.leagueHistory.h2h).reduce((sum, rec)=> sum + rec.meetings.length, 0);
+    },
+  };
+
+  return store;
+})();
+
+/* ============================================================
+   MASTER TABS + CLOCK — the only top-level UI wiring. Each tab's
+   own logic lives in its own IIFE below.
+============================================================ */
+(function(){
+  const tabs = document.querySelectorAll('.master-tab');
+  function setMasterTab(name){
+    tabs.forEach(b=> b.dataset.active = String(b.dataset.master === name));
+    document.getElementById('tab-graphics').classList.toggle('hidden', name !== 'graphics');
+    document.getElementById('tab-video').classList.toggle('hidden', name !== 'video');
+    window.scrollTo({ top:0, behavior:'smooth' });
+  }
+  tabs.forEach(b=> b.addEventListener('click', ()=> setMasterTab(b.dataset.master)));
+  window.setMasterTab = setMasterTab;
+
+  const clock = document.getElementById('liveClock');
+  function tickClock(){ clock.textContent = new Date().toLocaleTimeString('en-US',{hour12:false}); }
+  tickClock(); setInterval(tickClock, 1000);
+
+  // Header history chip mirrors the shared store for both tabs.
+  const histChip = document.getElementById('histChip');
+  window.LeagueData.subscribe((s)=>{
+    if(window.LeagueData.hasHistory()){
+      const seasons = window.LeagueData.seasonCount();
+      histChip.textContent = `◆ HISTORY · ${seasons} SEASON${seasons===1?'':'S'}`;
+      histChip.className = 'data-chip px-2.5 py-1 rounded-full border border-[var(--bronze)]/50 text-[var(--bronze)]';
+    } else {
+      histChip.textContent = '◇ NO HISTORY';
+      histChip.className = 'data-chip px-2.5 py-1 rounded-full border border-white/10 text-gray-500';
+    }
+  });
+})();
+</script>
+
+<!-- ============ TAB 01 LOGIC · GRIDIRON GRAPHICS ============ -->
+<script>
+window.addEventListener('load', function(){
+
+/* ============================================================
+   STATE
+============================================================ */
+const state = {
+  template: 'A',
+  fields: {
+    a_name:'HOME TEAM', a_record:'7-3', a_owner:'Manager Name', a_proj:'112.4', a_actual:'--', a_img:null,
+    b_name:'AWAY TEAM', b_record:'5-5', b_owner:'Manager Name', b_proj:'108.9', b_actual:'--', b_img:null,
+    matchup_week:'WEEK 7',
+    rank_title:'POWER RANKINGS', rank_week:'WEEK 7',
+    news_tag:'TRADE ALERT', news_headline:'TRADE SHAKES UP THE LEAGUE', news_sub:'Details of the deal go here.', news_manager:'MANAGER NAME', news_img:null,
+    hs_name:'MANAGER NAME', hs_score:'58.2', hs_week:'WEEK 7', hs_roast:'Benched their best player. Guilty as charged.', hs_img:null,
+    e_a_name:'MANAGER A', e_a_img:null, e_b_name:'MANAGER B', e_b_img:null,
+    e_series:'8-4', e_diff:'+142.6', e_last:'2024 · WK9 · WON 118.4–101.2', e_streak:'ON A 3-GAME STREAK',
+    f_kicker:'ALL-TIME RECORD', f_headline:'184.6 PTS', f_subtext:'Highest single-game score in league history', f_owner:'MANAGER NAME', f_meta:'2022 · WEEK 5', f_img:null,
+  },
+  ranks: [
+    {rank:1, name:'Dynasty Warriors', record:'8-2', diff:'+142.5'},
+    {rank:2, name:'Gridiron Gurus', record:'7-3', diff:'+98.1'},
+    {rank:3, name:'The Comeback Kids', record:'6-4', diff:'+40.2'},
+  ]
+};
+
+/* espnData and leagueHistory are NOT owned by this tab — they live in the
+   shared engine so the video desk sees the same league the moment it loads.
+   The accessors keep every `state.espnData` / `state.leagueHistory` read and
+   write below working unchanged, while routing through LeagueData. */
+Object.defineProperties(state, {
+  espnData: {
+    get(){ return LeagueData.espnData; },
+    set(v){ LeagueData.setEspnData(v); },
+  },
+  leagueHistory: {
+    get(){ return LeagueData.leagueHistory; },
+    set(v){ LeagueData.setLeagueHistory(v); },
+  },
+});
+
+/* ============================================================
+   DOM REFERENCES — every element grabbed up front, before any
+   function runs, so nothing can hit a TDZ / null reference.
+============================================================ */
+const ptabs           = document.querySelectorAll('.ptab');
+const panels          = document.querySelectorAll('[data-panel]');
+const tmplBtns        = document.querySelectorAll('[data-template]');
+const rankRowsEl      = document.getElementById('rankRows');
+const addRankRowBtn   = document.getElementById('addRankRow');
+const connStatus      = document.getElementById('connStatus');
+const leagueIdInput   = document.getElementById('leagueId');
+const seasonYearInput = document.getElementById('seasonYear');
+const weekNumInput    = document.getElementById('weekNum');
+const swidInput       = document.getElementById('swid');
+const espnS2Input     = document.getElementById('espnS2');
+const fetchBtn        = document.getElementById('fetchBtn');
+const fetchBtnSpinner = document.getElementById('fetchBtnSpinner');
+const fetchBtnLabel   = document.getElementById('fetchBtnLabel');
+const fetchStatus     = document.getElementById('fetchStatus');
+const showUrlBtn      = document.getElementById('showUrlBtn');
+const apiUrlDisplay   = document.getElementById('apiUrlDisplay');
+const jsonPaste       = document.getElementById('jsonPaste');
+const parseJsonBtn    = document.getElementById('parseJsonBtn');
+const manualToggle    = document.getElementById('manualToggle');
+const loadHistoryBtn        = document.getElementById('loadHistoryBtn');
+const historyUrlLink        = document.getElementById('historyUrlLink');
+const historyUrlDisplay     = document.getElementById('historyUrlDisplay');
+const historyJsonPaste      = document.getElementById('historyJsonPaste');
+const parseHistoryJsonBtn   = document.getElementById('parseHistoryJsonBtn');
+const historyDropzone       = document.getElementById('historyDropzone');
+const historyFileInput      = document.getElementById('historyFileInput');
+const historySuccessBanner  = document.getElementById('historySuccessBanner');
+const loadHistorySpinner    = document.getElementById('loadHistorySpinner');
+const loadHistoryLabel      = document.getElementById('loadHistoryLabel');
+const historyStatus         = document.getElementById('historyStatus');
+const espnPicker      = document.getElementById('espnDataPicker');
+const espnPickerBody  = document.getElementById('espnPickerBody');
+const exportRoot      = document.getElementById('export-root');
+const stageWrap       = document.getElementById('stageWrap');
+const zoomRange       = document.getElementById('zoomRange');
+const downloadBtn     = document.getElementById('downloadBtn');
+const exportStatus    = document.getElementById('exportStatus');
+const resetBtn        = document.getElementById('resetBtn');
+const toastEl         = document.getElementById('toast');
+
+let toastTimer;
+
+/* ============================================================
+   TAB SWITCHING
+============================================================ */
+function setPanelTab(name){
+  ptabs.forEach(b=>{
+    const active = b.dataset.panelTab===name;
+    b.classList.toggle('bg-[var(--green)]', active);
+    b.classList.toggle('text-[#04150a]', active);
+    b.classList.toggle('text-gray-400', !active);
+  });
+  panels.forEach(p=> p.classList.toggle('hidden', p.dataset.panel!==name));
+}
+
+/* ============================================================
+   TEMPLATE SWITCHING
+============================================================ */
+function setTemplate(t){
+  state.template = t;
+  tmplBtns.forEach(b=> b.classList.toggle('active', b.dataset.template===t));
+  document.querySelectorAll('.tmpl-fields').forEach(f=> f.classList.toggle('hidden', f.id !== 'fields-'+t));
+  document.querySelectorAll('.tpl').forEach(el=> el.classList.toggle('hidden', el.id !== 'tpl-'+t));
+  renderEspnPicker();
+}
+
+/* ============================================================
+   RANK ROWS (Template B)
+============================================================ */
+function renderRankRows(){
+  rankRowsEl.innerHTML = '';
+  state.ranks.forEach((r, i)=>{
+    const row = document.createElement('div');
+    row.className = 'flex items-center gap-2 bg-[#0b0e14] border border-white/10 rounded p-2';
+    row.innerHTML = `
+      <input type="number" value="${r.rank}" class="input-field w-12 rounded px-1 py-1 text-xs font-mono text-center" data-rr="rank">
+      <input type="text" value="${r.name}" placeholder="Team name" class="input-field flex-1 rounded px-2 py-1 text-xs" data-rr="name">
+      <input type="text" value="${r.record}" placeholder="W-L" class="input-field w-16 rounded px-2 py-1 text-xs font-mono" data-rr="record">
+      <input type="text" value="${r.diff}" placeholder="+diff" class="input-field w-20 rounded px-2 py-1 text-xs font-mono" data-rr="diff">
+      <button class="text-gray-500 hover:text-[var(--pink)] text-xs px-1" data-rr="del">✕</button>
+    `;
+    row.querySelectorAll('[data-rr]').forEach(el=>{
+      const attr = el.dataset.rr;
+      if(attr==='del'){
+        el.addEventListener('click', ()=>{ state.ranks.splice(i,1); renderRankRows(); render(); });
+      } else {
+        el.addEventListener('input', ()=>{
+          r[attr] = attr==='rank' ? parseInt(el.value||0) : el.value;
+          render();
+        });
+      }
+    });
+    rankRowsEl.appendChild(row);
+  });
+}
+
+/* ============================================================
+   RENDER
+============================================================ */
+function setImgOrPlaceholder(imgId, phId, dataUrl){
+  const img = document.getElementById(imgId);
+  const ph = document.getElementById(phId);
+  if(dataUrl){
+    img.src = dataUrl; img.classList.remove('hidden');
+    if(ph) ph.classList.add('hidden');
+  } else {
+    img.classList.add('hidden');
+    if(ph) ph.classList.remove('hidden');
+  }
+}
+
+function escapeHtml(str){
+  return LeagueData.esc(str);
+}
+
+function render(){
+  const f = state.fields;
+
+  // Template A
+  document.getElementById('a-name').textContent = f.a_name || 'HOME TEAM';
+  document.getElementById('a-owner').textContent = f.a_owner || '';
+  document.getElementById('a-record').textContent = f.a_record || '';
+  document.getElementById('a-proj').textContent = f.a_proj || '--';
+  document.getElementById('a-actual').textContent = f.a_actual || '--';
+  document.getElementById('b-name').textContent = f.b_name || 'AWAY TEAM';
+  document.getElementById('b-owner').textContent = f.b_owner || '';
+  document.getElementById('b-record').textContent = f.b_record || '';
+  document.getElementById('b-proj').textContent = f.b_proj || '--';
+  document.getElementById('b-actual').textContent = f.b_actual || '--';
+  document.getElementById('a-week').textContent = f.matchup_week || 'WEEK';
+  setImgOrPlaceholder('a-img','a-img-ph', f.a_img);
+  setImgOrPlaceholder('b-img','b-img-ph', f.b_img);
+
+  // Template B
+  document.getElementById('rank-title').textContent = f.rank_title || 'POWER RANKINGS';
+  document.getElementById('b-week-label').textContent = f.rank_week || 'WEEK';
+  const list = document.getElementById('rank-list');
+  list.innerHTML = '';
+  const sorted = [...state.ranks].sort((a,b)=>a.rank-b.rank);
+  sorted.forEach((r)=>{
+    const tierColor = r.rank===1 ? 'var(--gold)' : r.rank<=3 ? 'var(--cyan)' : '#5b667a';
+    const row = document.createElement('div');
+    row.className = 'flex items-center gap-5 rounded-xl px-6 py-4';
+    row.style.background = 'rgba(16,20,28,0.85)';
+    row.style.border = '1px solid rgba(255,255,255,0.08)';
+    row.innerHTML = `
+      <div class="font-display text-[42px] w-[70px] text-center" style="color:${tierColor}">${r.rank}</div>
+      <div class="flex-1">
+        <div class="font-display text-white text-[30px] leading-tight">${escapeHtml(r.name)}</div>
+        <div class="font-mono text-gray-500 text-[16px] mt-0.5">${escapeHtml(r.record)}</div>
+      </div>
+      <div class="font-mono text-[24px]" style="color:${tierColor}">${escapeHtml(r.diff)}</div>
+    `;
+    list.appendChild(row);
+  });
+
+  // Template C
+  document.getElementById('c-tag').textContent = f.news_tag || 'BREAKING NEWS';
+  document.getElementById('c-headline').textContent = f.news_headline || '';
+  document.getElementById('c-sub').textContent = f.news_sub || '';
+  document.getElementById('c-manager').textContent = 'REPORTED BY ' + (f.news_manager || '').toUpperCase();
+  setImgOrPlaceholder('c-img','c-img-ph', f.news_img);
+
+  // Template D
+  document.getElementById('d-name').textContent = f.hs_name || 'MANAGER NAME';
+  document.getElementById('d-score').textContent = f.hs_score || '--';
+  document.getElementById('d-week').textContent = f.hs_week || 'WEEK';
+  document.getElementById('d-roast').textContent = f.hs_roast || '';
+  setImgOrPlaceholder('d-img','d-img-ph', f.hs_img);
+
+  // Template E — Rivalry Vault
+  document.getElementById('e-a-name').textContent = f.e_a_name || 'MANAGER A';
+  document.getElementById('e-b-name').textContent = f.e_b_name || 'MANAGER B';
+  document.getElementById('e-series').textContent = f.e_series || '--';
+  document.getElementById('e-diff').textContent = f.e_diff || '--';
+  document.getElementById('e-last').textContent = f.e_last || '';
+  document.getElementById('e-streak').textContent = f.e_streak || '';
+  setImgOrPlaceholder('e-a-img','e-a-img-ph', f.e_a_img);
+  setImgOrPlaceholder('e-b-img','e-b-img-ph', f.e_b_img);
+
+  // Template F — League Record Book
+  document.getElementById('f-kicker').textContent = f.f_kicker || 'ALL-TIME RECORD';
+  document.getElementById('f-headline').textContent = f.f_headline || '';
+  document.getElementById('f-subtext').textContent = f.f_subtext || '';
+  document.getElementById('f-owner').textContent = f.f_owner || 'MANAGER NAME';
+  document.getElementById('f-meta').textContent = f.f_meta || '';
+  const fImg = document.getElementById('f-img');
+  if(f.f_img){ fImg.src = f.f_img; fImg.classList.remove('hidden'); } else { fImg.classList.add('hidden'); }
+}
+
+function syncInputsFromState(){
+  document.querySelectorAll('[data-f]').forEach(inp=>{
+    const key = inp.dataset.f;
+    if(state.fields[key]!==undefined) inp.value = state.fields[key];
+  });
+}
+
+/* ============================================================
+   ESPN CONNECTION STATUS
+============================================================ */
+function setConn(mode){
+  const map = {
+    none: {text:'● NO DATA SOURCE', cls:'text-gray-400'},
+    live: {text:'● LIVE ESPN DATA', cls:'text-[var(--green)]'},
+    manual: {text:'● MANUAL DATA', cls:'text-[var(--cyan)]'},
+    error: {text:'● FETCH FAILED', cls:'text-[var(--pink)]'}
+  };
+  const m = map[mode];
+  connStatus.textContent = m.text;
+  connStatus.className = 'tag-pill px-2.5 py-1 rounded-full border border-white/10 ' + m.cls;
+}
+
+/* ============================================================
+   ESPN FETCH — public leagues route through a CORS proxy since
+   ESPN's API does not send Access-Control-Allow-Origin for
+   browser-based cross-site reads.
+============================================================ */
+/* Builds an ESPN league URL for a specific league/year/week, routing past
+   seasons through leagueHistory and the current season through the live
+   seasons endpoint. Reusable both for the single-week fetch and the
+   multi-year history loader below. */
+function buildEspnUrlForYear(league, year, week){
+  if(!league || !year) return null;
+  const currentYear = new Date().getFullYear();
+  const isHistorical = parseInt(year, 10) < currentYear;
+
+  // mMatchupScore + mScoreboard are what actually carry live/final point totals per
+  // side of a game — mMatchup alone often returns the schedule shell with 0s.
+  const views = 'view=mTeam&view=mRoster&view=mMatchup&view=mMatchupScore&view=mScoreboard&view=mSettings';
+
+  let url;
+  if(isHistorical){
+    // Past seasons live under leagueHistory and take seasonId as a query param
+    // rather than being part of the path.
+    url = `https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/leagueHistory/${league}?seasonId=${encodeURIComponent(year)}&${views}`;
+  } else {
+    url = `https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/${year}/segments/0/leagues/${league}?${views}`;
+  }
+  if(week){
+    url += `&scoringPeriodId=${encodeURIComponent(week)}&matchupPeriodId=${encodeURIComponent(week)}`;
+  }
+  return url;
+}
+
+function buildEspnUrl(){
+  const league = leagueIdInput.value.trim();
+  const year = seasonYearInput.value.trim();
+  const week = weekNumInput.value.trim();
+  return buildEspnUrlForYear(league, year, week);
+}
+
+/* Proxies tried in order — allorigins first since it reliably forwards
+   plain GET requests for public (unauthenticated) ESPN league reads. */
+const CORS_PROXIES = [
+  (u)=> `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+  (u)=> `https://corsproxy.io/?url=${encodeURIComponent(u)}`,
+  (u)=> `https://thingproxy.freeboard.io/fetch/${u}`,
+  (u)=> u, // last resort: direct (works if ESPN ever allows it for this browser)
+];
+
+/* Fetches one ESPN league URL through the proxy chain and returns the
+   unwrapped league object. leagueHistory (past seasons) responds with an
+   array — [ { ...leagueData } ] — while the current-season endpoint
+   responds with the league object directly; both are normalized here. */
+async function fetchLeagueDataViaProxies(espnUrl){
+  let lastErr = null;
+  for(const wrapWithProxy of CORS_PROXIES){
+    const attemptUrl = wrapWithProxy(espnUrl);
+    try{
+      const res = await fetch(attemptUrl);
+      if(!res.ok){ lastErr = new Error('HTTP ' + res.status + ' from ' + attemptUrl); continue; }
+      const rawData = await res.json();
+      const leagueData = Array.isArray(rawData) ? rawData[0] : rawData;
+      if(leagueData && (leagueData.teams || leagueData.schedule || leagueData.status)) return leagueData;
+      lastErr = new Error('Unexpected payload shape from ' + attemptUrl);
+    }catch(err){
+      lastErr = err;
+      continue; // try the next proxy
+    }
+  }
+  throw lastErr || new Error('ALL_PROXIES_FAILED');
+}
+
+async function fetchEspnData(){
+  const espnUrl = buildEspnUrl();
+  if(!espnUrl) throw new Error('MISSING_INPUTS');
+  return fetchLeagueDataViaProxies(espnUrl);
+}
+
+function setFetchLoading(isLoading){
+  fetchBtn.disabled = isLoading;
+  fetchBtnSpinner.classList.toggle('hidden', !isLoading);
+  fetchBtnLabel.textContent = isLoading ? 'CONNECTING…' : 'FETCH LEAGUE DATA';
+}
+
+function setHistoryLoading(isLoading){
+  loadHistoryBtn.disabled = isLoading;
+  loadHistorySpinner.classList.toggle('hidden', !isLoading);
+}
+
+/* ============================================================
+   ALL-TIME LEAGUE HISTORY FETCH — ONE REQUEST
+   Called WITHOUT a seasonId, ESPN's leagueHistory endpoint
+   returns an array holding every completed season at once:
+     [ { seasonId:2019, ... }, { seasonId:2020, ... }, ... ]
+   That's a single proxied GET instead of one per year, which is
+   what was tripping the CORS proxy's rate limiter.
+============================================================ */
+function buildLeagueHistoryUrl(league){
+  if(!league) return null;
+  return 'https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/leagueHistory/' + league +
+         '?view=mTeam&view=mMatchup&view=mMatchupScore&view=mSettings';
+}
+
+/* Turns whatever the endpoint (or a paste) hands back into the
+   [{ year, leagueData }] shape the aggregator expects. Accepts the
+   multi-season array, a single season object, or an object with a
+   nested array, and drops seasons with no usable team data. */
+function normalizeHistoryPayload(raw){
+  let seasons;
+  if(Array.isArray(raw)) seasons = raw;
+  else if(raw && Array.isArray(raw.leagueHistory)) seasons = raw.leagueHistory;
+  else if(raw && Array.isArray(raw.seasons)) seasons = raw.seasons;
+  else if(raw && typeof raw === 'object') seasons = [raw];
+  else seasons = [];
+
+  const yearsData = [];
+  const skipped = [];
+  seasons.forEach(leagueData=>{
+    if(!leagueData || typeof leagueData !== 'object') return;
+    const year = parseInt(leagueData.seasonId || leagueData.season, 10) || null;
+    if(!year) return;
+    if(leagueData.teams && leagueData.teams.length) yearsData.push({ year, leagueData });
+    else skipped.push(year);
+  });
+  yearsData.sort((a,b)=> a.year - b.year);
+  return { yearsData, skipped };
+}
+
+/* Single proxied call for the whole archive. fetchLeagueDataViaProxies
+   unwraps arrays down to one object, so this goes straight at the proxy
+   chain and keeps the full array intact. */
+async function fetchAllTimeHistory(league){
+  const historyUrl = buildLeagueHistoryUrl(league);
+  if(!historyUrl) throw new Error('MISSING_INPUTS');
+  let lastErr = null;
+  for(const wrapWithProxy of CORS_PROXIES){
+    const attemptUrl = wrapWithProxy(historyUrl);
+    try{
+      const res = await fetch(attemptUrl);
+      if(!res.ok){ lastErr = new Error('HTTP ' + res.status + ' from ' + attemptUrl); continue; }
+      const raw = await res.json();
+      const { yearsData, skipped } = normalizeHistoryPayload(raw);
+      if(yearsData.length) return { yearsData, skipped };
+      lastErr = new Error('No seasons with team data in payload from ' + attemptUrl);
+    }catch(err){
+      lastErr = err;
+      continue; // next proxy
+    }
+  }
+  throw lastErr || new Error('ALL_PROXIES_FAILED');
+}
+
+/* Every counted game lives in exactly one h2h bucket, so summing the
+   meetings gives the true total matchups behind the stats. */
+function countMatchups(stats){
+  return Object.values(stats.h2h).reduce((sum, rec)=> sum + rec.meetings.length, 0);
+}
+
+function showHistorySuccessBanner(text){
+  historySuccessBanner.textContent = text;
+  historySuccessBanner.classList.remove('hidden');
+}
+
+function hideHistorySuccessBanner(){
+  historySuccessBanner.classList.add('hidden');
+}
+
+/* Shared by the fetch button, the paste box, and the .json upload: run the
+   aggregator over the parsed seasons, store it, and report what landed. */
+function applyLeagueHistory(yearsData, skipped, sourceLabel){
+  state.leagueHistory = computeLeagueHistoryStats(yearsData);
+  const managerCount = Object.keys(state.leagueHistory.managers).length;
+  const matchupCount = countMatchups(state.leagueHistory);
+  const years = yearsData.map(y=> y.year);
+  const yearRange = years.length > 1 ? `${years[0]}–${years[years.length-1]}` : String(years[0]);
+
+  let msg = `✓ ${sourceLabel}: ${yearsData.length} season${yearsData.length===1?'':'s'} (${years.join(', ')}) — ${managerCount} managers tracked.`;
+  if(skipped && skipped.length) msg += ` No game data for: ${skipped.join(', ')}.`;
+  historyStatus.textContent = msg;
+
+  showHistorySuccessBanner(
+    `✓ Successfully loaded ${yearsData.length} season${yearsData.length===1?'':'s'} (${yearRange}) and ${matchupCount.toLocaleString()} total matchups!`
+  );
+  showToast('League history loaded — Rivalry Vault and Record Book are ready.');
+
+  // Fill the two history-driven templates right away so the canvas reflects
+  // the new data without the user having to re-pick anything.
+  autofillHistoryTemplates();
+  if(state.template === 'E' || state.template === 'F') renderEspnPicker();
+  render();
+
+  return { seasons: yearsData.length, matchups: matchupCount, managers: managerCount };
+}
+
+/* Single entry point for any multi-year payload — the proxied fetch, the
+   paste box, and the uploaded .json all funnel through here. Throws with a
+   readable message so each caller can surface it its own way. */
+function processMultiYearHistory(rawData, sourceLabel){
+  const { yearsData, skipped } = normalizeHistoryPayload(rawData);
+  if(!yearsData.length) throw new Error('NO_SEASONS');
+  return applyLeagueHistory(withCurrentSeason(yearsData), skipped, sourceLabel || 'Loaded');
+}
+
+/* ============================================================
+   ALL-TIME STATS AGGREGATION ENGINE
+   Unifies managers across seasons by ownerId (ESPN's stable
+   member GUID via team.primaryOwner), so a manager is tracked
+   correctly even if their team name or logo changed year to
+   year. Builds all-time head-to-head records and league-wide
+   milestones (highest/lowest score, biggest blowout, streaks,
+   career points) from every regular-season and playoff game
+   across the fetched seasons.
+============================================================ */
+function computeLeagueHistoryStats(yearsData){
+  const managers = {};            // ownerId -> { id, name, teamNamesByYear, logoByYear }
+  const h2h = {};                 // "ownerIdLo__ownerIdHi" -> { a, b, winsA, winsB, ties, pointsA, pointsB, meetings:[] }
+  const perManagerGameLog = {};   // ownerId -> [{year, week, result:'W'|'L'|'T'}], regular season only
+  const careerPoints = {};        // ownerId -> cumulative points scored
+
+  let highestScore = null, lowestScore = null, biggestBlowout = null;
+
+  function ensureManager(ownerId, displayName, teamName, logo, year){
+    if(!managers[ownerId]){
+      managers[ownerId] = { id: ownerId, name: displayName || teamName || 'Unknown Manager', teamNamesByYear:{}, logoByYear:{} };
+    }
+    if(displayName) managers[ownerId].name = displayName;
+    if(teamName) managers[ownerId].teamNamesByYear[year] = teamName;
+    if(logo) managers[ownerId].logoByYear[year] = logo;
+  }
+
+  const sortedYears = [...yearsData].sort((a,b)=> a.year - b.year);
+
+  sortedYears.forEach(({year, leagueData})=>{
+    if(!leagueData || !leagueData.teams) return;
+
+    // Member GUID -> real display name, when the payload includes it (mTeam view usually does).
+    const memberNames = {};
+    (leagueData.members || []).forEach(m=>{
+      const full = [m.firstName, m.lastName].filter(Boolean).join(' ').trim();
+      memberNames[m.id] = full || m.displayName || m.id;
+    });
+
+    // teamId -> ownerId, scoped to this year (teamId alone isn't stable across seasons/trades).
+    const teamOwnerMap = {};
+    leagueData.teams.forEach(t=>{
+      const ownerId = t.primaryOwner || (t.owners && t.owners[0]) || `team-${t.id}-${year}`;
+      const teamName = ((t.location||'') + ' ' + (t.nickname||'')).trim() || t.name || `Team ${t.id}`;
+      const displayName = memberNames[ownerId] || teamName;
+      ensureManager(ownerId, displayName, teamName, t.logo, year);
+      teamOwnerMap[t.id] = ownerId;
+    });
+
+    const schedule = (leagueData.schedule || []).slice().sort((a,b)=> (a.matchupPeriodId||0) - (b.matchupPeriodId||0));
+
+    schedule.forEach(game=>{
+      const home = game.home, away = game.away;
+      if(!home || !away) return; // bye week
+      if(typeof home.totalPoints !== 'number' || typeof away.totalPoints !== 'number') return;
+      if(home.totalPoints === 0 && away.totalPoints === 0) return; // not yet played
+
+      const ownerA = teamOwnerMap[home.teamId];
+      const ownerB = teamOwnerMap[away.teamId];
+      if(!ownerA || !ownerB || ownerA === ownerB) return;
+
+      const scoreA = home.totalPoints, scoreB = away.totalPoints;
+      const week = game.matchupPeriodId;
+      const isPlayoff = !!(game.playoffTierType && game.playoffTierType !== 'NONE');
+      let winnerOwnerId = null;
+      if(scoreA > scoreB) winnerOwnerId = ownerA;
+      else if(scoreB > scoreA) winnerOwnerId = ownerB;
+
+      // Career points leaderboard
+      careerPoints[ownerA] = (careerPoints[ownerA] || 0) + scoreA;
+      careerPoints[ownerB] = (careerPoints[ownerB] || 0) + scoreB;
+
+      const teamNameA = managers[ownerA].teamNamesByYear[year] || managers[ownerA].name;
+      const teamNameB = managers[ownerB].teamNamesByYear[year] || managers[ownerB].name;
+
+      // Highest / lowest single-game score (Hall of Shame)
+      [
+        { ownerId:ownerA, teamName:teamNameA, score:scoreA },
+        { ownerId:ownerB, teamName:teamNameB, score:scoreB },
+      ].forEach(entry=>{
+        if(!highestScore || entry.score > highestScore.score) highestScore = { ...entry, year, week };
+        if(!lowestScore || entry.score < lowestScore.score) lowestScore = { ...entry, year, week };
+      });
+
+      // Biggest blowout / margin of victory
+      if(winnerOwnerId){
+        const margin = Math.abs(scoreA - scoreB);
+        const winnerIsA = winnerOwnerId === ownerA;
+        if(!biggestBlowout || margin > biggestBlowout.margin){
+          biggestBlowout = {
+            winnerOwnerId, loserOwnerId: winnerIsA ? ownerB : ownerA,
+            winnerTeamName: winnerIsA ? teamNameA : teamNameB,
+            loserTeamName: winnerIsA ? teamNameB : teamNameA,
+            winnerScore: winnerIsA ? scoreA : scoreB,
+            loserScore: winnerIsA ? scoreB : scoreA,
+            margin, year, week,
+          };
+        }
+      }
+
+      // All-time head-to-head, keyed so either selection order finds the same record
+      const key = [ownerA, ownerB].sort().join('__');
+      if(!h2h[key]){
+        const [a, b] = [ownerA, ownerB].sort();
+        h2h[key] = { a, b, winsA:0, winsB:0, ties:0, pointsA:0, pointsB:0, meetings:[] };
+      }
+      const rec = h2h[key];
+      const aIsRecA = ownerA === rec.a;
+      rec.pointsA += aIsRecA ? scoreA : scoreB;
+      rec.pointsB += aIsRecA ? scoreB : scoreA;
+      if(winnerOwnerId === rec.a) rec.winsA++;
+      else if(winnerOwnerId === rec.b) rec.winsB++;
+      else rec.ties++;
+      rec.meetings.push({
+        year, week, isPlayoff, winnerOwnerId,
+        scoreA: aIsRecA ? scoreA : scoreB,
+        scoreB: aIsRecA ? scoreB : scoreA,
+      });
+
+      // Per-manager game log for streaks — regular season only
+      if(!isPlayoff){
+        if(!perManagerGameLog[ownerA]) perManagerGameLog[ownerA] = [];
+        if(!perManagerGameLog[ownerB]) perManagerGameLog[ownerB] = [];
+        perManagerGameLog[ownerA].push({ year, week, result: winnerOwnerId===ownerA ? 'W' : (winnerOwnerId===ownerB ? 'L' : 'T') });
+        perManagerGameLog[ownerB].push({ year, week, result: winnerOwnerId===ownerB ? 'W' : (winnerOwnerId===ownerA ? 'L' : 'T') });
+      }
+    });
+  });
+
+  // Longest winning / losing streaks, across each manager's chronological regular-season log
+  let longestWinStreak = null, longestLossStreak = null;
+  Object.keys(perManagerGameLog).forEach(ownerId=>{
+    const log = perManagerGameLog[ownerId].slice().sort((g1,g2)=> g1.year - g2.year || g1.week - g2.week);
+    let curWin = 0, curLoss = 0, curWinStart = null, curLossStart = null;
+    log.forEach(g=>{
+      if(g.result === 'W'){
+        if(curWin === 0) curWinStart = g;
+        curWin++; curLoss = 0; curLossStart = null;
+        if(!longestWinStreak || curWin > longestWinStreak.length){
+          longestWinStreak = { ownerId, length: curWin, startYear: curWinStart.year, startWeek: curWinStart.week, endYear: g.year, endWeek: g.week };
+        }
+      } else if(g.result === 'L'){
+        if(curLoss === 0) curLossStart = g;
+        curLoss++; curWin = 0; curWinStart = null;
+        if(!longestLossStreak || curLoss > longestLossStreak.length){
+          longestLossStreak = { ownerId, length: curLoss, startYear: curLossStart.year, startWeek: curLossStart.week, endYear: g.year, endWeek: g.week };
+        }
+      } else {
+        curWin = 0; curLoss = 0; curWinStart = null; curLossStart = null;
+      }
+    });
+  });
+
+  const careerPointsLeaderboard = Object.keys(careerPoints)
+    .map(ownerId=> ({ ownerId, totalPoints: careerPoints[ownerId] }))
+    .sort((a,b)=> b.totalPoints - a.totalPoints);
+
+  return {
+    managers, h2h, perManagerGameLog,
+    records: { highestScore, lowestScore, biggestBlowout, longestWinStreak, longestLossStreak, careerPointsLeaderboard },
+  };
+}
+
+/* Manager's most recent known team name/logo — used when we just need
+   "how do we currently label this person" rather than a specific year. */
+function managerLatestInfo(ownerId){
+  return LeagueData.managerLatestInfo(ownerId);
+}
+
+/* All-time head-to-head record between two managers, from the selected
+   manager's perspective (winsFor/winsAgainst), plus the last meeting and
+   the current streak (consecutive results in either direction). */
+function getH2H(ownerIdA, ownerIdB){
+  if(!state.leagueHistory) return null;
+  const key = [ownerIdA, ownerIdB].sort().join('__');
+  const rec = state.leagueHistory.h2h[key];
+  if(!rec) return null;
+
+  const aIsRecA = ownerIdA === rec.a;
+  const winsFor = aIsRecA ? rec.winsA : rec.winsB;
+  const winsAgainst = aIsRecA ? rec.winsB : rec.winsA;
+  const pointsFor = aIsRecA ? rec.pointsA : rec.pointsB;
+  const pointsAgainst = aIsRecA ? rec.pointsB : rec.pointsA;
+
+  const meetings = rec.meetings.slice().sort((m1,m2)=> m1.year - m2.year || m1.week - m2.week);
+  const last = meetings[meetings.length - 1];
+
+  let streakOwnerId = null, streakCount = 0;
+  for(let i = meetings.length - 1; i >= 0; i--){
+    const w = meetings[i].winnerOwnerId;
+    if(!w) break; // a tie breaks the streak
+    if(streakOwnerId === null){ streakOwnerId = w; streakCount = 1; }
+    else if(w === streakOwnerId) streakCount++;
+    else break;
+  }
+
+  return {
+    winsFor, winsAgainst, ties: rec.ties,
+    pointsFor, pointsAgainst, diff: pointsFor - pointsAgainst,
+    lastMeeting: last ? {
+      year: last.year, week: last.week,
+      scoreFor: aIsRecA ? last.scoreA : last.scoreB,
+      scoreAgainst: aIsRecA ? last.scoreB : last.scoreA,
+      won: last.winnerOwnerId === ownerIdA,
+    } : null,
+    streakOwnerId, streakCount,
+  };
+}
+
+/* ============================================================
+   ESPN DATA PARSING
+============================================================ */
+function getTeams(){
+  return LeagueData.getTeams();
+}
+
+/* Every game for a given week, with scores read straight off data.schedule and
+   each side joined back to its full team record (name, logo, W-L). Falls back to
+   the entire schedule if nothing matches the requested matchupPeriodId — some
+   league configs report scoringPeriodId and matchupPeriodId a step apart. */
+function getWeekMatchups(week){
+  return LeagueData.getWeekMatchups(week);
+}
+
+/* Scans every game in the given week and returns the single lowest-scoring team
+   across both sides of all matchups — what the Hot Seat card needs. */
+function findLowestScorerForWeek(week){
+  return LeagueData.getWeekExtremes(week).low;
+}
+
+function renderEspnPicker(){
+  if(state.template === 'E' || state.template === 'F'){
+    if(!state.leagueHistory){ espnPicker.classList.add('hidden'); return; }
+    espnPicker.classList.remove('hidden');
+    if(state.template === 'E') renderRivalryPicker();
+    else renderRecordBookPicker();
+    return;
+  }
+
+  if(!state.espnData){ espnPicker.classList.add('hidden'); return; }
+  espnPicker.classList.remove('hidden');
+  const teams = getTeams();
+  if(!teams.length){ espnPickerBody.textContent = 'Data loaded, but no team list found in this view.'; return; }
+
+  if(state.template === 'A'){
+    const week = weekNumInput.value.trim();
+    const games = getWeekMatchups(week);
+    if(!games.length){
+      espnPickerBody.innerHTML = `<p class="text-xs text-gray-500">No matchups found in the fetched data${week ? ' for week ' + escapeHtml(week) : ''}.</p>`;
+      return;
+    }
+    espnPickerBody.innerHTML = `
+      <select id="pickMatchup" class="input-field w-full rounded px-2 py-1.5 text-xs">
+        <option value="">Select this week's matchup…</option>
+        ${games.map((g,i)=> `<option value="${i}">${escapeHtml(g.homeTeam.name)} (${g.homeScore}) vs ${escapeHtml(g.awayTeam.name)} (${g.awayScore})</option>`).join('')}
+      </select>
+      <button id="applyPickA" class="btn-ghost w-full rounded py-1.5 text-xs mt-2">APPLY LIVE MATCHUP</button>
+    `;
+    document.getElementById('applyPickA').addEventListener('click', ()=>{
+      const idx = document.getElementById('pickMatchup').value;
+      if(idx===''){ showToast('Pick a matchup first.'); return; }
+      const g = games[parseInt(idx, 10)];
+
+      state.fields.a_name = g.homeTeam.name.toUpperCase();
+      state.fields.a_record = g.homeTeam.record;
+      state.fields.a_actual = g.homeScore;
+      if(g.homeProjected) state.fields.a_proj = g.homeProjected;
+      if(g.homeTeam.logo) state.fields.a_img = g.homeTeam.logo;
+
+      state.fields.b_name = g.awayTeam.name.toUpperCase();
+      state.fields.b_record = g.awayTeam.record;
+      state.fields.b_actual = g.awayScore;
+      if(g.awayProjected) state.fields.b_proj = g.awayProjected;
+      if(g.awayTeam.logo) state.fields.b_img = g.awayTeam.logo;
+
+      state.fields.matchup_week = week ? `WEEK ${week}` : state.fields.matchup_week;
+
+      syncInputsFromState();
+      render();
+      showToast('Applied live ESPN matchup data.');
+    });
+  } else if(state.template === 'B'){
+    espnPickerBody.innerHTML = `<button id="applyPickB" class="btn-ghost w-full rounded py-1.5 text-xs">LOAD ALL TEAMS INTO RANKINGS</button>`;
+    document.getElementById('applyPickB').addEventListener('click', ()=>{
+      const withWins = teams.map(t=>{
+        const wins = parseInt((t.record||'0-0').split('-')[0], 10) || 0;
+        return { t, wins };
+      }).sort((a,b)=> b.wins - a.wins);
+      state.ranks = withWins.map((x,i)=>({rank:i+1, name:x.t.name.toUpperCase(), record:x.t.record, diff:'+0.0'}));
+      renderRankRows();
+      render();
+      showToast('Loaded teams into rankings, sorted by record — set point differentials manually.');
+    });
+  } else if(state.template === 'D'){
+    const week = weekNumInput.value.trim();
+    espnPickerBody.innerHTML = `
+      <button id="applyLowest" class="btn-ghost w-full rounded py-1.5 text-xs">AUTO-FIND LOWEST SCORER THIS WEEK</button>
+      <p class="text-[11px] text-gray-500 mt-2 mb-1">Or pick manually:</p>
+      <select id="pickTeamGeneric" class="input-field w-full rounded px-2 py-1.5 text-xs"><option value="">Select team…</option>${teams.map(t=>`<option value="${t.id}">${escapeHtml(t.name)}</option>`).join('')}</select>
+      <button id="applyPickGeneric" class="btn-ghost w-full rounded py-1.5 text-xs mt-2">APPLY NAME ONLY</button>
+    `;
+    document.getElementById('applyLowest').addEventListener('click', ()=>{
+      const lowest = findLowestScorerForWeek(week);
+      if(!lowest){ showToast('No matchups found for that week.'); return; }
+      state.fields.hs_name = lowest.team.name.toUpperCase();
+      state.fields.hs_score = lowest.score.toFixed(1);
+      state.fields.hs_week = week ? `WEEK ${week}` : state.fields.hs_week;
+      if(lowest.team.logo) state.fields.hs_img = lowest.team.logo;
+      syncInputsFromState();
+      render();
+      showToast(`Lowest scorer: ${lowest.team.name} — ${lowest.score.toFixed(1)} pts.`);
+    });
+    document.getElementById('applyPickGeneric').addEventListener('click', ()=>{
+      const id = document.getElementById('pickTeamGeneric').value;
+      const t = teams.find(x=>String(x.id)===id);
+      if(!t) return;
+      state.fields.hs_name = t.name.toUpperCase();
+      if(t.logo) state.fields.hs_img = t.logo;
+      syncInputsFromState();
+      render();
+      showToast('Applied ESPN team data.');
+    });
+  } else {
+    // Template C
+    espnPickerBody.innerHTML = `
+      <select id="pickTeamGeneric" class="input-field w-full rounded px-2 py-1.5 text-xs"><option value="">Select team…</option>${teams.map(t=>`<option value="${t.id}">${escapeHtml(t.name)}</option>`).join('')}</select>
+      <button id="applyPickGeneric" class="btn-ghost w-full rounded py-1.5 text-xs mt-2">APPLY NAME</button>
+    `;
+    document.getElementById('applyPickGeneric').addEventListener('click', ()=>{
+      const id = document.getElementById('pickTeamGeneric').value;
+      const t = teams.find(x=>String(x.id)===id);
+      if(!t) return;
+      state.fields.news_manager = t.name.toUpperCase();
+      if(t.logo) state.fields.news_img = t.logo;
+      syncInputsFromState();
+      render();
+      showToast('Applied ESPN team data.');
+    });
+  }
+}
+
+/* Template E picker — two manager dropdowns sourced from the multi-year
+   manager registry; applying looks up their all-time head-to-head record. */
+function renderRivalryPicker(){
+  const managers = Object.values(state.leagueHistory.managers).sort((a,b)=> a.name.localeCompare(b.name));
+  if(managers.length < 2){
+    espnPickerBody.innerHTML = `<p class="text-xs text-gray-500">Not enough managers found across the loaded seasons.</p>`;
+    return;
+  }
+  const options = managers.map(m=> `<option value="${escapeHtml(m.id)}">${escapeHtml(m.name)}</option>`).join('');
+  espnPickerBody.innerHTML = `
+    <div class="grid grid-cols-2 gap-2">
+      <select id="pickManagerA" class="input-field rounded px-2 py-1.5 text-xs"><option value="">Manager A…</option>${options}</select>
+      <select id="pickManagerB" class="input-field rounded px-2 py-1.5 text-xs"><option value="">Manager B…</option>${options}</select>
+    </div>
+    <button id="applyRivalry" class="btn-ghost w-full rounded py-1.5 text-xs mt-2">LOAD ALL-TIME RECORD</button>
+  `;
+  document.getElementById('applyRivalry').addEventListener('click', ()=>{
+    const idA = document.getElementById('pickManagerA').value;
+    const idB = document.getElementById('pickManagerB').value;
+    if(!idA || !idB || idA===idB){ showToast('Pick two different managers.'); return; }
+    applyRivalryMatchup(idA, idB);
+  });
+}
+
+/* Fills the Rivalry Vault fields for a manager pair. Split out of the picker
+   so the .json upload can populate the template automatically. `silent`
+   suppresses the toast when it runs as part of a bulk autofill. */
+function applyRivalryMatchup(idA, idB, silent){
+  {
+    const infoA = managerLatestInfo(idA);
+    const infoB = managerLatestInfo(idB);
+    const h2h = getH2H(idA, idB);
+
+    state.fields.e_a_name = infoA.name.toUpperCase();
+    if(infoA.logo) state.fields.e_a_img = infoA.logo;
+    state.fields.e_b_name = infoB.name.toUpperCase();
+    if(infoB.logo) state.fields.e_b_img = infoB.logo;
+
+    if(!h2h){
+      state.fields.e_series = '0-0';
+      state.fields.e_diff = '+0.0';
+      state.fields.e_last = 'No meetings found in the loaded seasons.';
+      state.fields.e_streak = '';
+      if(!silent) showToast('These two managers haven\u2019t played each other in the loaded seasons.');
+    } else {
+      state.fields.e_series = `${h2h.winsFor}-${h2h.winsAgainst}${h2h.ties ? '-' + h2h.ties : ''}`;
+      const diff = h2h.diff;
+      state.fields.e_diff = (diff >= 0 ? '+' : '') + diff.toFixed(1);
+      if(h2h.lastMeeting){
+        const lm = h2h.lastMeeting;
+        state.fields.e_last = `${lm.year} · WK${lm.week} · ${lm.won ? 'WON' : 'LOST'} ${lm.scoreFor.toFixed(1)}-${lm.scoreAgainst.toFixed(1)}`;
+      } else {
+        state.fields.e_last = '';
+      }
+      if(h2h.streakOwnerId && h2h.streakCount > 1){
+        const who = h2h.streakOwnerId === idA ? infoA.name : infoB.name;
+        state.fields.e_streak = `${who.toUpperCase()} ON A ${h2h.streakCount}-GAME STREAK`;
+      } else {
+        state.fields.e_streak = '';
+      }
+      if(!silent) showToast('Loaded all-time head-to-head record.');
+    }
+
+    syncInputsFromState();
+    if(!silent) render();
+  }
+}
+
+/* Template F picker — pick which computed milestone to feature; applying
+   fills the record-book fields from state.leagueHistory.records. */
+function renderRecordBookPicker(){
+  const r = state.leagueHistory.records;
+  const hasAny = r.highestScore || r.lowestScore || r.biggestBlowout || r.longestWinStreak || r.longestLossStreak || (r.careerPointsLeaderboard && r.careerPointsLeaderboard.length);
+  if(!hasAny){
+    espnPickerBody.innerHTML = `<p class="text-xs text-gray-500">No completed games found across the loaded seasons.</p>`;
+    return;
+  }
+  espnPickerBody.innerHTML = `
+    <select id="pickRecordType" class="input-field w-full rounded px-2 py-1.5 text-xs">
+      <option value="">Select a milestone…</option>
+      ${r.highestScore ? '<option value="highest">Highest single-game score</option>' : ''}
+      ${r.lowestScore ? '<option value="lowest">Lowest single-game score (Hall of Shame)</option>' : ''}
+      ${r.biggestBlowout ? '<option value="blowout">Biggest blowout</option>' : ''}
+      ${r.longestWinStreak ? '<option value="winstreak">Longest win streak</option>' : ''}
+      ${r.longestLossStreak ? '<option value="lossstreak">Longest losing streak</option>' : ''}
+      ${(r.careerPointsLeaderboard && r.careerPointsLeaderboard.length) ? '<option value="career">All-time career points leader</option>' : ''}
+    </select>
+    <button id="applyRecord" class="btn-ghost w-full rounded py-1.5 text-xs mt-2">LOAD MILESTONE</button>
+  `;
+  document.getElementById('applyRecord').addEventListener('click', ()=>{
+    const type = document.getElementById('pickRecordType').value;
+    if(!type){ showToast('Pick a milestone first.'); return; }
+    applyRecordMilestone(type);
+  });
+}
+
+/* Fills the Record Book fields for one milestone. Split out of the picker so
+   the .json upload can populate the template automatically. */
+function applyRecordMilestone(type, silent){
+  const r = state.leagueHistory && state.leagueHistory.records;
+  if(!r) return false;
+  {
+    if(type === 'highest'){
+      const x = r.highestScore;
+      state.fields.f_kicker = 'ALL-TIME RECORD';
+      state.fields.f_headline = `${x.score.toFixed(1)} PTS`;
+      state.fields.f_subtext = 'Highest single-game score in league history';
+      state.fields.f_owner = x.teamName.toUpperCase();
+      state.fields.f_meta = `${x.year} · WEEK ${x.week}`;
+    } else if(type === 'lowest'){
+      const x = r.lowestScore;
+      state.fields.f_kicker = 'HALL OF SHAME';
+      state.fields.f_headline = `${x.score.toFixed(1)} PTS`;
+      state.fields.f_subtext = 'Lowest single-game score in league history';
+      state.fields.f_owner = x.teamName.toUpperCase();
+      state.fields.f_meta = `${x.year} · WEEK ${x.week}`;
+    } else if(type === 'blowout'){
+      const x = r.biggestBlowout;
+      state.fields.f_kicker = 'BIGGEST BLOWOUT';
+      state.fields.f_headline = `+${x.margin.toFixed(1)} MARGIN`;
+      state.fields.f_subtext = `${x.winnerTeamName} defeated ${x.loserTeamName} ${x.winnerScore.toFixed(1)}-${x.loserScore.toFixed(1)}`;
+      state.fields.f_owner = x.winnerTeamName.toUpperCase();
+      state.fields.f_meta = `${x.year} · WEEK ${x.week}`;
+    } else if(type === 'winstreak'){
+      const x = r.longestWinStreak;
+      const info = managerLatestInfo(x.ownerId);
+      state.fields.f_kicker = 'ALL-TIME RECORD';
+      state.fields.f_headline = `${x.length}-GAME WIN STREAK`;
+      state.fields.f_subtext = 'Longest regular-season winning streak in league history';
+      state.fields.f_owner = info.name.toUpperCase();
+      state.fields.f_meta = `${x.startYear} WK${x.startWeek} \u2192 ${x.endYear} WK${x.endWeek}`;
+      if(info.logo) state.fields.f_img = info.logo;
+    } else if(type === 'lossstreak'){
+      const x = r.longestLossStreak;
+      const info = managerLatestInfo(x.ownerId);
+      state.fields.f_kicker = 'HALL OF SHAME';
+      state.fields.f_headline = `${x.length}-GAME LOSING STREAK`;
+      state.fields.f_subtext = 'Longest regular-season losing streak in league history';
+      state.fields.f_owner = info.name.toUpperCase();
+      state.fields.f_meta = `${x.startYear} WK${x.startWeek} \u2192 ${x.endYear} WK${x.endWeek}`;
+      if(info.logo) state.fields.f_img = info.logo;
+    } else if(type === 'career'){
+      const x = r.careerPointsLeaderboard[0];
+      const info = managerLatestInfo(x.ownerId);
+      state.fields.f_kicker = 'ALL-TIME RECORD';
+      state.fields.f_headline = `${x.totalPoints.toFixed(1)} PTS`;
+      state.fields.f_subtext = 'Most cumulative career points scored in league history';
+      state.fields.f_owner = info.name.toUpperCase();
+      state.fields.f_meta = 'CAREER TOTAL';
+      if(info.logo) state.fields.f_img = info.logo;
+    } else {
+      return false;
+    }
+
+    syncInputsFromState();
+    if(!silent){ render(); showToast('Loaded league record.'); }
+    return true;
+  }
+}
+
+/* Called right after a history load: picks sensible defaults so both
+   history-driven templates show real data immediately — the most-played
+   rivalry for Template E, and the first available milestone for Template F. */
+function autofillHistoryTemplates(){
+  const hist = state.leagueHistory;
+  if(!hist) return;
+
+  // Template E — the rivalry with the most all-time meetings.
+  const topRivalry = Object.values(hist.h2h).sort((x,y)=> y.meetings.length - x.meetings.length)[0];
+  if(topRivalry) applyRivalryMatchup(topRivalry.a, topRivalry.b, true);
+
+  // Template F — first milestone that actually computed.
+  const r = hist.records;
+  const order = [
+    ['highest',    r.highestScore],
+    ['blowout',    r.biggestBlowout],
+    ['winstreak',  r.longestWinStreak],
+    ['career',     r.careerPointsLeaderboard && r.careerPointsLeaderboard.length],
+    ['lowest',     r.lowestScore],
+    ['lossstreak', r.longestLossStreak],
+  ];
+  const firstAvailable = order.find(([, value])=> !!value);
+  if(firstAvailable) applyRecordMilestone(firstAvailable[0], true);
+}
+
+/* ============================================================
+   ZOOM
+============================================================ */
+function applyZoom(v){
+  exportRoot.style.transform = `scale(${v})`;
+  stageWrap.style.width = (1080*v) + 'px';
+  stageWrap.style.height = (1920*v) + 'px';
+}
+
+/* ============================================================
+   TOAST
+============================================================ */
+function showToast(msg){
+  toastEl.textContent = msg;
+  toastEl.style.opacity = '1';
+  toastEl.style.transform = 'translateY(0)';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>{
+    toastEl.style.opacity = '0';
+    toastEl.style.transform = 'translateY(8px)';
+  }, 2600);
+}
+
+/* ============================================================
+   EVENT LISTENERS
+============================================================ */
+ptabs.forEach(b=> b.addEventListener('click', ()=> setPanelTab(b.dataset.panelTab)));
+
+tmplBtns.forEach(b=> b.addEventListener('click', ()=> setTemplate(b.dataset.template)));
+
+document.querySelectorAll('[data-f]').forEach(inp=>{
+  const key = inp.dataset.f;
+  inp.addEventListener('input', ()=>{
+    state.fields[key] = inp.value;
+    render();
+  });
+});
+
+document.querySelectorAll('[data-f-img]').forEach(inp=>{
+  const key = inp.dataset.fImg;
+  inp.addEventListener('change', (e)=>{
+    const file = e.target.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = ()=>{
+      state.fields[key] = reader.result;
+      render();
+    };
+    reader.readAsDataURL(file);
+  });
+});
+
+addRankRowBtn.addEventListener('click', ()=>{
+  state.ranks.push({rank: state.ranks.length+1, name:'New Team', record:'0-0', diff:'+0.0'});
+  renderRankRows();
+  render();
+});
+
+showUrlBtn.addEventListener('click', ()=>{
+  const url = buildEspnUrl();
+  apiUrlDisplay.textContent = url || 'Enter League ID and Season Year first.';
+  apiUrlDisplay.classList.remove('hidden');
+});
+
+fetchBtn.addEventListener('click', async ()=>{
+  const league = leagueIdInput.value.trim();
+  const year = seasonYearInput.value.trim();
+  if(!league || !year){
+    fetchStatus.textContent = 'Enter League ID and Season Year first.';
+    return;
+  }
+  setFetchLoading(true);
+  fetchStatus.textContent = 'Connecting to ESPN…';
+  try{
+    const data = await fetchEspnData();
+    state.espnData = data;
+    fetchStatus.textContent = `✓ Loaded ${(data.teams||[]).length} teams${data.schedule ? `, ${data.schedule.length} scheduled matchups` : ''}.`;
+    setConn('live');
+    showToast('League data fetched successfully.');
+    renderEspnPicker();
+  }catch(err){
+    console.error(err);
+    if(err.message === 'MISSING_INPUTS'){
+      fetchStatus.textContent = 'Enter League ID and Season Year first.';
+    } else {
+      fetchStatus.textContent = 'Every proxy attempt failed. Use "Show API URL", open it in a new tab, copy the JSON, and paste it below.';
+    }
+    setConn('error');
+  }finally{
+    setFetchLoading(false);
+  }
+});
+
+/* leagueHistory only carries completed seasons. If the current season has
+   already been fetched on the panel above, fold that object in too so the
+   Record Book counts this year — no extra network call. */
+function withCurrentSeason(yearsData){
+  const live = state.espnData;
+  if(!live || !live.teams || !live.teams.length) return yearsData;
+  const liveYear = parseInt(live.seasonId || live.season, 10);
+  if(!liveYear || yearsData.some(y=> y.year === liveYear)) return yearsData;
+  return yearsData.concat([{ year: liveYear, leagueData: live }]).sort((a,b)=> a.year - b.year);
+}
+
+/* Keeps the "Show All-Time History API Link" anchor pointed at the current
+   League ID so it's always openable in a new tab. */
+function refreshHistoryUrlLink(){
+  const league = leagueIdInput.value.trim();
+  const url = buildLeagueHistoryUrl(league);
+  if(url){
+    historyUrlLink.href = url;
+    historyUrlDisplay.textContent = url;
+  } else {
+    historyUrlLink.removeAttribute('href');
+    historyUrlDisplay.textContent = 'Enter a League ID above to build the link.';
+  }
+}
+leagueIdInput.addEventListener('input', refreshHistoryUrlLink);
+leagueIdInput.addEventListener('input', ()=> LeagueData.setMeta('leagueId', leagueIdInput.value.trim()));
+seasonYearInput.addEventListener('input', ()=> LeagueData.setMeta('season', seasonYearInput.value.trim()));
+refreshHistoryUrlLink();
+
+historyUrlLink.addEventListener('click', (e)=>{
+  const league = leagueIdInput.value.trim();
+  historyUrlDisplay.classList.remove('hidden'); // reveal it for copy/paste either way
+  if(!league){
+    e.preventDefault();
+    historyStatus.textContent = 'Enter League ID above first.';
+  }
+});
+
+loadHistoryBtn.addEventListener('click', async ()=>{
+  const league = leagueIdInput.value.trim();
+  if(!league){ historyStatus.textContent = 'Enter League ID above first.'; return; }
+
+  setHistoryLoading(true);
+  hideHistorySuccessBanner();
+  historyStatus.textContent = 'Fetching all seasons in one call…';
+  try{
+    const { yearsData, skipped } = await fetchAllTimeHistory(league);
+    applyLeagueHistory(withCurrentSeason(yearsData), skipped, 'Loaded');
+  }catch(err){
+    console.error(err);
+    historyStatus.textContent = 'History load failed — the proxy may be rate-limited. Open the API link above in a new tab, save the page as .json, and drop it on the upload box below.';
+    historyUrlDisplay.classList.remove('hidden');
+  }finally{
+    setHistoryLoading(false);
+  }
+});
+
+parseHistoryJsonBtn.addEventListener('click', ()=>{
+  const raw = historyJsonPaste.value.trim();
+  if(!raw){ historyStatus.textContent = 'Paste the multi-year JSON array first.'; return; }
+  hideHistorySuccessBanner();
+  let parsed;
+  try{
+    parsed = JSON.parse(raw);
+  }catch(err){
+    historyStatus.textContent = 'Could not parse — make sure the whole JSON array was copied.';
+    return;
+  }
+  try{
+    processMultiYearHistory(parsed, 'Calculated from pasted JSON');
+  }catch(err){
+    historyStatus.textContent = 'That JSON parsed, but held no seasons with team data — paste the full leagueHistory array.';
+  }
+});
+
+/* ============================================================
+   .JSON UPLOAD — drag-and-drop or click-to-browse
+   Read entirely in-browser with FileReader; nothing is uploaded
+   anywhere, so proxy rate limits are irrelevant on this path.
+============================================================ */
+function handleHistoryFile(file){
+  if(!file){ return; }
+  if(file.type && file.type.indexOf('json') === -1 && !/\.json$/i.test(file.name)){
+    hideHistorySuccessBanner();
+    historyStatus.textContent = `“${file.name}” isn't a .json file — save the ESPN History API tab with Ctrl+S / Cmd+S and drop that file.`;
+    return;
+  }
+
+  hideHistorySuccessBanner();
+  historyStatus.textContent = `Reading ${file.name}…`;
+
+  const reader = new FileReader();
+  reader.onload = (e)=>{
+    let rawData;
+    try{
+      rawData = JSON.parse(e.target.result);
+    }catch(err){
+      historyStatus.textContent = `Could not parse ${file.name} — make sure it's the raw JSON from the API tab, not a saved HTML page.`;
+      return;
+    }
+    try{
+      processMultiYearHistory(rawData, `Loaded from ${file.name}`);
+    }catch(err){
+      console.error(err);
+      historyStatus.textContent = `${file.name} parsed, but held no seasons with team data — make sure it's the leagueHistory response.`;
+    }
+  };
+  reader.onerror = ()=>{
+    historyStatus.textContent = `Could not read ${file.name}. Try re-saving the file.`;
+  };
+  reader.readAsText(file);
+}
+
+historyDropzone.addEventListener('click', ()=> historyFileInput.click());
+historyDropzone.addEventListener('keydown', (e)=>{
+  if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); historyFileInput.click(); }
+});
+
+historyFileInput.addEventListener('change', (e)=>{
+  handleHistoryFile(e.target.files && e.target.files[0]);
+  e.target.value = ''; // let the same file be re-selected after an edit
+});
+
+// dragover must be prevented on every tick or the browser navigates to the file
+['dragenter','dragover'].forEach(evt=>{
+  historyDropzone.addEventListener(evt, (e)=>{
+    e.preventDefault(); e.stopPropagation();
+    historyDropzone.classList.add('dragover');
+  });
+});
+['dragleave','dragend'].forEach(evt=>{
+  historyDropzone.addEventListener(evt, (e)=>{
+    e.preventDefault(); e.stopPropagation();
+    historyDropzone.classList.remove('dragover');
+  });
+});
+historyDropzone.addEventListener('drop', (e)=>{
+  e.preventDefault(); e.stopPropagation();
+  historyDropzone.classList.remove('dragover');
+  const dt = e.dataTransfer;
+  const file = dt && dt.files && dt.files[0];
+  handleHistoryFile(file);
+});
+
+// A miss outside the dropzone shouldn't make the browser open the file
+['dragover','drop'].forEach(evt=>{
+  window.addEventListener(evt, (e)=>{
+    if(!historyDropzone.contains(e.target)) e.preventDefault();
+  });
+});
+
+parseJsonBtn.addEventListener('click', ()=>{
+  const raw = jsonPaste.value.trim();
+  if(!raw){ fetchStatus.textContent = 'Paste JSON first.'; return; }
+  try{
+    const parsed = JSON.parse(raw);
+    // Historical leagueHistory responses come back as an array — [ { ...leagueData } ].
+    state.espnData = Array.isArray(parsed) ? parsed[0] : parsed;
+    fetchStatus.textContent = '✓ Parsed pasted JSON.';
+    setConn('live');
+    showToast('JSON parsed and loaded.');
+    renderEspnPicker();
+  }catch(err){
+    fetchStatus.textContent = 'Could not parse — check the JSON is valid.';
+    setConn('error');
+  }
+});
+
+manualToggle.addEventListener('change', (e)=>{
+  if(e.target.checked){ setConn('manual'); }
+  else if(state.espnData){ setConn('live'); }
+  else { setConn('none'); }
+});
+
+weekNumInput.addEventListener('input', ()=>{
+  LeagueData.setMeta('week', weekNumInput.value.trim());
+  if(state.espnData) renderEspnPicker();
+});
+
+zoomRange.addEventListener('input', ()=> applyZoom(parseFloat(zoomRange.value)));
+
+downloadBtn.addEventListener('click', async ()=>{
+  exportStatus.textContent = 'Rendering…';
+  const originalTransform = exportRoot.style.transform;
+  exportRoot.style.transform = 'none'; // capture at true 1080x1920 size
+  try{
+    const canvas = await html2canvas(exportRoot, {
+      width: 1080,
+      height: 1920,
+      scale: 1,
+      backgroundColor: '#05070a',
+      useCORS: true,
+    });
+    const link = document.createElement('a');
+    const tplNames = {A:'matchup', B:'power-rankings', C:'breaking-news', D:'hot-seat', E:'rivalry-vault', F:'record-book'};
+    link.download = `gridiron-graphics-${tplNames[state.template]}-${Date.now()}.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+    exportStatus.textContent = '✓ Downloaded.';
+    showToast('PNG downloaded.');
+  }catch(err){
+    exportStatus.textContent = 'Export failed: ' + err.message;
+    showToast('Export failed — see console.');
+    console.error(err);
+  }finally{
+    exportRoot.style.transform = originalTransform;
+  }
+});
+
+resetBtn.addEventListener('click', ()=>{
+  if(!confirm('Clear all fields and images?')) return;
+  document.querySelectorAll('[data-f]').forEach(inp=>{ inp.value=''; state.fields[inp.dataset.f]=''; });
+  document.querySelectorAll('[data-f-img]').forEach(inp=> inp.value='');
+  ['a_img','b_img','news_img','hs_img','e_a_img','e_b_img','f_img'].forEach(k=> state.fields[k]=null);
+  state.ranks = [];
+  renderRankRows();
+  render();
+  showToast('Cleared.');
+});
+
+/* ============================================================
+   INITIAL SETUP — runs last, after every function and listener
+   above has been defined, so nothing can reference an
+   uninitialized const.
+============================================================ */
+document.querySelectorAll('[data-f]').forEach(inp=>{
+  const key = inp.dataset.f;
+  if(state.fields[key]!==undefined) inp.value = state.fields[key];
+});
+
+/* Shared with the video desk: one toast queue for the whole studio, and a
+   shortcut the "open data source" button uses to jump back here. */
+window.studioToast = showToast;
+window.openDataPanel = function(){
+  if(window.setMasterTab) window.setMasterTab('graphics');
+  setPanelTab('data');
+};
+
+setPanelTab('data');
+setTemplate('A');
+renderRankRows();
+render();
+applyZoom(parseFloat(zoomRange.value));
+
+}); // end window load listener
+</script>
+
+<!-- ============ TAB 02 LOGIC · RUNDOWN PRODUCTION DESK ============ -->
+<script>
+/* ============================================================
+   VIDEO OVERLAYS & TELEPROMPTER (tab 02)
+   Fully self-contained: every name lives inside this IIFE, every
+   element id is rd-prefixed, and the only thing it shares with
+   the graphics tab is window.LeagueData.
+============================================================ */
+(function(){
+const LD = window.LeagueData;
+const $ = (id)=> document.getElementById(id);
+const toast = (msg)=> (window.studioToast ? window.studioToast(msg) : console.log(msg));
+
+/* ============ SUB-TABS ============ */
+document.querySelectorAll('.rd-subtab').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.rd-subtab').forEach(b=> b.dataset.active='false');
+    btn.dataset.active='true';
+    const tab = btn.dataset.subtab;
+    $('rd-tab-overlay').classList.toggle('hidden', tab!=='overlay');
+    $('rd-tab-script').classList.toggle('hidden', tab!=='script');
+    $('rd-tab-broadcast').classList.toggle('hidden', tab!=='broadcast');
+  });
+});
+
+/* ============ OVERLAY SUB-TABS ============ */
+const overlayPills = document.querySelectorAll('.rd-overlay-pill');
+overlayPills.forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    overlayPills.forEach(b=> b.dataset.active='false');
+    btn.dataset.active='true';
+    const type = btn.dataset.overlay;
+    document.querySelectorAll('.rd-overlay-form').forEach(f=> f.classList.toggle('hidden', f.dataset.form!==type));
+    document.querySelectorAll('.rd-overlay-node').forEach(n=> n.classList.toggle('hidden', n.id !== 'rd-overlay-'+type));
+  });
+});
+
+/* ============ LIVE PREVIEW BINDINGS ============ */
+const bindings = {};
+function bind(inputId, previewId, transform){
+  const input = $(inputId);
+  const preview = $(previewId);
+  const update = ()=>{ preview.textContent = transform ? transform(input.value) : input.value; };
+  input.addEventListener('input', update);
+  bindings[inputId] = update;
+  update();
+}
+/* Used by every "pull from league data" button: write the field, then run the
+   same update the user's own typing would have run. */
+function setField(inputId, value){
+  const input = $(inputId);
+  if(!input) return;
+  input.value = value;
+  if(bindings[inputId]) bindings[inputId]();
+  else input.dispatchEvent(new Event('input'));
+}
+
+// Press conference
+bind('rd-p-name','rd-p-preview-name', v=>v.toUpperCase());
+bind('rd-p-team','rd-p-preview-team', v=>v.toUpperCase());
+bind('rd-p-record','rd-p-preview-record');
+bind('rd-p-ticker','rd-p-preview-ticker', v=>v.toUpperCase());
+$('rd-p-color').addEventListener('input', (e)=>{
+  const c = e.target.value;
+  $('rd-p-color-bar').style.background = c;
+  $('rd-p-card').style.borderColor = c;
+  $('rd-p-preview-team').style.color = c;
+});
+
+// Breaking news
+const levelColors = { 'BREAKING NEWS':'#E8232B', 'DEVELOPING STORY':'#F5A623', 'LEAGUE ALERT':'#3B82F6' };
+function updateBreakingLevel(){
+  const level = $('rd-b-level').value;
+  $('rd-b-preview-level').textContent = level;
+  const c = levelColors[level] || '#E8232B';
+  $('rd-b-tagbar').style.background = c;
+  $('rd-b-preview-line2').style.color = c;
+}
+$('rd-b-level').addEventListener('change', updateBreakingLevel);
+updateBreakingLevel();
+bind('rd-b-line1','rd-b-preview-line1', v=>v.toUpperCase());
+bind('rd-b-line2','rd-b-preview-line2', v=>v.toUpperCase());
+bind('rd-b-byline','rd-b-preview-byline', v=>v.toUpperCase());
+
+// Score bug
+bind('rd-s-a-abbr','rd-s-preview-a-abbr', v=>v.toUpperCase());
+bind('rd-s-a-score','rd-s-preview-a-score');
+bind('rd-s-b-abbr','rd-s-preview-b-abbr', v=>v.toUpperCase());
+bind('rd-s-b-score','rd-s-preview-b-score');
+bind('rd-s-week','rd-s-preview-week', v=>v.toUpperCase());
+function updateScoreStatus(){
+  const val = $('rd-s-status').value;
+  const el = $('rd-s-preview-status');
+  el.textContent = (val==='LIVE' ? '● LIVE' : val==='HALFTIME' ? '◐ HALFTIME' : '■ FINAL');
+  el.style.color = val==='LIVE' ? '#E8232B' : val==='HALFTIME' ? '#F5A623' : '#828AA0';
+}
+$('rd-s-status').addEventListener('change', updateScoreStatus);
+
+/* ============================================================
+   SHARED DATA WIRING
+   Everything below reads the same store the Graphic Generator
+   fills — no re-entering team names, records or scores.
+============================================================ */
+const stripEl     = $('rd-leagueStrip');
+const stripTextEl = $('rd-leagueStripText');
+const pSource     = $('rd-p-source');
+const sSource     = $('rd-s-source');
+let weekGames = [];
+let pOptions  = [];
+
+function currentWeek(){
+  return LD.meta.week || '';
+}
+
+/* Managers come from the multi-season upload when it's there (real names,
+   latest team/logo), otherwise from the live season's team list. */
+function buildPeopleOptions(){
+  if(LD.hasHistory()){
+    return LD.getManagers().map(m=>{
+      const info = LD.managerLatestInfo(m.id);
+      return { label: `${m.name}${info.teamName ? ' — ' + info.teamName : ''}`, name: m.name, team: info.teamName || m.name, record: '' };
+    });
+  }
+  return LD.getTeams().map(t=>({
+    label: `${t.name}${t.record ? ' (' + t.record + ')' : ''}`,
+    name: t.owner || t.name,
+    team: t.name,
+    record: t.record,
+  }));
+}
+
+function fillSelect(sel, options, emptyLabel){
+  sel.innerHTML = options.length
+    ? '<option value="">Select…</option>' + options.map((o,i)=> `<option value="${i}">${LD.esc(o.label)}</option>`).join('')
+    : `<option value="">${LD.esc(emptyLabel)}</option>`;
+  sel.disabled = !options.length;
+}
+
+function refreshFromShared(){
+  const live = LD.hasLive();
+  const hist = LD.hasHistory();
+
+  // ---- status strip ----
+  const bits = [];
+  if(live){
+    const teams = LD.getTeams().length;
+    const wk = currentWeek();
+    bits.push(`LIVE SEASON · ${teams} teams${wk ? ' · week ' + wk : ''}`);
+  }
+  if(hist){
+    bits.push(`ARCHIVE · ${LD.seasonCount()} seasons · ${LD.getManagers().length} managers · ${LD.matchupCount().toLocaleString()} matchups`);
+  }
+  stripEl.dataset.hasData = String(live || hist);
+  stripTextEl.textContent = bits.length
+    ? bits.join('   ·   ')
+    : 'No league data loaded — pull it in on the Graphic Generator tab and it lands here automatically.';
+
+  // ---- pickers ----
+  pOptions = buildPeopleOptions();
+  fillSelect(pSource, pOptions, 'No league data loaded…');
+
+  weekGames = live ? LD.getWeekMatchups(currentWeek()) : [];
+  fillSelect(sSource, weekGames.map(g=>({
+    label: `${g.homeTeam.name} ${g.homeScore} vs ${g.awayTeam.name} ${g.awayScore}`,
+  })), 'No matchups loaded…');
+
+  // ---- buttons that need one kind of data or the other ----
+  $('rd-p-apply').disabled   = !pOptions.length;
+  $('rd-s-apply').disabled   = !weekGames.length;
+  $('rd-b-blunder').disabled = !live;
+  $('rd-b-topscore').disabled = !live;
+  $('rd-b-record').disabled  = !hist;
+  $('rd-sc-autofill').disabled = !(live || hist);
+  document.querySelectorAll('[data-league-block] button').forEach(b=>{
+    b.style.opacity = b.disabled ? '0.45' : '1';
+    b.style.cursor = b.disabled ? 'not-allowed' : 'pointer';
+  });
+}
+LD.subscribe(refreshFromShared);
+
+$('rd-goToData').addEventListener('click', ()=>{
+  if(window.openDataPanel) window.openDataPanel();
+  else if(window.setMasterTab) window.setMasterTab('graphics');
+});
+
+/* ---- Press conference tag ---- */
+$('rd-p-apply').addEventListener('click', ()=>{
+  const idx = pSource.value;
+  if(idx==='') { toast('Pick a manager or team first.'); return; }
+  const o = pOptions[parseInt(idx,10)];
+  setField('rd-p-name', (o.name||'').toUpperCase());
+  setField('rd-p-team', (o.team||'').toUpperCase());
+  if(o.record) setField('rd-p-record', o.record);
+  toast('Pulled ' + o.name + ' from shared league data.');
+});
+
+/* ---- Breaking news chyron ---- */
+$('rd-b-blunder').addEventListener('click', ()=>{
+  const wk = currentWeek();
+  const low = LD.getWeekExtremes(wk).low;
+  if(!low){ toast('No scored matchups found for that week.'); return; }
+  $('rd-b-level').value = 'BREAKING NEWS';
+  updateBreakingLevel();
+  setField('rd-b-line1', (low.team.name + ' UNDER FIRE').toUpperCase().slice(0,40));
+  setField('rd-b-line2', (`AFTER ${low.score.toFixed(1)}-POINT ${wk ? 'WEEK ' + wk : ''} COLLAPSE`).trim().slice(0,40));
+  setField('rd-b-byline', 'LEAGUE INSIDER REPORT');
+  toast('Chyron set to the week’s low score.');
+});
+
+$('rd-b-topscore').addEventListener('click', ()=>{
+  const wk = currentWeek();
+  const high = LD.getWeekExtremes(wk).high;
+  if(!high){ toast('No scored matchups found for that week.'); return; }
+  $('rd-b-level').value = 'LEAGUE ALERT';
+  updateBreakingLevel();
+  setField('rd-b-line1', (high.team.name + ' GOES OFF').toUpperCase().slice(0,40));
+  setField('rd-b-line2', (`${high.score.toFixed(1)} POINTS${wk ? ' IN WEEK ' + wk : ''}`).slice(0,40));
+  setField('rd-b-byline', 'LEAGUE INSIDER REPORT');
+  toast('Chyron set to the week’s top score.');
+});
+
+$('rd-b-record').addEventListener('click', ()=>{
+  const r = LD.leagueHistory && LD.leagueHistory.records;
+  if(!r){ toast('Load league history on the Graphic Generator tab first.'); return; }
+  let line1 = '', line2 = '';
+  if(r.highestScore){
+    line1 = 'ALL-TIME RECORD STANDS';
+    line2 = `${r.highestScore.teamName} · ${r.highestScore.score.toFixed(1)} PTS`.toUpperCase();
+  } else if(r.biggestBlowout){
+    line1 = 'BIGGEST BLOWOUT ON RECORD';
+    line2 = `${r.biggestBlowout.winnerTeamName} BY ${r.biggestBlowout.margin.toFixed(1)}`.toUpperCase();
+  } else {
+    toast('No milestones computed from the loaded seasons.');
+    return;
+  }
+  $('rd-b-level').value = 'DEVELOPING STORY';
+  updateBreakingLevel();
+  setField('rd-b-line1', line1.slice(0,40));
+  setField('rd-b-line2', line2.slice(0,40));
+  setField('rd-b-byline', 'LEAGUE RECORD BOOK');
+  toast('Chyron set from the all-time record book.');
+});
+
+/* ---- Score bug ---- */
+$('rd-s-apply').addEventListener('click', ()=>{
+  const idx = sSource.value;
+  if(idx===''){ toast('Pick a matchup first.'); return; }
+  const g = weekGames[parseInt(idx,10)];
+  setField('rd-s-a-abbr', g.homeTeam.abbrev);
+  setField('rd-s-a-score', g.homeScore);
+  setField('rd-s-b-abbr', g.awayTeam.abbrev);
+  setField('rd-s-b-score', g.awayScore);
+  const wk = g.matchupPeriodId || currentWeek();
+  if(wk) setField('rd-s-week', 'WK ' + wk);
+  $('rd-s-status').value = g.winner && g.winner !== 'UNDECIDED' ? 'FINAL' : 'LIVE';
+  updateScoreStatus();
+  toast('Score bug filled from shared ESPN data.');
+});
+
+/* ============ EXPORT PNG ============ */
+$('rd-exportBtn').addEventListener('click', async ()=>{
+  const activeType = document.querySelector('.rd-overlay-pill[data-active="true"]').dataset.overlay;
+  const original = $('rd-overlay-'+activeType);
+  const btn = $('rd-exportBtn');
+  const btnHtml = btn.innerHTML;
+  btn.innerHTML = 'Rendering…'; btn.disabled = true;
+
+  // Clone at true 1080x1920, off-screen, no CSS transform, fully visible.
+  const clone = original.cloneNode(true);
+  clone.classList.remove('hidden');
+  clone.removeAttribute('id');
+  clone.style.position = 'fixed';
+  clone.style.left = '-99999px';
+  clone.style.top = '0';
+  clone.style.width = '1080px';
+  clone.style.height = '1920px';
+  document.body.appendChild(clone);
+
+  try{
+    const canvas = await html2canvas(clone, {
+      backgroundColor: null,
+      width: 1080,
+      height: 1920,
+      scale: 1,
+      useCORS: true
+    });
+    const link = document.createElement('a');
+    const stamp = new Date().toISOString().replace(/[:.]/g,'-');
+    link.download = `overlay-${activeType}-${stamp}.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+  } catch(err){
+    alert('Export failed — try again. ('+err.message+')');
+  } finally {
+    document.body.removeChild(clone);
+    btn.innerHTML = btnHtml; btn.disabled = false;
+  }
+});
+
+/* ============ SCRIPT PROMPTER GENERATOR ============ */
+const scriptOpeners = [
+  (host)=>`${host} steps to the podium, taps the mic twice, and lets the silence sit.`,
+  (host)=>`${host} walks in still holding the box score like it owes them money.`,
+  (host)=>`${host} sits down, exhales, and stares straight into the camera.`
+];
+const blunderLines = [
+  (b)=>`Let's address the elephant in the room: ${b}.`,
+  (b)=>`Before anything else — yes, we all saw it: ${b}.`,
+  (b)=>`Look, I'll say what everyone's thinking: ${b}.`
+];
+const scorerLines = [
+  (s)=>`On the other side of the ledger, ${s} — an absolute masterclass this week.`,
+  (s)=>`Not everyone had a bad week. ${s} put the rest of the league on notice.`,
+  (s)=>`Give credit where it's due — ${s} carried the week almost single-handedly.`
+];
+const tradeLines = [
+  (t)=>`And then there's the trade block. ${t}. We're still processing that one.`,
+  (t)=>`Somebody also thought this was a good idea: ${t}. No further questions.`,
+  (t)=>`Oh, and for the record: ${t}. The league will not be forgetting this.`
+];
+const closers = [
+  (wk)=>`That's the state of the league heading into Week ${wk}. We'll take questions.`,
+  (wk)=>`Week ${wk} isn't getting any easier from here. Floor's open.`,
+  (wk)=>`So that's Week ${wk} in a nutshell. Let's hear what the room's got.`
+];
+const questionBank = [
+  (b)=>`Walk us through the decision-making that led to "${b}." What was the thought process?`,
+  (s)=>`${s} — was that the plan all along, or did you just get lucky with matchups?`,
+  (t)=>`Be honest: did you actually expect anyone to accept "${t}"?`,
+  (host)=>`${host}, what's the game plan heading into next week to turn things around?`,
+  (wk)=>`Any regrets from your Week ${wk} lineup decisions you want to get ahead of?`,
+  ()=>`If you had a mulligan for this week, what's the one move you take back?`
+];
+
+function pick(arr){ return arr[Math.floor(Math.random()*arr.length)]; }
+
+function generateScript(){
+  const week = $('rd-sc-week').value.trim() || '—';
+  const blunder = $('rd-sc-blunder').value.trim() || 'a decision nobody wants to talk about';
+  const scorer = $('rd-sc-scorer').value.trim() || 'somebody who actually showed up';
+  const trade = $('rd-sc-trade').value.trim() || 'an offer that should never have been sent';
+  const host = $('rd-sc-host').value.trim() || 'The Commissioner';
+
+  const scriptLines = [
+    `[OPEN ON PODIUM]`,
+    `• ${pick(scriptOpeners)(host)}`,
+    ``,
+    `[BLUNDER OF THE WEEK]`,
+    `• ${pick(blunderLines)(blunder)}`,
+    ``,
+    `[TOP PERFORMANCE]`,
+    `• ${pick(scorerLines)(scorer)}`,
+    ``,
+    `[TRADE DESK]`,
+    `• ${pick(tradeLines)(trade)}`,
+    ``,
+    `[CLOSE]`,
+    `• ${pick(closers)(week)}`
+  ];
+  $('rd-scriptOutput').textContent = scriptLines.join('\n');
+
+  const qs = [
+    questionBank[0](blunder),
+    questionBank[1](scorer),
+    questionBank[2](trade)
+  ];
+  const extra = pick([questionBank[3](host), questionBank[4](week), questionBank[5]()]);
+  $('rd-questionsOutput').textContent =
+    `1. ${qs[0]}\n2. ${qs[1]}\n3. ${qs[2]}\n\nBONUS: ${extra}`;
+}
+
+$('rd-generateScriptBtn').addEventListener('click', generateScript);
+$('rd-regenScriptBtn').addEventListener('click', generateScript);
+
+/* Desk notes straight off the shared store: the week's low score becomes the
+   blunder, the high score becomes the top performance, and a record-book
+   milestone backfills the trade slot when there's an archive loaded. */
+$('rd-sc-autofill').addEventListener('click', ()=>{
+  const wk = currentWeek();
+  let filled = 0;
+
+  if(wk){ setField('rd-sc-week', wk); filled++; }
+
+  if(LD.hasLive()){
+    const { low, high } = LD.getWeekExtremes(wk);
+    if(low){
+      $('rd-sc-blunder').value = `${low.team.name} put up just ${low.score.toFixed(1)} points`;
+      filled++;
+    }
+    if(high){
+      $('rd-sc-scorer').value = `${high.team.name} — ${high.score.toFixed(1)} pts`;
+      filled++;
+    }
+  }
+
+  const r = LD.leagueHistory && LD.leagueHistory.records;
+  if(r && r.biggestBlowout){
+    const b = r.biggestBlowout;
+    $('rd-sc-trade').value = `Still no answer for ${b.winnerTeamName} beating ${b.loserTeamName} by ${b.margin.toFixed(1)} back in ${b.year}`;
+    filled++;
+  }
+
+  if(!filled){ toast('Load league data on the Graphic Generator tab first.'); return; }
+  generateScript();
+  toast('Desk notes autofilled from shared league data.');
+});
+
+/* ============ COPY BUTTONS ============ */
+document.querySelectorAll('.rd-copy-btn').forEach(btn=>{
+  btn.addEventListener('click', async ()=>{
+    const target = $(btn.dataset.target);
+    try{
+      await navigator.clipboard.writeText(target.textContent);
+      target.classList.add('copy-flash');
+      const original = btn.textContent;
+      btn.textContent = 'Copied';
+      setTimeout(()=>{ btn.textContent = original; target.classList.remove('copy-flash'); }, 900);
+    }catch(e){
+      alert('Copy failed — select the text manually.');
+    }
+  });
+});
+})();
+</script>
+
+<!-- ============ TAB 02 LOGIC · BROADCAST VIDEO EXPORTER ============ -->
+<script>
+/* ============================================================
+   ANIMATED BROADCAST EXPORTER (tab 02, sub-tab 03)
+   One 1080x1920 canvas renderer used twice: once by the on-page
+   preview loop, once by the MediaRecorder pass. Both call the
+   same drawFrame(ctx, t, opts), so what plays in the phone
+   mock-up is exactly what lands in the file.
+============================================================ */
+(function(){
+const LD = window.LeagueData;
+const $  = (id)=> document.getElementById(id);
+const toast = (msg)=> (window.studioToast ? window.studioToast(msg) : console.log(msg));
+
+const W = 1080, H = 1920;
+
+/* ---- Stage geometry. The ticker owns 1680-1780; everything else
+   stacks upward from it so the whole lower third moves as one. ---- */
+const TICKER_Y = 1680, TICKER_H = 100;
+const RULE_H   = 5;                       // accent rule sitting on the ticker
+const SUB_Y    = 1636, SUB_H  = 34;       // subline strip
+const CARD_H   = 180, CARD_BOTTOM = SUB_Y - 4;
+const CARD_Y   = CARD_BOTTOM - CARD_H;    // 1452
+const BAR_H    = 10, BAR_W = 520;         // accent bar capping the card
+const GROUP_TOP = CARD_Y - BAR_H;
+const ENTRANCE = 0.8;                     // seconds of slide-up
+
+const BADGE_COLORS = {
+  'FINAL':'#E8232B',
+  'MATCHUP':'#3B82F6',
+  'LEAGUE NEWS':'#F5A623',
+  'ALL-TIME RECORD':'#28D07A',
+  'STREAK':'#8B5CF6',
+  'DESK':'#828AA0',
+};
+
+/* ============================================================
+   TICKER STREAM — chains badges, live scores, news blurbs and
+   record-book lines into one flat list of pills.
+============================================================ */
+function tickerItems(){
+  const wanted = {};
+  document.querySelectorAll('.rd-v-stream').forEach(cb=> wanted[cb.dataset.stream] = cb.checked);
+  const items = [];
+  const week = LD.meta.week || '';
+
+  // ---- weekly matchup scores ----
+  if(wanted.scores && LD.hasLive()){
+    LD.getWeekMatchups(week).forEach(g=>{
+      const decided = g.winner && g.winner !== 'UNDECIDED';
+      items.push({
+        badge: decided ? 'FINAL' : 'MATCHUP',
+        text: `${g.homeTeam.abbrev} ${g.homeScore}  —  ${g.awayTeam.abbrev} ${g.awayScore}`,
+      });
+    });
+  }
+
+  // ---- league news + blunder blurbs ----
+  if(wanted.news){
+    if(LD.hasLive()){
+      const { low, high } = LD.getWeekExtremes(week);
+      if(high) items.push({ badge:'LEAGUE NEWS', text:`${high.team.name} tops the week with ${high.score.toFixed(1)}`.toUpperCase() });
+      if(low)  items.push({ badge:'LEAGUE NEWS', text:`${low.team.name} bottoms out at ${low.score.toFixed(1)}`.toUpperCase() });
+    }
+    // Whatever is currently loaded in the chyron / desk-notes forms rides along.
+    const l1 = ($('rd-b-line1')||{}).value || '';
+    const l2 = ($('rd-b-line2')||{}).value || '';
+    if(l1 || l2) items.push({ badge:'LEAGUE NEWS', text:`${l1} ${l2}`.trim().toUpperCase() });
+    const blunder = ($('rd-sc-blunder')||{}).value || '';
+    if(blunder) items.push({ badge:'LEAGUE NEWS', text:blunder.toUpperCase() });
+  }
+
+  // ---- all-time records and streaks ----
+  if(wanted.records){
+    const r = LD.leagueHistory && LD.leagueHistory.records;
+    if(r){
+      if(r.highestScore) items.push({ badge:'ALL-TIME RECORD', text:`Highest score ever — ${r.highestScore.teamName} ${r.highestScore.score.toFixed(1)}`.toUpperCase() });
+      if(r.lowestScore)  items.push({ badge:'ALL-TIME RECORD', text:`Lowest score ever — ${r.lowestScore.teamName} ${r.lowestScore.score.toFixed(1)}`.toUpperCase() });
+      if(r.biggestBlowout){
+        const b = r.biggestBlowout;
+        items.push({ badge:'ALL-TIME RECORD', text:`Biggest blowout — ${b.winnerTeamName} over ${b.loserTeamName} by ${b.margin.toFixed(1)} (${b.year})`.toUpperCase() });
+      }
+      if(r.longestWinStreak){
+        const s = r.longestWinStreak;
+        items.push({ badge:'STREAK', text:`${LD.managerLatestInfo(s.ownerId).name} won ${s.length} straight, ${s.startYear} to ${s.endYear}`.toUpperCase() });
+      }
+      if(r.longestLossStreak){
+        const s = r.longestLossStreak;
+        items.push({ badge:'STREAK', text:`${LD.managerLatestInfo(s.ownerId).name} dropped ${s.length} in a row, ${s.startYear} to ${s.endYear}`.toUpperCase() });
+      }
+      const board = (r.careerPointsLeaderboard||[])[0];
+      if(board) items.push({ badge:'ALL-TIME RECORD', text:`Career points leader — ${LD.managerLatestInfo(board.ownerId).name} ${Math.round(board.totalPoints).toLocaleString()}`.toUpperCase() });
+    }
+  }
+
+  const custom = (($('rd-v-custom')||{}).value || '').trim();
+  if(custom) items.push({ badge:'DESK', text:custom.toUpperCase() });
+
+  // Nothing loaded yet — the ticker still has to have something to say.
+  if(!items.length){
+    items.push(
+      { badge:'MATCHUP',         text:'LOAD LEAGUE DATA ON THE GRAPHIC GENERATOR TAB' },
+      { badge:'LEAGUE NEWS',     text:'SCORES, BLUNDERS AND HEADLINES CHAIN IN AUTOMATICALLY' },
+      { badge:'ALL-TIME RECORD', text:'UPLOAD SEASON HISTORY FOR RIVALRY STATS AND STREAKS' },
+    );
+  }
+  return items;
+}
+
+/* ============================================================
+   CANVAS DRAWING
+============================================================ */
+function roundRect(ctx, x, y, w, h, r){
+  const rad = Math.min(r, w/2, h/2);
+  ctx.beginPath();
+  ctx.moveTo(x+rad, y);
+  ctx.arcTo(x+w, y,   x+w, y+h, rad);
+  ctx.arcTo(x+w, y+h, x,   y+h, rad);
+  ctx.arcTo(x,   y+h, x,   y,   rad);
+  ctx.arcTo(x,   y,   x+w, y,   rad);
+  ctx.closePath();
+}
+
+const BADGE_FONT = '700 26px "JetBrains Mono", monospace';
+const ITEM_FONT  = '600 30px Inter, sans-serif';
+const ITEM_GAP   = 64;
+
+/* Measure once per frame batch: badge pill + label, laid end to end.
+   `total` is the seamless loop width — draw the same strip again at
+   +total and the wrap is invisible. */
+function layoutTicker(ctx, items){
+  const parts = [];
+  let x = 0;
+  items.forEach(it=>{
+    ctx.font = BADGE_FONT;
+    const badgeW = ctx.measureText(it.badge).width + 34;
+    ctx.font = ITEM_FONT;
+    const textW = ctx.measureText(it.text).width;
+    parts.push({ badge:it.badge, text:it.text, x, badgeW, textW, w: badgeW + 18 + textW });
+    x += badgeW + 18 + textW + ITEM_GAP;
+  });
+  return { parts, total: Math.max(x, W + 1) };
+}
+
+function drawTickerStrip(ctx, layout, originX, accent){
+  const midY = TICKER_Y + TICKER_H/2;
+  layout.parts.forEach(p=>{
+    const x = originX + p.x;
+    if(x > W || x + p.w < 0) return;               // fully off-stage
+    // badge pill
+    ctx.fillStyle = BADGE_COLORS[p.badge] || accent;
+    roundRect(ctx, x, midY - 22, p.badgeW, 44, 8);
+    ctx.fill();
+    ctx.fillStyle = '#0A0D14';
+    ctx.font = BADGE_FONT;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(p.badge, x + 17, midY + 1);
+    // label
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = ITEM_FONT;
+    ctx.fillText(p.text, x + p.badgeW + 18, midY + 1);
+    // separator before the next item
+    ctx.fillStyle = 'rgba(255,255,255,0.22)';
+    ctx.fillRect(x + p.w + ITEM_GAP/2 - 1.5, midY - 13, 3, 26);
+  });
+}
+
+const easeOutCubic = (p)=> 1 - Math.pow(1 - p, 3);
+
+/* One frame of the broadcast. `t` is seconds since the clip started. */
+function drawFrame(ctx, t, o){
+  ctx.setTransform(1,0,0,1,0,0);
+  ctx.clearRect(0,0,W,H);
+  if(o.bg === 'chroma'){
+    ctx.fillStyle = '#00FF00';
+    ctx.fillRect(0,0,W,H);
+  }
+
+  const accent = o.accent || '#F5A623';
+
+  // Entrance: the whole lower third rides up from under the frame.
+  const p = Math.min(1, Math.max(0, t / ENTRANCE));
+  const slide = (1 - easeOutCubic(p)) * (H - GROUP_TOP);
+  ctx.save();
+  ctx.globalAlpha = Math.min(1, t / 0.35);
+  ctx.translate(0, slide);
+
+  // ---- accent bar + manager card ----
+  ctx.fillStyle = accent;
+  ctx.fillRect(60, CARD_Y - BAR_H, BAR_W, BAR_H);
+
+  ctx.fillStyle = 'rgba(10,13,20,0.90)';
+  ctx.fillRect(60, CARD_Y, W - 120, CARD_H);
+  ctx.fillStyle = accent;
+  ctx.fillRect(60, CARD_Y, 10, CARD_H);
+
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillStyle = accent;
+  ctx.font = '700 26px "JetBrains Mono", monospace';
+  ctx.fillText(o.team, 104, CARD_Y + 52);
+
+  ctx.fillStyle = '#FFFFFF';
+  ctx.font = '64px Anton, sans-serif';
+  ctx.fillText(o.name, 104, CARD_Y + 138);
+  const nameW = ctx.measureText(o.name).width;
+
+  if(o.record){
+    ctx.font = '500 30px "JetBrains Mono", monospace';
+    const recW = ctx.measureText(o.record).width;
+    const pillX = Math.min(104 + nameW + 22, W - 80 - recW - 32);
+    ctx.fillStyle = 'rgba(255,255,255,0.12)';
+    roundRect(ctx, pillX, CARD_Y + 96, recW + 32, 52, 6);
+    ctx.fill();
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillText(o.record, pillX + 16, CARD_Y + 133);
+  }
+
+  // ---- subline strip ----
+  if(o.subline){
+    ctx.fillStyle = 'rgba(10,13,20,0.92)';
+    ctx.fillRect(60, SUB_Y, W - 120, SUB_H);
+    ctx.fillStyle = accent;
+    ctx.font = '500 20px "JetBrains Mono", monospace';
+    ctx.fillText(o.subline, 76, SUB_Y + 24);
+  }
+
+  // ---- ticker bed ----
+  ctx.fillStyle = accent;
+  ctx.fillRect(0, TICKER_Y - RULE_H, W, RULE_H);
+  ctx.fillStyle = '#0A0D14';
+  ctx.fillRect(0, TICKER_Y, W, TICKER_H);
+
+  // ---- scrolling stream, clipped to the bed ----
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, TICKER_Y, W, TICKER_H);
+  ctx.clip();
+  const layout = o.layout;
+  const offset = (t * o.speed) % layout.total;
+  for(let originX = -offset; originX < W; originX += layout.total){
+    drawTickerStrip(ctx, layout, originX, accent);
+  }
+  ctx.restore();
+
+  ctx.restore();
+}
+
+/* ============================================================
+   CONTROL STATE
+============================================================ */
+let duration = 10;
+let bgMode   = 'alpha';
+let recording = false;
+
+document.querySelectorAll('.rd-v-dur').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    if(recording) return;
+    document.querySelectorAll('.rd-v-dur').forEach(b=> b.dataset.active='false');
+    btn.dataset.active = 'true';
+    duration = parseInt(btn.dataset.dur, 10);
+    previewStart = performance.now();
+  });
+});
+
+document.querySelectorAll('.rd-v-bg').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    if(recording) return;
+    document.querySelectorAll('.rd-v-bg').forEach(b=> b.dataset.active='false');
+    btn.dataset.active = 'true';
+    bgMode = btn.dataset.bg;
+    updateFormatNote();
+  });
+});
+
+const speedEl = $('rd-v-speed');
+speedEl.addEventListener('input', ()=> $('rd-v-speedLabel').textContent = speedEl.value);
+
+/* Re-measure the stream whenever anything that feeds it changes. */
+let cachedLayout = null;
+function invalidateTicker(){ cachedLayout = null; }
+document.querySelectorAll('.rd-v-stream').forEach(cb=> cb.addEventListener('change', invalidateTicker));
+$('rd-v-custom').addEventListener('input', invalidateTicker);
+['rd-b-line1','rd-b-line2','rd-sc-blunder'].forEach(id=>{
+  const el = $(id);
+  if(el) el.addEventListener('input', invalidateTicker);
+});
+
+function currentOptions(ctx){
+  if(!cachedLayout){
+    const items = tickerItems();
+    cachedLayout = layoutTicker(ctx, items);
+    $('rd-v-streamCount').textContent = `${items.length} item${items.length===1?'':'s'} queued in the ticker.`;
+  }
+  return {
+    name:    ($('rd-v-name').value || '').toUpperCase(),
+    team:    ($('rd-v-team').value || '').toUpperCase(),
+    record:  $('rd-v-record').value || '',
+    subline: ($('rd-v-subline').value || '').toUpperCase(),
+    accent:  $('rd-v-color').value,
+    speed:   parseInt(speedEl.value, 10),
+    bg:      bgMode,
+    layout:  cachedLayout,
+  };
+}
+
+/* ============================================================
+   PREVIEW LOOP — loops the clip so the entrance replays.
+============================================================ */
+const previewCanvas = $('rd-v-previewCanvas');
+const previewCtx = previewCanvas.getContext('2d');
+let previewStart = performance.now();
+
+$('rd-v-replay').addEventListener('click', ()=> previewStart = performance.now());
+
+function previewTick(now){
+  requestAnimationFrame(previewTick);
+  const section = $('rd-tab-broadcast');
+  if(recording || section.classList.contains('hidden') || section.offsetParent === null) return;
+  const t = ((now - previewStart) / 1000) % duration;
+  drawFrame(previewCtx, t, currentOptions(previewCtx));
+  $('rd-v-clock').textContent = `${t.toFixed(2)}s / ${duration.toFixed(2)}s`;
+}
+requestAnimationFrame(previewTick);
+
+/* ============================================================
+   SHARED DATA WIRING — same store the rest of the studio reads.
+============================================================ */
+const vSource = $('rd-v-source');
+let vOptions = [];
+
+function peopleOptions(){
+  if(LD.hasHistory()){
+    return LD.getManagers().map(m=>{
+      const info = LD.managerLatestInfo(m.id);
+      return { label:`${m.name}${info.teamName ? ' — ' + info.teamName : ''}`, name:m.name, team:info.teamName || m.name, record:'' };
+    });
+  }
+  return LD.getTeams().map(t=>({
+    label: `${t.name}${t.record ? ' (' + t.record + ')' : ''}`,
+    name: t.owner || t.name,
+    team: t.name,
+    record: t.record,
+  }));
+}
+
+LD.subscribe(()=>{
+  vOptions = peopleOptions();
+  vSource.innerHTML = vOptions.length
+    ? '<option value="">Select…</option>' + vOptions.map((o,i)=> `<option value="${i}">${LD.esc(o.label)}</option>`).join('')
+    : '<option value="">No league data loaded…</option>';
+  vSource.disabled = !vOptions.length;
+  $('rd-v-apply').disabled = !vOptions.length;
+  $('rd-v-apply').style.opacity = vOptions.length ? '1' : '0.45';
+  $('rd-v-apply').style.cursor  = vOptions.length ? 'pointer' : 'not-allowed';
+  const wk = LD.meta.week;
+  if(wk && !$('rd-v-subline').dataset.touched){
+    $('rd-v-subline').value = `WEEK ${wk} · POSTGAME PRESSER`;
+  }
+  invalidateTicker();
+});
+$('rd-v-subline').addEventListener('input', ()=> $('rd-v-subline').dataset.touched = '1');
+
+$('rd-v-apply').addEventListener('click', ()=>{
+  const idx = vSource.value;
+  if(idx === ''){ toast('Pick a manager or team first.'); return; }
+  const o = vOptions[parseInt(idx,10)];
+  $('rd-v-name').value = (o.name||'').toUpperCase();
+  $('rd-v-team').value = (o.team||'').toUpperCase();
+  if(o.record) $('rd-v-record').value = o.record;
+  toast('Chyron filled from shared league data.');
+});
+
+$('rd-v-fromPress').addEventListener('click', ()=>{
+  const map = { 'rd-v-name':'rd-p-name', 'rd-v-team':'rd-p-team', 'rd-v-record':'rd-p-record', 'rd-v-color':'rd-p-color' };
+  Object.keys(map).forEach(dst=>{
+    const src = $(map[dst]);
+    if(src) $(dst).value = src.value;
+  });
+  const ticker = $('rd-p-ticker');
+  if(ticker && ticker.value){
+    $('rd-v-custom').value = ticker.value;
+    invalidateTicker();
+  }
+  toast('Copied the Press Conference Tag into the video chyron.');
+});
+
+/* ============================================================
+   RECORDING — captureStream(60) into MediaRecorder, driven by
+   the same rAF renderer as the preview.
+============================================================ */
+function pickMime(){
+  const candidates = bgMode === 'alpha'
+    ? ['video/webm;codecs=vp8', 'video/webm;codecs=vp9', 'video/webm']
+    : ['video/mp4;codecs=avc1.42E01E', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'];
+  for(const c of candidates){
+    if(window.MediaRecorder && MediaRecorder.isTypeSupported(c)) return c;
+  }
+  return '';
+}
+
+function extFor(mime){ return mime.indexOf('mp4') !== -1 ? 'mp4' : 'webm'; }
+
+function updateFormatNote(){
+  const note = $('rd-v-formatNote');
+  if(!window.MediaRecorder){
+    note.textContent = 'This browser has no MediaRecorder — video export is unavailable here.';
+    return;
+  }
+  const mime = pickMime();
+  if(!mime){ note.textContent = 'No supported recording format found in this browser.'; return; }
+  note.textContent = bgMode === 'alpha'
+    ? `Records ${mime} with the alpha channel intact — Chrome/Edge keep transparency, Safari does not.`
+    : `Records ${mime} on a solid #00FF00 bed — key it out in your editor.`;
+}
+
+function setProgress(pct, label, state){
+  $('rd-v-progressFill').style.width = Math.max(0, Math.min(100, pct)) + '%';
+  $('rd-v-progressFill').dataset.state = state || '';
+  $('rd-v-progressText').textContent = label;
+}
+
+const recordBtn = $('rd-v-recordBtn');
+recordBtn.addEventListener('click', async ()=>{
+  if(recording) return;
+  if(!window.MediaRecorder){ toast('This browser cannot record video.'); return; }
+  const mime = pickMime();
+  if(!mime){ toast('No supported recording format in this browser.'); return; }
+
+  // Web fonts must be resident before the first frame or the clip opens in fallback type.
+  try{
+    await document.fonts.ready;
+    await Promise.all([
+      document.fonts.load('64px Anton'),
+      document.fonts.load('700 26px "JetBrains Mono"'),
+      document.fonts.load('600 30px Inter'),
+    ]);
+  }catch(e){ /* fonts already resolved or unsupported — draw anyway */ }
+
+  recording = true;
+  const btnHtml = recordBtn.innerHTML;
+  recordBtn.disabled = true;
+  recordBtn.innerHTML = 'Recording…';
+  $('rd-v-previewState').textContent = 'RECORDING';
+
+  // Hidden 1080x1920 stage — offscreen, full resolution, never scaled.
+  const canvas = document.createElement('canvas');
+  canvas.width = W; canvas.height = H;
+  canvas.style.cssText = 'position:fixed; left:-99999px; top:0; width:1080px; height:1920px;';
+  document.body.appendChild(canvas);
+  const ctx = canvas.getContext('2d', { alpha: true });
+
+  const opts = currentOptions(ctx);
+  cachedLayout = null;                       // preview re-measures on its own context
+  const stream = canvas.captureStream(60);
+  const chunks = [];
+  let recorder;
+  try{
+    recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 12000000 });
+  }catch(e){
+    recorder = new MediaRecorder(stream, { mimeType: mime });
+  }
+  recorder.ondataavailable = (e)=>{ if(e.data && e.data.size) chunks.push(e.data); };
+
+  const finish = ()=> new Promise(resolve=>{
+    recorder.onstop = ()=> resolve(new Blob(chunks, { type: mime.split(';')[0] }));
+  });
+
+  drawFrame(ctx, 0, opts);                   // first frame before the tape rolls
+  recorder.start(200);
+  const started = performance.now();
+
+  await new Promise(resolve=>{
+    function step(now){
+      const t = (now - started) / 1000;
+      if(t >= duration){
+        drawFrame(ctx, duration, opts);
+        resolve();
+        return;
+      }
+      drawFrame(ctx, t, opts);
+      setProgress((t / duration) * 100, `Recording: ${Math.round((t/duration)*100)}%…`, 'recording');
+      requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  });
+
+  setProgress(100, 'Encoding…', 'recording');
+  const stopped = finish();
+  recorder.stop();
+  stream.getTracks().forEach(tr=> tr.stop());
+  const blob = await stopped;
+  document.body.removeChild(canvas);
+
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  const stamp = new Date().toISOString().replace(/[:.]/g,'-');
+  link.href = url;
+  link.download = `broadcast-${bgMode === 'alpha' ? 'alpha' : 'chroma'}-${duration}s-${stamp}.${extFor(mime)}`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  setTimeout(()=> URL.revokeObjectURL(url), 30000);
+
+  const mb = (blob.size / (1024*1024)).toFixed(1);
+  setProgress(100, `Done — ${duration}s .${extFor(mime)} downloaded (${mb} MB).`, 'done');
+  toast(`Exported a ${duration}s ${extFor(mime).toUpperCase()} clip.`);
+
+  recording = false;
+  recordBtn.disabled = false;
+  recordBtn.innerHTML = btnHtml;
+  $('rd-v-previewState').textContent = 'LOOPING';
+  previewStart = performance.now();
+});
+
+updateFormatNote();
+})();
+</script>
+</body>
+</html>
