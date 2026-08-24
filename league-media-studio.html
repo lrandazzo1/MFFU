@@ -113,6 +113,20 @@
   .avatar-frame{ box-shadow:0 0 0 4px #05070a, 0 0 0 7px currentColor, 0 20px 50px rgba(0,0,0,0.6); }
   .stat-line{ background:linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent); height:1px; }
 
+  /* Brushed gold/bronze metallic frame — the All-Time Series badge on the
+     Tale of the Tape card. A gradient-filled wrapper acts as the border so
+     the metal reads as a swept highlight rather than a flat outline.
+     html2canvas rasterizes plain linear-gradients reliably, so no
+     border-image / mask tricks here. */
+  .metal-frame{
+    background:linear-gradient(135deg,#f6e0a6 0%, #c9974a 18%, #6d4f21 38%, #f0cf87 52%, #a87c36 70%, #5c421c 86%, #e8c987 100%);
+    box-shadow:0 0 40px rgba(201,151,74,0.18), 0 20px 50px rgba(0,0,0,0.55);
+  }
+  .metal-rule{
+    display:block; height:2px; width:90px; flex:none;
+    background:linear-gradient(90deg, rgba(201,151,74,0) 0%, #c9974a 50%, rgba(201,151,74,0) 100%);
+  }
+
   input[type="file"]::file-selector-button{
     background:#1b2230; color:#c7cdd8; border:1px solid var(--line); border-radius:6px; padding:6px 10px; margin-right:10px; cursor:pointer; font-family:'Oswald'; font-size:12px;
   }
@@ -436,6 +450,23 @@
           <input data-f-img="b_img" type="file" accept="image/*" class="text-xs w-full">
         </div>
         <input data-f="matchup_week" placeholder="Week label (WEEK 7)" class="input-field w-full rounded px-3 py-2 text-sm">
+
+        <div class="card rounded-lg p-4 space-y-3">
+          <div class="flex items-center justify-between gap-3">
+            <p class="section-label text-[var(--bronze)]">All-Time Series &amp; History</p>
+            <label class="flex items-center gap-2 text-[11px] text-gray-300 cursor-pointer select-none whitespace-nowrap">
+              <input id="showHistToggle" type="checkbox" class="accent-[var(--bronze)]">
+              Show on graphic
+            </label>
+          </div>
+          <p id="histAutoNote" class="text-[10px] text-gray-500 leading-snug">
+            Load league history on the Data tab, then apply a live matchup — the head-to-head record fills in automatically.
+          </p>
+          <input data-f="ah_series" placeholder="Series line (ALL-TIME: 8-4 DAVE LEADS)" class="input-field w-full rounded px-3 py-2 text-sm font-mono">
+          <input data-f="ah_diff" placeholder="Margin / diff (+142.6 PTS DIFF)" class="input-field w-full rounded px-3 py-2 text-sm font-mono">
+          <input data-f="ah_last" placeholder="Last matchup (LAST: 2024 WK 9 · 118.4 - 101.2)" class="input-field w-full rounded px-3 py-2 text-sm font-mono">
+          <input data-f="ah_streak" placeholder="Active streak (3-GAME WIN STREAK)" class="input-field w-full rounded px-3 py-2 text-sm font-mono">
+        </div>
       </div>
 
       <!-- Template B fields -->
@@ -580,6 +611,40 @@
           </div>
 
           <div class="absolute top-[380px] left-1/2 -translate-x-1/2 font-display text-white text-[64px] glow-cyan">VS</div>
+
+          <!-- All-time series & history badge (optional) -->
+          <div id="a-hist-badge" class="absolute top-[900px] left-[60px] right-[60px] hidden">
+            <div class="metal-frame rounded-2xl p-[4px]">
+              <div class="rounded-[13px] px-8 py-6" style="background:linear-gradient(180deg, rgba(26,22,8,0.92) 0%, rgba(10,12,17,0.95) 100%);">
+                <div class="flex items-center justify-center gap-4">
+                  <span class="metal-rule"></span>
+                  <p class="font-mono text-[var(--bronze)] text-[20px] tracking-[0.35em] whitespace-nowrap">ALL-TIME SERIES &amp; HISTORY</p>
+                  <span class="metal-rule"></span>
+                </div>
+
+                <p id="a-hist-series" class="font-mono text-white text-[38px] tracking-[0.06em] text-center mt-5 leading-tight">ALL-TIME: 8-4 DAVE LEADS</p>
+
+                <div class="stat-line my-5"></div>
+
+                <div class="space-y-4">
+                  <div class="flex items-baseline justify-between gap-6">
+                    <p class="section-label shrink-0" style="color:rgba(201,151,74,0.8);">AVG MARGIN / DIFF</p>
+                    <p id="a-hist-diff" class="font-mono text-[var(--bronze)] text-[26px] leading-tight text-right">+142.6 PTS DIFF</p>
+                  </div>
+                  <div class="stat-line"></div>
+                  <div class="flex items-baseline justify-between gap-6">
+                    <p class="section-label shrink-0" style="color:rgba(201,151,74,0.8);">LAST MATCHUP</p>
+                    <p id="a-hist-last" class="font-mono text-white text-[26px] leading-tight text-right">LAST: 2024 WK 9 · 118.4 - 101.2</p>
+                  </div>
+                  <div class="stat-line"></div>
+                  <div class="flex items-baseline justify-between gap-6">
+                    <p class="section-label shrink-0" style="color:rgba(201,151,74,0.8);">ACTIVE STREAK</p>
+                    <p id="a-hist-streak" class="font-mono text-white text-[26px] leading-tight text-right">3-GAME WIN STREAK</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
 
           <!-- Score panel -->
           <div class="absolute bottom-[140px] left-[60px] right-[60px] card rounded-2xl p-8" style="background:rgba(16,20,28,0.85); border:1px solid rgba(255,255,255,0.1);">
@@ -1189,6 +1254,7 @@ window.LeagueData = (function(){
           logo: t.logo || '',
           record: rec ? `${rec.wins}-${rec.losses}${rec.ties ? '-' + rec.ties : ''}` : '',
           owner: memberNames[ownerId] || '',
+          ownerId,               // member GUID — the key the history archive is built on
         };
       });
     },
@@ -1324,6 +1390,7 @@ const state = {
     a_name:'HOME TEAM', a_record:'7-3', a_owner:'Manager Name', a_proj:'112.4', a_actual:'--', a_img:null,
     b_name:'AWAY TEAM', b_record:'5-5', b_owner:'Manager Name', b_proj:'108.9', b_actual:'--', b_img:null,
     matchup_week:'WEEK 7',
+    ah_series:'ALL-TIME: 8-4 DAVE LEADS', ah_diff:'+142.6 PTS DIFF', ah_last:'LAST: 2024 WK 9 · 118.4 - 101.2', ah_streak:'3-GAME WIN STREAK',
     rank_title:'POWER RANKINGS', rank_week:'WEEK 7',
     news_tag:'TRADE ALERT', news_headline:'TRADE SHAKES UP THE LEAGUE', news_sub:'Details of the deal go here.', news_manager:'MANAGER NAME', news_img:null,
     hs_name:'MANAGER NAME', hs_score:'58.2', hs_week:'WEEK 7', hs_roast:'Benched their best player. Guilty as charged.', hs_img:null,
@@ -1331,6 +1398,9 @@ const state = {
     e_series:'8-4', e_diff:'+142.6', e_last:'2024 · WK9 · WON 118.4–101.2', e_streak:'ON A 3-GAME STREAK',
     f_kicker:'ALL-TIME RECORD', f_headline:'184.6 PTS', f_subtext:'Highest single-game score in league history', f_owner:'MANAGER NAME', f_meta:'2022 · WEEK 5', f_img:null,
   },
+  /* Template A's optional All-Time Series badge: shown only when this is on.
+     Off until history data actually backs it up (or the user ticks it). */
+  showMatchupHistory: false,
   ranks: [
     {rank:1, name:'Dynasty Warriors', record:'8-2', diff:'+142.5'},
     {rank:2, name:'Gridiron Gurus', record:'7-3', diff:'+98.1'},
@@ -1388,6 +1458,8 @@ const historySuccessBanner  = document.getElementById('historySuccessBanner');
 const loadHistorySpinner    = document.getElementById('loadHistorySpinner');
 const loadHistoryLabel      = document.getElementById('loadHistoryLabel');
 const historyStatus         = document.getElementById('historyStatus');
+const showHistToggle  = document.getElementById('showHistToggle');
+const histAutoNote    = document.getElementById('histAutoNote');
 const espnPicker      = document.getElementById('espnDataPicker');
 const espnPickerBody  = document.getElementById('espnPickerBody');
 const exportRoot      = document.getElementById('export-root');
@@ -1490,6 +1562,16 @@ function render(){
   document.getElementById('a-week').textContent = f.matchup_week || 'WEEK';
   setImgOrPlaceholder('a-img','a-img-ph', f.a_img);
   setImgOrPlaceholder('b-img','b-img-ph', f.b_img);
+
+  // Template A · All-Time Series & History badge
+  document.getElementById('a-hist-series').textContent = f.ah_series || '';
+  document.getElementById('a-hist-diff').textContent   = f.ah_diff || '--';
+  document.getElementById('a-hist-last').textContent   = f.ah_last || '--';
+  document.getElementById('a-hist-streak').textContent = f.ah_streak || '--';
+  const histBadge = document.getElementById('a-hist-badge');
+  const histHasCopy = !!(f.ah_series || f.ah_diff || f.ah_last || f.ah_streak);
+  histBadge.classList.toggle('hidden', !(state.showMatchupHistory && histHasCopy));
+  if(showHistToggle) showHistToggle.checked = !!state.showMatchupHistory;
 
   // Template B
   document.getElementById('rank-title').textContent = f.rank_title || 'POWER RANKINGS';
@@ -1981,6 +2063,90 @@ function getH2H(ownerIdA, ownerIdB){
   };
 }
 
+/* ------------------------------------------------------------
+   TEMPLATE A · ALL-TIME SERIES & HISTORY BADGE
+   Joins a live weekly matchup back to the uploaded multi-season
+   archive so the Tale of the Tape can carry the head-to-head
+   record without anyone typing it in.
+------------------------------------------------------------ */
+
+/* Live team -> manager in window.LeagueData.leagueHistory. The member GUID
+   is the reliable join; team/owner names are the fallback for archives
+   stitched together from payloads that never carried a members[] block. */
+function resolveHistoryOwnerId(team){
+  const managers = (state.leagueHistory && state.leagueHistory.managers) || null;
+  if(!team || !managers) return null;
+
+  if(team.ownerId && managers[team.ownerId]) return team.ownerId;
+
+  const norm = (v)=> String(v||'').trim().toLowerCase();
+  const wantOwner = norm(team.owner);
+  const wantTeam  = norm(team.name);
+
+  const byManagerName = wantOwner && Object.values(managers).find(m=> norm(m.name) === wantOwner);
+  if(byManagerName) return byManagerName.id;
+
+  const byTeamName = wantTeam && Object.values(managers).find(m=>
+    Object.values(m.teamNamesByYear || {}).some(n=> norm(n) === wantTeam)
+  );
+  return byTeamName ? byTeamName.id : null;
+}
+
+/* Formats the four badge lines for one live matchup, from Team A's
+   perspective. Returns false (and leaves the fields alone) when the pair
+   has no history to show. */
+function autofillMatchupHistory(homeTeam, awayTeam){
+  const idA = resolveHistoryOwnerId(homeTeam);
+  const idB = resolveHistoryOwnerId(awayTeam);
+  if(!idA || !idB || idA === idB) return false;
+
+  const h2h = getH2H(idA, idB);
+  if(!h2h) return false;
+
+  const games = h2h.winsFor + h2h.winsAgainst + h2h.ties;
+  if(!games) return false;
+
+  const nameA = (managerLatestInfo(idA).name || homeTeam.name).toUpperCase();
+  const nameB = (managerLatestInfo(idB).name || awayTeam.name).toUpperCase();
+
+  const record = `${h2h.winsFor}-${h2h.winsAgainst}${h2h.ties ? '-' + h2h.ties : ''}`;
+  let verdict;
+  if(h2h.winsFor > h2h.winsAgainst)      verdict = `${nameA} LEADS`;
+  else if(h2h.winsAgainst > h2h.winsFor) verdict = `${nameB} LEADS`;
+  else                                   verdict = 'SERIES TIED';
+  state.fields.ah_series = `ALL-TIME: ${record} ${verdict}`;
+
+  const diff = h2h.diff;
+  const avg  = diff / games;
+  const sign = (n)=> (n >= 0 ? '+' : '') + n.toFixed(1);
+  state.fields.ah_diff = `${sign(diff)} PTS DIFF · ${sign(avg)} AVG`;
+
+  if(h2h.lastMeeting){
+    const lm = h2h.lastMeeting;
+    state.fields.ah_last = `LAST: ${lm.year} WK ${lm.week} · ${lm.scoreFor.toFixed(1)} - ${lm.scoreAgainst.toFixed(1)}`;
+  } else {
+    state.fields.ah_last = '';
+  }
+
+  if(h2h.streakOwnerId && h2h.streakCount > 0){
+    const who = h2h.streakOwnerId === idA ? nameA : nameB;
+    state.fields.ah_streak = `${who} · ${h2h.streakCount}-GAME WIN STREAK`;
+  } else {
+    state.fields.ah_streak = 'NO ACTIVE STREAK';
+  }
+
+  return true;
+}
+
+/* The Content-panel note under the toggle, so it always says why the badge
+   is or isn't carrying real numbers. */
+function setHistNote(msg, tone){
+  if(!histAutoNote) return;
+  histAutoNote.textContent = msg;
+  histAutoNote.className = 'text-[10px] leading-snug ' +
+    (tone === 'ok' ? 'text-[var(--bronze)]' : tone === 'warn' ? 'text-gray-400' : 'text-gray-500');
+}
+
 /* ============================================================
    ESPN DATA PARSING
 ============================================================ */
@@ -2037,21 +2203,39 @@ function renderEspnPicker(){
 
       state.fields.a_name = g.homeTeam.name.toUpperCase();
       state.fields.a_record = g.homeTeam.record;
+      if(g.homeTeam.owner) state.fields.a_owner = g.homeTeam.owner;
       state.fields.a_actual = g.homeScore;
       if(g.homeProjected) state.fields.a_proj = g.homeProjected;
       if(g.homeTeam.logo) state.fields.a_img = g.homeTeam.logo;
 
       state.fields.b_name = g.awayTeam.name.toUpperCase();
       state.fields.b_record = g.awayTeam.record;
+      if(g.awayTeam.owner) state.fields.b_owner = g.awayTeam.owner;
       state.fields.b_actual = g.awayScore;
       if(g.awayProjected) state.fields.b_proj = g.awayProjected;
       if(g.awayTeam.logo) state.fields.b_img = g.awayTeam.logo;
 
       state.fields.matchup_week = week ? `WEEK ${week}` : state.fields.matchup_week;
 
+      // All-time series badge — auto-filled straight off the loaded archive,
+      // and switched on by default the moment there's real history behind it.
+      let histMsg = '';
+      if(!state.leagueHistory){
+        setHistNote('No league history loaded — load the all-time archive on the Data tab to auto-fill this badge.');
+        state.showMatchupHistory = false;
+      } else if(autofillMatchupHistory(g.homeTeam, g.awayTeam)){
+        state.showMatchupHistory = true;
+        setHistNote('Auto-filled from the loaded league history for this exact matchup.', 'ok');
+        histMsg = ' All-time series auto-filled.';
+      } else {
+        state.showMatchupHistory = false;
+        setHistNote('These two managers have no completed meetings in the loaded seasons — badge hidden.', 'warn');
+        histMsg = ' No head-to-head history found for this pair.';
+      }
+
       syncInputsFromState();
       render();
-      showToast('Applied live ESPN matchup data.');
+      showToast('Applied live ESPN matchup data.' + histMsg);
     });
   } else if(state.template === 'B'){
     espnPickerBody.innerHTML = `<button id="applyPickB" class="btn-ghost w-full rounded py-1.5 text-xs">LOAD ALL TEAMS INTO RANKINGS</button>`;
@@ -2336,6 +2520,11 @@ document.querySelectorAll('[data-f]').forEach(inp=>{
   });
 });
 
+showHistToggle.addEventListener('change', ()=>{
+  state.showMatchupHistory = showHistToggle.checked;
+  render();
+});
+
 document.querySelectorAll('[data-f-img]').forEach(inp=>{
   const key = inp.dataset.fImg;
   inp.addEventListener('change', (e)=>{
@@ -2605,6 +2794,8 @@ resetBtn.addEventListener('click', ()=>{
   document.querySelectorAll('[data-f]').forEach(inp=>{ inp.value=''; state.fields[inp.dataset.f]=''; });
   document.querySelectorAll('[data-f-img]').forEach(inp=> inp.value='');
   ['a_img','b_img','news_img','hs_img','e_a_img','e_b_img','f_img'].forEach(k=> state.fields[k]=null);
+  state.showMatchupHistory = false;
+  setHistNote('Load league history on the Data tab, then apply a live matchup — the head-to-head record fills in automatically.');
   state.ranks = [];
   renderRankRows();
   render();
