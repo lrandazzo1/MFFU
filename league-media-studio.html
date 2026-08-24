@@ -788,58 +788,86 @@
           <div class="absolute bottom-[50px] left-0 right-0 text-center font-mono text-[16px] tracking-[0.3em] text-gray-500">GRIDIRON GRAPHICS · LEAGUE NETWORK</div>
         </div>
 
-        <!-- TEMPLATE G — FRANCHISE RESUME -->
+        <!-- TEMPLATE G — FRANCHISE RESUME (Bleacher Report / ESPN Mobile card aesthetic) -->
         <div id="tpl-G" class="tpl absolute inset-0 hidden">
-          <div class="absolute inset-0" style="background:radial-gradient(ellipse at 50% 0%, #0a1520 0%, #05070a 55%);"></div>
-          <div class="absolute top-0 left-0 right-0 h-[10px]" style="background:linear-gradient(90deg,var(--cyan),var(--green));"></div>
+          <div class="absolute inset-0" style="background:linear-gradient(180deg, #060a12 0%, #0a1018 30%, #080c14 100%);"></div>
+          <!-- Subtle top accent bar -->
+          <div class="absolute top-0 left-0 right-0 h-[6px]" style="background:linear-gradient(90deg,var(--cyan),#1a6dff,var(--cyan));"></div>
 
-          <div class="absolute top-[50px] left-0 right-0 text-center">
-            <p class="font-mono text-[var(--cyan)] text-[22px] tracking-[0.35em]">FRANCHISE RESUME</p>
-            <h2 id="g-team-title" class="font-display text-white text-[48px] leading-none mt-2 glow-cyan px-10">TEAM NAME</h2>
-            <p id="g-manager-title" class="font-condensed text-gray-400 text-[26px] mt-1">Manager Name</p>
-          </div>
+          <!-- ===== HEADER & HERO STAT BLOCK ===== -->
+          <div class="absolute top-[32px] left-[56px] right-[56px]">
+            <!-- Avatar + Identity Row -->
+            <div style="display:flex; align-items:center; gap:28px;">
+              <!-- Avatar with metallic ring -->
+              <div style="position:relative; width:140px; height:140px; flex-shrink:0;">
+                <div style="position:absolute; inset:-5px; border-radius:50%; background:conic-gradient(from 0deg, #4a5568, #a0aec0, #e2e8f0, #a0aec0, #4a5568); padding:4px;">
+                  <div style="width:100%; height:100%; border-radius:50%; background:#0a0e16; padding:3px;">
+                    <div style="width:100%; height:100%; border-radius:50%; overflow:hidden; background:#1a2230; display:flex; align-items:center; justify-content:center;">
+                      <img id="g-img" class="hidden" style="width:100%; height:100%; object-fit:cover;">
+                      <span id="g-img-ph" class="font-display" style="font-size:56px; color:var(--cyan);">?</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <!-- Name Stack -->
+              <div style="flex:1; min-width:0;">
+                <h2 id="g-team-title" class="font-display" style="font-size:52px; line-height:0.95; color:#fff; text-shadow:0 0 40px rgba(0,224,255,0.3), 0 0 80px rgba(0,224,255,0.1);">TEAM NAME</h2>
+                <p id="g-manager-title" class="font-condensed" style="font-size:26px; color:#7a8599; margin-top:6px; letter-spacing:0.04em;"><span id="g-manager-name">Manager Name</span> · FRANCHISE RESUME</p>
+              </div>
+            </div>
 
-          <!-- Avatar -->
-          <div class="absolute top-[240px] left-1/2 -translate-x-1/2">
-            <div class="w-[200px] h-[200px] rounded-full overflow-hidden bg-[#1a2230] avatar-frame text-[var(--cyan)] flex items-center justify-center">
-              <img id="g-img" class="w-full h-full object-cover hidden">
-              <span id="g-img-ph" class="font-display text-[80px] text-[var(--cyan)]">?</span>
-            </div>
-          </div>
-
-          <!-- Stats grid -->
-          <div class="absolute top-[490px] left-[56px] right-[56px] space-y-3">
-            <div class="flex items-center justify-between rounded-xl px-6 py-4" style="background:rgba(16,20,28,0.85); border:1px solid rgba(0,224,255,0.2);">
-              <span class="section-label text-[var(--cyan)]">AVG FINISH</span>
-              <span id="g-avg" class="font-display text-white text-[40px]">--</span>
-            </div>
-            <div class="flex items-center justify-between rounded-xl px-6 py-4" style="background:rgba(16,20,28,0.85); border:1px solid rgba(255,196,0,0.2);">
-              <span class="section-label text-[var(--gold)]">CHAMPIONSHIPS</span>
-              <span id="g-champs" class="font-display text-[var(--gold)] text-[40px] glow-gold">0</span>
-            </div>
-            <div class="flex items-center justify-between rounded-xl px-6 py-4" style="background:rgba(16,20,28,0.85); border:1px solid rgba(255,255,255,0.08);">
-              <span class="section-label">TOP 3 FINISHES</span>
-              <span id="g-top3" class="font-display text-white text-[40px]">0</span>
-            </div>
-            <div class="flex items-center justify-between rounded-xl px-6 py-4" style="background:rgba(16,20,28,0.85); border:1px solid rgba(255,255,255,0.08);">
-              <span class="section-label">PLAYOFF APPEARANCES</span>
-              <span id="g-playoffs" class="font-display text-white text-[40px]">0</span>
-            </div>
-            <div class="flex items-center justify-between rounded-xl px-6 py-4" style="background:rgba(16,20,28,0.85); border:1px solid rgba(255,255,255,0.08);">
-              <span class="section-label">ALL-TIME RECORD</span>
-              <span id="g-record" class="font-mono text-white text-[30px]">0-0-0</span>
+            <!-- Hero Accent Card — Average Finish -->
+            <div id="g-hero-card" style="margin-top:28px; width:100%; border-radius:16px; padding:28px 36px; display:flex; align-items:center; justify-content:space-between; background:linear-gradient(135deg, rgba(0,224,255,0.08) 0%, rgba(26,109,255,0.06) 50%, rgba(0,224,255,0.04) 100%); border:1px solid rgba(0,224,255,0.2); backdrop-filter:blur(10px);">
+              <div>
+                <p class="font-mono" style="font-size:13px; letter-spacing:0.2em; color:var(--cyan); margin-bottom:4px;">AVERAGE FINISH</p>
+                <p id="g-hero-rank" class="font-condensed" style="font-size:18px; color:#5b667a; margin-top:2px;">ALL-TIME LEAGUE RANK</p>
+              </div>
+              <div id="g-avg" class="font-display" style="font-size:96px; line-height:1; color:#fff; text-shadow:0 0 50px rgba(0,224,255,0.5), 0 0 100px rgba(0,224,255,0.2);">--</div>
             </div>
           </div>
 
-          <!-- Year-by-year line chart -->
-          <div class="absolute top-[1060px] left-[56px] right-[56px]">
-            <p class="section-label mb-3 text-[var(--cyan)]">YEAR-BY-YEAR FINAL RANK</p>
-            <div class="rounded-xl px-6 py-5" style="background:rgba(16,20,28,0.85); border:1px solid rgba(0,224,255,0.15);">
-              <svg id="g-chart" width="968" height="320" viewBox="0 0 968 320"></svg>
+          <!-- ===== 3-COLUMN CAREER HARDWARE GRID ===== -->
+          <div class="absolute" style="top:420px; left:56px; right:56px;">
+            <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px;">
+              <!-- Championships -->
+              <div style="border-radius:14px; padding:24px 16px; text-align:center; background:rgba(12,16,24,0.9); border:1px solid rgba(255,196,0,0.3); border-top:3px solid var(--gold);">
+                <div id="g-champs" class="font-display" style="font-size:72px; line-height:1; color:var(--gold); text-shadow:0 0 35px rgba(255,196,0,0.5);">0</div>
+                <p class="font-mono" style="font-size:11px; letter-spacing:0.15em; color:var(--gold); margin-top:8px;">CHAMPIONSHIPS</p>
+              </div>
+              <!-- Playoff Apps -->
+              <div style="border-radius:14px; padding:24px 16px; text-align:center; background:rgba(12,16,24,0.9); border:1px solid rgba(0,224,255,0.25); border-top:3px solid var(--cyan);">
+                <div id="g-playoffs" class="font-display" style="font-size:72px; line-height:1; color:var(--cyan); text-shadow:0 0 35px rgba(0,224,255,0.4);">0</div>
+                <p class="font-mono" style="font-size:11px; letter-spacing:0.15em; color:var(--cyan); margin-top:8px;">PLAYOFF APPS</p>
+              </div>
+              <!-- Top 3 Finishes -->
+              <div style="border-radius:14px; padding:24px 16px; text-align:center; background:rgba(12,16,24,0.9); border:1px solid rgba(255,176,0,0.25); border-top:3px solid #ffb000;">
+                <div id="g-top3" class="font-display" style="font-size:72px; line-height:1; color:#ffb000; text-shadow:0 0 35px rgba(255,176,0,0.4);">0</div>
+                <p class="font-mono" style="font-size:11px; letter-spacing:0.15em; color:#ffb000; margin-top:8px;">TOP 3 FINISHES</p>
+              </div>
+            </div>
+
+            <!-- Sub-card: Record + Win Pct -->
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:16px;">
+              <div style="border-radius:12px; padding:18px 24px; display:flex; align-items:center; justify-content:space-between; background:rgba(12,16,24,0.85); border:1px solid rgba(255,255,255,0.08);">
+                <span class="font-mono" style="font-size:11px; letter-spacing:0.12em; color:#5b667a;">ALL-TIME RECORD</span>
+                <span id="g-record" class="font-mono" style="font-size:24px; color:#fff; font-weight:700;">0-0-0</span>
+              </div>
+              <div style="border-radius:12px; padding:18px 24px; display:flex; align-items:center; justify-content:space-between; background:rgba(12,16,24,0.85); border:1px solid rgba(255,255,255,0.08);">
+                <span class="font-mono" style="font-size:11px; letter-spacing:0.12em; color:#5b667a;">WIN PCT</span>
+                <span id="g-winpct" class="font-mono" style="font-size:24px; color:#fff; font-weight:700;">.000</span>
+              </div>
             </div>
           </div>
 
-          <div class="absolute bottom-[50px] left-0 right-0 text-center font-mono text-[16px] tracking-[0.3em] text-gray-500">GRIDIRON GRAPHICS · LEAGUE NETWORK</div>
+          <!-- ===== TRAJECTORY LINE GRAPH (full bottom half) ===== -->
+          <div class="absolute" style="top:770px; left:56px; right:56px; bottom:80px;">
+            <p class="font-mono" style="font-size:12px; letter-spacing:0.2em; color:var(--cyan); margin-bottom:12px;">YEAR-BY-YEAR RANK TRAJECTORY</p>
+            <div style="border-radius:16px; padding:24px 20px 32px 20px; height:calc(100% - 30px); background:rgba(12,16,24,0.85); border:1px solid rgba(0,224,255,0.12);">
+              <svg id="g-chart" width="100%" height="100%" viewBox="0 0 920 700" preserveAspectRatio="xMidYMid meet"></svg>
+            </div>
+          </div>
+
+          <div class="absolute bottom-[28px] left-0 right-0 text-center font-mono" style="font-size:14px; letter-spacing:0.3em; color:#3a4356;">GRIDIRON GRAPHICS · LEAGUE NETWORK</div>
         </div>
 
       </div>
@@ -1606,65 +1634,140 @@ function renderFranchiseChart(yearRanks){
   svg.innerHTML = '';
   if(!yearRanks.length) {
     const t = document.createElementNS('http://www.w3.org/2000/svg','text');
-    t.setAttribute('x','484'); t.setAttribute('y','160'); t.setAttribute('text-anchor','middle');
-    t.setAttribute('fill','#5b667a'); t.setAttribute('font-family','Space Mono,monospace'); t.setAttribute('font-size','14');
+    t.setAttribute('x','460'); t.setAttribute('y','350'); t.setAttribute('text-anchor','middle');
+    t.setAttribute('fill','#5b667a'); t.setAttribute('font-family','Space Mono,monospace'); t.setAttribute('font-size','16');
     t.textContent = 'Load league history to populate chart';
     svg.appendChild(t);
     return;
   }
-  const W=968, H=320, padL=50, padR=20, padT=30, padB=40;
+  const W=920, H=700, padL=60, padR=40, padT=60, padB=80;
   const n=yearRanks.length;
   const maxRank=12;
   const xStep = n>1 ? (W-padL-padR)/(n-1) : 0;
   const yScale = (H-padT-padB)/(maxRank-1);
 
-  // grid lines
-  [1,3,6,12].forEach(r=>{
+  // Defs for glow filter and gradient fill
+  const defs = document.createElementNS('http://www.w3.org/2000/svg','defs');
+  defs.innerHTML = `
+    <filter id="glow-f" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="rgba(0,224,255,0.25)"/>
+      <stop offset="100%" stop-color="rgba(0,224,255,0)"/>
+    </linearGradient>
+    <filter id="node-glow" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="6" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  `;
+  svg.appendChild(defs);
+
+  // Grid lines with rank labels
+  [1,2,3,4,5,6,7,8,9,10,11,12].forEach(r=>{
     const y=padT+(r-1)*yScale;
     const line=document.createElementNS('http://www.w3.org/2000/svg','line');
     line.setAttribute('x1',padL); line.setAttribute('x2',W-padR);
     line.setAttribute('y1',y); line.setAttribute('y2',y);
-    line.setAttribute('stroke','rgba(255,255,255,0.08)'); line.setAttribute('stroke-width','1');
+    if(r===1){
+      line.setAttribute('stroke','rgba(255,196,0,0.25)');
+      line.setAttribute('stroke-dasharray','8,6');
+      line.setAttribute('stroke-width','1.5');
+    } else {
+      line.setAttribute('stroke','rgba(255,255,255,0.05)');
+      line.setAttribute('stroke-width','1');
+    }
     svg.appendChild(line);
     const label=document.createElementNS('http://www.w3.org/2000/svg','text');
-    label.setAttribute('x',padL-8); label.setAttribute('y',y+4);
-    label.setAttribute('text-anchor','end'); label.setAttribute('fill','#5b667a');
-    label.setAttribute('font-family','Space Mono,monospace'); label.setAttribute('font-size','11');
-    label.textContent=String(r);
+    label.setAttribute('x',padL-12); label.setAttribute('y',y+5);
+    label.setAttribute('text-anchor','end');
+    label.setAttribute('fill', r===1?'rgba(255,196,0,0.6)':'#3a4356');
+    label.setAttribute('font-family','Space Mono,monospace'); label.setAttribute('font-size','13');
+    label.textContent = r===1?'1st': r<=3? r+'nd/rd': String(r);
+    if(r>3) label.textContent = String(r);
+    if(r===2) label.textContent='2';
+    if(r===3) label.textContent='3';
+    if(r===1) label.textContent='1st';
     svg.appendChild(label);
   });
 
-  // line path
   const points = yearRanks.map((yr,i)=>{
     const x=padL+(n>1?i*xStep:((W-padL-padR)/2));
     const y=padT+(yr.rank-1)*yScale;
     return {x,y,year:yr.year,rank:yr.rank};
   });
 
+  // Area fill
+  if(points.length>1){
+    const areaD = 'M'+points[0].x+','+points[0].y +
+      points.slice(1).map(p=> ' L'+p.x+','+p.y).join('') +
+      ' L'+points[points.length-1].x+','+(H-padB) +
+      ' L'+points[0].x+','+(H-padB)+' Z';
+    const area=document.createElementNS('http://www.w3.org/2000/svg','path');
+    area.setAttribute('d',areaD);
+    area.setAttribute('fill','url(#areaGrad)');
+    svg.appendChild(area);
+  }
+
+  // Line path with glow
   if(points.length>1){
     const pathD = points.map((p,i)=> (i===0?'M':'L')+p.x+','+p.y).join(' ');
+    // glow under-line
+    const glow=document.createElementNS('http://www.w3.org/2000/svg','path');
+    glow.setAttribute('d',pathD); glow.setAttribute('fill','none');
+    glow.setAttribute('stroke','rgba(0,224,255,0.6)'); glow.setAttribute('stroke-width','6');
+    glow.setAttribute('stroke-linejoin','round'); glow.setAttribute('filter','url(#glow-f)');
+    svg.appendChild(glow);
+    // crisp line
     const path=document.createElementNS('http://www.w3.org/2000/svg','path');
     path.setAttribute('d',pathD); path.setAttribute('fill','none');
-    path.setAttribute('stroke','var(--cyan)'); path.setAttribute('stroke-width','3');
-    path.setAttribute('stroke-linejoin','round');
+    path.setAttribute('stroke','#00e0ff'); path.setAttribute('stroke-width','3.5');
+    path.setAttribute('stroke-linejoin','round'); path.setAttribute('stroke-linecap','round');
     svg.appendChild(path);
   }
 
-  // dots + labels
+  // Glowing nodes, callout pills, and season labels
   points.forEach(p=>{
+    const nodeColor = p.rank===1?'#ffc400': p.rank<=3?'#00e0ff':'#5b8aaa';
+    // outer glow circle
+    const gc=document.createElementNS('http://www.w3.org/2000/svg','circle');
+    gc.setAttribute('cx',p.x); gc.setAttribute('cy',p.y); gc.setAttribute('r','12');
+    gc.setAttribute('fill', nodeColor); gc.setAttribute('opacity','0.25');
+    gc.setAttribute('filter','url(#node-glow)');
+    svg.appendChild(gc);
+    // solid node
     const c=document.createElementNS('http://www.w3.org/2000/svg','circle');
-    c.setAttribute('cx',p.x); c.setAttribute('cy',p.y); c.setAttribute('r','6');
-    c.setAttribute('fill', p.rank===1?'var(--gold)': p.rank<=3?'var(--cyan)':'#5b667a');
+    c.setAttribute('cx',p.x); c.setAttribute('cy',p.y); c.setAttribute('r','7');
+    c.setAttribute('fill', nodeColor);
+    c.setAttribute('stroke','#fff'); c.setAttribute('stroke-width','2');
     svg.appendChild(c);
+
+    // Data callout pill above point
+    const pillW=52, pillH=26, pillY=p.y-32;
+    const pill=document.createElementNS('http://www.w3.org/2000/svg','rect');
+    pill.setAttribute('x',p.x-pillW/2); pill.setAttribute('y',pillY-pillH/2);
+    pill.setAttribute('width',pillW); pill.setAttribute('height',pillH);
+    pill.setAttribute('rx','13'); pill.setAttribute('fill', p.rank===1?'rgba(255,196,0,0.2)':'rgba(0,224,255,0.15)');
+    pill.setAttribute('stroke', p.rank===1?'rgba(255,196,0,0.5)':'rgba(0,224,255,0.35)');
+    pill.setAttribute('stroke-width','1');
+    svg.appendChild(pill);
     const rl=document.createElementNS('http://www.w3.org/2000/svg','text');
-    rl.setAttribute('x',p.x); rl.setAttribute('y',p.y-12); rl.setAttribute('text-anchor','middle');
-    rl.setAttribute('fill','#fff'); rl.setAttribute('font-family','Anton,sans-serif'); rl.setAttribute('font-size','14');
+    rl.setAttribute('x',p.x); rl.setAttribute('y',pillY+5);
+    rl.setAttribute('text-anchor','middle');
+    rl.setAttribute('fill', p.rank===1?'#ffc400':'#fff');
+    rl.setAttribute('font-family','Anton,sans-serif'); rl.setAttribute('font-size','16');
     rl.textContent='#'+p.rank;
     svg.appendChild(rl);
+
+    // Season label at bottom
     const yl=document.createElementNS('http://www.w3.org/2000/svg','text');
-    yl.setAttribute('x',p.x); yl.setAttribute('y',H-8); yl.setAttribute('text-anchor','middle');
-    yl.setAttribute('fill','#5b667a'); yl.setAttribute('font-family','Space Mono,monospace'); yl.setAttribute('font-size','10');
-    yl.textContent=String(p.year).slice(-2);
+    yl.setAttribute('x',p.x); yl.setAttribute('y',H-30);
+    yl.setAttribute('text-anchor','middle');
+    yl.setAttribute('fill','#7a8599');
+    yl.setAttribute('font-family','Space Mono,monospace'); yl.setAttribute('font-size','15');
+    yl.setAttribute('font-weight','700');
+    yl.textContent="'"+String(p.year).slice(-2);
     svg.appendChild(yl);
   });
 }
@@ -1889,12 +1992,17 @@ function render(){
 
   // Template G — Franchise Resume
   document.getElementById('g-team-title').textContent = f.g_team || 'TEAM NAME';
-  document.getElementById('g-manager-title').textContent = f.g_manager || 'Manager Name';
+  document.getElementById('g-manager-name').textContent = f.g_manager || 'Manager Name';
   document.getElementById('g-avg').textContent = f.g_avg || '--';
   document.getElementById('g-champs').textContent = f.g_champs || '0';
   document.getElementById('g-top3').textContent = f.g_top3 || '0';
   document.getElementById('g-playoffs').textContent = f.g_playoffs || '0';
   document.getElementById('g-record').textContent = f.g_record || '0-0-0';
+  // Compute win pct from record
+  const recParts = (f.g_record || '0-0-0').split('-').map(Number);
+  const totalGames = (recParts[0]||0)+(recParts[1]||0)+(recParts[2]||0);
+  const winPct = totalGames > 0 ? ((recParts[0]||0)/totalGames).toFixed(3) : '.000';
+  document.getElementById('g-winpct').textContent = String(winPct).startsWith('0') ? winPct.slice(1) : winPct;
   setImgOrPlaceholder('g-img','g-img-ph', f.g_img);
   renderFranchiseChart(f.g_yearRanks || []);
 }
