@@ -682,18 +682,24 @@
 
         <!-- TEMPLATE C -->
         <div id="tpl-C" class="tpl absolute inset-0 hidden">
-          <div class="absolute inset-0 bg-[#05070a]"></div>
-          <img id="c-img" class="absolute inset-0 w-full h-full object-cover hidden" style="z-index:1;">
-          <div id="c-img-ph" class="absolute inset-0" style="background:linear-gradient(160deg,#1a0d14,#05070a); z-index:1; display:flex; align-items:center; justify-content:center;">
-            <span class="font-display text-[220px] text-[var(--pink)]/20">?</span>
-          </div>
-          <div class="absolute inset-0" style="background:linear-gradient(0deg, rgba(5,7,10,1) 15%, rgba(5,7,10,0.2) 45%, rgba(5,7,10,0.55) 100%);"></div>
+          <div class="absolute inset-0 bg-[#05070a]" style="z-index:0;"></div>
 
-          <div class="absolute top-[90px] left-[56px]">
+          <!-- Featured image — bounded to upper-center region, not full-screen -->
+          <div class="absolute" style="z-index:1; top:120px; left:140px; right:140px; height:650px; border-radius:18px; overflow:hidden; background:#0d1119;">
+            <img id="c-img" class="hidden" style="width:100%; height:100%; object-fit:cover; position:absolute; inset:0;">
+            <div id="c-img-ph" style="position:absolute; inset:0; background:linear-gradient(160deg,#1a0d14,#05070a); display:flex; align-items:center; justify-content:center;">
+              <span class="font-display text-[220px] text-[var(--pink)]/20">?</span>
+            </div>
+          </div>
+
+          <!-- Gradient overlay for text contrast -->
+          <div class="absolute inset-0" style="z-index:2; background:linear-gradient(0deg, rgba(5,7,10,1) 20%, rgba(5,7,10,0.7) 42%, rgba(5,7,10,0.15) 58%, rgba(5,7,10,0.6) 100%);"></div>
+
+          <div class="absolute top-[90px] left-[56px]" style="z-index:3;">
             <span id="c-tag" class="tag-pill inline-block bg-[var(--pink)] text-[#1a0209] px-4 py-2 rounded font-bold text-[20px] tracking-widest">TRADE ALERT</span>
           </div>
 
-          <div class="absolute bottom-0 left-0 right-0">
+          <div class="absolute bottom-0 left-0 right-0" style="z-index:3;">
             <div class="h-[10px]" style="background:linear-gradient(90deg,var(--pink),#ff7a00);"></div>
             <div class="p-8 pb-16" style="background:linear-gradient(180deg, rgba(5,7,10,0.4), rgba(5,7,10,0.97) 30%);">
               <h2 id="c-headline" class="font-display text-white text-[58px] leading-[1.02] glow-pink">TRADE SHAKES UP THE LEAGUE</h2>
@@ -2430,20 +2436,26 @@ function render(){
     fImg.classList.remove('hidden');
   } else { fImg.classList.add('hidden'); }
 
-  // Template F comparison stats
+  // Template F comparison stats — use history data if available, else live data
   {
-    const ld = window.LeagueData && window.LeagueData.get();
-    if(ld && ld.scores){
-      const allScores = Object.values(ld.scores).flat().filter(s=> s > 0);
-      if(allScores.length){
-        const avg = (allScores.reduce((a,b)=>a+b,0)/allScores.length).toFixed(1);
-        const headline = parseFloat(f.f_headline) || 0;
-        const diff = headline > 0 ? '+' + (headline - parseFloat(avg)).toFixed(1) : '--';
-        document.getElementById('f-league-avg').textContent = avg;
-        document.getElementById('f-above-avg').textContent = diff;
-        document.getElementById('f-season-high').textContent = Math.max(...allScores).toFixed(1);
-        document.getElementById('f-season-low').textContent = Math.min(...allScores).toFixed(1);
+    let allScores = [];
+    const hist = state.leagueHistory;
+    if(hist && hist.allGameScores && hist.allGameScores.length){
+      allScores = hist.allGameScores.filter(s=> s >= 40.0);
+    } else {
+      const ld = window.LeagueData && window.LeagueData.get();
+      if(ld && ld.scores){
+        allScores = Object.values(ld.scores).flat().filter(s=> s >= 40.0);
       }
+    }
+    if(allScores.length){
+      const avg = (allScores.reduce((a,b)=>a+b,0)/allScores.length).toFixed(1);
+      const headline = parseFloat(f.f_headline) || 0;
+      const diff = headline > 0 ? '+' + (headline - parseFloat(avg)).toFixed(1) : '--';
+      document.getElementById('f-league-avg').textContent = avg;
+      document.getElementById('f-above-avg').textContent = diff;
+      document.getElementById('f-season-high').textContent = Math.max(...allScores).toFixed(1);
+      document.getElementById('f-season-low').textContent = Math.min(...allScores.filter(s=> s >= 40.0)).toFixed(1);
     }
     document.getElementById('f-runner').textContent = f.f_runner || '--';
     document.getElementById('f-runner-score').textContent = f.f_runner_score || '--';
@@ -2708,6 +2720,7 @@ function computeLeagueHistoryStats(yearsData){
   const careerPoints = {};        // ownerId -> cumulative points scored
 
   let highestScore = null, lowestScore = null, biggestBlowout = null;
+  const allGameScores = [];
 
   function ensureManager(ownerId, displayName, teamName, logo, year){
     if(!managers[ownerId]){
@@ -2771,8 +2784,11 @@ function computeLeagueHistoryStats(yearsData){
         { ownerId:ownerA, teamName:teamNameA, score:scoreA },
         { ownerId:ownerB, teamName:teamNameB, score:scoreB },
       ].forEach(entry=>{
+        allGameScores.push(entry.score);
         if(!highestScore || entry.score > highestScore.score) highestScore = { ...entry, year, week };
-        if(!lowestScore || entry.score < lowestScore.score) lowestScore = { ...entry, year, week };
+        if(entry.score >= 40.0){
+          if(!lowestScore || entry.score < lowestScore.score) lowestScore = { ...entry, year, week };
+        }
       });
 
       // Biggest blowout / margin of victory
@@ -2849,7 +2865,7 @@ function computeLeagueHistoryStats(yearsData){
     .sort((a,b)=> b.totalPoints - a.totalPoints);
 
   return {
-    managers, h2h, perManagerGameLog,
+    managers, h2h, perManagerGameLog, allGameScores,
     records: { highestScore, lowestScore, biggestBlowout, longestWinStreak, longestLossStreak, careerPointsLeaderboard },
   };
 }
@@ -3135,6 +3151,76 @@ function renderRecordBookPicker(){
   });
 }
 
+/* Finds the runner-up for highest/lowest score milestones by re-scanning history */
+function findRunnerUp(type){
+  const raw = window._franchiseYearsData;
+  if(!raw) return '';
+  let best = null;
+  const hist = state.leagueHistory;
+  const r = hist && hist.records;
+  if(!r) return '';
+  const primary = type === 'highest' ? r.highestScore : r.lowestScore;
+  if(!primary) return '';
+  raw.forEach(({year, leagueData})=>{
+    if(!leagueData || !leagueData.teams) return;
+    const teamOwnerMap = {};
+    leagueData.teams.forEach(t=>{
+      const oid = t.primaryOwner || (t.owners && t.owners[0]) || '';
+      teamOwnerMap[t.id] = oid;
+    });
+    (leagueData.schedule || []).forEach(game=>{
+      const home = game.home, away = game.away;
+      if(!home || !away) return;
+      if(typeof home.totalPoints !== 'number' || typeof away.totalPoints !== 'number') return;
+      if(home.totalPoints === 0 && away.totalPoints === 0) return;
+      [home.totalPoints, away.totalPoints].forEach((score, idx)=>{
+        if(score === primary.score && year === primary.year && game.matchupPeriodId === primary.week) return;
+        if(type === 'lowest' && score < 40.0) return;
+        if(type === 'highest'){
+          if(!best || score > best.score) best = { score, year, week: game.matchupPeriodId, teamId: idx===0 ? home.teamId : away.teamId };
+        } else {
+          if(!best || score < best.score) best = { score, year, week: game.matchupPeriodId, teamId: idx===0 ? home.teamId : away.teamId };
+        }
+      });
+    });
+  });
+  if(!best) return '';
+  const seasonEntry = raw.find(yd=> yd.year === best.year);
+  if(!seasonEntry) return '';
+  const team = seasonEntry.leagueData.teams.find(t=> t.id === best.teamId);
+  if(!team) return '';
+  return (((team.location||'') + ' ' + (team.nickname||'')).trim() || team.name || '').toUpperCase();
+}
+function findRunnerUpScore(type){
+  const raw = window._franchiseYearsData;
+  if(!raw) return '';
+  const hist = state.leagueHistory;
+  const r = hist && hist.records;
+  if(!r) return '';
+  const primary = type === 'highest' ? r.highestScore : r.lowestScore;
+  if(!primary) return '';
+  let best = null;
+  raw.forEach(({year, leagueData})=>{
+    if(!leagueData || !leagueData.teams) return;
+    (leagueData.schedule || []).forEach(game=>{
+      const home = game.home, away = game.away;
+      if(!home || !away) return;
+      if(typeof home.totalPoints !== 'number' || typeof away.totalPoints !== 'number') return;
+      if(home.totalPoints === 0 && away.totalPoints === 0) return;
+      [home.totalPoints, away.totalPoints].forEach(score=>{
+        if(score === primary.score && year === primary.year && game.matchupPeriodId === primary.week) return;
+        if(type === 'lowest' && score < 40.0) return;
+        if(type === 'highest'){
+          if(!best || score > best) best = score;
+        } else {
+          if(!best || score < best) best = score;
+        }
+      });
+    });
+  });
+  return best !== null ? best.toFixed(1) + ' PTS' : '';
+}
+
 /* Fills the Record Book fields for one milestone. Split out of the picker so
    the .json upload can populate the template automatically. */
 function applyRecordMilestone(type, silent){
@@ -3148,6 +3234,8 @@ function applyRecordMilestone(type, silent){
       state.fields.f_subtext = 'Highest single-game score in league history';
       state.fields.f_owner = x.teamName.toUpperCase();
       state.fields.f_meta = `${x.year} · WEEK ${x.week}`;
+      state.fields.f_runner = findRunnerUp('highest');
+      state.fields.f_runner_score = findRunnerUpScore('highest');
     } else if(type === 'lowest'){
       const x = r.lowestScore;
       state.fields.f_kicker = 'HALL OF SHAME';
@@ -3155,6 +3243,8 @@ function applyRecordMilestone(type, silent){
       state.fields.f_subtext = 'Lowest single-game score in league history';
       state.fields.f_owner = x.teamName.toUpperCase();
       state.fields.f_meta = `${x.year} · WEEK ${x.week}`;
+      state.fields.f_runner = findRunnerUp('lowest');
+      state.fields.f_runner_score = findRunnerUpScore('lowest');
     } else if(type === 'blowout'){
       const x = r.biggestBlowout;
       state.fields.f_kicker = 'BIGGEST BLOWOUT';
@@ -3162,6 +3252,8 @@ function applyRecordMilestone(type, silent){
       state.fields.f_subtext = `${x.winnerTeamName} defeated ${x.loserTeamName} ${x.winnerScore.toFixed(1)}-${x.loserScore.toFixed(1)}`;
       state.fields.f_owner = x.winnerTeamName.toUpperCase();
       state.fields.f_meta = `${x.year} · WEEK ${x.week}`;
+      state.fields.f_runner = '';
+      state.fields.f_runner_score = '';
     } else if(type === 'winstreak'){
       const x = r.longestWinStreak;
       const info = managerLatestInfo(x.ownerId);
@@ -3171,6 +3263,8 @@ function applyRecordMilestone(type, silent){
       state.fields.f_owner = info.name.toUpperCase();
       state.fields.f_meta = `${x.startYear} WK${x.startWeek} \u2192 ${x.endYear} WK${x.endWeek}`;
       if(info.logo) state.fields.f_img = info.logo;
+      state.fields.f_runner = '';
+      state.fields.f_runner_score = '';
     } else if(type === 'lossstreak'){
       const x = r.longestLossStreak;
       const info = managerLatestInfo(x.ownerId);
@@ -3180,6 +3274,8 @@ function applyRecordMilestone(type, silent){
       state.fields.f_owner = info.name.toUpperCase();
       state.fields.f_meta = `${x.startYear} WK${x.startWeek} \u2192 ${x.endYear} WK${x.endWeek}`;
       if(info.logo) state.fields.f_img = info.logo;
+      state.fields.f_runner = '';
+      state.fields.f_runner_score = '';
     } else if(type === 'career'){
       const x = r.careerPointsLeaderboard[0];
       const info = managerLatestInfo(x.ownerId);
@@ -3189,6 +3285,12 @@ function applyRecordMilestone(type, silent){
       state.fields.f_owner = info.name.toUpperCase();
       state.fields.f_meta = 'CAREER TOTAL';
       if(info.logo) state.fields.f_img = info.logo;
+      if(r.careerPointsLeaderboard.length > 1){
+        const ru = r.careerPointsLeaderboard[1];
+        const ruInfo = managerLatestInfo(ru.ownerId);
+        state.fields.f_runner = ruInfo.name.toUpperCase();
+        state.fields.f_runner_score = ru.totalPoints.toFixed(1) + ' PTS';
+      } else { state.fields.f_runner = ''; state.fields.f_runner_score = ''; }
     } else {
       return false;
     }
@@ -3226,6 +3328,8 @@ function autofillHistoryTemplates(){
   ];
   const firstAvailable = order.find(([, value])=> !!value);
   if(firstAvailable) applyRecordMilestone(firstAvailable[0], true);
+
+  render();
 }
 
 /* Template G picker — manager dropdown; applying computes franchise resume */
