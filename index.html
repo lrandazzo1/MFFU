@@ -1,0 +1,2223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
+<title>Fantasy Sports Network</title>
+
+<!-- ============================================================
+     PWA / HOME-SCREEN META — makes the app run chromeless when
+     added to an iOS or Android home screen.
+============================================================ -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="FSN">
+<meta name="application-name" content="Fantasy Sports Network">
+<meta name="theme-color" content="#080a0e">
+<meta name="description" content="Fantasy Sports Network — your league's broadcast desk. Live scores, matchups, rivalries and all-time records.">
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'%3E%3Crect width='180' height='180' fill='%23080a0e'/%3E%3Ctext x='90' y='118' font-family='Helvetica,Arial' font-size='78' font-weight='bold' fill='%2300e0ff' text-anchor='middle'%3EFSN%3C/text%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%23080a0e'/%3E%3Ctext x='32' y='43' font-family='Helvetica,Arial' font-size='27' font-weight='bold' fill='%2300e0ff' text-anchor='middle'%3EFSN%3C/text%3E%3C/svg%3E">
+
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Oswald:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700;800&display=swap" rel="stylesheet">
+
+<style>
+/* ============================================================
+   TOKENS — athletic broadcast palette
+============================================================ */
+:root{
+  --ink:#080a0e;
+  --panel:#12161f;
+  --panel-2:#181e2a;
+  --line:rgba(255,255,255,.08);
+  --line-2:rgba(255,255,255,.14);
+  --cyan:#00e0ff;
+  --gold:#ffc400;
+  --red:#ff2d55;
+  --green:#39ff8c;
+  --off:#c7cdd8;
+  --dim:#7c8698;
+  --nav-h:64px;
+  --ticker-h:34px;
+}
+
+*{ -webkit-tap-highlight-color:transparent; }
+
+html,body{
+  background:var(--ink);
+  color:#fff;
+  font-family:'Oswald',system-ui,-apple-system,sans-serif;
+  overscroll-behavior-y:none;
+}
+body{
+  margin:0;
+  min-height:100vh;
+  min-height:100dvh;
+  -webkit-font-smoothing:antialiased;
+  text-rendering:optimizeLegibility;
+}
+
+.font-display{ font-family:'Anton',Impact,sans-serif; letter-spacing:.01em; }
+.font-mono{ font-family:'JetBrains Mono',ui-monospace,monospace; }
+.tabular{ font-variant-numeric:tabular-nums; font-feature-settings:'tnum'; }
+
+.kicker{
+  font-family:'Oswald',sans-serif;
+  font-weight:600;
+  font-size:10px;
+  letter-spacing:.22em;
+  text-transform:uppercase;
+}
+
+/* ============================================================
+   APP SHELL — fixed ticker on top, fixed tab bar on the bottom,
+   the scroll lives only in the middle so the chrome never moves.
+============================================================ */
+#appShell{
+  padding-top:calc(var(--ticker-h) + env(safe-area-inset-top));
+  padding-bottom:calc(var(--nav-h) + env(safe-area-inset-bottom) + 8px);
+}
+
+/* ---------- TICKER ---------- */
+#tickerBar{
+  position:fixed; top:0; left:0; right:0; z-index:60;
+  height:calc(var(--ticker-h) + env(safe-area-inset-top));
+  padding-top:env(safe-area-inset-top);
+  background:linear-gradient(90deg,#05070a,#0d1219 55%,#05070a);
+  border-bottom:1px solid var(--line);
+  overflow:hidden;
+  display:flex; align-items:center;
+}
+#tickerBar::after{
+  content:''; position:absolute; right:0; top:0; bottom:0; width:44px;
+  background:linear-gradient(90deg,rgba(5,7,10,0),#05070a);
+  pointer-events:none;
+}
+.ticker-track{
+  display:flex; align-items:center; gap:0;
+  white-space:nowrap; will-change:transform;
+  animation:tickerScroll 42s linear infinite;
+}
+@keyframes tickerScroll{ from{ transform:translate3d(0,0,0);} to{ transform:translate3d(-50%,0,0);} }
+.ticker-item{
+  display:inline-flex; align-items:center; gap:7px;
+  padding:0 15px; font-size:11.5px; letter-spacing:.06em;
+  border-right:1px solid rgba(255,255,255,.07);
+}
+.ticker-item .tk-team{ font-weight:600; color:#e9edf4; text-transform:uppercase; }
+.ticker-item .tk-score{ font-family:'JetBrains Mono',monospace; font-weight:700; color:var(--cyan); }
+.ticker-item .tk-win{ color:var(--gold); }
+.ticker-item .tk-tag{ color:var(--red); font-weight:700; letter-spacing:.14em; font-size:9.5px; }
+
+/* ---------- BOTTOM TAB BAR ---------- */
+#tabBar{
+  position:fixed; bottom:0; left:0; right:0; z-index:60;
+  height:calc(var(--nav-h) + env(safe-area-inset-bottom));
+  padding-bottom:env(safe-area-inset-bottom);
+  background:rgba(10,13,19,.94);
+  backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px);
+  border-top:1px solid var(--line);
+  display:grid; grid-template-columns:repeat(4,1fr);
+}
+.tab-btn{
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:3px; color:var(--dim); position:relative;
+  font-size:9.5px; font-weight:600; letter-spacing:.15em; text-transform:uppercase;
+  transition:color .18s ease;
+}
+.tab-btn svg{ width:21px; height:21px; stroke-width:1.9; }
+.tab-btn[data-active="true"]{ color:var(--cyan); }
+.tab-btn[data-active="true"]::before{
+  content:''; position:absolute; top:0; left:50%; transform:translateX(-50%);
+  width:34px; height:2.5px; border-radius:0 0 3px 3px;
+  background:var(--cyan); box-shadow:0 0 12px var(--cyan);
+}
+.tab-btn:active{ transform:scale(.94); }
+
+/* ---------- SCREENS ---------- */
+.screen{ display:none; animation:screenIn .22s ease both; }
+.screen[data-active="true"]{ display:block; }
+@keyframes screenIn{ from{opacity:0; transform:translateY(7px);} to{opacity:1; transform:none;} }
+
+/* ---------- CARDS ---------- */
+.card{
+  background:linear-gradient(160deg,var(--panel),#0d1119);
+  border:1px solid var(--line);
+  border-radius:16px;
+  overflow:hidden;
+  position:relative;
+}
+.card-accent::before{
+  content:''; position:absolute; left:0; top:0; bottom:0; width:3px;
+}
+.accent-cyan::before{ background:var(--cyan); box-shadow:0 0 16px rgba(0,224,255,.65); }
+.accent-gold::before{ background:var(--gold); box-shadow:0 0 16px rgba(255,196,0,.55); }
+.accent-red::before { background:var(--red);  box-shadow:0 0 16px rgba(255,45,85,.55); }
+
+.section-head{
+  display:flex; align-items:center; gap:9px; margin:0 0 10px;
+}
+.section-head .bar{ width:3px; height:15px; border-radius:2px; background:var(--cyan); }
+.section-head h2{
+  font-family:'Anton',sans-serif; font-size:15px; letter-spacing:.06em;
+  text-transform:uppercase; margin:0;
+}
+
+/* ---------- PILLS / CHIPS ---------- */
+.pill{
+  display:inline-flex; align-items:center; gap:5px;
+  padding:3px 9px; border-radius:999px;
+  border:1px solid var(--line-2);
+  font-size:9.5px; font-weight:600; letter-spacing:.16em; text-transform:uppercase;
+}
+.pill-live{ border-color:rgba(255,45,85,.5); color:var(--red); background:rgba(255,45,85,.09); }
+.pill-final{ border-color:rgba(255,255,255,.16); color:var(--dim); }
+.pill-cyan{ border-color:rgba(0,224,255,.45); color:var(--cyan); background:rgba(0,224,255,.08); }
+.pill-gold{ border-color:rgba(255,196,0,.45); color:var(--gold); background:rgba(255,196,0,.08); }
+.live-dot{
+  width:6px; height:6px; border-radius:50%; background:var(--red);
+  animation:pulseDot 1.4s ease-in-out infinite;
+}
+@keyframes pulseDot{ 0%,100%{opacity:1; box-shadow:0 0 0 0 rgba(255,45,85,.6);} 50%{opacity:.55; box-shadow:0 0 0 5px rgba(255,45,85,0);} }
+
+/* ---------- TEAM LOGO / MONOGRAM ---------- */
+.logo{
+  width:38px; height:38px; border-radius:10px; object-fit:cover;
+  background:#1b2230; border:1px solid var(--line-2); flex:none;
+}
+.mono-badge{
+  width:38px; height:38px; border-radius:10px; flex:none;
+  display:flex; align-items:center; justify-content:center;
+  font-family:'Anton',sans-serif; font-size:14px; letter-spacing:.02em;
+  border:1px solid var(--line-2);
+}
+
+/* ---------- SEGMENTED CONTROL ---------- */
+.seg{
+  display:flex; gap:4px; padding:4px; border-radius:12px;
+  background:#0c1017; border:1px solid var(--line);
+}
+.seg button{
+  flex:1; padding:8px 4px; border-radius:9px;
+  font-size:10.5px; font-weight:600; letter-spacing:.14em; text-transform:uppercase;
+  color:var(--dim); transition:all .16s ease;
+}
+.seg button[data-active="true"]{ background:var(--cyan); color:#04121a; }
+
+/* ---------- FORM FIELDS ---------- */
+.field{
+  width:100%; background:#0b0f16; border:1px solid var(--line-2);
+  border-radius:12px; padding:13px 14px; color:#fff;
+  font-family:'JetBrains Mono',monospace; font-size:15px;
+  outline:none; transition:border-color .16s ease, box-shadow .16s ease;
+}
+.field:focus{ border-color:var(--cyan); box-shadow:0 0 0 3px rgba(0,224,255,.14); }
+.field::placeholder{ color:#4d5666; }
+.label{
+  display:block; margin:0 0 6px;
+  font-size:10px; font-weight:600; letter-spacing:.18em;
+  text-transform:uppercase; color:var(--dim);
+}
+
+.btn-primary{
+  width:100%; border-radius:12px; padding:15px;
+  background:linear-gradient(100deg,var(--cyan),#00a6cc);
+  color:#03151c; font-family:'Anton',sans-serif;
+  font-size:15px; letter-spacing:.09em; text-transform:uppercase;
+  display:flex; align-items:center; justify-content:center; gap:9px;
+  box-shadow:0 6px 22px -8px rgba(0,224,255,.6);
+  transition:transform .12s ease, opacity .12s ease;
+}
+.btn-primary:active{ transform:scale(.98); }
+.btn-primary:disabled{ opacity:.55; }
+.btn-ghost{
+  width:100%; border-radius:12px; padding:13px;
+  background:#0f1420; border:1px solid var(--line-2); color:var(--off);
+  font-size:12px; font-weight:600; letter-spacing:.14em; text-transform:uppercase;
+  display:flex; align-items:center; justify-content:center; gap:8px;
+}
+.btn-ghost:active{ transform:scale(.98); }
+
+/* ---------- DROPZONE ---------- */
+#dropzone{
+  border:1.5px dashed var(--line-2); border-radius:14px;
+  padding:26px 16px; text-align:center; background:#0b0f16;
+  transition:all .18s ease;
+}
+#dropzone.dragover{
+  border-color:var(--cyan); background:rgba(0,224,255,.07);
+  box-shadow:inset 0 0 26px rgba(0,224,255,.1);
+}
+
+/* ---------- SPINNER ---------- */
+.spinner{
+  width:16px; height:16px; border-radius:50%;
+  border:2px solid rgba(0,0,0,.25); border-top-color:currentColor;
+  animation:spin .7s linear infinite;
+}
+@keyframes spin{ to{ transform:rotate(360deg);} }
+
+/* ---------- SPARK BARS (franchise finishes) ---------- */
+.spark{ display:flex; align-items:flex-end; gap:3px; height:34px; }
+.spark span{ flex:1; border-radius:2px 2px 0 0; min-height:3px; background:#2a3444; }
+
+/* ---------- TOAST ---------- */
+#toast{
+  position:fixed; left:50%; transform:translateX(-50%) translateY(14px);
+  bottom:calc(var(--nav-h) + env(safe-area-inset-bottom) + 14px);
+  z-index:80; max-width:88vw;
+  background:#161c27; border:1px solid var(--line-2);
+  border-left:3px solid var(--cyan);
+  border-radius:11px; padding:11px 15px; font-size:12.5px; color:#e9edf4;
+  opacity:0; pointer-events:none; transition:opacity .22s ease, transform .22s ease;
+  box-shadow:0 14px 34px -12px rgba(0,0,0,.85);
+}
+#toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+
+/* ---------- SCROLL ---------- */
+.no-bar::-webkit-scrollbar{ display:none; }
+.no-bar{ scrollbar-width:none; -ms-overflow-style:none; }
+
+/* ---------- EMPTY STATE ---------- */
+.empty{
+  text-align:center; padding:46px 22px; color:var(--dim);
+}
+.empty .glyph{
+  font-family:'Anton',sans-serif; font-size:34px; color:#232c3b; letter-spacing:.08em;
+}
+
+@media (prefers-reduced-motion:reduce){
+  .ticker-track{ animation:none; }
+  .screen{ animation:none; }
+  .live-dot{ animation:none; }
+}
+</style>
+</head>
+<body>
+
+<!-- ============================================================
+     TICKER — continuous scores crawl, always on screen
+============================================================ -->
+<div id="tickerBar">
+  <div class="ticker-track" id="tickerTrack"></div>
+</div>
+
+<div id="appShell">
+
+  <!-- ==========================================================
+       SCREEN 1 — HOME / THE DESK
+  ========================================================== -->
+  <section class="screen" data-screen="home" data-active="true">
+    <header class="px-4 pt-4 pb-3">
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <div class="kicker text-[var(--cyan)]">Fantasy Sports Network</div>
+          <h1 class="font-display text-[27px] leading-none mt-1.5" id="homeLeagueName">THE DESK</h1>
+        </div>
+        <div class="text-right">
+          <div id="homeWeekPill" class="pill pill-cyan">WEEK —</div>
+          <div class="text-[10px] text-[var(--dim)] mt-1.5 font-mono tabular" id="homeSeasonLabel">—</div>
+        </div>
+      </div>
+    </header>
+
+    <div id="homeNoData" class="px-4">
+      <div class="card p-6 text-center">
+        <div class="glyph font-display text-[30px] text-[#232c3b]">NO SIGNAL</div>
+        <p class="text-[13px] text-[var(--dim)] mt-2 leading-relaxed">
+          Connect your ESPN league to bring the broadcast online.
+        </p>
+        <button class="btn-primary mt-4" data-goto="setup">OPEN SETUP</button>
+      </div>
+    </div>
+
+    <div id="homeContent" class="hidden">
+      <!-- league pulse -->
+      <div class="px-4 grid grid-cols-3 gap-2.5 mb-4">
+        <div class="card p-3">
+          <div class="kicker text-[var(--dim)]">Games</div>
+          <div class="font-mono tabular text-[21px] font-bold mt-1" id="pulseGames">—</div>
+        </div>
+        <div class="card p-3">
+          <div class="kicker text-[var(--dim)]">Avg PF</div>
+          <div class="font-mono tabular text-[21px] font-bold mt-1 text-[var(--cyan)]" id="pulseAvg">—</div>
+        </div>
+        <div class="card p-3">
+          <div class="kicker text-[var(--dim)]">High</div>
+          <div class="font-mono tabular text-[21px] font-bold mt-1 text-[var(--gold)]" id="pulseHigh">—</div>
+        </div>
+      </div>
+
+      <!-- MATCHUP OF THE WEEK -->
+      <div class="px-4 mb-4">
+        <div class="section-head"><span class="bar"></span><h2>Matchup of the Week</h2></div>
+        <div class="card card-accent accent-gold" id="motwCard"></div>
+      </div>
+
+      <!-- FRAUD ALERT / HOT SEAT -->
+      <div class="px-4 mb-4">
+        <div class="section-head"><span class="bar" style="background:var(--red)"></span><h2>Fraud Alert · Hot Seat</h2></div>
+        <div class="card card-accent accent-red" id="hotSeatCard"></div>
+      </div>
+
+      <!-- AROUND THE LEAGUE -->
+      <div class="px-4 mb-4">
+        <div class="section-head"><span class="bar"></span><h2>Around the League</h2></div>
+        <div class="space-y-2" id="homeQuickScores"></div>
+        <button class="btn-ghost mt-3" data-goto="matchups">ALL MATCHUPS →</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==========================================================
+       SCREEN 2 — MATCHUPS
+  ========================================================== -->
+  <section class="screen" data-screen="matchups">
+    <header class="px-4 pt-4 pb-3 flex items-end justify-between gap-3">
+      <div>
+        <div class="kicker text-[var(--cyan)]">Scoreboard</div>
+        <h1 class="font-display text-[27px] leading-none mt-1.5">MATCHUPS</h1>
+      </div>
+      <div class="flex items-center gap-1.5">
+        <button id="weekDown" class="w-9 h-9 rounded-lg bg-[#0f1420] border border-[var(--line-2)] text-[var(--off)] text-lg leading-none">−</button>
+        <div class="px-3 py-1.5 rounded-lg bg-[#0f1420] border border-[var(--line-2)] font-mono tabular text-[13px] font-bold" id="matchupWeekLabel">WK —</div>
+        <button id="weekUp" class="w-9 h-9 rounded-lg bg-[#0f1420] border border-[var(--line-2)] text-[var(--off)] text-lg leading-none">+</button>
+      </div>
+    </header>
+    <div class="px-4 space-y-3" id="matchupList"></div>
+  </section>
+
+  <!-- ==========================================================
+       SCREEN 3 — THE VAULT
+  ========================================================== -->
+  <section class="screen" data-screen="vault">
+    <header class="px-4 pt-4 pb-3">
+      <div class="kicker text-[var(--gold)]">All-Time Archive</div>
+      <h1 class="font-display text-[27px] leading-none mt-1.5">THE VAULT</h1>
+      <div class="text-[10.5px] text-[var(--dim)] mt-1.5 font-mono tabular" id="vaultMeta">No history loaded</div>
+    </header>
+
+    <div class="px-4 mb-4">
+      <div class="seg" id="vaultSeg">
+        <button data-vault="franchises" data-active="true">Franchises</button>
+        <button data-vault="rivalries">Rivalries</button>
+        <button data-vault="records">Records</button>
+      </div>
+    </div>
+
+    <div class="px-4" id="vaultBody"></div>
+  </section>
+
+  <!-- ==========================================================
+       SCREEN 4 — SETUP
+  ========================================================== -->
+  <section class="screen" data-screen="setup">
+    <header class="px-4 pt-4 pb-3">
+      <div class="kicker text-[var(--cyan)]">Control Room</div>
+      <h1 class="font-display text-[27px] leading-none mt-1.5">SETUP</h1>
+      <div class="mt-2"><span class="pill pill-final" id="connStatus">● NO DATA SOURCE</span></div>
+    </header>
+
+    <div class="px-4 space-y-4">
+
+      <!-- LEAGUE CONNECTION -->
+      <div class="card p-4">
+        <div class="section-head"><span class="bar"></span><h2>ESPN League</h2></div>
+        <div class="space-y-3">
+          <div>
+            <label class="label" for="leagueId">League ID</label>
+            <input id="leagueId" class="field" inputmode="numeric" autocomplete="off" placeholder="e.g. 1234567">
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="label" for="seasonYear">Season</label>
+              <input id="seasonYear" class="field" inputmode="numeric" autocomplete="off" placeholder="2025">
+            </div>
+            <div>
+              <label class="label" for="weekNum">Week</label>
+              <input id="weekNum" class="field" inputmode="numeric" autocomplete="off" placeholder="7">
+            </div>
+          </div>
+          <button id="fetchBtn" class="btn-primary">
+            <span id="fetchSpinner" class="spinner hidden"></span>
+            <span id="fetchLabel">FETCH LEAGUE DATA</span>
+          </button>
+          <p id="fetchStatus" class="text-[11.5px] text-[var(--dim)] leading-relaxed"></p>
+          <button id="showUrlBtn" class="btn-ghost">SHOW API URL</button>
+          <div id="apiUrlBox" class="hidden">
+            <p class="text-[10px] text-[var(--dim)] leading-relaxed break-all font-mono bg-[#0b0f16] border border-[var(--line)] rounded-lg p-2.5" id="apiUrlDisplay"></p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ALL-TIME HISTORY -->
+      <div class="card p-4">
+        <div class="section-head"><span class="bar" style="background:var(--gold)"></span><h2>All-Time History</h2></div>
+        <p class="text-[11.5px] text-[var(--dim)] leading-relaxed mb-3">
+          One request pulls every completed season — that powers the Vault's rivalries, resumes and records.
+        </p>
+        <button id="loadHistoryBtn" class="btn-primary" style="background:linear-gradient(100deg,var(--gold),#d99f00); box-shadow:0 6px 22px -8px rgba(255,196,0,.55);">
+          <span id="historySpinner" class="spinner hidden"></span>
+          <span id="historyLabel">LOAD LEAGUE HISTORY</span>
+        </button>
+        <div id="historyBanner" class="hidden mt-3 text-[12px] leading-relaxed text-[var(--green)] bg-[rgba(57,255,140,.07)] border border-[rgba(57,255,140,.28)] rounded-lg p-2.5"></div>
+        <p id="historyStatus" class="text-[11.5px] text-[var(--dim)] leading-relaxed mt-2"></p>
+        <a id="historyUrlLink" class="block mt-3 text-[10px] font-mono text-[var(--cyan)] break-all underline decoration-dotted" target="_blank" rel="noopener"></a>
+      </div>
+
+      <!-- JSON FALLBACK -->
+      <div class="card p-4">
+        <div class="section-head"><span class="bar" style="background:var(--red)"></span><h2>JSON Fallback</h2></div>
+        <p class="text-[11.5px] text-[var(--dim)] leading-relaxed mb-3">
+          If the proxies are rate-limited, open the API link, save the raw JSON, then drop or paste it here. Nothing leaves your phone.
+        </p>
+
+        <div id="dropzone" tabindex="0" role="button" aria-label="Upload league JSON">
+          <div class="font-display text-[15px] tracking-wide">DROP .JSON</div>
+          <div class="text-[11px] text-[var(--dim)] mt-1.5">or tap to browse files</div>
+        </div>
+        <input id="fileInput" type="file" accept="application/json,.json" class="hidden">
+
+        <div class="mt-3">
+          <label class="label" for="jsonPaste">Paste raw JSON</label>
+          <textarea id="jsonPaste" class="field" rows="4" placeholder='[{"seasonId":2019, ...}]' style="font-size:11px; line-height:1.5;"></textarea>
+          <button id="parseJsonBtn" class="btn-ghost mt-2.5">PARSE PASTED JSON</button>
+        </div>
+        <p id="jsonStatus" class="text-[11.5px] text-[var(--dim)] leading-relaxed mt-2"></p>
+      </div>
+
+      <!-- ADD TO HOME SCREEN -->
+      <div class="card p-4">
+        <div class="section-head"><span class="bar" style="background:var(--green)"></span><h2>Install</h2></div>
+        <p class="text-[11.5px] text-[var(--dim)] leading-relaxed">
+          <b class="text-[var(--off)]">iPhone:</b> Share → Add to Home Screen.<br>
+          <b class="text-[var(--off)]">Android:</b> ⋮ menu → Add to Home screen.<br>
+          It launches full-screen with no browser bars, and your League ID stays saved on this device.
+        </p>
+        <button id="resetBtn" class="btn-ghost mt-3" style="color:var(--red); border-color:rgba(255,45,85,.35);">CLEAR SAVED DATA</button>
+      </div>
+
+      <div class="text-center py-2">
+        <div class="kicker text-[#2b3546]">FSN · Fantasy Sports Network</div>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<!-- ============================================================
+     BOTTOM TAB BAR
+============================================================ -->
+<nav id="tabBar">
+  <button class="tab-btn" data-tab="home" data-active="true">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M9.5 21v-6h5v6"/></svg>
+    <span>Desk</span>
+  </button>
+  <button class="tab-btn" data-tab="matchups">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M12 5v14"/><path d="M6.5 10.5h2"/><path d="M15.5 10.5h2"/></svg>
+    <span>Matchups</span>
+  </button>
+  <button class="tab-btn" data-tab="vault">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="12" cy="12" r="3.5"/><path d="M12 6v2"/><path d="M12 16v2"/></svg>
+    <span>Vault</span>
+  </button>
+  <button class="tab-btn" data-tab="setup">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h10"/><path d="M18 7h2"/><circle cx="16" cy="7" r="2"/><path d="M4 17h6"/><path d="M14 17h6"/><circle cx="12" cy="17" r="2"/></svg>
+    <span>Setup</span>
+  </button>
+</nav>
+
+<div id="toast"></div>
+
+<script>
+/* ============================================================================
+   FANTASY SPORTS NETWORK — DATA ENGINE
+   Carried over intact from the desktop League Media Studio: the ESPN v3 URL
+   builder, the CORS proxy chain, the multi-season history aggregator
+   (computeLeagueHistoryStats), manager tracking by ownerId, and the JSON
+   drag-drop / paste fallbacks. Only the presentation layer above it is new.
+============================================================================ */
+
+/* ============================================================
+   SHARED STORE — one league object, one history object, and the
+   read helpers every screen renders from.
+============================================================ */
+window.LeagueData = (function(){
+  const subs = [];
+
+  const store = {
+    espnData: null,        // one season's league object (mTeam/mMatchup views)
+    leagueHistory: null,   // { managers, h2h, perManagerGameLog, records }
+    meta: { leagueId:'', season:'', week:'' },
+
+    /* ---- pub/sub ---- */
+    subscribe(fn){ subs.push(fn); try{ fn(store); }catch(e){ console.error(e); } return fn; },
+    publish(){ subs.forEach(fn=>{ try{ fn(store); }catch(e){ console.error(e); } }); },
+    setEspnData(d){ store.espnData = d; store.publish(); },
+    setLeagueHistory(h){ store.leagueHistory = h; store.publish(); },
+    setMeta(key, value){ store.meta[key] = value; store.publish(); },
+
+    hasLive(){ return !!(store.espnData && store.espnData.teams && store.espnData.teams.length); },
+    hasHistory(){ return !!(store.leagueHistory && Object.keys(store.leagueHistory.managers||{}).length); },
+
+    esc(str){
+      const div = document.createElement('div');
+      div.textContent = str ?? '';
+      return div.innerHTML;
+    },
+
+    /* ---- live season helpers ---- */
+    getTeams(){
+      const d = store.espnData;
+      if(!d || !d.teams) return [];
+      const memberNames = {};
+      (d.members || []).forEach(m=>{
+        const full = [m.firstName, m.lastName].filter(Boolean).join(' ').trim();
+        memberNames[m.id] = full || m.displayName || m.id;
+      });
+      return d.teams.map(t=>{
+        const name = ((t.location||'') + ' ' + (t.nickname||'')).trim() || t.name || ('Team ' + t.id);
+        const ownerId = t.primaryOwner || (t.owners && t.owners[0]) || '';
+        const rec = t.record && t.record.overall;
+        return {
+          id: t.id,
+          name,
+          ownerId,
+          abbrev: t.abbrev || name.replace(/[^A-Za-z]/g,'').slice(0,3).toUpperCase() || 'TM',
+          logo: t.logo || '',
+          record: rec ? `${rec.wins}-${rec.losses}${rec.ties ? '-' + rec.ties : ''}` : '',
+          owner: memberNames[ownerId] || '',
+        };
+      });
+    },
+
+    /* Every game for a given week, each side joined back to its full team
+       record. Falls back to the whole schedule when nothing matches the
+       requested matchupPeriodId — some leagues report scoringPeriodId and
+       matchupPeriodId a step apart. */
+    getWeekMatchups(week){
+      const sched = (store.espnData && store.espnData.schedule) || [];
+      const teams = store.getTeams();
+      const teamById = (id)=> teams.find(t=> t.id === id) || null;
+
+      const inWeek = sched.filter(g=> !week || String(g.matchupPeriodId) === String(week));
+      const source = inWeek.length ? inWeek : sched;
+
+      return source.map(game=>{
+        const home = game.home || {};
+        const away = game.away || {};
+        const homeProjected = typeof home.totalPointsLive === 'number' ? home.totalPointsLive.toFixed(1)
+                             : (typeof home.totalProjectedPoints === 'number' ? home.totalProjectedPoints.toFixed(1) : '');
+        const awayProjected = typeof away.totalPointsLive === 'number' ? away.totalPointsLive.toFixed(1)
+                             : (typeof away.totalProjectedPoints === 'number' ? away.totalProjectedPoints.toFixed(1) : '');
+        return {
+          matchupPeriodId: game.matchupPeriodId,
+          homeScore: Number(home.totalPoints || 0).toFixed(1),
+          awayScore: Number(away.totalPoints || 0).toFixed(1),
+          homeProjected, awayProjected,
+          winner: game.winner || '',
+          playoffTierType: game.playoffTierType || 'NONE',
+          homeTeam: teamById(home.teamId),
+          awayTeam: teamById(away.teamId),
+        };
+      }).filter(g=> g.homeTeam && g.awayTeam); // drop byes / malformed entries
+    },
+
+    /* Lowest and highest single-team score across every game in the week —
+       the Hot Seat card and the ticker both read it. */
+    getWeekExtremes(week){
+      const games = store.getWeekMatchups(week);
+      let low = null, high = null;
+      games.forEach(g=>{
+        [{ team:g.homeTeam, score:parseFloat(g.homeScore) }, { team:g.awayTeam, score:parseFloat(g.awayScore) }].forEach(entry=>{
+          if(!entry.team || isNaN(entry.score)) return;
+          if(!low  || entry.score < low.score)  low  = entry;
+          if(!high || entry.score > high.score) high = entry;
+        });
+      });
+      return { low, high };
+    },
+
+    /* ---- multi-season history helpers ---- */
+    getManagers(){
+      if(!store.leagueHistory) return [];
+      return Object.values(store.leagueHistory.managers).sort((a,b)=> a.name.localeCompare(b.name));
+    },
+
+    /* A manager's most recent known team name/logo — "how do we label this
+       person today" rather than in one specific year. */
+    managerLatestInfo(ownerId){
+      const m = store.leagueHistory && store.leagueHistory.managers[ownerId];
+      if(!m) return { name: ownerId, teamName:'', logo:'' };
+      const years = Object.keys(m.teamNamesByYear).map(Number).sort((a,b)=> b - a);
+      const latestYear = years[0];
+      return {
+        name: m.name,
+        teamName: latestYear!==undefined ? m.teamNamesByYear[latestYear] : '',
+        logo: latestYear!==undefined ? (m.logoByYear[latestYear]||'') : '',
+      };
+    },
+
+    seasonCount(){
+      if(!store.leagueHistory) return 0;
+      const years = new Set();
+      Object.values(store.leagueHistory.managers).forEach(m=>{
+        Object.keys(m.teamNamesByYear).forEach(y=> years.add(y));
+      });
+      return years.size;
+    },
+
+    matchupCount(){
+      if(!store.leagueHistory) return 0;
+      return Object.values(store.leagueHistory.h2h).reduce((sum, rec)=> sum + rec.meetings.length, 0);
+    },
+  };
+
+  return store;
+})();
+
+/* ============================================================
+   ESPN URL BUILDER
+   Past seasons route through leagueHistory (seasonId as a query
+   param); the current season uses the live seasons endpoint.
+============================================================ */
+function buildEspnUrlForYear(league, year, week){
+  if(!league || !year) return null;
+  const currentYear = new Date().getFullYear();
+  const isHistorical = parseInt(year, 10) < currentYear;
+
+  // mMatchupScore + mScoreboard are what actually carry live/final point totals per
+  // side of a game — mMatchup alone often returns the schedule shell with 0s.
+  const views = 'view=mTeam&view=mRoster&view=mMatchup&view=mMatchupScore&view=mScoreboard&view=mSettings';
+
+  let url;
+  if(isHistorical){
+    url = `https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/leagueHistory/${league}?seasonId=${encodeURIComponent(year)}&${views}`;
+  } else {
+    url = `https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/${year}/segments/0/leagues/${league}?${views}`;
+  }
+  if(week){
+    url += `&scoringPeriodId=${encodeURIComponent(week)}&matchupPeriodId=${encodeURIComponent(week)}`;
+  }
+  return url;
+}
+
+/* Proxies tried in order — allorigins first since it reliably forwards
+   plain GET requests for public (unauthenticated) ESPN league reads. */
+const CORS_PROXIES = [
+  (u)=> `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+  (u)=> `https://corsproxy.io/?url=${encodeURIComponent(u)}`,
+  (u)=> `https://thingproxy.freeboard.io/fetch/${u}`,
+  (u)=> u, // last resort: direct (works if ESPN ever allows it for this browser)
+];
+
+/* Fetches one ESPN league URL through the proxy chain and returns the
+   unwrapped league object. leagueHistory (past seasons) responds with an
+   array — [ { ...leagueData } ] — while the current-season endpoint
+   responds with the league object directly; both are normalized here. */
+async function fetchLeagueDataViaProxies(espnUrl){
+  let lastErr = null;
+  for(const wrapWithProxy of CORS_PROXIES){
+    const attemptUrl = wrapWithProxy(espnUrl);
+    try{
+      const res = await fetch(attemptUrl);
+      if(!res.ok){ lastErr = new Error('HTTP ' + res.status + ' from ' + attemptUrl); continue; }
+      const rawData = await res.json();
+      const leagueData = Array.isArray(rawData) ? rawData[0] : rawData;
+      if(leagueData && (leagueData.teams || leagueData.schedule || leagueData.status)) return leagueData;
+      lastErr = new Error('Unexpected payload shape from ' + attemptUrl);
+    }catch(err){
+      lastErr = err;
+      continue; // try the next proxy
+    }
+  }
+  throw lastErr || new Error('ALL_PROXIES_FAILED');
+}
+
+/* ============================================================
+   ALL-TIME LEAGUE HISTORY FETCH — ONE REQUEST
+   Called WITHOUT a seasonId, ESPN's leagueHistory endpoint
+   returns an array holding every completed season at once, which
+   is one proxied GET instead of one per year.
+============================================================ */
+function buildLeagueHistoryUrl(league){
+  if(!league) return null;
+  return 'https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/leagueHistory/' + league +
+         '?view=mTeam&view=mMatchup&view=mMatchupScore&view=mSettings';
+}
+
+/* Turns whatever the endpoint (or a paste) hands back into the
+   [{ year, leagueData }] shape the aggregator expects. Accepts the
+   multi-season array, a single season object, or an object with a
+   nested array, and drops seasons with no usable team data. */
+function normalizeHistoryPayload(raw){
+  let seasons;
+  if(Array.isArray(raw)) seasons = raw;
+  else if(raw && Array.isArray(raw.leagueHistory)) seasons = raw.leagueHistory;
+  else if(raw && Array.isArray(raw.seasons)) seasons = raw.seasons;
+  else if(raw && typeof raw === 'object') seasons = [raw];
+  else seasons = [];
+
+  const yearsData = [];
+  const skipped = [];
+  seasons.forEach(leagueData=>{
+    if(!leagueData || typeof leagueData !== 'object') return;
+    const year = parseInt(leagueData.seasonId || leagueData.season, 10) || null;
+    if(!year) return;
+    if(leagueData.teams && leagueData.teams.length) yearsData.push({ year, leagueData });
+    else skipped.push(year);
+  });
+  yearsData.sort((a,b)=> a.year - b.year);
+  return { yearsData, skipped };
+}
+
+/* Single proxied call for the whole archive. */
+async function fetchAllTimeHistory(league){
+  const historyUrl = buildLeagueHistoryUrl(league);
+  if(!historyUrl) throw new Error('MISSING_INPUTS');
+  let lastErr = null;
+  for(const wrapWithProxy of CORS_PROXIES){
+    const attemptUrl = wrapWithProxy(historyUrl);
+    try{
+      const res = await fetch(attemptUrl);
+      if(!res.ok){ lastErr = new Error('HTTP ' + res.status + ' from ' + attemptUrl); continue; }
+      const raw = await res.json();
+      const { yearsData, skipped } = normalizeHistoryPayload(raw);
+      if(yearsData.length) return { yearsData, skipped };
+      lastErr = new Error('No seasons with team data in payload from ' + attemptUrl);
+    }catch(err){
+      lastErr = err;
+      continue; // next proxy
+    }
+  }
+  throw lastErr || new Error('ALL_PROXIES_FAILED');
+}
+
+/* Every counted game lives in exactly one h2h bucket, so summing the
+   meetings gives the true total matchups behind the stats. */
+function countMatchups(stats){
+  return Object.values(stats.h2h).reduce((sum, rec)=> sum + rec.meetings.length, 0);
+}
+
+/* leagueHistory only carries completed seasons. If the current season has
+   already been fetched, fold that object in too so the Record Book counts
+   this year — no extra network call. */
+function withCurrentSeason(yearsData){
+  const live = LeagueData.espnData;
+  if(!live || !live.teams || !live.teams.length) return yearsData;
+  const liveYear = parseInt(live.seasonId || live.season, 10);
+  if(!liveYear || yearsData.some(y=> y.year === liveYear)) return yearsData;
+  return yearsData.concat([{ year: liveYear, leagueData: live }]).sort((a,b)=> a.year - b.year);
+}
+
+/* ============================================================
+   ALL-TIME STATS AGGREGATION ENGINE
+   Unifies managers across seasons by ownerId (ESPN's stable
+   member GUID via team.primaryOwner), so a manager is tracked
+   correctly even if their team name or logo changed year to
+   year. Builds all-time head-to-head records and league-wide
+   milestones (highest/lowest score, biggest blowout, streaks,
+   career points) from every regular-season and playoff game
+   across the fetched seasons.
+============================================================ */
+function computeLeagueHistoryStats(yearsData){
+  const managers = {};            // ownerId -> { id, name, teamNamesByYear, logoByYear }
+  const h2h = {};                 // "ownerIdLo__ownerIdHi" -> { a, b, winsA, winsB, ties, pointsA, pointsB, meetings:[] }
+  const perManagerGameLog = {};   // ownerId -> [{year, week, result:'W'|'L'|'T'}], regular season only
+  const careerPoints = {};        // ownerId -> cumulative points scored
+
+  let highestScore = null, lowestScore = null, biggestBlowout = null;
+  const allGameScores = [];
+
+  function ensureManager(ownerId, displayName, teamName, logo, year){
+    if(!managers[ownerId]){
+      managers[ownerId] = { id: ownerId, name: displayName || teamName || 'Unknown Manager', teamNamesByYear:{}, logoByYear:{} };
+    }
+    if(displayName) managers[ownerId].name = displayName;
+    if(teamName) managers[ownerId].teamNamesByYear[year] = teamName;
+    if(logo) managers[ownerId].logoByYear[year] = logo;
+  }
+
+  const sortedYears = [...yearsData].sort((a,b)=> a.year - b.year);
+
+  sortedYears.forEach(({year, leagueData})=>{
+    if(!leagueData || !leagueData.teams) return;
+
+    // Member GUID -> real display name, when the payload includes it (mTeam view usually does).
+    const memberNames = {};
+    (leagueData.members || []).forEach(m=>{
+      const full = [m.firstName, m.lastName].filter(Boolean).join(' ').trim();
+      memberNames[m.id] = full || m.displayName || m.id;
+    });
+
+    // teamId -> ownerId, scoped to this year (teamId alone isn't stable across seasons/trades).
+    const teamOwnerMap = {};
+    leagueData.teams.forEach(t=>{
+      const ownerId = t.primaryOwner || (t.owners && t.owners[0]) || `team-${t.id}-${year}`;
+      const teamName = ((t.location||'') + ' ' + (t.nickname||'')).trim() || t.name || `Team ${t.id}`;
+      const displayName = memberNames[ownerId] || teamName;
+      ensureManager(ownerId, displayName, teamName, t.logo, year);
+      teamOwnerMap[t.id] = ownerId;
+    });
+
+    const schedule = (leagueData.schedule || []).slice().sort((a,b)=> (a.matchupPeriodId||0) - (b.matchupPeriodId||0));
+
+    schedule.forEach(game=>{
+      const home = game.home, away = game.away;
+      if(!home || !away) return; // bye week
+      if(typeof home.totalPoints !== 'number' || typeof away.totalPoints !== 'number') return;
+      if(home.totalPoints === 0 && away.totalPoints === 0) return; // not yet played
+
+      const ownerA = teamOwnerMap[home.teamId];
+      const ownerB = teamOwnerMap[away.teamId];
+      if(!ownerA || !ownerB || ownerA === ownerB) return;
+
+      const scoreA = home.totalPoints, scoreB = away.totalPoints;
+      const week = game.matchupPeriodId;
+      const isPlayoff = !!(game.playoffTierType && game.playoffTierType !== 'NONE');
+      let winnerOwnerId = null;
+      if(scoreA > scoreB) winnerOwnerId = ownerA;
+      else if(scoreB > scoreA) winnerOwnerId = ownerB;
+
+      // Career points leaderboard
+      careerPoints[ownerA] = (careerPoints[ownerA] || 0) + scoreA;
+      careerPoints[ownerB] = (careerPoints[ownerB] || 0) + scoreB;
+
+      const teamNameA = managers[ownerA].teamNamesByYear[year] || managers[ownerA].name;
+      const teamNameB = managers[ownerB].teamNamesByYear[year] || managers[ownerB].name;
+
+      // Highest / lowest single-game score (Hall of Shame)
+      [
+        { ownerId:ownerA, teamName:teamNameA, score:scoreA },
+        { ownerId:ownerB, teamName:teamNameB, score:scoreB },
+      ].forEach(entry=>{
+        allGameScores.push(entry.score);
+        if(!highestScore || entry.score > highestScore.score) highestScore = { ...entry, year, week };
+        if(entry.score >= 40.0){
+          if(!lowestScore || entry.score < lowestScore.score) lowestScore = { ...entry, year, week };
+        }
+      });
+
+      // Biggest blowout / margin of victory
+      if(winnerOwnerId){
+        const margin = Math.abs(scoreA - scoreB);
+        const winnerIsA = winnerOwnerId === ownerA;
+        if(!biggestBlowout || margin > biggestBlowout.margin){
+          biggestBlowout = {
+            winnerOwnerId, loserOwnerId: winnerIsA ? ownerB : ownerA,
+            winnerTeamName: winnerIsA ? teamNameA : teamNameB,
+            loserTeamName: winnerIsA ? teamNameB : teamNameA,
+            winnerScore: winnerIsA ? scoreA : scoreB,
+            loserScore: winnerIsA ? scoreB : scoreA,
+            margin, year, week,
+          };
+        }
+      }
+
+      // All-time head-to-head, keyed so either selection order finds the same record
+      const key = [ownerA, ownerB].sort().join('__');
+      if(!h2h[key]){
+        const [a, b] = [ownerA, ownerB].sort();
+        h2h[key] = { a, b, winsA:0, winsB:0, ties:0, pointsA:0, pointsB:0, meetings:[] };
+      }
+      const rec = h2h[key];
+      const aIsRecA = ownerA === rec.a;
+      rec.pointsA += aIsRecA ? scoreA : scoreB;
+      rec.pointsB += aIsRecA ? scoreB : scoreA;
+      if(winnerOwnerId === rec.a) rec.winsA++;
+      else if(winnerOwnerId === rec.b) rec.winsB++;
+      else rec.ties++;
+      rec.meetings.push({
+        year, week, isPlayoff, winnerOwnerId,
+        scoreA: aIsRecA ? scoreA : scoreB,
+        scoreB: aIsRecA ? scoreB : scoreA,
+      });
+
+      // Per-manager game log for streaks — regular season only
+      if(!isPlayoff){
+        if(!perManagerGameLog[ownerA]) perManagerGameLog[ownerA] = [];
+        if(!perManagerGameLog[ownerB]) perManagerGameLog[ownerB] = [];
+        perManagerGameLog[ownerA].push({ year, week, result: winnerOwnerId===ownerA ? 'W' : (winnerOwnerId===ownerB ? 'L' : 'T') });
+        perManagerGameLog[ownerB].push({ year, week, result: winnerOwnerId===ownerB ? 'W' : (winnerOwnerId===ownerA ? 'L' : 'T') });
+      }
+    });
+  });
+
+  // Longest winning / losing streaks, across each manager's chronological regular-season log
+  let longestWinStreak = null, longestLossStreak = null;
+  Object.keys(perManagerGameLog).forEach(ownerId=>{
+    const log = perManagerGameLog[ownerId].slice().sort((g1,g2)=> g1.year - g2.year || g1.week - g2.week);
+    let curWin = 0, curLoss = 0, curWinStart = null, curLossStart = null;
+    log.forEach(g=>{
+      if(g.result === 'W'){
+        if(curWin === 0) curWinStart = g;
+        curWin++; curLoss = 0; curLossStart = null;
+        if(!longestWinStreak || curWin > longestWinStreak.length){
+          longestWinStreak = { ownerId, length: curWin, startYear: curWinStart.year, startWeek: curWinStart.week, endYear: g.year, endWeek: g.week };
+        }
+      } else if(g.result === 'L'){
+        if(curLoss === 0) curLossStart = g;
+        curLoss++; curWin = 0; curWinStart = null;
+        if(!longestLossStreak || curLoss > longestLossStreak.length){
+          longestLossStreak = { ownerId, length: curLoss, startYear: curLossStart.year, startWeek: curLossStart.week, endYear: g.year, endWeek: g.week };
+        }
+      } else {
+        curWin = 0; curLoss = 0; curWinStart = null; curLossStart = null;
+      }
+    });
+  });
+
+  const careerPointsLeaderboard = Object.keys(careerPoints)
+    .map(ownerId=> ({ ownerId, totalPoints: careerPoints[ownerId] }))
+    .sort((a,b)=> b.totalPoints - a.totalPoints);
+
+  return {
+    managers, h2h, perManagerGameLog, allGameScores,
+    records: { highestScore, lowestScore, biggestBlowout, longestWinStreak, longestLossStreak, careerPointsLeaderboard },
+  };
+}
+
+/* Manager's most recent known team name/logo. */
+function managerLatestInfo(ownerId){ return LeagueData.managerLatestInfo(ownerId); }
+
+/* All-time head-to-head record between two managers, from the selected
+   manager's perspective (winsFor/winsAgainst), plus the last meeting and
+   the current streak (consecutive results in either direction). */
+function getH2H(ownerIdA, ownerIdB){
+  const hist = LeagueData.leagueHistory;
+  if(!hist) return null;
+  const key = [ownerIdA, ownerIdB].sort().join('__');
+  const rec = hist.h2h[key];
+  if(!rec) return null;
+
+  const aIsRecA = ownerIdA === rec.a;
+  const winsFor = aIsRecA ? rec.winsA : rec.winsB;
+  const winsAgainst = aIsRecA ? rec.winsB : rec.winsA;
+  const pointsFor = aIsRecA ? rec.pointsA : rec.pointsB;
+  const pointsAgainst = aIsRecA ? rec.pointsB : rec.pointsA;
+
+  const meetings = rec.meetings.slice().sort((m1,m2)=> m1.year - m2.year || m1.week - m2.week);
+  const last = meetings[meetings.length - 1];
+
+  let streakOwnerId = null, streakCount = 0;
+  for(let i = meetings.length - 1; i >= 0; i--){
+    const w = meetings[i].winnerOwnerId;
+    if(!w) break; // a tie breaks the streak
+    if(streakOwnerId === null){ streakOwnerId = w; streakCount = 1; }
+    else if(w === streakOwnerId) streakCount++;
+    else break;
+  }
+
+  return {
+    winsFor, winsAgainst, ties: rec.ties,
+    pointsFor, pointsAgainst, diff: pointsFor - pointsAgainst,
+    meetingCount: meetings.length,
+    lastMeeting: last ? {
+      year: last.year, week: last.week,
+      scoreFor: aIsRecA ? last.scoreA : last.scoreB,
+      scoreAgainst: aIsRecA ? last.scoreB : last.scoreA,
+      won: last.winnerOwnerId === ownerIdA,
+    } : null,
+    streakOwnerId, streakCount,
+  };
+}
+
+/* ============================================================
+   FRANCHISE RESUME — per-manager career arc built from the raw
+   season payloads (final ranks, records, playoff appearances).
+============================================================ */
+function computeFranchiseResume(ownerId){
+  const hist = LeagueData.leagueHistory;
+  if(!hist) return null;
+  const m = hist.managers[ownerId];
+  if(!m) return null;
+
+  const yearRanks = [];
+  let totalWins=0, totalLosses=0, totalTies=0, champs=0, top3=0, playoffApps=0;
+  const yearsPlayed = Object.keys(m.teamNamesByYear).map(Number).sort((a,b)=>a-b);
+
+  const rawHistory = window._franchiseYearsData;
+  if(!rawHistory) return null;
+
+  yearsPlayed.forEach(year=>{
+    const seasonEntry = rawHistory.find(yd=> yd.year === year);
+    if(!seasonEntry) return;
+    const ld = seasonEntry.leagueData;
+    if(!ld || !ld.teams) return;
+
+    const team = ld.teams.find(t=>{
+      const tid = t.primaryOwner || (t.owners && t.owners[0]) || '';
+      return tid === ownerId;
+    });
+    if(!team) return;
+
+    const rank = team.rankCalculatedFinal;
+    if(typeof rank === 'number' && rank > 0){
+      yearRanks.push({ year, rank });
+      if(rank === 1) champs++;
+      if(rank <= 3) top3++;
+    }
+
+    const rec = team.record && team.record.overall;
+    if(rec){
+      totalWins += rec.wins || 0;
+      totalLosses += rec.losses || 0;
+      totalTies += rec.ties || 0;
+    }
+
+    const playoffTeamCount = (ld.settings && ld.settings.scheduleSettings && ld.settings.scheduleSettings.playoffTeamCount) || 6;
+    if(typeof team.playoffSeed === 'number' && team.playoffSeed > 0 && team.playoffSeed <= playoffTeamCount){
+      playoffApps++;
+    } else {
+      // Fallback: check schedule for WINNERS_BRACKET games
+      const schedule = ld.schedule || [];
+      const inBracket = schedule.some(g=>{
+        if(g.playoffTierType !== 'WINNERS_BRACKET') return false;
+        const hid = g.home && g.home.teamId;
+        const aid = g.away && g.away.teamId;
+        return hid === team.id || aid === team.id;
+      });
+      if(inBracket) playoffApps++;
+    }
+  });
+
+  const avgFinish = yearRanks.length ? (yearRanks.reduce((s,yr)=>s+yr.rank,0)/yearRanks.length) : null;
+
+  return {
+    yearRanks,
+    avgFinish: avgFinish !== null ? avgFinish.toFixed(1) : '--',
+    avgFinishNum: avgFinish,
+    champs, top3, playoffApps,
+    record: `${totalWins}-${totalLosses}-${totalTies}`,
+    wins: totalWins, losses: totalLosses, ties: totalTies,
+    seasons: yearsPlayed.length,
+  };
+}
+
+/* Runner-up to the all-time highest / lowest single-game score, scanned
+   straight off the raw season payloads so the record card can show the
+   next name down. */
+function findRunnerUp(type){
+  const raw = window._franchiseYearsData;
+  if(!raw) return { name:'', score:'' };
+  const hist = LeagueData.leagueHistory;
+  const r = hist && hist.records;
+  if(!r) return { name:'', score:'' };
+  const primary = type === 'highest' ? r.highestScore : r.lowestScore;
+  if(!primary) return { name:'', score:'' };
+
+  let best = null;
+  raw.forEach(({year, leagueData})=>{
+    if(!leagueData || !leagueData.teams) return;
+    (leagueData.schedule || []).forEach(game=>{
+      const home = game.home, away = game.away;
+      if(!home || !away) return;
+      if(typeof home.totalPoints !== 'number' || typeof away.totalPoints !== 'number') return;
+      if(home.totalPoints === 0 && away.totalPoints === 0) return;
+      [home.totalPoints, away.totalPoints].forEach((score, idx)=>{
+        if(score === primary.score && year === primary.year && game.matchupPeriodId === primary.week) return;
+        if(type === 'lowest' && score < 40.0) return;
+        const better = type === 'highest' ? (!best || score > best.score) : (!best || score < best.score);
+        if(better) best = { score, year, week: game.matchupPeriodId, teamId: idx===0 ? home.teamId : away.teamId };
+      });
+    });
+  });
+  if(!best) return { name:'', score:'' };
+
+  const seasonEntry = raw.find(yd=> yd.year === best.year);
+  const team = seasonEntry && seasonEntry.leagueData.teams.find(t=> t.id === best.teamId);
+  const name = team ? (((team.location||'') + ' ' + (team.nickname||'')).trim() || team.name || '') : '';
+  return { name: name.toUpperCase(), score: best.score.toFixed(1) + ' PTS' };
+}
+
+/* A manager's current form — the trailing run of identical results in the
+   chronological regular-season log. Drives the streak chips on matchups. */
+function currentStreak(ownerId){
+  const hist = LeagueData.leagueHistory;
+  const log = hist && hist.perManagerGameLog[ownerId];
+  if(!log || !log.length) return null;
+  const sorted = log.slice().sort((a,b)=> a.year - b.year || a.week - b.week);
+  const last = sorted[sorted.length - 1].result;
+  if(last === 'T') return null;
+  let n = 0;
+  for(let i = sorted.length - 1; i >= 0; i--){
+    if(sorted[i].result !== last) break;
+    n++;
+  }
+  return { result: last, length: n };
+}
+</script>
+
+<script>
+/* ============================================================================
+   FANTASY SPORTS NETWORK — MOBILE UI LAYER
+============================================================================ */
+(function(){
+'use strict';
+
+const esc = (s)=> LeagueData.esc(s);
+const $  = (id)=> document.getElementById(id);
+
+const ui = {
+  screen: 'home',
+  vaultTab: 'franchises',
+  week: null,
+  rivalA: '', rivalB: '',
+};
+
+const STORE_KEY = 'fsn.setup.v1';
+
+/* ============================================================
+   SMALL HELPERS
+============================================================ */
+function initialsFrom(name){
+  const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+  if(!parts.length) return 'FF';
+  if(parts.length === 1) return parts[0].slice(0,2).toUpperCase();
+  return (parts[0][0] + parts[parts.length-1][0]).toUpperCase();
+}
+
+const ACCENTS = ['var(--cyan)','var(--gold)','var(--red)','var(--green)','#a78bfa','#fb923c'];
+function accentFor(seed){
+  let h = 0;
+  const s = String(seed || '');
+  for(let i=0;i<s.length;i++) h = (h*31 + s.charCodeAt(i)) >>> 0;
+  return ACCENTS[h % ACCENTS.length];
+}
+
+/* Team crest: ESPN logo when present, otherwise a coloured monogram so the
+   card never renders a broken image on a phone. */
+function crest(name, logo, size){
+  const px = size || 38;
+  const style = `width:${px}px;height:${px}px;`;
+  if(logo){
+    return `<img class="logo" style="${style}" src="${esc(logo)}" alt=""
+            onerror="this.outerHTML=window.__fsnMono(${JSON.stringify(esc(name)).replace(/"/g,'&quot;')},${px})">`;
+  }
+  return monoBadge(name, px);
+}
+function monoBadge(name, px){
+  const a = accentFor(name);
+  return `<div class="mono-badge" style="width:${px}px;height:${px}px;color:${a};
+          background:linear-gradient(150deg,${a}22,#141a26);border-color:${a}44;">${esc(initialsFrom(name))}</div>`;
+}
+window.__fsnMono = (name, px)=> monoBadge(name, px);
+
+function toast(msg){
+  const el = $('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(()=> el.classList.remove('show'), 2600);
+}
+
+function emptyState(title, sub, gotoTab){
+  return `<div class="empty">
+    <div class="glyph">${esc(title)}</div>
+    <p class="text-[12.5px] mt-2 leading-relaxed">${esc(sub)}</p>
+    ${gotoTab ? `<button class="btn-ghost mt-4" data-goto="${gotoTab}">GO TO ${gotoTab.toUpperCase()}</button>` : ''}
+  </div>`;
+}
+
+/* A game is "live" when the scores are still moving — ESPN reports a winner
+   of UNDECIDED and at least one side has points on the board. */
+function gameStatus(g){
+  const hs = parseFloat(g.homeScore), as = parseFloat(g.awayScore);
+  const played = hs > 0 || as > 0;
+  const decided = g.winner && g.winner !== 'UNDECIDED';
+  if(decided) return 'final';
+  if(played) return 'live';
+  return 'pre';
+}
+
+/* The number each side is shown with: actual once the game is under way,
+   projected before kickoff. */
+function displayScore(score, projected, status){
+  if(status === 'pre' && projected) return projected;
+  return score;
+}
+
+function effectiveWeek(){
+  if(ui.week != null) return ui.week;
+  const w = parseInt(($('weekNum').value || '').trim(), 10);
+  if(w) return w;
+  const d = LeagueData.espnData;
+  const sp = d && (d.scoringPeriodId || (d.status && d.status.currentMatchupPeriod));
+  return sp || 1;
+}
+
+/* ============================================================
+   TICKER
+============================================================ */
+function tickerItems(){
+  const items = [];
+  if(!LeagueData.hasLive()){
+    return [
+      `<span class="ticker-item"><span class="tk-tag">FSN</span><span class="tk-team">Fantasy Sports Network</span></span>`,
+      `<span class="ticker-item"><span class="tk-team">Connect your ESPN league in Setup</span></span>`,
+      `<span class="ticker-item"><span class="tk-tag">OFF AIR</span><span class="tk-team">Awaiting signal</span></span>`,
+    ];
+  }
+
+  const week = effectiveWeek();
+  const games = LeagueData.getWeekMatchups(week);
+
+  games.forEach(g=>{
+    const st = gameStatus(g);
+    const hs = displayScore(g.homeScore, g.homeProjected, st);
+    const as = displayScore(g.awayScore, g.awayProjected, st);
+    const homeWins = parseFloat(g.homeScore) > parseFloat(g.awayScore);
+    const tag = st === 'live' ? '<span class="tk-tag">LIVE</span>' : (st === 'pre' ? '<span class="tk-tag" style="color:var(--dim)">PROJ</span>' : '');
+    items.push(
+      `<span class="ticker-item">${tag}` +
+      `<span class="tk-team ${st!=='pre' && !homeWins ? '' : ''}">${esc(g.awayTeam.abbrev)}</span>` +
+      `<span class="tk-score ${st!=='pre' && !homeWins ? 'tk-win' : ''}">${esc(as)}</span>` +
+      `<span style="color:#3b4657">@</span>` +
+      `<span class="tk-team">${esc(g.homeTeam.abbrev)}</span>` +
+      `<span class="tk-score ${st!=='pre' && homeWins ? 'tk-win' : ''}">${esc(hs)}</span>` +
+      `</span>`
+    );
+  });
+
+  const ext = LeagueData.getWeekExtremes(week);
+  if(ext.high) items.push(`<span class="ticker-item"><span class="tk-tag" style="color:var(--gold)">HIGH</span><span class="tk-team">${esc(ext.high.team.name)}</span><span class="tk-score tk-win">${ext.high.score.toFixed(1)}</span></span>`);
+  if(ext.low)  items.push(`<span class="ticker-item"><span class="tk-tag">FRAUD</span><span class="tk-team">${esc(ext.low.team.name)}</span><span class="tk-score">${ext.low.score.toFixed(1)}</span></span>`);
+  if(LeagueData.hasHistory()){
+    items.push(`<span class="ticker-item"><span class="tk-tag" style="color:var(--cyan)">VAULT</span><span class="tk-team">${LeagueData.seasonCount()} seasons · ${LeagueData.matchupCount().toLocaleString()} matchups</span></span>`);
+  }
+  return items.length ? items : [`<span class="ticker-item"><span class="tk-team">No games on the schedule for week ${week}</span></span>`];
+}
+
+function renderTicker(){
+  const items = tickerItems();
+  // Doubling the strip is what makes the -50% keyframe loop seamlessly.
+  $('tickerTrack').innerHTML = items.join('') + items.join('');
+}
+
+/* ============================================================
+   HOME — THE DESK
+============================================================ */
+function renderHome(){
+  const live = LeagueData.hasLive();
+  $('homeNoData').classList.toggle('hidden', live);
+  $('homeContent').classList.toggle('hidden', !live);
+  if(!live) return;
+
+  const d = LeagueData.espnData;
+  const week = effectiveWeek();
+  const games = LeagueData.getWeekMatchups(week);
+
+  $('homeLeagueName').textContent = (d.settings && d.settings.name) ? d.settings.name.toUpperCase() : 'THE DESK';
+  $('homeWeekPill').textContent = 'WEEK ' + week;
+  $('homeSeasonLabel').textContent = (d.seasonId || d.season || $('seasonYear').value || '') + ' SEASON';
+
+  /* ---- league pulse ---- */
+  const scores = [];
+  games.forEach(g=>{
+    const st = gameStatus(g);
+    scores.push(parseFloat(displayScore(g.homeScore, g.homeProjected, st)) || 0);
+    scores.push(parseFloat(displayScore(g.awayScore, g.awayProjected, st)) || 0);
+  });
+  const avg = scores.length ? scores.reduce((a,b)=>a+b,0) / scores.length : 0;
+  $('pulseGames').textContent = games.length;
+  $('pulseAvg').textContent = avg ? avg.toFixed(1) : '—';
+  $('pulseHigh').textContent = scores.length ? Math.max(...scores).toFixed(1) : '—';
+
+  /* ---- MATCHUP OF THE WEEK ----
+     The biggest game on the board: highest combined points, with the margin
+     called out so a nail-biter reads as one. */
+  let motw = null, bestTotal = -1;
+  games.forEach(g=>{
+    const st = gameStatus(g);
+    const hs = parseFloat(displayScore(g.homeScore, g.homeProjected, st)) || 0;
+    const as = parseFloat(displayScore(g.awayScore, g.awayProjected, st)) || 0;
+    if(hs + as > bestTotal){ bestTotal = hs + as; motw = { g, hs, as, st }; }
+  });
+
+  if(!motw){
+    $('motwCard').innerHTML = `<div class="p-5 text-center text-[12.5px] text-[var(--dim)]">No games scheduled for week ${week}.</div>`;
+  } else {
+    const { g, hs, as, st } = motw;
+    const margin = Math.abs(hs - as);
+    const homeLeads = hs >= as;
+    const statusPill = st === 'live'
+      ? `<span class="pill pill-live"><span class="live-dot"></span>LIVE</span>`
+      : (st === 'final' ? `<span class="pill pill-final">FINAL</span>` : `<span class="pill pill-cyan">PROJECTED</span>`);
+    const flavor = margin < 10 ? 'NAIL-BITER' : (margin < 25 ? 'COMPETITIVE' : 'SHOOTOUT');
+
+    $('motwCard').innerHTML = `
+      <div class="pl-5 pr-4 py-4">
+        <div class="flex items-center justify-between mb-3.5">
+          <div class="kicker text-[var(--gold)]">GAME OF THE WEEK · ${flavor}</div>
+          ${statusPill}
+        </div>
+        ${motwSide(g.awayTeam, as, !homeLeads, st)}
+        <div class="flex items-center gap-3 my-2.5">
+          <div class="flex-1 h-px bg-[var(--line)]"></div>
+          <div class="font-mono tabular text-[10px] text-[var(--dim)] tracking-widest">${margin.toFixed(1)} PT MARGIN</div>
+          <div class="flex-1 h-px bg-[var(--line)]"></div>
+        </div>
+        ${motwSide(g.homeTeam, hs, homeLeads, st)}
+        <div class="mt-3.5 pt-3 border-t border-[var(--line)] text-[11px] text-[var(--dim)] leading-relaxed">
+          Combined <b class="text-[var(--off)] font-mono tabular">${bestTotal.toFixed(1)}</b> points — the highest total on this week's board.
+        </div>
+      </div>`;
+  }
+
+  /* ---- FRAUD ALERT / HOT SEAT ---- */
+  const low = LeagueData.getWeekExtremes(week).low;
+  if(!low){
+    $('hotSeatCard').innerHTML = `<div class="p-5 text-center text-[12.5px] text-[var(--dim)]">No scores posted yet this week.</div>`;
+  } else {
+    const streak = low.team.ownerId ? currentStreak(low.team.ownerId) : null;
+    const streakLine = streak && streak.result === 'L'
+      ? `<span class="pill" style="border-color:rgba(255,45,85,.4);color:var(--red)">LOST ${streak.length} STRAIGHT</span>` : '';
+    const gap = (() => {
+      const high = LeagueData.getWeekExtremes(week).high;
+      return high ? (high.score - low.score).toFixed(1) : null;
+    })();
+
+    $('hotSeatCard').innerHTML = `
+      <div class="pl-5 pr-4 py-4">
+        <div class="flex items-center justify-between mb-3.5">
+          <div class="kicker text-[var(--red)]">FRAUD ALERT · LOWEST SCORE</div>
+          <span class="pill" style="border-color:rgba(255,45,85,.45);color:var(--red);background:rgba(255,45,85,.09)">WK ${week}</span>
+        </div>
+        <div class="flex items-center gap-3">
+          ${crest(low.team.name, low.team.logo, 50)}
+          <div class="min-w-0 flex-1">
+            <div class="font-display text-[17px] leading-tight truncate">${esc(low.team.name.toUpperCase())}</div>
+            <div class="text-[11.5px] text-[var(--dim)] truncate mt-0.5">${esc(low.team.owner || '—')}${low.team.record ? ' · ' + esc(low.team.record) : ''}</div>
+          </div>
+          <div class="text-right">
+            <div class="font-mono tabular text-[27px] font-extrabold text-[var(--red)] leading-none">${low.score.toFixed(1)}</div>
+            <div class="kicker text-[var(--dim)] mt-1">points</div>
+          </div>
+        </div>
+        <div class="mt-3 flex flex-wrap gap-1.5">
+          ${streakLine}
+          ${gap ? `<span class="pill pill-final">${gap} BEHIND THE HIGH</span>` : ''}
+        </div>
+        <div class="mt-3 pt-3 border-t border-[var(--line)] text-[11.5px] text-[var(--dim)] leading-relaxed">
+          Bottom of the league this week. The seat is warm.
+        </div>
+      </div>`;
+  }
+
+  /* ---- AROUND THE LEAGUE (compact) ---- */
+  $('homeQuickScores').innerHTML = games.slice(0, 4).map(g=> compactGameRow(g)).join('')
+    || `<div class="card p-4 text-center text-[12.5px] text-[var(--dim)]">Nothing on the board.</div>`;
+}
+
+function motwSide(team, score, leading, status){
+  return `<div class="flex items-center gap-3">
+    ${crest(team.name, team.logo, 42)}
+    <div class="min-w-0 flex-1">
+      <div class="font-display text-[16px] leading-tight truncate ${leading ? '' : 'text-[var(--off)]'}">${esc(team.name.toUpperCase())}</div>
+      <div class="text-[11px] text-[var(--dim)] truncate">${esc(team.owner || '—')}${team.record ? ' · ' + esc(team.record) : ''}</div>
+    </div>
+    <div class="font-mono tabular text-[25px] font-extrabold leading-none ${leading ? 'text-[var(--gold)]' : 'text-[#5d6879]'}">${score.toFixed(1)}</div>
+  </div>`;
+}
+
+function compactGameRow(g){
+  const st = gameStatus(g);
+  const hs = parseFloat(displayScore(g.homeScore, g.homeProjected, st)) || 0;
+  const as = parseFloat(displayScore(g.awayScore, g.awayProjected, st)) || 0;
+  const homeWins = hs >= as;
+  const dim = 'text-[#5d6879]';
+  return `<div class="card px-3.5 py-2.5 flex items-center gap-2.5">
+    <div class="flex-1 min-w-0 flex items-center gap-2">
+      ${crest(g.awayTeam.name, g.awayTeam.logo, 26)}
+      <span class="text-[12px] font-semibold truncate ${homeWins && st!=='pre' ? dim : ''}">${esc(g.awayTeam.abbrev)}</span>
+      <span class="font-mono tabular text-[13px] font-bold ml-auto ${homeWins && st!=='pre' ? dim : 'text-[var(--cyan)]'}">${as.toFixed(1)}</span>
+    </div>
+    <div class="text-[9px] text-[#39424f] tracking-widest">VS</div>
+    <div class="flex-1 min-w-0 flex items-center gap-2">
+      <span class="font-mono tabular text-[13px] font-bold ${!homeWins && st!=='pre' ? dim : 'text-[var(--cyan)]'}">${hs.toFixed(1)}</span>
+      <span class="text-[12px] font-semibold truncate ${!homeWins && st!=='pre' ? dim : ''}">${esc(g.homeTeam.abbrev)}</span>
+      ${crest(g.homeTeam.name, g.homeTeam.logo, 26)}
+    </div>
+  </div>`;
+}
+
+/* ============================================================
+   MATCHUPS
+============================================================ */
+function renderMatchups(){
+  const week = effectiveWeek();
+  $('matchupWeekLabel').textContent = 'WK ' + week;
+
+  if(!LeagueData.hasLive()){
+    $('matchupList').innerHTML = emptyState('NO SIGNAL', 'Fetch an ESPN league to see this week’s head-to-head board.', 'setup');
+    return;
+  }
+
+  const games = LeagueData.getWeekMatchups(week);
+  if(!games.length){
+    $('matchupList').innerHTML = emptyState('BYE', `No games found for week ${week}.`, null);
+    return;
+  }
+
+  $('matchupList').innerHTML = games.map(g=> matchupCard(g)).join('');
+}
+
+function matchupCard(g){
+  const st = gameStatus(g);
+  const hs = parseFloat(displayScore(g.homeScore, g.homeProjected, st)) || 0;
+  const as = parseFloat(displayScore(g.awayScore, g.awayProjected, st)) || 0;
+  const homeLeads = hs >= as;
+  const margin = Math.abs(hs - as);
+
+  const statusPill = st === 'live'
+    ? `<span class="pill pill-live"><span class="live-dot"></span>LIVE</span>`
+    : (st === 'final' ? `<span class="pill pill-final">FINAL</span>` : `<span class="pill pill-cyan">PROJECTED</span>`);
+
+  const playoff = g.playoffTierType && g.playoffTierType !== 'NONE'
+    ? `<span class="pill pill-gold">PLAYOFFS</span>` : '';
+
+  const accent = st === 'live' ? 'accent-red' : (st === 'final' ? 'accent-cyan' : 'accent-gold');
+
+  return `<div class="card card-accent ${accent}">
+    <div class="pl-4 pr-3.5 py-3.5">
+      <div class="flex items-center justify-between mb-3">
+        <div class="flex items-center gap-1.5">${statusPill}${playoff}</div>
+        <div class="font-mono tabular text-[10px] text-[var(--dim)]">${margin.toFixed(1)} MARGIN</div>
+      </div>
+      ${matchupSide(g.awayTeam, as, !homeLeads, st, g.awayProjected)}
+      <div class="h-px bg-[var(--line)] my-2.5"></div>
+      ${matchupSide(g.homeTeam, hs, homeLeads, st, g.homeProjected)}
+    </div>
+  </div>`;
+}
+
+function matchupSide(team, score, leading, status, projected){
+  const streak = team.ownerId ? currentStreak(team.ownerId) : null;
+  let streakChip = '';
+  if(streak && streak.length >= 2){
+    const won = streak.result === 'W';
+    streakChip = `<span class="pill" style="padding:1px 6px;font-size:8.5px;letter-spacing:.12em;
+      border-color:${won ? 'rgba(57,255,140,.4)' : 'rgba(255,45,85,.4)'};
+      color:${won ? 'var(--green)' : 'var(--red)'};">${won ? 'W' : 'L'}${streak.length}</span>`;
+  }
+  // Once a game is under way the projection is still worth showing alongside.
+  const projLine = (status !== 'pre' && projected) ? `<span class="font-mono tabular text-[9.5px] text-[var(--dim)]">PROJ ${esc(projected)}</span>` : '';
+
+  return `<div class="flex items-center gap-3">
+    ${crest(team.name, team.logo, 40)}
+    <div class="min-w-0 flex-1">
+      <div class="font-display text-[15px] leading-tight truncate ${leading ? '' : 'text-[var(--off)]'}">${esc(team.name.toUpperCase())}</div>
+      <div class="flex items-center gap-1.5 mt-0.5 flex-wrap">
+        <span class="text-[10.5px] text-[var(--dim)] truncate">${esc(team.owner || '—')}</span>
+        ${team.record ? `<span class="font-mono tabular text-[10px] text-[var(--dim)]">${esc(team.record)}</span>` : ''}
+        ${streakChip}
+      </div>
+    </div>
+    <div class="text-right flex-none">
+      <div class="font-mono tabular text-[23px] font-extrabold leading-none ${leading ? 'text-[var(--cyan)]' : 'text-[#5d6879]'}">${score.toFixed(1)}</div>
+      ${projLine}
+    </div>
+  </div>`;
+}
+
+/* ============================================================
+   THE VAULT
+============================================================ */
+function renderVault(){
+  const hasHist = LeagueData.hasHistory();
+
+  $('vaultMeta').textContent = hasHist
+    ? `${LeagueData.seasonCount()} seasons · ${Object.keys(LeagueData.leagueHistory.managers).length} managers · ${LeagueData.matchupCount().toLocaleString()} matchups`
+    : 'No history loaded';
+
+  if(!hasHist){
+    $('vaultBody').innerHTML = emptyState('THE VAULT IS SEALED', 'Load your all-time league history from Setup to unlock franchise resumes, rivalries and records.', 'setup');
+    return;
+  }
+
+  if(ui.vaultTab === 'franchises')      renderFranchises();
+  else if(ui.vaultTab === 'rivalries')  renderRivalries();
+  else                                  renderRecords();
+}
+
+/* ---- FRANCHISE RESUMES ---- */
+function renderFranchises(){
+  const managers = LeagueData.getManagers();
+
+  const rows = managers.map(m=>{
+    const r = computeFranchiseResume(m.id);
+    return { m, r };
+  }).filter(x=> x.r);
+
+  // Trophies first, then the better average finish.
+  rows.sort((x,y)=> y.r.champs - x.r.champs
+                 || (x.r.avgFinishNum ?? 99) - (y.r.avgFinishNum ?? 99)
+                 || y.r.wins - x.r.wins);
+
+  if(!rows.length){
+    $('vaultBody').innerHTML = emptyState('NO RESUMES', 'The loaded seasons had no final standings to build resumes from.', null);
+    return;
+  }
+
+  $('vaultBody').innerHTML = rows.map(({m, r}, i)=>{
+    const info = managerLatestInfo(m.id);
+    const winPct = (r.wins + r.losses + r.ties) ? (r.wins / (r.wins + r.losses + r.ties) * 100).toFixed(1) : '0.0';
+    const maxRank = Math.max(...r.yearRanks.map(y=> y.rank), 1);
+
+    // Inverted bars: a 1st-place finish draws tallest.
+    const spark = r.yearRanks.map(y=>{
+      const h = Math.max(8, Math.round(((maxRank - y.rank + 1) / maxRank) * 100));
+      const col = y.rank === 1 ? 'var(--gold)' : (y.rank <= 3 ? 'var(--cyan)' : '#2a3444');
+      return `<span title="${y.year}: #${y.rank}" style="height:${h}%;background:${col}"></span>`;
+    }).join('');
+
+    const crown = r.champs > 0
+      ? `<span class="pill pill-gold">🏆 ${r.champs}×</span>` : '';
+
+    return `<div class="card mb-3">
+      <div class="p-4">
+        <div class="flex items-center gap-3">
+          <div class="font-display text-[15px] w-6 text-center ${i===0 ? 'text-[var(--gold)]' : 'text-[#3b4657]'}">${i+1}</div>
+          ${crest(info.teamName || m.name, info.logo, 44)}
+          <div class="min-w-0 flex-1">
+            <div class="font-display text-[16px] leading-tight truncate">${esc((info.teamName || m.name).toUpperCase())}</div>
+            <div class="text-[11.5px] text-[var(--dim)] truncate mt-0.5">${esc(m.name)} · ${r.seasons} season${r.seasons===1?'':'s'}</div>
+          </div>
+          ${crown}
+        </div>
+
+        <div class="grid grid-cols-4 gap-2 mt-3.5">
+          ${statCell('Record', r.record, 'var(--off)')}
+          ${statCell('Win %', winPct + '%', 'var(--cyan)')}
+          ${statCell('Avg Fin', r.avgFinish, 'var(--off)')}
+          ${statCell('Playoffs', String(r.playoffApps), 'var(--gold)')}
+        </div>
+
+        ${r.yearRanks.length ? `
+        <div class="mt-3.5 pt-3 border-t border-[var(--line)]">
+          <div class="flex items-center justify-between mb-2">
+            <div class="kicker text-[var(--dim)]">Finish by season</div>
+            <div class="font-mono tabular text-[10px] text-[var(--dim)]">${r.yearRanks[0].year}–${r.yearRanks[r.yearRanks.length-1].year}</div>
+          </div>
+          <div class="spark">${spark}</div>
+          <div class="flex justify-between mt-1.5 font-mono tabular text-[8.5px] text-[#4b5566]">
+            ${r.yearRanks.map(y=> `<span>${String(y.year).slice(2)}</span>`).join('')}
+          </div>
+        </div>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function statCell(label, value, color){
+  return `<div class="bg-[#0b0f16] border border-[var(--line)] rounded-lg px-2 py-2 text-center">
+    <div class="kicker text-[var(--dim)] leading-none" style="font-size:8.5px">${esc(label)}</div>
+    <div class="font-mono tabular text-[13.5px] font-bold mt-1.5 leading-none" style="color:${color}">${esc(value)}</div>
+  </div>`;
+}
+
+/* ---- HEAD-TO-HEAD RIVALRIES ---- */
+function renderRivalries(){
+  const managers = LeagueData.getManagers();
+  const hist = LeagueData.leagueHistory;
+
+  if(managers.length < 2){
+    $('vaultBody').innerHTML = emptyState('NO RIVALRIES', 'At least two managers are needed to build a head-to-head record.', null);
+    return;
+  }
+
+  // Default to the most-played rivalry in league history.
+  if(!ui.rivalA || !ui.rivalB || !hist.managers[ui.rivalA] || !hist.managers[ui.rivalB]){
+    const top = Object.values(hist.h2h).sort((x,y)=> y.meetings.length - x.meetings.length)[0];
+    if(top){ ui.rivalA = top.a; ui.rivalB = top.b; }
+    else { ui.rivalA = managers[0].id; ui.rivalB = managers[1].id; }
+  }
+
+  const opts = (sel)=> managers.map(m=>
+    `<option value="${esc(m.id)}" ${m.id===sel?'selected':''}>${esc(m.name)}</option>`).join('');
+
+  const topRivalries = Object.values(hist.h2h)
+    .slice().sort((x,y)=> y.meetings.length - x.meetings.length).slice(0,5);
+
+  $('vaultBody').innerHTML = `
+    <div class="card p-4 mb-3">
+      <div class="section-head"><span class="bar"></span><h2>Head to Head</h2></div>
+      <div class="grid grid-cols-2 gap-2.5">
+        <div>
+          <label class="label" for="rivalA">Manager A</label>
+          <select id="rivalA" class="field" style="font-size:12.5px">${opts(ui.rivalA)}</select>
+        </div>
+        <div>
+          <label class="label" for="rivalB">Manager B</label>
+          <select id="rivalB" class="field" style="font-size:12.5px">${opts(ui.rivalB)}</select>
+        </div>
+      </div>
+    </div>
+    <div id="rivalryResult" class="mb-3"></div>
+    <div class="card p-4">
+      <div class="section-head"><span class="bar" style="background:var(--gold)"></span><h2>Most-Played Rivalries</h2></div>
+      <div class="space-y-1.5">
+        ${topRivalries.map(rec=>{
+          const A = managerLatestInfo(rec.a), B = managerLatestInfo(rec.b);
+          return `<button class="w-full text-left flex items-center gap-2 px-3 py-2.5 rounded-lg bg-[#0b0f16] border border-[var(--line)]"
+                   data-rival-a="${esc(rec.a)}" data-rival-b="${esc(rec.b)}">
+            <span class="text-[12px] font-semibold truncate flex-1">${esc(A.name)}</span>
+            <span class="font-mono tabular text-[11.5px] font-bold text-[var(--cyan)]">${rec.winsA}–${rec.winsB}</span>
+            <span class="text-[12px] font-semibold truncate flex-1 text-right">${esc(B.name)}</span>
+            <span class="font-mono tabular text-[9.5px] text-[var(--dim)] flex-none w-9 text-right">${rec.meetings.length}g</span>
+          </button>`;
+        }).join('')}
+      </div>
+    </div>`;
+
+  $('rivalA').addEventListener('change', (e)=>{ ui.rivalA = e.target.value; renderRivalryResult(); });
+  $('rivalB').addEventListener('change', (e)=>{ ui.rivalB = e.target.value; renderRivalryResult(); });
+
+  $('vaultBody').querySelectorAll('[data-rival-a]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      ui.rivalA = btn.dataset.rivalA;
+      ui.rivalB = btn.dataset.rivalB;
+      renderRivalries();
+      $('vaultBody').scrollIntoView({ behavior:'smooth', block:'start' });
+    });
+  });
+
+  renderRivalryResult();
+}
+
+function renderRivalryResult(){
+  const box = $('rivalryResult');
+  if(ui.rivalA === ui.rivalB){
+    box.innerHTML = `<div class="card p-5 text-center text-[12.5px] text-[var(--dim)]">Pick two different managers.</div>`;
+    return;
+  }
+
+  const h = getH2H(ui.rivalA, ui.rivalB);
+  const A = managerLatestInfo(ui.rivalA), B = managerLatestInfo(ui.rivalB);
+
+  if(!h){
+    box.innerHTML = `<div class="card p-5 text-center text-[12.5px] text-[var(--dim)]">
+      ${esc(A.name)} and ${esc(B.name)} have never met in the loaded seasons.</div>`;
+    return;
+  }
+
+  const aLeads = h.winsFor > h.winsAgainst;
+  const streakName = h.streakOwnerId ? managerLatestInfo(h.streakOwnerId).name : null;
+  const last = h.lastMeeting;
+
+  box.innerHTML = `<div class="card card-accent accent-cyan">
+    <div class="pl-5 pr-4 py-4">
+      <div class="kicker text-[var(--cyan)] mb-3.5">All-Time Series · ${h.meetingCount} meeting${h.meetingCount===1?'':'s'}</div>
+
+      <div class="flex items-center gap-2">
+        <div class="flex-1 min-w-0 text-center">
+          ${crest(A.teamName || A.name, A.logo, 46)}
+          <div class="font-display text-[12.5px] mt-2 leading-tight" style="overflow-wrap:anywhere">${esc(A.name.toUpperCase())}</div>
+        </div>
+        <div class="flex-none text-center px-1">
+          <div class="font-mono tabular text-[30px] font-extrabold leading-none">
+            <span style="color:${aLeads ? 'var(--gold)' : '#5d6879'}">${h.winsFor}</span>
+            <span class="text-[#39424f] text-[20px]">–</span>
+            <span style="color:${!aLeads && h.winsAgainst > h.winsFor ? 'var(--gold)' : '#5d6879'}">${h.winsAgainst}</span>
+          </div>
+          ${h.ties ? `<div class="font-mono tabular text-[9.5px] text-[var(--dim)] mt-1">${h.ties} tie${h.ties===1?'':'s'}</div>` : ''}
+        </div>
+        <div class="flex-1 min-w-0 text-center">
+          ${crest(B.teamName || B.name, B.logo, 46)}
+          <div class="font-display text-[12.5px] mt-2 leading-tight" style="overflow-wrap:anywhere">${esc(B.name.toUpperCase())}</div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-3 gap-2 mt-4">
+        ${statCell('PF (A)', h.pointsFor.toFixed(0), 'var(--cyan)')}
+        ${statCell('Diff', (h.diff >= 0 ? '+' : '') + h.diff.toFixed(1), h.diff >= 0 ? 'var(--green)' : 'var(--red)')}
+        ${statCell('PF (B)', h.pointsAgainst.toFixed(0), 'var(--cyan)')}
+      </div>
+
+      ${streakName && h.streakCount > 1 ? `
+        <div class="mt-3"><span class="pill pill-gold">${esc(streakName.toUpperCase())} HAS WON ${h.streakCount} STRAIGHT</span></div>` : ''}
+
+      ${last ? `
+      <div class="mt-3.5 pt-3 border-t border-[var(--line)]">
+        <div class="kicker text-[var(--dim)] mb-1.5">Last Meeting</div>
+        <div class="text-[12.5px] leading-relaxed">
+          <b class="font-mono tabular text-[var(--off)]">${last.year} · WK ${last.week}</b> —
+          ${esc(A.name)} ${last.won ? '<span style="color:var(--green)">won</span>' : '<span style="color:var(--red)">lost</span>'}
+          <b class="font-mono tabular">${last.scoreFor.toFixed(1)}–${last.scoreAgainst.toFixed(1)}</b>
+        </div>
+      </div>` : ''}
+    </div>
+  </div>`;
+}
+
+/* ---- ALL-TIME RECORD BOOK ---- */
+function renderRecords(){
+  const r = LeagueData.leagueHistory.records;
+  const cards = [];
+
+  if(r.highestScore){
+    const ru = findRunnerUp('highest');
+    cards.push(recordCard('gold', 'ALL-TIME RECORD', r.highestScore.score.toFixed(1) + ' PTS',
+      'Highest single-game score in league history',
+      r.highestScore.teamName, `${r.highestScore.year} · WEEK ${r.highestScore.week}`,
+      managerLatestInfo(r.highestScore.ownerId).logo,
+      ru.name ? `Runner-up: ${ru.name} · ${ru.score}` : ''));
+  }
+  if(r.lowestScore){
+    const ru = findRunnerUp('lowest');
+    cards.push(recordCard('red', 'HALL OF SHAME', r.lowestScore.score.toFixed(1) + ' PTS',
+      'Lowest single-game score in league history',
+      r.lowestScore.teamName, `${r.lowestScore.year} · WEEK ${r.lowestScore.week}`,
+      managerLatestInfo(r.lowestScore.ownerId).logo,
+      ru.name ? `Runner-up: ${ru.name} · ${ru.score}` : ''));
+  }
+  if(r.biggestBlowout){
+    const b = r.biggestBlowout;
+    cards.push(recordCard('cyan', 'BIGGEST BLOWOUT', '+' + b.margin.toFixed(1) + ' MARGIN',
+      `${b.winnerTeamName} defeated ${b.loserTeamName} ${b.winnerScore.toFixed(1)}–${b.loserScore.toFixed(1)}`,
+      b.winnerTeamName, `${b.year} · WEEK ${b.week}`,
+      managerLatestInfo(b.winnerOwnerId).logo, ''));
+  }
+  if(r.longestWinStreak){
+    const x = r.longestWinStreak, info = managerLatestInfo(x.ownerId);
+    cards.push(recordCard('gold', 'ALL-TIME RECORD', x.length + '-GAME WIN STREAK',
+      'Longest regular-season winning streak in league history',
+      info.name, `${x.startYear} WK${x.startWeek} → ${x.endYear} WK${x.endWeek}`, info.logo, ''));
+  }
+  if(r.longestLossStreak){
+    const x = r.longestLossStreak, info = managerLatestInfo(x.ownerId);
+    cards.push(recordCard('red', 'HALL OF SHAME', x.length + '-GAME LOSING STREAK',
+      'Longest regular-season losing streak in league history',
+      info.name, `${x.startYear} WK${x.startWeek} → ${x.endYear} WK${x.endWeek}`, info.logo, ''));
+  }
+  if(r.careerPointsLeaderboard && r.careerPointsLeaderboard.length){
+    const x = r.careerPointsLeaderboard[0], info = managerLatestInfo(x.ownerId);
+    const ru = r.careerPointsLeaderboard[1];
+    const ruInfo = ru ? managerLatestInfo(ru.ownerId) : null;
+    cards.push(recordCard('cyan', 'ALL-TIME RECORD', x.totalPoints.toFixed(1) + ' PTS',
+      'Most cumulative career points scored in league history',
+      info.name, 'CAREER TOTAL', info.logo,
+      ruInfo ? `Runner-up: ${ruInfo.name.toUpperCase()} · ${ru.totalPoints.toFixed(1)} PTS` : ''));
+  }
+
+  const board = (r.careerPointsLeaderboard || []).slice(0, 12);
+
+  $('vaultBody').innerHTML = cards.join('') + (board.length ? `
+    <div class="card p-4 mt-1">
+      <div class="section-head"><span class="bar"></span><h2>Career Points</h2></div>
+      <div class="space-y-1.5">
+        ${board.map((x, i)=>{
+          const info = managerLatestInfo(x.ownerId);
+          const pct = board[0].totalPoints ? (x.totalPoints / board[0].totalPoints * 100) : 0;
+          return `<div class="relative overflow-hidden rounded-lg bg-[#0b0f16] border border-[var(--line)] px-3 py-2.5">
+            <div class="absolute inset-y-0 left-0 opacity-[.13]" style="width:${pct}%;background:linear-gradient(90deg,var(--cyan),transparent)"></div>
+            <div class="relative flex items-center gap-2.5">
+              <span class="font-display text-[12px] w-4 text-center ${i===0?'text-[var(--gold)]':'text-[#3b4657]'}">${i+1}</span>
+              <span class="text-[12.5px] font-semibold truncate flex-1">${esc(info.name)}</span>
+              <span class="font-mono tabular text-[12px] font-bold text-[var(--cyan)]">${x.totalPoints.toLocaleString(undefined,{maximumFractionDigits:0})}</span>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>` : '');
+
+  if(!cards.length && !board.length){
+    $('vaultBody').innerHTML = emptyState('NO RECORDS', 'The loaded seasons held no completed games to build records from.', null);
+  }
+}
+
+function recordCard(tone, kicker, headline, subtext, owner, meta, logo, footnote){
+  const colorMap = { gold:'var(--gold)', red:'var(--red)', cyan:'var(--cyan)' };
+  const c = colorMap[tone] || 'var(--cyan)';
+  return `<div class="card card-accent accent-${tone} mb-3">
+    <div class="pl-5 pr-4 py-4">
+      <div class="kicker mb-2" style="color:${c}">${esc(kicker)}</div>
+      <div class="font-display text-[26px] leading-none" style="color:${c}">${esc(headline)}</div>
+      <div class="text-[12px] text-[var(--dim)] leading-relaxed mt-2">${esc(subtext)}</div>
+      <div class="flex items-center gap-3 mt-3.5 pt-3 border-t border-[var(--line)]">
+        ${crest(owner, logo, 34)}
+        <div class="min-w-0 flex-1">
+          <div class="text-[12.5px] font-semibold truncate">${esc(String(owner).toUpperCase())}</div>
+          <div class="font-mono tabular text-[10px] text-[var(--dim)] mt-0.5">${esc(meta)}</div>
+        </div>
+      </div>
+      ${footnote ? `<div class="mt-2.5 font-mono tabular text-[10px] text-[#5d6879]">${esc(footnote)}</div>` : ''}
+    </div>
+  </div>`;
+}
+
+/* ============================================================
+   SETUP — connection status, fetch, history, JSON fallbacks
+============================================================ */
+function setConn(mode){
+  const map = {
+    none:   { text:'● NO DATA SOURCE', color:'var(--dim)',   border:'rgba(255,255,255,.16)' },
+    live:   { text:'● LIVE ESPN DATA', color:'var(--green)', border:'rgba(57,255,140,.45)' },
+    manual: { text:'● MANUAL DATA',    color:'var(--cyan)',  border:'rgba(0,224,255,.45)' },
+    error:  { text:'● FETCH FAILED',   color:'var(--red)',   border:'rgba(255,45,85,.45)' },
+  };
+  const m = map[mode] || map.none;
+  const el = $('connStatus');
+  el.textContent = m.text;
+  el.style.color = m.color;
+  el.style.borderColor = m.border;
+}
+
+function setFetchLoading(isLoading){
+  $('fetchBtn').disabled = isLoading;
+  $('fetchSpinner').classList.toggle('hidden', !isLoading);
+  $('fetchLabel').textContent = isLoading ? 'CONNECTING…' : 'FETCH LEAGUE DATA';
+}
+function setHistoryLoading(isLoading){
+  $('loadHistoryBtn').disabled = isLoading;
+  $('historySpinner').classList.toggle('hidden', !isLoading);
+  $('historyLabel').textContent = isLoading ? 'LOADING ARCHIVE…' : 'LOAD LEAGUE HISTORY';
+}
+
+function buildEspnUrl(){
+  return buildEspnUrlForYear(
+    $('leagueId').value.trim(),
+    $('seasonYear').value.trim(),
+    $('weekNum').value.trim()
+  );
+}
+
+function showHistoryBanner(text){
+  const el = $('historyBanner');
+  el.textContent = text;
+  el.classList.remove('hidden');
+}
+function hideHistoryBanner(){ $('historyBanner').classList.add('hidden'); }
+
+/* Shared by the fetch button, the paste box, and the .json upload: run the
+   aggregator over the parsed seasons, store it, and report what landed. */
+function applyLeagueHistory(yearsData, skipped, sourceLabel){
+  window._franchiseYearsData = yearsData;
+  LeagueData.setLeagueHistory(computeLeagueHistoryStats(yearsData));
+
+  const hist = LeagueData.leagueHistory;
+  const managerCount = Object.keys(hist.managers).length;
+  const matchupCount = countMatchups(hist);
+  const years = yearsData.map(y=> y.year);
+  const yearRange = years.length > 1 ? `${years[0]}–${years[years.length-1]}` : String(years[0]);
+
+  let msg = `✓ ${sourceLabel}: ${yearsData.length} season${yearsData.length===1?'':'s'} (${years.join(', ')}) — ${managerCount} managers tracked.`;
+  if(skipped && skipped.length) msg += ` No game data for: ${skipped.join(', ')}.`;
+  $('historyStatus').textContent = msg;
+
+  showHistoryBanner(`✓ Loaded ${yearsData.length} season${yearsData.length===1?'':'s'} (${yearRange}) and ${matchupCount.toLocaleString()} total matchups.`);
+  toast('Vault unlocked — rivalries and records are live.');
+
+  // A fresh archive invalidates whichever rivalry was on screen.
+  ui.rivalA = ''; ui.rivalB = '';
+  return { seasons: yearsData.length, matchups: matchupCount, managers: managerCount };
+}
+
+/* Single entry point for any multi-year payload — the proxied fetch, the
+   paste box, and the uploaded .json all funnel through here. */
+function processMultiYearHistory(rawData, sourceLabel){
+  const { yearsData, skipped } = normalizeHistoryPayload(rawData);
+  if(!yearsData.length) throw new Error('NO_SEASONS');
+  return applyLeagueHistory(withCurrentSeason(yearsData), skipped, sourceLabel || 'Loaded');
+}
+
+/* ---- fetch one week of the live season ---- */
+$('fetchBtn').addEventListener('click', async ()=>{
+  const espnUrl = buildEspnUrl();
+  if(!espnUrl){
+    $('fetchStatus').textContent = 'Enter a League ID and a Season year first.';
+    return;
+  }
+  setFetchLoading(true);
+  $('fetchStatus').textContent = 'Reaching ESPN through the proxy chain…';
+  try{
+    const leagueData = await fetchLeagueDataViaProxies(espnUrl);
+    LeagueData.setEspnData(leagueData);
+    LeagueData.setMeta('leagueId', $('leagueId').value.trim());
+    LeagueData.setMeta('season', $('seasonYear').value.trim());
+    const teams = LeagueData.getTeams();
+    setConn('live');
+    $('fetchStatus').textContent = `✓ Connected — ${teams.length} teams, ${LeagueData.getWeekMatchups(effectiveWeek()).length} games this week.`;
+    savePrefs();
+    toast('League connected.');
+    renderAll();
+    setScreen('home');
+  }catch(err){
+    console.error(err);
+    setConn('error');
+    $('fetchStatus').textContent = 'Every proxy refused that request. Use the JSON fallback below — open the API URL, save the response, and drop the file in.';
+  }finally{
+    setFetchLoading(false);
+  }
+});
+
+/* ---- fetch the whole archive ---- */
+$('loadHistoryBtn').addEventListener('click', async ()=>{
+  const league = $('leagueId').value.trim();
+  if(!league){
+    $('historyStatus').textContent = 'Enter a League ID first.';
+    return;
+  }
+  setHistoryLoading(true);
+  hideHistoryBanner();
+  $('historyStatus').textContent = 'Pulling every completed season in one request…';
+  try{
+    const { yearsData, skipped } = await fetchAllTimeHistory(league);
+    applyLeagueHistory(withCurrentSeason(yearsData), skipped, 'Fetched from ESPN');
+    savePrefs();
+    renderAll();
+    setScreen('vault');
+  }catch(err){
+    console.error(err);
+    $('historyStatus').textContent = 'Could not reach the history endpoint through any proxy. Open the API link below, save the JSON, and drop it in the fallback panel.';
+  }finally{
+    setHistoryLoading(false);
+  }
+});
+
+/* ---- API URL display ---- */
+$('showUrlBtn').addEventListener('click', ()=>{
+  const url = buildEspnUrl();
+  const box = $('apiUrlBox');
+  $('apiUrlDisplay').textContent = url || 'Enter a League ID and Season to build the URL.';
+  box.classList.toggle('hidden');
+});
+
+/* Keeps the history API link pointed at the current League ID. */
+function refreshHistoryUrlLink(){
+  const url = buildLeagueHistoryUrl($('leagueId').value.trim());
+  const a = $('historyUrlLink');
+  if(url){
+    a.href = url;
+    a.textContent = url;
+    a.style.color = 'var(--cyan)';
+    a.style.textDecoration = 'underline dotted';
+  } else {
+    a.removeAttribute('href');
+    a.textContent = 'Enter a League ID to build the history API link.';
+    a.style.color = 'var(--dim)';
+    a.style.textDecoration = 'none';
+  }
+}
+
+/* ============================================================
+   JSON FALLBACKS — paste + drag-and-drop, read entirely
+   in-browser with FileReader; nothing is uploaded anywhere.
+============================================================ */
+$('parseJsonBtn').addEventListener('click', ()=>{
+  const text = $('jsonPaste').value.trim();
+  if(!text){ $('jsonStatus').textContent = 'Paste the raw JSON response first.'; return; }
+  let rawData;
+  try{
+    rawData = JSON.parse(text);
+  }catch(err){
+    $('jsonStatus').textContent = 'That is not valid JSON — copy the whole response, starting at [ or {.';
+    return;
+  }
+  applyRawPayload(rawData, 'Pasted JSON');
+});
+
+function handleHistoryFile(file){
+  if(!file) return;
+  if(file.type && file.type.indexOf('json') === -1 && !/\.json$/i.test(file.name)){
+    $('jsonStatus').textContent = `“${file.name}” isn't a .json file — save the ESPN API tab's raw response and use that file.`;
+    return;
+  }
+  $('jsonStatus').textContent = `Reading ${file.name}…`;
+
+  const reader = new FileReader();
+  reader.onload = (e)=>{
+    let rawData;
+    try{
+      rawData = JSON.parse(e.target.result);
+    }catch(err){
+      $('jsonStatus').textContent = `Could not parse ${file.name} — make sure it's the raw JSON from the API tab, not a saved HTML page.`;
+      return;
+    }
+    applyRawPayload(rawData, `Loaded from ${file.name}`);
+  };
+  reader.onerror = ()=>{ $('jsonStatus').textContent = `Could not read ${file.name}. Try re-saving the file.`; };
+  reader.readAsText(file);
+}
+
+/* One payload can be either a multi-season archive or a single week's league
+   object, so try the archive path first and fall back to the live-season
+   path — that way one dropzone feeds both halves of the app. */
+function applyRawPayload(rawData, sourceLabel){
+  let historyOk = false;
+  try{
+    const res = processMultiYearHistory(rawData, sourceLabel);
+    historyOk = res.matchups > 0;
+    $('jsonStatus').textContent = `✓ ${sourceLabel}: ${res.seasons} season${res.seasons===1?'':'s'}, ${res.matchups.toLocaleString()} matchups, ${res.managers} managers.`;
+  }catch(err){
+    historyOk = false;
+  }
+
+  // Also treat it as a live season when it carries a usable team list.
+  const single = Array.isArray(rawData) ? rawData[rawData.length - 1] : rawData;
+  if(single && single.teams && single.teams.length){
+    LeagueData.setEspnData(single);
+    setConn('manual');
+    if(!historyOk){
+      $('jsonStatus').textContent = `✓ ${sourceLabel}: loaded ${single.teams.length} teams for the ${single.seasonId || single.season || 'current'} season.`;
+    }
+    historyOk = true;
+  }
+
+  if(!historyOk){
+    $('jsonStatus').textContent = 'That JSON parsed, but held no seasons with team data — paste the full leagueHistory array or a single league response.';
+    return;
+  }
+
+  renderAll();
+  setScreen(LeagueData.hasLive() ? 'home' : 'vault');
+}
+
+const dz = $('dropzone');
+dz.addEventListener('click', ()=> $('fileInput').click());
+dz.addEventListener('keydown', (e)=>{
+  if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); $('fileInput').click(); }
+});
+$('fileInput').addEventListener('change', (e)=>{
+  handleHistoryFile(e.target.files && e.target.files[0]);
+  e.target.value = ''; // let the same file be re-selected after an edit
+});
+// dragover must be prevented on every tick or the browser navigates to the file
+['dragenter','dragover'].forEach(evt=>{
+  dz.addEventListener(evt, (e)=>{ e.preventDefault(); e.stopPropagation(); dz.classList.add('dragover'); });
+});
+['dragleave','dragend'].forEach(evt=>{
+  dz.addEventListener(evt, (e)=>{ e.preventDefault(); e.stopPropagation(); dz.classList.remove('dragover'); });
+});
+dz.addEventListener('drop', (e)=>{
+  e.preventDefault(); e.stopPropagation();
+  dz.classList.remove('dragover');
+  const dt = e.dataTransfer;
+  const file = dt && dt.files && dt.files[0];
+  if(file) handleHistoryFile(file);
+});
+// Anywhere else on the page, a stray drop should do nothing rather than navigate.
+['dragover','drop'].forEach(evt=> window.addEventListener(evt, (e)=> e.preventDefault()));
+
+/* ============================================================
+   PREFS — League ID / season / week survive an app relaunch.
+============================================================ */
+function savePrefs(){
+  try{
+    localStorage.setItem(STORE_KEY, JSON.stringify({
+      leagueId: $('leagueId').value.trim(),
+      season:   $('seasonYear').value.trim(),
+      week:     $('weekNum').value.trim(),
+    }));
+  }catch(e){ /* private mode — prefs just won't persist */ }
+}
+function loadPrefs(){
+  let saved = null;
+  try{ saved = JSON.parse(localStorage.getItem(STORE_KEY) || 'null'); }catch(e){}
+  const now = new Date();
+  $('leagueId').value   = (saved && saved.leagueId) || '';
+  $('seasonYear').value = (saved && saved.season)   || String(now.getFullYear());
+  $('weekNum').value    = (saved && saved.week)     || '';
+}
+
+['leagueId','seasonYear','weekNum'].forEach(id=>{
+  $(id).addEventListener('input', ()=>{
+    savePrefs();
+    refreshHistoryUrlLink();
+    if(id === 'weekNum'){
+      const w = parseInt($('weekNum').value, 10);
+      ui.week = w > 0 ? w : null;
+      renderAll();
+    }
+  });
+});
+
+$('resetBtn').addEventListener('click', ()=>{
+  try{ localStorage.removeItem(STORE_KEY); }catch(e){}
+  LeagueData.setEspnData(null);
+  LeagueData.setLeagueHistory(null);
+  window._franchiseYearsData = null;
+  ui.week = null; ui.rivalA = ''; ui.rivalB = '';
+  $('leagueId').value = ''; $('weekNum').value = '';
+  $('fetchStatus').textContent = '';
+  $('historyStatus').textContent = '';
+  $('jsonStatus').textContent = '';
+  hideHistoryBanner();
+  setConn('none');
+  refreshHistoryUrlLink();
+  renderAll();
+  toast('Cleared.');
+});
+
+/* ============================================================
+   NAVIGATION
+============================================================ */
+function setScreen(name){
+  ui.screen = name;
+  document.querySelectorAll('.screen').forEach(s=>
+    s.dataset.active = String(s.dataset.screen === name));
+  document.querySelectorAll('.tab-btn').forEach(b=>
+    b.dataset.active = String(b.dataset.tab === name));
+  window.scrollTo({ top:0, behavior:'auto' });
+  renderAll();
+}
+
+document.querySelectorAll('.tab-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=> setScreen(btn.dataset.tab));
+});
+
+// Any [data-goto] button anywhere jumps to that tab.
+document.addEventListener('click', (e)=>{
+  const el = e.target.closest('[data-goto]');
+  if(el) setScreen(el.dataset.goto);
+});
+
+$('vaultSeg').addEventListener('click', (e)=>{
+  const btn = e.target.closest('[data-vault]');
+  if(!btn) return;
+  ui.vaultTab = btn.dataset.vault;
+  $('vaultSeg').querySelectorAll('button').forEach(b=>
+    b.dataset.active = String(b.dataset.vault === ui.vaultTab));
+  renderVault();
+});
+
+/* Week stepper on the Matchups screen — keeps the Setup input in sync so a
+   re-fetch pulls the week you were just looking at. */
+function stepWeek(delta){
+  const next = Math.min(18, Math.max(1, effectiveWeek() + delta));
+  ui.week = next;
+  $('weekNum').value = String(next);
+  savePrefs();
+  renderAll();
+}
+$('weekUp').addEventListener('click', ()=> stepWeek(1));
+$('weekDown').addEventListener('click', ()=> stepWeek(-1));
+
+/* ============================================================
+   RENDER ORCHESTRATION
+============================================================ */
+function renderAll(){
+  renderTicker();
+  if(ui.screen === 'home')          renderHome();
+  else if(ui.screen === 'matchups') renderMatchups();
+  else if(ui.screen === 'vault')    renderVault();
+  // Setup is static markup; only its status chips change.
+}
+
+/* ============================================================
+   BOOT
+============================================================ */
+loadPrefs();
+refreshHistoryUrlLink();
+setConn('none');
+const savedWeek = parseInt($('weekNum').value, 10);
+if(savedWeek > 0) ui.week = savedWeek;
+setScreen('home');
+
+})();
+</script>
+</body>
+</html>
