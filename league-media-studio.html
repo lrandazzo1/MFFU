@@ -1805,7 +1805,7 @@ async function getDrawableAvatar(url, initials, accentColor, size){
 }
 
 /* ============================================================
-   TEMPLATE B — hi-DPI 1080×1920 canvas renderer (2-column grid)
+   TEMPLATE B — hi-DPI 1080×1920 canvas renderer (single-column)
 ============================================================ */
 async function renderTemplateBCanvas(){
   const canvas = document.getElementById('tpl-B-canvas');
@@ -1842,164 +1842,185 @@ async function renderTemplateBCanvas(){
   const subtitle = isAllTime ? 'HISTORICAL FRANCHISE STANDINGS (2019–PRESENT)' : 'ESPN FANTASY · UPDATED WEEKLY';
 
   ctx.textAlign = 'center';
-  ctx.font = '400 20px "Space Mono", monospace';
+  ctx.font = '400 22px "Space Mono", monospace';
   ctx.fillStyle = '#ffc400';
   if('letterSpacing' in ctx) ctx.letterSpacing = '7px';
-  ctx.fillText(weekLabel, W/2, 60);
+  ctx.fillText(weekLabel, W/2, 58);
   if('letterSpacing' in ctx) ctx.letterSpacing = '0px';
 
-  ctx.font = '400 52px "Anton", sans-serif';
+  ctx.font = '400 58px "Anton", sans-serif';
   ctx.fillStyle = '#ffffff';
   ctx.shadowColor = 'rgba(255,196,0,0.55)'; ctx.shadowBlur = 30;
-  ctx.fillText(title, W/2, 115);
+  ctx.fillText(title, W/2, 118);
   ctx.shadowBlur = 0;
 
-  ctx.font = '400 13px "Space Mono", monospace';
+  ctx.font = '400 14px "Space Mono", monospace';
   ctx.fillStyle = '#5b667a';
   if('letterSpacing' in ctx) ctx.letterSpacing = '4px';
-  ctx.fillText(subtitle, W/2, 142);
+  ctx.fillText(subtitle, W/2, 148);
   if('letterSpacing' in ctx) ctx.letterSpacing = '0px';
 
-  // --- 2-column grid layout ---
+  // --- Single-column full-width layout ---
+  const padX = 40;
   const gridTop = 180;
-  const gridBottom = H - 80;
+  const gridBottom = H - 70;
   const gridH = gridBottom - gridTop;
-  const colGap = 24;
-  const colW = (W - 36*2 - colGap) / 2; // 36px side padding
-  const leftX = 36;
-  const rightX = 36 + colW + colGap;
-  const perCol = 6;
-  const cardGap = 12;
-  const cardH = Math.floor((gridH - (perCol - 1) * cardGap) / perCol);
+  const rowCount = sorted.length || 12;
+  const cardGap = 10;
+  const totalGaps = (rowCount - 1) * cardGap;
+  const cardH = Math.floor((gridH - totalGaps) / rowCount);
+  const cardW = W - padX * 2;
 
   const avatarPromises = sorted.map(r => {
     const mgrName = r.manager || '';
-    const initials = mgrName ? mgrName.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase() : r.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+    const ini = mgrName ? mgrName.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase() : r.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
     const accentHex = r.rank === 1 ? '#ffc400' : r.rank === 2 ? '#00e0ff' : r.rank === 3 ? '#c9974a' : '#5b667a';
-    return getDrawableAvatar(r.logo, initials, accentHex, 112);
+    return getDrawableAvatar(r.logo, ini, accentHex, 120);
   });
   const avatarImgs = await Promise.all(avatarPromises);
 
   for(let i = 0; i < sorted.length; i++){
     const r = sorted[i];
-    const colIdx = i < perCol ? 0 : 1;
-    const rowIdx = colIdx === 0 ? i : i - perCol;
-    const x = colIdx === 0 ? leftX : rightX;
-    const y = gridTop + rowIdx * (cardH + cardGap);
+    const x = padX;
+    const y = gridTop + i * (cardH + cardGap);
+    const cy = y + cardH / 2;
 
     const isChamp = r.rank <= 3;
     const isPlayoff = r.rank >= 4 && r.rank <= 8;
+    const isFirst = r.rank === 1;
+    const isSecond = r.rank === 2;
+    const isThird = r.rank === 3;
 
-    let cardBg, borderColor, borderAlpha, rankColor, nameColor, mgrColor, recordColor;
+    let cardBg, borderColor, borderW, rankColor, nameColor, mgrColor, statColor, glowColor;
     if(isChamp){
-      const isFirst = r.rank === 1; const isThird = r.rank === 3;
-      cardBg = isFirst ? 'rgba(255,196,0,0.12)' : isThird ? 'rgba(201,151,74,0.09)' : 'rgba(0,224,255,0.08)';
-      borderColor = isFirst ? 'rgba(255,196,0,0.6)' : isThird ? 'rgba(201,151,74,0.45)' : 'rgba(0,224,255,0.45)';
-      borderAlpha = 2;
-      rankColor = isFirst ? '#ffc400' : isThird ? '#c9974a' : '#00e0ff';
+      rankColor = isFirst ? '#ffc400' : isSecond ? '#00e0ff' : '#c9974a';
+      glowColor = rankColor;
+      cardBg = isFirst ? 'rgba(255,196,0,0.10)' : isSecond ? 'rgba(0,224,255,0.07)' : 'rgba(201,151,74,0.08)';
+      borderColor = isFirst ? 'rgba(255,196,0,0.55)' : isSecond ? 'rgba(0,224,255,0.45)' : 'rgba(201,151,74,0.40)';
+      borderW = 2;
       nameColor = '#ffffff';
-      mgrColor = '#8892a6';
-      recordColor = isFirst ? '#ffc400' : isThird ? '#c9974a' : '#00e0ff';
+      mgrColor = '#9aa3b4';
+      statColor = rankColor;
     } else if(isPlayoff){
-      cardBg = 'rgba(22,28,39,0.9)';
-      borderColor = 'rgba(255,255,255,0.08)';
-      borderAlpha = 1;
       rankColor = '#8892a6';
-      nameColor = '#e8ecf2';
+      glowColor = null;
+      cardBg = 'rgba(22,28,39,0.85)';
+      borderColor = 'rgba(255,255,255,0.07)';
+      borderW = 1;
+      nameColor = '#e4e8f0';
       mgrColor = '#5b667a';
-      recordColor = '#8892a6';
+      statColor = '#c7cdd8';
     } else {
-      cardBg = 'rgba(16,18,24,0.85)';
+      rankColor = '#4a5060';
+      glowColor = null;
+      cardBg = 'rgba(14,16,22,0.85)';
       borderColor = 'rgba(255,255,255,0.04)';
-      borderAlpha = 1;
-      rankColor = '#4a4e5a';
-      nameColor = '#6b7080';
-      mgrColor = '#3d4250';
-      recordColor = '#4a4e5a';
+      borderW = 1;
+      nameColor = '#7a8094';
+      mgrColor = '#3e4456';
+      statColor = '#5a6070';
     }
 
-    // Card background
+    // Card background + border
     ctx.save();
-    const cr = 12;
-    roundRect(ctx, x, y, colW, cardH, cr);
+    roundRect(ctx, x, y, cardW, cardH, 14);
     ctx.fillStyle = cardBg;
     ctx.fill();
+    if(glowColor){
+      ctx.shadowColor = glowColor;
+      ctx.shadowBlur = 18;
+    }
     ctx.strokeStyle = borderColor;
-    ctx.lineWidth = borderAlpha;
+    ctx.lineWidth = borderW;
     ctx.stroke();
+    ctx.shadowBlur = 0;
     ctx.restore();
 
-    const pad = 14;
-    const innerY = y + pad;
-    const avatarR = 28; // 56px diameter
-    const avatarCx = x + pad + 40 + 14 + avatarR;
-    const avatarCy = y + cardH / 2;
-
-    // Rank number
+    // --- Far left: rank number ---
+    const rankX = x + 44;
     ctx.save();
     ctx.textAlign = 'center';
-    ctx.font = '400 40px "Anton", sans-serif';
+    ctx.textBaseline = 'middle';
+    ctx.font = '400 48px "Anton", sans-serif';
     ctx.fillStyle = rankColor;
-    if(isChamp){
-      ctx.shadowColor = rankColor; ctx.shadowBlur = 24;
+    if(glowColor){
+      ctx.shadowColor = glowColor;
+      ctx.shadowBlur = 28;
     }
-    ctx.fillText(String(r.rank), x + pad + 20, avatarCy + 14);
+    ctx.fillText(String(r.rank), rankX, cy + 2);
     ctx.restore();
 
-    // Avatar circle
+    // --- Avatar ---
+    const avatarR = 30;
+    const avatarCx = x + 104 + avatarR;
     ctx.save();
     ctx.beginPath();
-    ctx.arc(avatarCx, avatarCy, avatarR, 0, Math.PI*2);
+    ctx.arc(avatarCx, cy, avatarR, 0, Math.PI*2);
     ctx.closePath();
     ctx.clip();
     const avImg = avatarImgs[i];
-    if(avImg) ctx.drawImage(avImg, avatarCx - avatarR, avatarCy - avatarR, avatarR*2, avatarR*2);
+    if(avImg) ctx.drawImage(avImg, avatarCx - avatarR, cy - avatarR, avatarR*2, avatarR*2);
     ctx.restore();
-
-    // Avatar border ring
+    // ring
     ctx.beginPath();
-    ctx.arc(avatarCx, avatarCy, avatarR + 1, 0, Math.PI*2);
-    ctx.strokeStyle = borderColor;
-    ctx.lineWidth = 2;
+    ctx.arc(avatarCx, cy, avatarR + 1.5, 0, Math.PI*2);
+    ctx.strokeStyle = isChamp ? borderColor : 'rgba(255,255,255,0.08)';
+    ctx.lineWidth = isChamp ? 2.5 : 1.5;
     ctx.stroke();
 
-    // Text area
-    const textX = avatarCx + avatarR + 14;
-    const textMaxW = colW - (textX - x) - pad;
-
-    // Team name
+    // --- Middle: team name + manager ---
+    const textX = avatarCx + avatarR + 22;
     ctx.save();
     ctx.textAlign = 'left';
-    ctx.font = '400 26px "Anton", sans-serif';
+    ctx.textBaseline = 'middle';
+    ctx.font = '400 28px "Anton", sans-serif';
     ctx.fillStyle = nameColor;
     const teamName = r.name || '';
-    ctx.fillText(teamName, textX, avatarCy - 14, textMaxW);
+    ctx.fillText(teamName, textX, cy - 10);
     ctx.restore();
 
-    // Manager name
     const mgrName = r.manager || '';
     if(mgrName){
       ctx.save();
       ctx.textAlign = 'left';
-      ctx.font = '500 17px "Teko", sans-serif';
+      ctx.textBaseline = 'middle';
+      ctx.font = '500 20px "Teko", sans-serif';
       ctx.fillStyle = mgrColor;
-      ctx.fillText(mgrName, textX, avatarCy + 6, textMaxW);
+      ctx.fillText(mgrName, textX, cy + 16);
       ctx.restore();
     }
 
-    // Record + Win%
+    // --- Far right: primary stat + record ---
+    const rightEdge = x + cardW - 24;
+    const wp = r.winPct || '';
     const record = r.record || '';
-    const winPct = r.winPct || '';
-    ctx.save();
-    ctx.textAlign = 'left';
-    ctx.font = '700 16px "Space Mono", monospace';
-    ctx.fillStyle = recordColor;
-    let statLine = record;
-    if(winPct) statLine += '  ' + winPct;
-    ctx.fillText(statLine, textX, avatarCy + 28, textMaxW);
-    ctx.restore();
 
-    // Delta pill (weekly mode)
+    if(wp || record){
+      const primaryStat = wp || record;
+      const secondaryStat = wp ? record : '';
+
+      ctx.save();
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
+      ctx.font = '700 32px "Anton", sans-serif';
+      ctx.fillStyle = statColor;
+      if(glowColor){ ctx.shadowColor = glowColor; ctx.shadowBlur = 16; }
+      ctx.fillText(primaryStat, rightEdge, secondaryStat ? cy - 8 : cy + 2);
+      ctx.shadowBlur = 0;
+      ctx.restore();
+
+      if(secondaryStat){
+        ctx.save();
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'middle';
+        ctx.font = '400 16px "Space Mono", monospace';
+        ctx.fillStyle = mgrColor;
+        ctx.fillText(secondaryStat, rightEdge, cy + 16);
+        ctx.restore();
+      }
+    }
+
+    // Delta indicator (weekly mode, far right below stat)
     if(!isAllTime){
       const deltaVal = parseInt(r.delta) || 0;
       if(deltaVal !== 0){
@@ -2007,9 +2028,11 @@ async function renderTemplateBCanvas(){
         const pillColor = deltaVal > 0 ? '#39ff8c' : '#ff2d6d';
         ctx.save();
         ctx.textAlign = 'right';
-        ctx.font = '400 13px "Space Mono", monospace';
+        ctx.textBaseline = 'middle';
+        ctx.font = '700 14px "Space Mono", monospace';
         ctx.fillStyle = pillColor;
-        ctx.fillText(pillText, x + colW - pad, avatarCy + 28);
+        const deltaY = (wp && record) ? cy + 34 : cy + 18;
+        ctx.fillText(pillText, rightEdge, deltaY);
         ctx.restore();
       }
     }
@@ -2017,7 +2040,7 @@ async function renderTemplateBCanvas(){
 
   // --- Footer ---
   ctx.save();
-  const footY = H - 30;
+  const footY = H - 26;
   const lineGrad = ctx.createLinearGradient(80, 0, W-80, 0);
   lineGrad.addColorStop(0, 'transparent');
   lineGrad.addColorStop(0.5, 'rgba(255,196,0,0.3)');
