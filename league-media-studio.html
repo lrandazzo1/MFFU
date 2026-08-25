@@ -663,21 +663,9 @@
           <div class="absolute bottom-[50px] left-0 right-0 text-center font-mono text-[16px] tracking-[0.3em] text-gray-500">GRIDIRON GRAPHICS · LEAGUE NETWORK</div>
         </div>
 
-        <!-- TEMPLATE B -->
+        <!-- TEMPLATE B — 2-column power rankings (canvas-rendered for export) -->
         <div id="tpl-B" class="tpl absolute inset-0 hidden">
-          <div class="absolute inset-0" style="background:radial-gradient(ellipse at 50% -5%, #1a1508 0%, #0a0c10 40%, #05070a 70%);"></div>
-          <div class="absolute inset-0" style="background-image:repeating-linear-gradient(180deg, transparent 0 3px, rgba(255,196,0,0.012) 3px 4px);"></div>
-          <div class="absolute top-0 left-0 right-0 h-[8px]" style="background:linear-gradient(90deg,var(--gold),#ff8a00,var(--gold));"></div>
-          <div class="absolute top-[38px] left-0 right-0 text-center">
-            <p class="font-mono text-[var(--gold)] text-[20px] tracking-[0.35em]" id="b-week-label">WEEK 7</p>
-            <h2 id="rank-title" class="font-display text-white text-[52px] leading-none mt-1 glow-gold px-10">POWER RANKINGS</h2>
-            <p id="b-subtitle" class="font-mono text-[13px] tracking-[0.2em] text-gray-500 mt-2">ESPN FANTASY · UPDATED WEEKLY</p>
-          </div>
-          <div id="rank-list" class="absolute top-[180px] left-[36px] right-[36px] bottom-[80px]" style="display:flex; flex-direction:column; gap:0;"></div>
-          <div class="absolute bottom-[22px] left-0 right-0 text-center">
-            <div style="height:1px; background:linear-gradient(90deg, transparent, rgba(255,196,0,0.3), transparent); margin:0 80px 8px;"></div>
-            <p class="font-mono text-[14px] tracking-[0.25em] text-gray-500">GRIDIRON POWER INDEX · UPDATED WEEKLY</p>
-          </div>
+          <canvas id="tpl-B-canvas" width="1080" height="1920" style="width:100%; height:100%; display:block;"></canvas>
         </div>
 
         <!-- TEMPLATE C -->
@@ -1816,6 +1804,249 @@ async function getDrawableAvatar(url, initials, accentColor, size){
   });
 }
 
+/* ============================================================
+   TEMPLATE B — hi-DPI 1080×1920 canvas renderer (2-column grid)
+============================================================ */
+async function renderTemplateBCanvas(){
+  const canvas = document.getElementById('tpl-B-canvas');
+  if(!canvas) return;
+  const W = 1080, H = 1920;
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+
+  await document.fonts.ready;
+
+  const f = state.fields;
+  const isAllTime = state.rankMode === 'alltime';
+  const sorted = [...state.ranks].sort((a,b)=>a.rank-b.rank).slice(0,12);
+
+  // --- Background ---
+  const bgGrad = ctx.createRadialGradient(W/2, -H*0.05, 0, W/2, -H*0.05, H*0.7);
+  bgGrad.addColorStop(0, '#1a1508');
+  bgGrad.addColorStop(0.4, '#0a0c10');
+  bgGrad.addColorStop(0.7, '#05070a');
+  ctx.fillStyle = bgGrad; ctx.fillRect(0, 0, W, H);
+
+  // Subtle scanlines
+  ctx.fillStyle = 'rgba(255,196,0,0.012)';
+  for(let y = 3; y < H; y += 4) ctx.fillRect(0, y, W, 1);
+
+  // Top gold bar
+  const barGrad = ctx.createLinearGradient(0,0,W,0);
+  barGrad.addColorStop(0,'#ffc400'); barGrad.addColorStop(0.5,'#ff8a00'); barGrad.addColorStop(1,'#ffc400');
+  ctx.fillStyle = barGrad; ctx.fillRect(0, 0, W, 8);
+
+  // --- Header text ---
+  const weekLabel = f.rank_week || (isAllTime ? 'ALL-TIME STANDINGS' : 'WEEK');
+  const title = f.rank_title || (isAllTime ? 'ALL-TIME POWER RANKINGS' : 'POWER RANKINGS');
+  const subtitle = isAllTime ? 'HISTORICAL FRANCHISE STANDINGS (2019–PRESENT)' : 'ESPN FANTASY · UPDATED WEEKLY';
+
+  ctx.textAlign = 'center';
+  ctx.font = '400 20px "Space Mono", monospace';
+  ctx.fillStyle = '#ffc400';
+  if('letterSpacing' in ctx) ctx.letterSpacing = '7px';
+  ctx.fillText(weekLabel, W/2, 60);
+  if('letterSpacing' in ctx) ctx.letterSpacing = '0px';
+
+  ctx.font = '400 52px "Anton", sans-serif';
+  ctx.fillStyle = '#ffffff';
+  ctx.shadowColor = 'rgba(255,196,0,0.55)'; ctx.shadowBlur = 30;
+  ctx.fillText(title, W/2, 115);
+  ctx.shadowBlur = 0;
+
+  ctx.font = '400 13px "Space Mono", monospace';
+  ctx.fillStyle = '#5b667a';
+  if('letterSpacing' in ctx) ctx.letterSpacing = '4px';
+  ctx.fillText(subtitle, W/2, 142);
+  if('letterSpacing' in ctx) ctx.letterSpacing = '0px';
+
+  // --- 2-column grid layout ---
+  const gridTop = 180;
+  const gridBottom = H - 80;
+  const gridH = gridBottom - gridTop;
+  const colGap = 24;
+  const colW = (W - 36*2 - colGap) / 2; // 36px side padding
+  const leftX = 36;
+  const rightX = 36 + colW + colGap;
+  const perCol = 6;
+  const cardGap = 12;
+  const cardH = Math.floor((gridH - (perCol - 1) * cardGap) / perCol);
+
+  const avatarPromises = sorted.map(r => {
+    const mgrName = r.manager || '';
+    const initials = mgrName ? mgrName.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase() : r.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+    const accentHex = r.rank === 1 ? '#ffc400' : r.rank === 2 ? '#00e0ff' : r.rank === 3 ? '#c9974a' : '#5b667a';
+    return getDrawableAvatar(r.logo, initials, accentHex, 112);
+  });
+  const avatarImgs = await Promise.all(avatarPromises);
+
+  for(let i = 0; i < sorted.length; i++){
+    const r = sorted[i];
+    const colIdx = i < perCol ? 0 : 1;
+    const rowIdx = colIdx === 0 ? i : i - perCol;
+    const x = colIdx === 0 ? leftX : rightX;
+    const y = gridTop + rowIdx * (cardH + cardGap);
+
+    const isChamp = r.rank <= 3;
+    const isPlayoff = r.rank >= 4 && r.rank <= 8;
+
+    let cardBg, borderColor, borderAlpha, rankColor, nameColor, mgrColor, recordColor;
+    if(isChamp){
+      const isFirst = r.rank === 1; const isThird = r.rank === 3;
+      cardBg = isFirst ? 'rgba(255,196,0,0.12)' : isThird ? 'rgba(201,151,74,0.09)' : 'rgba(0,224,255,0.08)';
+      borderColor = isFirst ? 'rgba(255,196,0,0.6)' : isThird ? 'rgba(201,151,74,0.45)' : 'rgba(0,224,255,0.45)';
+      borderAlpha = 2;
+      rankColor = isFirst ? '#ffc400' : isThird ? '#c9974a' : '#00e0ff';
+      nameColor = '#ffffff';
+      mgrColor = '#8892a6';
+      recordColor = isFirst ? '#ffc400' : isThird ? '#c9974a' : '#00e0ff';
+    } else if(isPlayoff){
+      cardBg = 'rgba(22,28,39,0.9)';
+      borderColor = 'rgba(255,255,255,0.08)';
+      borderAlpha = 1;
+      rankColor = '#8892a6';
+      nameColor = '#e8ecf2';
+      mgrColor = '#5b667a';
+      recordColor = '#8892a6';
+    } else {
+      cardBg = 'rgba(16,18,24,0.85)';
+      borderColor = 'rgba(255,255,255,0.04)';
+      borderAlpha = 1;
+      rankColor = '#4a4e5a';
+      nameColor = '#6b7080';
+      mgrColor = '#3d4250';
+      recordColor = '#4a4e5a';
+    }
+
+    // Card background
+    ctx.save();
+    const cr = 12;
+    roundRect(ctx, x, y, colW, cardH, cr);
+    ctx.fillStyle = cardBg;
+    ctx.fill();
+    ctx.strokeStyle = borderColor;
+    ctx.lineWidth = borderAlpha;
+    ctx.stroke();
+    ctx.restore();
+
+    const pad = 14;
+    const innerY = y + pad;
+    const avatarR = 28; // 56px diameter
+    const avatarCx = x + pad + 40 + 14 + avatarR;
+    const avatarCy = y + cardH / 2;
+
+    // Rank number
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.font = '400 40px "Anton", sans-serif';
+    ctx.fillStyle = rankColor;
+    if(isChamp){
+      ctx.shadowColor = rankColor; ctx.shadowBlur = 24;
+    }
+    ctx.fillText(String(r.rank), x + pad + 20, avatarCy + 14);
+    ctx.restore();
+
+    // Avatar circle
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(avatarCx, avatarCy, avatarR, 0, Math.PI*2);
+    ctx.closePath();
+    ctx.clip();
+    const avImg = avatarImgs[i];
+    if(avImg) ctx.drawImage(avImg, avatarCx - avatarR, avatarCy - avatarR, avatarR*2, avatarR*2);
+    ctx.restore();
+
+    // Avatar border ring
+    ctx.beginPath();
+    ctx.arc(avatarCx, avatarCy, avatarR + 1, 0, Math.PI*2);
+    ctx.strokeStyle = borderColor;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Text area
+    const textX = avatarCx + avatarR + 14;
+    const textMaxW = colW - (textX - x) - pad;
+
+    // Team name
+    ctx.save();
+    ctx.textAlign = 'left';
+    ctx.font = '400 26px "Anton", sans-serif';
+    ctx.fillStyle = nameColor;
+    const teamName = r.name || '';
+    ctx.fillText(teamName, textX, avatarCy - 14, textMaxW);
+    ctx.restore();
+
+    // Manager name
+    const mgrName = r.manager || '';
+    if(mgrName){
+      ctx.save();
+      ctx.textAlign = 'left';
+      ctx.font = '500 17px "Teko", sans-serif';
+      ctx.fillStyle = mgrColor;
+      ctx.fillText(mgrName, textX, avatarCy + 6, textMaxW);
+      ctx.restore();
+    }
+
+    // Record + Win%
+    const record = r.record || '';
+    const winPct = r.winPct || '';
+    ctx.save();
+    ctx.textAlign = 'left';
+    ctx.font = '700 16px "Space Mono", monospace';
+    ctx.fillStyle = recordColor;
+    let statLine = record;
+    if(winPct) statLine += '  ' + winPct;
+    ctx.fillText(statLine, textX, avatarCy + 28, textMaxW);
+    ctx.restore();
+
+    // Delta pill (weekly mode)
+    if(!isAllTime){
+      const deltaVal = parseInt(r.delta) || 0;
+      if(deltaVal !== 0){
+        const pillText = deltaVal > 0 ? '▲ +' + deltaVal : '▼ ' + deltaVal;
+        const pillColor = deltaVal > 0 ? '#39ff8c' : '#ff2d6d';
+        ctx.save();
+        ctx.textAlign = 'right';
+        ctx.font = '400 13px "Space Mono", monospace';
+        ctx.fillStyle = pillColor;
+        ctx.fillText(pillText, x + colW - pad, avatarCy + 28);
+        ctx.restore();
+      }
+    }
+  }
+
+  // --- Footer ---
+  ctx.save();
+  const footY = H - 30;
+  const lineGrad = ctx.createLinearGradient(80, 0, W-80, 0);
+  lineGrad.addColorStop(0, 'transparent');
+  lineGrad.addColorStop(0.5, 'rgba(255,196,0,0.3)');
+  lineGrad.addColorStop(1, 'transparent');
+  ctx.fillStyle = lineGrad;
+  ctx.fillRect(80, footY - 18, W - 160, 1);
+  ctx.textAlign = 'center';
+  ctx.font = '400 14px "Space Mono", monospace';
+  ctx.fillStyle = '#5b667a';
+  if('letterSpacing' in ctx) ctx.letterSpacing = '5px';
+  ctx.fillText('GRIDIRON POWER INDEX · UPDATED WEEKLY', W/2, footY);
+  if('letterSpacing' in ctx) ctx.letterSpacing = '0px';
+  ctx.restore();
+}
+
+function roundRect(ctx, x, y, w, h, r){
+  ctx.beginPath();
+  ctx.moveTo(x+r, y);
+  ctx.lineTo(x+w-r, y);
+  ctx.quadraticCurveTo(x+w, y, x+w, y+r);
+  ctx.lineTo(x+w, y+h-r);
+  ctx.quadraticCurveTo(x+w, y+h, x+w-r, y+h);
+  ctx.lineTo(x+r, y+h);
+  ctx.quadraticCurveTo(x, y+h, x, y+h-r);
+  ctx.lineTo(x, y+r);
+  ctx.quadraticCurveTo(x, y, x+r, y);
+  ctx.closePath();
+}
+
 function setImgOrPlaceholder(imgId, phId, dataUrl, initials, accentColor){
   const img = document.getElementById(imgId);
   const ph = document.getElementById(phId);
@@ -2202,134 +2433,8 @@ function render(){
     if(el('a-rank-b')) el('a-rank-b').textContent = rankB;
   }
 
-  // Template B
-  const isAllTime = state.rankMode === 'alltime';
-  document.getElementById('rank-title').textContent = f.rank_title || (isAllTime ? 'ALL-TIME POWER RANKINGS' : 'POWER RANKINGS');
-  document.getElementById('b-week-label').textContent = f.rank_week || (isAllTime ? 'ALL-TIME STANDINGS' : 'WEEK');
-  document.getElementById('b-subtitle').textContent = isAllTime ? 'HISTORICAL FRANCHISE STANDINGS (2019–PRESENT)' : 'ESPN FANTASY · UPDATED WEEKLY';
-  const list = document.getElementById('rank-list');
-  list.innerHTML = '';
-  const sorted = [...state.ranks].sort((a,b)=>a.rank-b.rank);
-  const rowCount = Math.min(sorted.length, 12);
-  const availH = 1920 - 180 - 80;
-  const totalGap = rowCount > 1 ? (rowCount - 1) * 6 : 0;
-  const rowH = rowCount > 0 ? Math.floor((availH - totalGap) / rowCount) : 136;
-  list.style.gap = '6px';
-
-  sorted.slice(0, 12).forEach((r)=>{
-    const isChamp = r.rank <= 3;
-    const isPlayoff = r.rank >= 4 && r.rank <= 8;
-    const isBasement = r.rank >= 9;
-
-    let bg, border, rankColor, nameColor, nameSize, rankSize, rankGlow, avatarBg, avatarBorder, mgrColor;
-    if(isChamp){
-      const isFirst = r.rank === 1;
-      const isThird = r.rank === 3;
-      bg = isFirst
-        ? 'linear-gradient(135deg, rgba(255,196,0,0.18) 0%, rgba(255,138,0,0.08) 100%)'
-        : isThird
-          ? 'linear-gradient(135deg, rgba(201,151,74,0.14) 0%, rgba(160,120,50,0.06) 100%)'
-          : 'linear-gradient(135deg, rgba(0,224,255,0.12) 0%, rgba(0,180,220,0.05) 100%)';
-      border = isFirst ? '2px solid rgba(255,196,0,0.6)' : isThird ? '2px solid rgba(201,151,74,0.45)' : '2px solid rgba(0,224,255,0.45)';
-      rankColor = isFirst ? 'var(--gold)' : isThird ? 'var(--bronze)' : 'var(--cyan)';
-      rankGlow = isFirst
-        ? 'text-shadow:0 0 24px rgba(255,196,0,0.7), 0 0 48px rgba(255,196,0,0.3)'
-        : isThird
-          ? 'text-shadow:0 0 20px rgba(201,151,74,0.5), 0 0 40px rgba(201,151,74,0.2)'
-          : 'text-shadow:0 0 24px rgba(0,224,255,0.7), 0 0 48px rgba(0,224,255,0.3)';
-      nameColor = '#fff';
-      nameSize = '26px';
-      rankSize = '44px';
-      mgrColor = '#8892a6';
-      avatarBg = isFirst ? 'rgba(255,196,0,0.15)' : isThird ? 'rgba(201,151,74,0.12)' : 'rgba(0,224,255,0.12)';
-      avatarBorder = isFirst ? '2px solid rgba(255,196,0,0.6)' : isThird ? '2px solid rgba(201,151,74,0.5)' : '2px solid rgba(0,224,255,0.5)';
-    } else if(isPlayoff){
-      bg = 'rgba(22,28,39,0.9)';
-      border = '1px solid rgba(255,255,255,0.08)';
-      rankColor = '#8892a6';
-      rankGlow = '';
-      nameColor = '#e8ecf2';
-      nameSize = '23px';
-      rankSize = '34px';
-      mgrColor = '#5b667a';
-      avatarBg = 'rgba(255,255,255,0.06)';
-      avatarBorder = '1px solid rgba(255,255,255,0.12)';
-    } else {
-      bg = 'rgba(16,18,24,0.85)';
-      border = '1px solid rgba(255,255,255,0.04)';
-      rankColor = '#4a4e5a';
-      rankGlow = '';
-      nameColor = '#6b7080';
-      nameSize = '21px';
-      rankSize = '30px';
-      mgrColor = '#3d4250';
-      avatarBg = 'rgba(255,255,255,0.03)';
-      avatarBorder = '1px solid rgba(255,255,255,0.06)';
-    }
-
-    // Right column content depends on mode
-    let rightCol;
-    if(isAllTime){
-      const wp = r.winPct || r.diff || '';
-      const wpColor = isChamp ? rankColor : '#8892a6';
-      rightCol = `
-        <span style="font-family:'Anton',sans-serif; font-size:22px; color:${wpColor}; line-height:1;">${escapeHtml(wp)}</span>
-        <span style="font-family:'Space Mono',monospace; font-size:12px; color:#5b667a; line-height:1;">${escapeHtml(r.record)}</span>
-      `;
-    } else {
-      const deltaVal = parseInt(r.delta) || 0;
-      let deltaPill;
-      if(deltaVal > 0){
-        deltaPill = `<span style="background:rgba(57,255,140,0.15); color:var(--green); border:1px solid rgba(57,255,140,0.3); border-radius:20px; padding:2px 10px; font-family:'Space Mono',monospace; font-size:13px; white-space:nowrap;">▲ +${deltaVal}</span>`;
-      } else if(deltaVal < 0){
-        deltaPill = `<span style="background:rgba(255,45,109,0.12); color:var(--pink); border:1px solid rgba(255,45,109,0.25); border-radius:20px; padding:2px 10px; font-family:'Space Mono',monospace; font-size:13px; white-space:nowrap;">▼ ${deltaVal}</span>`;
-      } else {
-        deltaPill = `<span style="background:rgba(255,255,255,0.05); color:#5b667a; border:1px solid rgba(255,255,255,0.08); border-radius:20px; padding:2px 10px; font-family:'Space Mono',monospace; font-size:13px;">—</span>`;
-      }
-      rightCol = `
-        <span style="font-family:'Space Mono',monospace; font-size:15px; color:${isBasement ? '#4a4e5a' : rankColor}; font-weight:700; line-height:1;">${escapeHtml(r.record)}</span>
-        ${deltaPill}
-      `;
-    }
-
-    // Basement warning dot
-    const warningDot = isBasement
-      ? `<span style="width:7px; height:7px; border-radius:50%; background:${r.rank >= 11 ? 'var(--pink)' : '#f59e0b'}; box-shadow:0 0 8px ${r.rank >= 11 ? 'rgba(255,45,109,0.6)' : 'rgba(245,158,11,0.6)'}; display:inline-block; margin-right:4px; flex-shrink:0;"></span>`
-      : '';
-
-    const mgrName = r.manager || '';
-    const initials = mgrName ? mgrName.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase() : r.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
-    const hasLogo = r.logo && r.logo.startsWith && (r.logo.startsWith('http') || r.logo.startsWith('data:'));
-    const safeLogoSrc = hasLogo ? escapeHtml(r.logo.replace(/^http:\/\//i, 'https://')) : '';
-    const monogramUrl = buildMonogramDataUrl(initials, rankColor === 'var(--gold)' ? '#ffc400' : rankColor === 'var(--bronze)' ? '#c9974a' : rankColor === 'var(--cyan)' ? '#00e0ff' : '#5b667a', 88);
-    const avatarInner = hasLogo
-      ? `<img src="${safeLogoSrc}" style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0;" crossorigin="anonymous" onerror="this.onerror=null;this.src='${monogramUrl}'">`
-      : `<img src="${monogramUrl}" style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0;">`;
-
-    const cardPad = Math.max(8, Math.min(16, Math.floor((rowH - 50) / 2)));
-    const avatarSize = Math.max(44, Math.min(64, rowH - cardPad * 2 - 8));
-    const row = document.createElement('div');
-    row.style.cssText = `display:flex; align-items:center; gap:14px; border-radius:12px; padding:${cardPad}px 18px; background:${bg}; border:${border}; backdrop-filter:blur(4px); height:${rowH}px; box-sizing:border-box;`;
-    row.innerHTML = `
-      <div style="font-family:'Anton',sans-serif; font-size:${rankSize}; width:52px; text-align:center; color:${rankColor}; flex-shrink:0; ${rankGlow}">${r.rank}</div>
-      <div style="width:${avatarSize}px; height:${avatarSize}px; border-radius:50%; background:${avatarBg}; border:${avatarBorder}; flex-shrink:0; overflow:hidden; position:relative;">
-        ${avatarInner}
-      </div>
-      <div style="flex:1; min-width:0;">
-        <div style="display:flex; align-items:center; gap:5px;">
-          ${warningDot}
-          <span style="font-family:'Anton',sans-serif; font-size:${nameSize}; color:${nameColor}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; line-height:1.1;">${escapeHtml(r.name)}</span>
-        </div>
-        <div style="font-family:'Teko',sans-serif; font-size:18px; color:${mgrColor}; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; line-height:1;">
-          ${escapeHtml(mgrName)}
-        </div>
-      </div>
-      <div style="display:flex; flex-direction:column; align-items:flex-end; gap:3px; flex-shrink:0;">
-        ${rightCol}
-      </div>
-    `;
-    list.appendChild(row);
-  });
+  // Template B — canvas-based 2-column render
+  renderTemplateBCanvas();
 
   // Template C
   document.getElementById('c-tag').textContent = f.news_tag || 'BREAKING NEWS';
@@ -3712,20 +3817,32 @@ zoomRange.addEventListener('input', ()=> applyZoom(parseFloat(zoomRange.value)))
 
 downloadBtn.addEventListener('click', async ()=>{
   exportStatus.textContent = 'Rendering…';
-  const originalTransform = exportRoot.style.transform;
-  exportRoot.style.transform = 'none'; // capture at true 1080x1920 size
   try{
-    const canvas = await html2canvas(exportRoot, {
-      width: 1080,
-      height: 1920,
-      scale: 1,
-      backgroundColor: '#05070a',
-      useCORS: true,
-    });
-    const link = document.createElement('a');
+    await document.fonts.ready;
     const tplNames = {A:'matchup', B:'power-rankings', C:'breaking-news', D:'hot-seat', E:'rivalry-vault', F:'record-book', G:'franchise-resume'};
+    let dataUrl;
+
+    if(state.template === 'B'){
+      await renderTemplateBCanvas();
+      const bCanvas = document.getElementById('tpl-B-canvas');
+      dataUrl = bCanvas.toDataURL('image/png');
+    } else {
+      const originalTransform = exportRoot.style.transform;
+      exportRoot.style.transform = 'none';
+      try{
+        const canvas = await html2canvas(exportRoot, {
+          width: 1080, height: 1920, scale: 1,
+          backgroundColor: '#05070a', useCORS: true,
+        });
+        dataUrl = canvas.toDataURL('image/png');
+      }finally{
+        exportRoot.style.transform = originalTransform;
+      }
+    }
+
+    const link = document.createElement('a');
     link.download = `gridiron-graphics-${tplNames[state.template]}-${Date.now()}.png`;
-    link.href = canvas.toDataURL('image/png');
+    link.href = dataUrl;
     link.click();
     exportStatus.textContent = '✓ Downloaded.';
     showToast('PNG downloaded.');
@@ -3733,8 +3850,6 @@ downloadBtn.addEventListener('click', async ()=>{
     exportStatus.textContent = 'Export failed: ' + err.message;
     showToast('Export failed — see console.');
     console.error(err);
-  }finally{
-    exportRoot.style.transform = originalTransform;
   }
 });
 
