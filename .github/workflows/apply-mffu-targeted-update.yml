@@ -37,6 +37,9 @@ jobs:
           new_marker = "    'playoffTierType',\n"
           if old_marker in text:
             text = text.replace(old_marker, new_marker, 1)
+          # Raw strings preserve the conventional opening backslash used to
+          # suppress a leading newline; strip that source pattern before run.
+          text = text.replace("textwrap.dedent(r'''\\\n", "textwrap.dedent(r'''\n")
           p.write_text(text, encoding='utf-8')
           PY
       - name: Apply targeted patch
@@ -56,6 +59,7 @@ jobs:
           assert 'id="writeStoryBtn"' in text
           assert 'function renderVault' in text
           assert 'story-rail' in text
+          assert '\n\\\n' not in text
           assert Path('api/espn.js').exists()
           print('Generated patch and preservation markers validated')
           PY
