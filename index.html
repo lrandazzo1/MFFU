@@ -7815,7 +7815,16 @@ const SLOTS = {
   injury:   { dow:6, hour:11, label:'INJURY WIRE',    topic:'breaking' },  // Saturday
 };
 
-\1
+const TOPICS = [
+  { id:'all',      label:'All',            icon:''   },
+  { id:'community',label:'OP-ED / Community',icon:'✍' },
+  { id:'breaking', label:'Breaking',       icon:'⚡' },
+  { id:'waivers',  label:'Waivers',        icon:'💰' },
+  { id:'studio',   label:'Studio Show',    icon:'🎙️' },
+  { id:'power',    label:'Power Rankings', icon:'📊' },
+  { id:'matchups', label:'Matchups',       icon:'🏈' },
+  { id:'draft',    label:'Draft',          icon:'📋' },
+];
 
 const STUDIO_FIRST_SEASON = 2026;
 function studioAllowedForSeason(season){
