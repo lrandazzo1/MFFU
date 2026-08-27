@@ -1,0 +1,52 @@
+name: Apply targeted MFFU update
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - scripts/apply_mffu_targeted_update.py
+      - .github/workflows/apply-mffu-targeted-update.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply targeted patch
+        run: python scripts/apply_mffu_targeted_update.py
+      - name: Validate generated files
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('index.html')
+          text = p.read_text(encoding='utf-8')
+          assert 'TUESDAY DEBRIEF' in text
+          assert 'PRIMETIME PREVIEW' in text
+          assert 'GAMEDAY COUNTDOWN' in text
+          assert "serverlessEspnUrl" in text
+          assert "studioHistoricalView" in text
+          assert Path('api/espn.js').exists()
+          print('Generated patch markers validated')
+          PY
+      - name: Commit generated update
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html api/espn.js
+          if git diff --cached --quiet; then
+            echo "No generated changes to commit"
+            exit 0
+          fi
+          git commit -m "Add adaptive Studio Show and ESPN serverless proxy"
+          git push origin HEAD:main
