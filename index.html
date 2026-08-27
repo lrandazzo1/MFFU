@@ -3415,7 +3415,7 @@ function computeFranchiseResume(ownerId){
   const yearRanks = [];
   const seasonHistory = [];
   let totalWins=0, totalLosses=0, totalTies=0, champs=0, top3=0, playoffApps=0;
-  const yearsPlayed = Object.keys(m.teamNamesByYear).map(Number).sort((a,b)=>a-b);
+  const yearsPlayed = Object.keys(m.teamNamesByYear || {}).map(Number).sort((a,b)=>a-b);
 
   const rawHistory = window._franchiseYearsData;
   if(!rawHistory) return null;
@@ -13659,9 +13659,9 @@ function renderVault(){
     return;
   }
 
-  if(ui.vaultTab === 'franchises')      renderFranchises();
-  else if(ui.vaultTab === 'rivalries')  renderRivalries();
-  else                                  renderRecords();
+  if(ui.vaultTab === 'franchises')      safeRun('franchises', renderFranchises, ()=> renderScreenFallback('vault'));
+  else if(ui.vaultTab === 'rivalries')  safeRun('rivalries', renderRivalries, ()=> renderScreenFallback('vault'));
+  else                                  safeRun('records', renderRecords, ()=> renderScreenFallback('vault'));
 }
 
 /* ---- FRANCHISE RESUMES ---- */
@@ -14541,8 +14541,6 @@ async function fetchLeagueData(options){
     savePrefs();
     refreshHistoryUrlLink();
     refreshOpenAIStatus();
-    renderAll();
-
     if(navigate){
       // Data parsed and stored successfully — leave the Setup screen behind and
       // open the Home/Desk so the user is not stranded on `setup`.
@@ -14559,14 +14557,22 @@ async function fetchLeagueData(options){
       if (deskTab) deskTab.setAttribute('data-active', 'true');
 
       window.scrollTo({ top:0, behavior:'auto' });
-
-      // Populate the Desk cards immediately so the transition lands on a fully
-      // rendered Home screen instead of empty placeholders.
-      renderHomeStories();
-      renderNews();
-      renderVault();
-      renderWeekScrubbers();
     }
+
+    /* Repaint through the guarded pipeline. renderAll() dispatches the active
+       screen's renderers (renderHome + renderHomeStories for the Desk) so the
+       cards populate immediately, and every step is wrapped so a single failing
+       widget can neither blank a screen nor bubble into the catch below and
+       falsely report the fetch as failed. */
+    renderAll();
+
+    if(navigate){
+      // Warm the other data screens so switching tabs lands on populated views.
+      // Wrapped individually — these must never sink a successful fetch.
+      safeRun('news', renderNews, ()=> renderScreenFallback('news'));
+      safeRun('vault', renderVault, ()=> renderScreenFallback('vault'));
+    }
+
     if(!silent) toast(`League connected · ${seasonCount} season${seasonCount === 1 ? '' : 's'} · ${matchupCount.toLocaleString()} matchups`);
     return true;
   }catch(err){
@@ -15841,20 +15847,68 @@ $('vaultSeg').addEventListener('click', (e)=>{
   ui.vaultTab = btn.dataset.vault;
   $('vaultSeg').querySelectorAll('button').forEach(b=>
     b.dataset.active = String(b.dataset.vault === ui.vaultTab));
-  renderVault();
+  safeRun('vault', renderVault, ()=> renderScreenFallback('vault'));
 });
 
 /* ============================================================
    RENDER ORCHESTRATION
 ============================================================ */
+
+/* Run any render step in isolation. A single failing widget must never blank a
+   whole screen or bubble up into a caller's try/catch (e.g. the fetch pipeline,
+   which would otherwise flip a successful load to "FETCH FAILED"). On failure we
+   log the error and, when given, paint a clean fallback into that screen's body
+   so the container is never left as an empty black rectangle. */
+function safeRun(label, fn, onFail){
+  try{
+    fn();
+  }catch(err){
+    console.error('[FSN] render step failed: ' + label, err);
+    if(typeof onFail === 'function'){
+      try{ onFail(err); }catch(_){ /* fallback must never throw */ }
+    }
+  }
+}
+
+/* Paint a clean fallback into a screen's primary body container so a render
+   exception degrades to a readable card instead of a blank view. */
+function renderScreenFallback(name){
+  const bodyId = {
+    home:     'homeQuickScores',
+    matchups: 'matchupList',
+    news:     'newsLeadWrap',
+    vault:    'vaultBody',
+  }[name];
+  if(name === 'home'){
+    const hc = $('homeContent'), hn = $('homeNoData');
+    if(hc) hc.classList.remove('hidden');
+    if(hn) hn.classList.add('hidden');
+  }
+  if(name === 'news'){
+    const feed = $('newsFeedWrap');
+    if(feed) feed.classList.add('hidden');
+  }
+  const el = bodyId && $(bodyId);
+  if(el){
+    el.innerHTML = emptyState(
+      'DISPLAY HICCUP',
+      'This view hit a snag while rendering. Re-fetch the league from Setup, or switch tabs to reload it.',
+      'setup'
+    );
+  }
+}
+
 function renderAll(){
-  syncStudioAvailability();
-  renderTicker();
-  renderWeekScrubbers();
-  if(ui.screen === 'home'){         renderHome(); renderHomeStories(); }
-  else if(ui.screen === 'matchups') renderMatchups();
-  else if(ui.screen === 'news')     renderNews();
-  else if(ui.screen === 'vault')    renderVault();
+  safeRun('studioAvailability', syncStudioAvailability);
+  safeRun('ticker', renderTicker);
+  safeRun('weekScrubbers', renderWeekScrubbers);
+  if(ui.screen === 'home'){
+    safeRun('home', renderHome, ()=> renderScreenFallback('home'));
+    safeRun('homeStories', renderHomeStories);
+  }
+  else if(ui.screen === 'matchups') safeRun('matchups', renderMatchups, ()=> renderScreenFallback('matchups'));
+  else if(ui.screen === 'news')     safeRun('news', renderNews, ()=> renderScreenFallback('news'));
+  else if(ui.screen === 'vault')    safeRun('vault', renderVault, ()=> renderScreenFallback('vault'));
   // Setup is static markup; only its status chips change.
 }
 
