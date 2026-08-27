@@ -14543,7 +14543,30 @@ async function fetchLeagueData(options){
     refreshOpenAIStatus();
     renderAll();
 
-    if(navigate) setScreen('home');
+    if(navigate){
+      // Data parsed and stored successfully — leave the Setup screen behind and
+      // open the Home/Desk so the user is not stranded on `setup`.
+      ui.screen = 'home';
+
+      // Switch active screen to 'home' / Desk
+      document.querySelectorAll('.screen').forEach(s => s.setAttribute('data-active', 'false'));
+      const homeScreen = document.querySelector('[data-screen="home"]');
+      if (homeScreen) homeScreen.setAttribute('data-active', 'true');
+
+      // Update bottom tab bar active state
+      document.querySelectorAll('.tab-btn').forEach(b => b.setAttribute('data-active', 'false'));
+      const deskTab = document.querySelector('.tab-btn[data-tab="home"]');
+      if (deskTab) deskTab.setAttribute('data-active', 'true');
+
+      window.scrollTo({ top:0, behavior:'auto' });
+
+      // Populate the Desk cards immediately so the transition lands on a fully
+      // rendered Home screen instead of empty placeholders.
+      renderHomeStories();
+      renderNews();
+      renderVault();
+      renderWeekScrubbers();
+    }
     if(!silent) toast(`League connected · ${seasonCount} season${seasonCount === 1 ? '' : 's'} · ${matchupCount.toLocaleString()} matchups`);
     return true;
   }catch(err){
