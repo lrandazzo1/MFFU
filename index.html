@@ -12902,9 +12902,10 @@ function renderWeekScrubber(id){
   const state = loading
     ? '<span class="wk-state" title="Syncing box score" aria-label="Syncing box score"></span>'
     : (past ? '<span class="wk-state past" title="Viewing a past week" aria-label="Viewing a past week"></span>' : '');
+  const weekLabel = (week === 1 && isPreseasonWeek1(week, viewed)) ? 'PRESEASON' : 'WEEK ' + week;
   const center = past
-    ? `<button class="wk-center" data-week-current aria-label="Jump to current week" title="Jump to current week"><span class="wk-label">WEEK ${week}</span>${state}</button>`
-    : `<div class="wk-center"><span class="wk-label">WEEK ${week}</span>${state}</div>`;
+    ? `<button class="wk-center" data-week-current aria-label="Jump to current week" title="Jump to current week"><span class="wk-label">${weekLabel}</span>${state}</button>`
+    : `<div class="wk-center"><span class="wk-label">${weekLabel}</span>${state}</div>`;
 
   el.innerHTML = `<div class="season-week-bar">
     ${seasonSelectMarkup()}
@@ -13283,7 +13284,9 @@ function renderHome(){
   const games = LeagueData.getWeekMatchups(week);
 
   $('homeLeagueName').textContent = (d.settings && d.settings.name) ? d.settings.name.toUpperCase() : 'THE DESK';
-  $('homeWeekPill').textContent = 'WEEK ' + week;
+  const viewedYearHome = parseInt(($('seasonYear').value || '').trim(), 10) || uiActiveSeasonYear();
+  const homeLabel = isPreseasonWeek1(week, viewedYearHome) ? 'PRESEASON' : 'WEEK ' + week;
+  $('homeWeekPill').textContent = homeLabel;
   $('homeSeasonLabel').textContent = (d.seasonId || d.season || $('seasonYear').value || '') + ' SEASON';
 
   /* ---- league pulse ----
@@ -14625,6 +14628,19 @@ function uiActiveSeasonYear(){
   const now = new Date();
   return now.getMonth() < 2 ? now.getFullYear()-1 : now.getFullYear();
 }
+function isPreseasonWeek1(week, viewedYear){
+  if(parseInt(week,10) !== 1) return false;
+  const active = uiActiveSeasonYear();
+  if(viewedYear < active) return false;
+  const phase = typeof FSNIntel !== 'undefined' && FSNIntel.seasonPhase ? FSNIntel.seasonPhase(1) : null;
+  if(phase === 'season') return false;
+  if(LeagueData.hasLive()){
+    const games = LeagueData.getWeekMatchups(1);
+    const total = games.reduce(function(s,g){ return s + (g.home.totalPoints||0) + (g.away.totalPoints||0); }, 0);
+    if(total > 0) return false;
+  }
+  return true;
+}
 function refreshOpenAIStatus(){
   const el = $('openaiStatus');
   if(!el) return;
@@ -15188,7 +15204,9 @@ function renderTopicBar(list){
 
 function renderNews(){
   const week = effectiveWeek();
-  $('newsWeekPill').textContent = 'WEEK ' + week;
+  const viewedYearNews = parseInt(($('seasonYear').value || '').trim(), 10) || uiActiveSeasonYear();
+  const newsLabel = isPreseasonWeek1(week, viewedYearNews) ? 'PRESEASON' : 'WEEK ' + week;
+  $('newsWeekPill').textContent = newsLabel;
 
   const all = newsList();
   renderTopicBar(all);
