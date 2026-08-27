@@ -17,6 +17,17 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Repair updater source literal
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('scripts/apply_2026_preseason_studio.py')
+          s = p.read_text()
+          s = s.replace("\"  let segments = [];\\n\\n  if(phase === 'draft' || phase === 'preseason'){\n\",", "\"  let segments = [];\\n\\n  if(phase === 'draft' || phase === 'preseason'){\\n\",")
+          s = s.replace("\"  let segments = [];\\n\\n  if(studio2026PreseasonSpecial(requestedWeek)){\\n    segments = build2026PreseasonSpecial(1);\\n  } else if(phase === 'draft' || phase === 'preseason'){\n\",", "\"  let segments = [];\\n\\n  if(studio2026PreseasonSpecial(requestedWeek)){\\n    segments = build2026PreseasonSpecial(1);\\n  } else if(phase === 'draft' || phase === 'preseason'){\\n\",")
+          p.write_text(s)
+          PY
+          python -m py_compile scripts/apply_2026_preseason_studio.py
       - name: Apply targeted updater
         run: python scripts/apply_2026_preseason_studio.py
       - name: Validate preserved features and new behavior
