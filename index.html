@@ -87,7 +87,7 @@ body{
    The broadcast layout is designed for a phone column. Left alone on a
    widescreen monitor its cards, tables and trendlines ran the full viewport
    width, which is the one place an athletic layout stops reading like one.
-   Every screen, the franchise dossier, the reader and the vault stack now
+   Every screen, the franchise dossier, the reader and the recordbook stack now
    sit inside the same centred max-w-6xl column.
 ============================================================ */
 .screen-shell{ width:100%; max-width:72rem; margin-left:auto; margin-right:auto; }
@@ -99,12 +99,12 @@ body{
 .screen-shell > #homeContent > .px-4,
 .screen-shell > #homeContent > #homeTopStory > .px-4{ padding-left:0; padding-right:0; }
 
-/* Same column, applied to the two full-screen overlays and the vault stack.
+/* Same column, applied to the two full-screen overlays and the recordbook stack.
    Written out rather than left to the Tailwind utilities alone so the layout
    still holds if the CDN never loads. */
 #readerBody > *{ width:100%; max-width:72rem; margin-left:auto; margin-right:auto; }
 .dossier-bar-inner{ width:100%; max-width:72rem; margin-left:auto; margin-right:auto; }
-.vault-card-stack{ width:100%; max-width:72rem; margin-left:auto; margin-right:auto; }
+.record-book-card-stack{ width:100%; max-width:72rem; margin-left:auto; margin-right:auto; }
 
 /* ---------- TICKER ---------- */
 #tickerBar{
@@ -290,7 +290,7 @@ body{
 /* ============================================================
    VAULT — franchise dossiers, finish trendlines, leaderboards
 ============================================================ */
-.vault-card-stack{ display:grid; gap:12px; padding-bottom:12px; }
+.record-book-card-stack{ display:grid; gap:12px; padding-bottom:12px; }
 .franchise-card{
   width:100%; text-align:left; color:inherit; cursor:pointer; outline:none;
   border:1px solid var(--line); border-radius:18px; overflow:hidden; position:relative;
@@ -369,43 +369,43 @@ body{
 .fr-trend-tip b{ color:var(--cyan); font-family:'JetBrains Mono',monospace; }
 
 /* Records leaderboards */
-.vault-records{ padding-bottom:14px; }
-.vault-leaderboard-grid{ display:grid; gap:12px; }
-.vault-leaderboard{
+.record-book-records{ padding-bottom:14px; }
+.record-book-leaderboard-grid{ display:grid; gap:12px; }
+.record-book-leaderboard{
   border-radius:17px; overflow:hidden; border:1px solid var(--line);
   background:linear-gradient(155deg,#141a24,#0a0e15);
 }
-.vault-leaderboard-head{ padding:14px 15px 12px; border-bottom:1px solid var(--line); background:linear-gradient(90deg,rgba(0,224,255,.08),transparent); }
-.vault-leaderboard-title{ font-family:'Anton',Impact,sans-serif; font-size:17px; letter-spacing:.05em; text-transform:uppercase; }
-.vault-leaderboard-sub{ color:var(--dim); font-size:10.5px; margin-top:4px; line-height:1.45; }
-.vault-leaderboard-list{ padding:7px; }
-.vault-leader-row{
+.record-book-leaderboard-head{ padding:14px 15px 12px; border-bottom:1px solid var(--line); background:linear-gradient(90deg,rgba(0,224,255,.08),transparent); }
+.record-book-leaderboard-title{ font-family:'Anton',Impact,sans-serif; font-size:17px; letter-spacing:.05em; text-transform:uppercase; }
+.record-book-leaderboard-sub{ color:var(--dim); font-size:10.5px; margin-top:4px; line-height:1.45; }
+.record-book-leaderboard-list{ padding:7px; }
+.record-book-leader-row{
   display:grid; grid-template-columns:26px 36px minmax(0,1fr) auto; align-items:center; gap:9px;
   padding:9px 8px; border-radius:11px; position:relative; overflow:hidden;
 }
-.vault-leader-row + .vault-leader-row{ border-top:1px solid rgba(255,255,255,.055); }
-.vault-leader-row:first-child{ background:linear-gradient(90deg,rgba(255,196,0,.095),transparent); }
-.vault-leader-rank{ font-family:'Anton',Impact,sans-serif; font-size:15px; text-align:center; color:#4e5a6e; }
-.vault-leader-row:first-child .vault-leader-rank{ color:var(--gold); }
-.vault-leader-name{ min-width:0; }
-.vault-leader-name strong{ display:block; font-size:12.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.vault-leader-name span{ display:block; margin-top:2px; color:var(--dim); font-size:9.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.vault-leader-value{ text-align:right; }
-.vault-leader-value strong{ display:block; color:var(--cyan); font-family:'JetBrains Mono',monospace; font-size:12px; font-weight:800; white-space:nowrap; }
-.vault-leader-value span{ display:block; margin-top:3px; color:var(--dim); font-size:9px; white-space:nowrap; }
-.vault-milestone-grid{ display:grid; gap:12px; margin-top:12px; }
-.vault-podium{ border-radius:17px; border:1px solid var(--line); overflow:hidden; background:linear-gradient(155deg,#121721,#090d14); }
-.vault-podium-head{ padding:13px 15px 11px; border-bottom:1px solid var(--line); }
-.vault-podium-list{ padding:7px; }
-.vault-podium-row{ display:grid; grid-template-columns:24px 34px minmax(0,1fr) auto; gap:8px; align-items:center; padding:9px 8px; border-radius:10px; }
-.vault-podium-row + .vault-podium-row{ border-top:1px solid rgba(255,255,255,.055); }
-.vault-podium-rank{ font-family:'Anton',Impact,sans-serif; color:#4e5a6e; text-align:center; }
-.vault-podium-row:first-child .vault-podium-rank{ color:var(--gold); }
-.vault-podium-copy{ min-width:0; }
-.vault-podium-copy strong{ display:block; font-size:11.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.vault-podium-copy span{ display:block; color:var(--dim); font-size:9.5px; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.vault-podium-value{ color:var(--off); font-family:'JetBrains Mono',monospace; font-size:11.5px; font-weight:800; text-align:right; white-space:nowrap; }
-.vault-streak-grid{ display:grid; gap:12px; margin-top:12px; }
+.record-book-leader-row + .record-book-leader-row{ border-top:1px solid rgba(255,255,255,.055); }
+.record-book-leader-row:first-child{ background:linear-gradient(90deg,rgba(255,196,0,.095),transparent); }
+.record-book-leader-rank{ font-family:'Anton',Impact,sans-serif; font-size:15px; text-align:center; color:#4e5a6e; }
+.record-book-leader-row:first-child .record-book-leader-rank{ color:var(--gold); }
+.record-book-leader-name{ min-width:0; }
+.record-book-leader-name strong{ display:block; font-size:12.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.record-book-leader-name span{ display:block; margin-top:2px; color:var(--dim); font-size:9.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.record-book-leader-value{ text-align:right; }
+.record-book-leader-value strong{ display:block; color:var(--cyan); font-family:'JetBrains Mono',monospace; font-size:12px; font-weight:800; white-space:nowrap; }
+.record-book-leader-value span{ display:block; margin-top:3px; color:var(--dim); font-size:9px; white-space:nowrap; }
+.record-book-milestone-grid{ display:grid; gap:12px; margin-top:12px; }
+.record-book-podium{ border-radius:17px; border:1px solid var(--line); overflow:hidden; background:linear-gradient(155deg,#121721,#090d14); }
+.record-book-podium-head{ padding:13px 15px 11px; border-bottom:1px solid var(--line); }
+.record-book-podium-list{ padding:7px; }
+.record-book-podium-row{ display:grid; grid-template-columns:24px 34px minmax(0,1fr) auto; gap:8px; align-items:center; padding:9px 8px; border-radius:10px; }
+.record-book-podium-row + .record-book-podium-row{ border-top:1px solid rgba(255,255,255,.055); }
+.record-book-podium-rank{ font-family:'Anton',Impact,sans-serif; color:#4e5a6e; text-align:center; }
+.record-book-podium-row:first-child .record-book-podium-rank{ color:var(--gold); }
+.record-book-podium-copy{ min-width:0; }
+.record-book-podium-copy strong{ display:block; font-size:11.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.record-book-podium-copy span{ display:block; color:var(--dim); font-size:9.5px; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.record-book-podium-value{ color:var(--off); font-family:'JetBrains Mono',monospace; font-size:11.5px; font-weight:800; text-align:right; white-space:nowrap; }
+.record-book-streak-grid{ display:grid; gap:12px; margin-top:12px; }
 
 /* Full-screen franchise dossier */
 #franchiseModal{
@@ -531,7 +531,7 @@ body{
 
 @media (min-width:700px){
   .franchise-metrics{ grid-template-columns:repeat(4,minmax(0,1fr)); }
-  .vault-leaderboard-grid,.vault-milestone-grid,.vault-streak-grid,.dossier-h2h-grid{ grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .record-book-leaderboard-grid,.record-book-milestone-grid,.record-book-streak-grid,.dossier-h2h-grid{ grid-template-columns:repeat(2,minmax(0,1fr)); }
   .dossier-vitals{ grid-template-columns:repeat(4,minmax(0,1fr)); }
   #franchiseModalBody{ padding:24px 0 calc(40px + env(safe-area-inset-bottom)); }
 }
@@ -2020,25 +2020,25 @@ html[data-studio-historical="true"] #studio{
   </section>
 
   <!-- ==========================================================
-       SCREEN 3 — THE VAULT
+       SCREEN 3 — THE RECORD BOOK
   ========================================================== -->
-  <section class="screen" data-screen="vault" data-active="false">
+  <section class="screen" data-screen="recordbook" data-active="false">
     <div class="screen-shell max-w-6xl mx-auto w-full px-4 sm:px-6">
     <header class="px-4 pt-4 pb-3">
       <div class="kicker text-[var(--gold)]">All-Time Archive</div>
-      <h1 class="font-display text-[27px] leading-none mt-1.5">THE VAULT</h1>
-      <div class="text-[10.5px] text-[var(--dim)] mt-1.5 font-mono tabular" id="vaultMeta">8 seasons · 16 managers · 687 matchups</div>
+      <h1 class="font-display text-[27px] leading-none mt-1.5">THE RECORD BOOK</h1>
+      <div class="text-[10.5px] text-[var(--dim)] mt-1.5 font-mono tabular" id="recordBookMeta">8 seasons · 16 managers · 687 matchups</div>
     </header>
 
     <div class="px-4 mb-4">
-      <div class="seg" id="vaultSeg">
-        <button data-vault="franchises" data-active="true">Franchises</button>
-        <button data-vault="rivalries" data-active="false">Rivalries</button>
-        <button data-vault="records" data-active="false">Records</button>
+      <div class="seg" id="recordBookSeg">
+        <button data-record-book="franchises" data-active="true">Franchises</button>
+        <button data-record-book="rivalries" data-active="false">Rivalries</button>
+        <button data-record-book="records" data-active="false">Records</button>
       </div>
     </div>
 
-    <div class="px-4" id="vaultBody"></div>
+    <div class="px-4" id="recordBookBody"></div>
     </div>
   </section>
 
@@ -2110,6 +2110,10 @@ html[data-studio-historical="true"] #studio{
             <label class="label" for="leagueIdInput">League ID</label>
             <input id="leagueIdInput" class="field" inputmode="numeric" autocomplete="off" placeholder="e.g. 1234567">
           </div>
+          <div>
+            <button id="historyUnlockToggle" type="button" class="pill pill-cyan w-full justify-center" aria-expanded="false" aria-controls="historyUploadPanel">Want to unlock historical seasons &amp; the Record Book?</button>
+            <p class="text-[10.5px] text-[var(--dim)] leading-relaxed mt-2">Current season loads instantly from League ID only. Historical seasons are optional.</p>
+          </div>
           <span id="seasonYear" hidden="" aria-hidden="true"></span>
           <span id="weekNum" hidden="" aria-hidden="true"></span>
           <button id="fetchBtn" class="btn-primary">
@@ -2150,19 +2154,17 @@ html[data-studio-historical="true"] #studio{
       <div class="card p-4">
         <div class="section-head"><span class="bar" style="background:var(--cyan)"></span><h2>AI News Desk</h2></div>
         <p class="text-[11.5px] text-[var(--dim)] leading-relaxed mb-3">
-          Current-season stories can be rewritten by <span class="font-mono text-[var(--off)]">gpt-4o-mini</span> directly in this browser.
+          Current-season stories can be rewritten by <span class="font-mono text-[var(--off)]">gpt-4o-mini</span> through the secure backend proxy.
           Historical seasons always bypass AI and use the instant deterministic desk. Successful AI stories are cached once per league, season, week and story.
         </p>
-        <label class="label" for="openaiKey">OpenAI API Key</label>
-        <div class="flex gap-2">
-          <input id="openaiKey" class="field flex-1" type="password" autocomplete="off" spellcheck="false" placeholder="sk-…">
-          <button id="openaiReveal" class="btn-ghost" style="width:auto; padding:0 14px;">SHOW</button>
-        </div>
+        <input id="openaiKey" type="hidden" value="backend">
+        <button id="openaiReveal" type="button" hidden>SHOW</button>
+        <div class="pill pill-green w-full justify-center" role="status">● Backend AI Connected</div>
         <p class="text-[10.5px] text-[var(--dim)] leading-relaxed mt-2">
           Stored only in <span class="font-mono">localStorage</span>. OpenAI keys are sent straight from this page to
           <span class="font-mono">api.openai.com</span>; no FSN server or backend route is involved. A browser-side key is visible to anyone with access to this device/profile, so use a restricted key.
         </p>
-        <p id="openaiStatus" class="text-[11.5px] text-[var(--dim)] leading-relaxed mt-2"><span style="color:var(--gold)">FALLBACK READY</span> · No key saved. Current-season news uses the deterministic no-replacement engine.</p>
+        <p id="openaiStatus" class="text-[11.5px] text-[var(--dim)] leading-relaxed mt-2"><span style="color:var(--gold)">FALLBACK READY</span> · Backend AI is unavailable; current-season news uses the deterministic no-replacement engine.</p>
       </div>
 
       <!-- ALL-TIME HISTORY — fetched automatically with the live league -->
@@ -2176,14 +2178,14 @@ html[data-studio-historical="true"] #studio{
         <a id="historyUrlLink" class="block mt-3 text-[10px] font-mono text-[var(--cyan)] break-all underline decoration-dotted" target="_blank" rel="noopener" href="https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/leagueHistory/57155288?view=mTeam&amp;view=mRoster&amp;view=mMatchup&amp;view=mMatchupScore&amp;view=mSettings" style="color: var(--cyan); text-decoration: underline dotted;">https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/leagueHistory/57155288?view=mTeam&amp;view=mRoster&amp;view=mMatchup&amp;view=mMatchupScore&amp;view=mSettings</a>
       </div>
 
-      <!-- JSON FALLBACK -->
-      <div class="card p-4">
-        <div class="section-head"><span class="bar" style="background:var(--red)"></span><h2>JSON Fallback</h2></div>
+      <!-- HISTORICAL ARCHIVE / RECORD BOOK -->
+      <div id="historyUploadPanel" class="card p-4 hidden">
+        <div class="section-head"><span class="bar" style="background:var(--cyan)"></span><h2>Historical Archive &amp; Record Book</h2></div>
         <p class="text-[11.5px] text-[var(--dim)] leading-relaxed mb-3">
-          If the proxies are rate-limited, open the API link, save the raw JSON, then drop or paste it here. Nothing leaves your phone.
+          ESPN locks historical endpoints behind authentication. To unlock past seasons, rivalries and all-time records, upload one JSON export containing the league's historical seasons. The file is read locally in your browser and is never sent to OpenAI or ElevenLabs.
         </p>
 
-        <div id="dropzone" tabindex="0" role="button" aria-label="Upload league JSON">
+        <div id="dropzone" tabindex="0" role="button" aria-label="Upload historical league archive JSON">
           <div class="font-display text-[15px] tracking-wide">DROP .JSON</div>
           <div class="text-[11px] text-[var(--dim)] mt-1.5">or tap to browse files</div>
         </div>
@@ -2211,7 +2213,7 @@ html[data-studio-historical="true"] #studio{
           <button data-mode="cc" data-on="false">Captions</button>
         </div>
         <p class="text-[10.5px] text-[var(--dim)] leading-relaxed mt-2">
-          <b class="text-[var(--off)]">Auto</b> uses ElevenLabs when a key is saved below and falls back to the device voice.
+          <b class="text-[var(--off)]">Auto</b> uses the secure ElevenLabs backend and falls back to the device voice.
           <b class="text-[var(--off)]">Captions</b> runs the show silently on a timed read.
         </p>
 
@@ -2227,17 +2229,14 @@ html[data-studio-historical="true"] #studio{
         </div>
 
         <div class="mt-4 pt-3" style="border-top:1px solid var(--line)">
-          <div class="kicker text-[var(--gold)] mb-2">ElevenLabs · Optional / Dev Mode</div>
+          <div class="kicker text-[var(--gold)] mb-2">ElevenLabs · Secure Backend</div>
           <p class="text-[11px] text-[var(--dim)] leading-relaxed mb-3">
-            Paste a key and the hosts are voiced with <span class="font-mono text-[var(--off)]">eleven_flash_v2_5</span>.
-            The key is stored on this device only and is sent straight from this page to ElevenLabs — nothing routes through a server of ours.
-            Browser-side keys are visible to anyone with this device, so use a restricted key.
+            Studio Show voices use <span class="font-mono text-[var(--off)]">eleven_flash_v2_5</span> through the secure backend proxy.
+            The ElevenLabs API key stays server-side in <span class="font-mono text-[var(--off)]">ELEVENLABS_API_KEY</span> and is never exposed to the browser.
           </p>
-          <label class="label" for="elevenKey">API Key</label>
-          <div class="flex gap-2">
-            <input id="elevenKey" class="field flex-1" type="password" autocomplete="off" spellcheck="false" placeholder="sk_…">
-            <button id="elevenReveal" class="btn-ghost" style="width:auto; padding:0 14px;">SHOW</button>
-          </div>
+          <input id="elevenKey" type="hidden" value="backend">
+          <button id="elevenReveal" type="button" hidden>SHOW</button>
+          <div class="pill pill-green w-full justify-center" role="status">● Backend AI Connected</div>
           <div class="grid grid-cols-2 gap-3 mt-3">
             <div>
               <label class="label" for="elevenVoiceHost">Anchor Voice ID</label>
@@ -2292,9 +2291,9 @@ html[data-studio-historical="true"] #studio{
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h12v14H5.5A1.5 1.5 0 0 1 4 17.5Z"></path><path d="M16 9h3.5A1.5 1.5 0 0 1 21 10.5v7a1.5 1.5 0 0 1-1.5 1.5H16"></path><path d="M7 8.5h6"></path><path d="M7 11.5h6"></path><path d="M7 14.5h4"></path></svg>
     <span>News</span>
   </button>
-  <button class="tab-btn" data-tab="vault" data-active="false">
+  <button class="tab-btn" data-tab="recordbook" data-active="false">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"></rect><circle cx="12" cy="12" r="3.5"></circle><path d="M12 6v2"></path><path d="M12 16v2"></path></svg>
-    <span>Vault</span>
+    <span>Record Book</span>
   </button>
   <button class="tab-btn" data-tab="setup" data-active="false">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h10"></path><path d="M18 7h2"></path><circle cx="16" cy="7" r="2"></circle><path d="M4 17h6"></path><path d="M14 17h6"></path><circle cx="12" cy="17" r="2"></circle></svg>
@@ -2325,7 +2324,7 @@ html[data-studio-historical="true"] #studio{
         <svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"></path></svg>
       </button>
       <div class="dossier-bar-title">
-        <div class="kicker text-[var(--cyan)]">The Vault · Franchise Dossier</div>
+        <div class="kicker text-[var(--cyan)]">The Record Book · Franchise Dossier</div>
         <div id="franchiseModalTitle" class="text-[11px] text-[var(--dim)] truncate mt-0.5">Stop it step burrow · Daniel Johnson</div>
       </div>
       <button class="dossier-shot-btn" id="franchiseScreenshotBtn">Screenshot Resume</button>
@@ -2545,7 +2544,7 @@ html[data-studio-historical="true"] #studio{
   </div>
 </div>
 
-<div id="toast" class="">Vault unlocked — rivalries and records are live.</div>
+<div id="toast" class="">Record Book unlocked — rivalries and records are live.</div>
 
 <script>
 /* ============================================================================
@@ -3017,7 +3016,7 @@ function normalizeHistoryPayload(raw){
 
 /* Fetch each completed modern season independently through the direct season
    endpoint. Requests stay sequential and use only the five lightweight views
-   needed by the Vault, keeping proxy payloads and gateway pressure low. */
+   needed by the Record Book, keeping proxy payloads and gateway pressure low. */
 async function fetchAllTimeHistory(leagueId) {
   const targetYears = [2025, 2024, 2023, 2022, 2021, 2020, 2019, 2018];
   const yearsData = [];
@@ -3060,7 +3059,7 @@ async function fetchAllTimeHistory(leagueId) {
     const connectionStatus = `✓ Connected — ${activeSeason} Live + ${yearsData.length} Historical Seasons Loaded (${loadedYears.join(', ')})`;
     if ($('fetchStatus')) $('fetchStatus').textContent = connectionStatus;
 
-    try{ renderVault(); }catch(err){ console.warn('[FSN] Vault refresh failed', err); }
+    try{ renderRecordBook(); }catch(err){ console.warn('[FSN] Record Book refresh failed', err); }
     try{ renderNews(); }catch(err){ console.warn('[FSN] Preseason Desk refresh failed', err); }
     try{ renderHomeStories(); }catch(err){ console.warn('[FSN] Home story refresh failed', err); }
   }
@@ -4517,7 +4516,7 @@ function preseasonReport(){
     if(!raw || !raw.length) return null;
 
     /* The time-machine selection is authoritative. A historical 2020 view must
-       build its primer from seasons completed BEFORE 2020, even when the Vault
+       build its primer from seasons completed BEFORE 2020, even when the Record Book
        also contains 2021–2025. Sort by the numeric season id first so the final
        completed row is always the true predecessor. */
     const viewedYear = (()=>{
@@ -5915,7 +5914,7 @@ const EDITORIAL_MATRIX = {
       "I knew we finished {DIFF_CLAUSE} {LOSE}. My heart thought it was dead even.",
       "Please direct all complaints to the scoreboard and all praise to me.",
       "That was less a win than a successful escape.",
-      "We are putting the screenshot in the Vault before anyone can appeal.",
+      "We are putting the screenshot in the Record Book before anyone can appeal.",
       "I do not believe in moral victories, especially when I have the real one.",
       "The difference was one lineup decision and maybe one bad life choice.",
       "I will never complain about ugly wins again. Until next week.",
@@ -6428,7 +6427,7 @@ const OUTRO_STRUCTURES = [
   'Week {WEEK} now has a signature matchup, whether it wanted one or not.', 'The next waiver run will be treated like a referendum on everything that happened here.',
   'Every manager watching learned the wrong lesson in real time.', 'This is the kind of result that makes projection percentages feel personally insulting.',
   'The standings table is cleaner than the story behind it.', 'One team gets momentum. The other gets content.',
-  'The result is official enough for the standings and messy enough for the Vault.', 'The recap will age. The screenshot will not.',
+  'The result is official enough for the standings and messy enough for the Record Book.', 'The recap will age. The screenshot will not.',
   'Somebody will cite this exact box score during a completely unrelated argument in November.', 'File the final score under evidence the league will misuse forever.'
 ];
 
@@ -6670,7 +6669,7 @@ function assembleDeterministicStory(ctx, category, ordinal, facts, overrides){
     context += `<b>${esc(bench.name)}</b> scored <b>${n1(bench.points)}</b> on the bench while <b>${esc(worst.name)}</b> started for <b>${n1(worst.points)}</b>, a potential <b>${n1(facts.benchSwing)}</b>-point swing. `;
   }
   if(facts.rivalry && facts.rivalry.meetings){
-    context += `The all-time series now carries <b>${facts.rivalry.meetings}</b> prior recorded meeting${facts.rivalry.meetings === 1 ? '' : 's'} in the Vault, with the winner's manager entering this matchup at <b>${facts.rivalry.winsFor}-${facts.rivalry.winsAgainst}${facts.rivalry.ties ? '-' + facts.rivalry.ties : ''}</b> against this opponent. `;
+    context += `The all-time series now carries <b>${facts.rivalry.meetings}</b> prior recorded meeting${facts.rivalry.meetings === 1 ? '' : 's'} in the Record Book, with the winner's manager entering this matchup at <b>${facts.rivalry.winsFor}-${facts.rivalry.winsAgainst}${facts.rivalry.ties ? '-' + facts.rivalry.ties : ''}</b> against this opponent. `;
   }
 
   const phase = seasonToneBucket(ctx.week);
@@ -7364,7 +7363,7 @@ function genFraudAlert(ctx){
 
   const roster = side ? (side.game.homeTeam.id === team.id ? side.homeRoster : side.awayRoster) : null;
 
-  /* Where this lands against the all-time floor, when the Vault is loaded. */
+  /* Where this lands against the all-time floor, when the Record Book is loaded. */
   const rec = LeagueData.leagueHistory && LeagueData.leagueHistory.records;
   const allTimeLow = rec && rec.lowestScore ? rec.lowestScore : null;
 
@@ -7530,7 +7529,7 @@ function genShootout(ctx){
 
 /* ============================================================================
    GENERATOR 4 — THE ALL-TIME MILESTONE
-   Only fires when the Vault is loaded. Checks this week's box scores against
+   Only fires when the Record Book is loaded. Checks this week's box scores against
    every all-time record the history aggregator tracks, and falls back to a
    "record watch" when something is close but not broken.
 ============================================================================ */
@@ -7636,7 +7635,7 @@ function genMilestone(ctx){
           { label: 'Week ' + ctx.week + ' league average', value: n1(ctx.avg) },
           { label: 'Matchups in the archive',              value: meetings.toLocaleString() },
         ],
-        note: 'All-time figures computed from ' + archiveLine + ' loaded into the Vault.',
+        note: 'All-time figures computed from ' + archiveLine + ' loaded into the Record Book.',
       },
     }));
   }
@@ -7664,7 +7663,7 @@ function genMilestone(ctx){
         `<b>${esc(l.name)}</b>'s <b>${n1(s.loserScore)}</b> was <b>${n1(ctx.avg - s.loserScore)}</b> below this week's league average of <b>${n1(ctx.avg)}</b>; ` +
         `<b>${esc(w.name)}</b>'s <b>${n1(s.winnerScore)}</b> was <b>${n1(s.winnerScore - ctx.avg)}</b> above it. Both halves of the record were earned.`,
 
-        `There is no consolation in the box score and there will be none in the group chat. ${esc(managerLabel(l))} now owns a permanent line in the Vault, on the wrong side of it.`,
+        `There is no consolation in the box score and there will be none in the group chat. ${esc(managerLabel(l))} now owns a permanent line in the Record Book, on the wrong side of it.`,
       ],
       quote: {
         text: pick([
@@ -7683,7 +7682,7 @@ function genMilestone(ctx){
           { label: 'Previous record',     value: n1(old.margin), note: esc(old.winnerTeamName) + ' over ' + esc(old.loserTeamName) + ' · ' + old.year },
           { label: 'League average',      value: n1(ctx.avg) },
         ],
-        note: 'All-time figures computed from ' + archiveLine + ' loaded into the Vault.',
+        note: 'All-time figures computed from ' + archiveLine + ' loaded into the Record Book.',
       },
     }));
   }
@@ -7735,7 +7734,7 @@ function genMilestone(ctx){
           { label: record ? 'Level with the record' : 'Wins from the record', value: record ? '0' : String(old.length - len) },
           { label: 'Seasons in the archive', value: String(seasons) },
         ],
-        note: 'Streaks count regular-season games only, across every season loaded into the Vault.',
+        note: 'Streaks count regular-season games only, across every season loaded into the Record Book.',
       },
     }));
   }
@@ -8488,10 +8487,10 @@ function tlPrimer(ctx){
   const probA = FSNIntel.winProbability(ctx.week - 1, A, B);
   const seed = 'motw' + ctx.week + A.id + B.id;
 
-  let vault = null;
+  let recordbook = null;
   try{
     if(LeagueData.hasHistory() && A.ownerId && B.ownerId && window.getH2H){
-      vault = window.getH2H(A.ownerId, B.ownerId);
+      recordbook = window.getH2H(A.ownerId, B.ownerId);
     }
   }catch(e){}
 
@@ -8503,12 +8502,12 @@ function tlPrimer(ctx){
   const recordB = FSNIntel.getRecordAsOfWeek(B.id, ctx.week);
   rows.push({ label: esc(A.name) + ' record', value: esc(recordA) });
   rows.push({ label: esc(B.name) + ' record', value: esc(recordB) });
-  if(vault && vault.meetingCount){
-    rows.push({ label:'All-time series', value: vault.winsFor + '-' + vault.winsAgainst + (vault.ties ? '-' + vault.ties : ''),
-      note: esc(A.name) + ' leads the ledger by ' + n1(Math.abs(vault.diff)) + ' career points against this opponent.' });
-    if(vault.lastMeeting){
-      rows.push({ label:'Last meeting', value: n1(vault.lastMeeting.scoreFor) + ' – ' + n1(vault.lastMeeting.scoreAgainst),
-        note: vault.lastMeeting.year + ' · Week ' + vault.lastMeeting.week });
+  if(recordbook && recordbook.meetingCount){
+    rows.push({ label:'All-time series', value: recordbook.winsFor + '-' + recordbook.winsAgainst + (recordbook.ties ? '-' + recordbook.ties : ''),
+      note: esc(A.name) + ' leads the ledger by ' + n1(Math.abs(recordbook.diff)) + ' career points against this opponent.' });
+    if(recordbook.lastMeeting){
+      rows.push({ label:'Last meeting', value: n1(recordbook.lastMeeting.scoreFor) + ' – ' + n1(recordbook.lastMeeting.scoreAgainst),
+        note: recordbook.lastMeeting.year + ' · Week ' + recordbook.lastMeeting.week });
     }
   }
 
@@ -8539,12 +8538,12 @@ function tlPrimer(ctx){
       `The model gives ${esc(probA >= 50 ? A.name : B.name)} a <b>${Math.round(Math.max(probA, 100 - probA))}%</b> edge, which is ` +
       pick(['not the same as a prediction.','close enough to be worthless.','the polite way of saying coin flip.'], seed),
 
-      vault && vault.meetingCount
-        ? `The Vault says these two have met <b>${vault.meetingCount}</b> times, with <b>${esc(A.name)}</b> holding a ` +
-          `<b>${vault.winsFor}-${vault.winsAgainst}${vault.ties ? '-' + vault.ties : ''}</b> edge` +
-          `${vault.streakCount > 1 ? ` and the current streak sitting at ${vault.streakCount} straight` : ''}. ` +
-          `${vault.lastMeeting ? `The last one finished ${n1(vault.lastMeeting.scoreFor)}–${n1(vault.lastMeeting.scoreAgainst)}.` : ''}`
-        : `There is no history to lean on here — load the Vault and the desk will pull the all-time series into this preview.`,
+      recordbook && recordbook.meetingCount
+        ? `The Record Book says these two have met <b>${recordbook.meetingCount}</b> times, with <b>${esc(A.name)}</b> holding a ` +
+          `<b>${recordbook.winsFor}-${recordbook.winsAgainst}${recordbook.ties ? '-' + recordbook.ties : ''}</b> edge` +
+          `${recordbook.streakCount > 1 ? ` and the current streak sitting at ${recordbook.streakCount} straight` : ''}. ` +
+          `${recordbook.lastMeeting ? `The last one finished ${n1(recordbook.lastMeeting.scoreFor)}–${n1(recordbook.lastMeeting.scoreAgainst)}.` : ''}`
+        : `There is no history to lean on here — load the Record Book and the desk will pull the all-time series into this preview.`,
 
       `Thursday night is where this one starts leaking points. Check who you have playing, then check again after the inactives.`,
     ],
@@ -8614,7 +8613,7 @@ function tlShowDay(ctx){
     paragraphs: preseasonSpecial ? [
       `${datelineTag()} The 2026 season has not kicked off yet, which means the FSN desk gets one clean shot to grade the offseason before the scoreboard starts rewriting every opinion. Jim Tolliver and Dee Rawls are live with the defending champion, the longest title droughts and the league-wide baseline entering Week 1.`,
       `The draft audit goes pick by pick through the biggest reaches and best values, then the desk circles the Week 1 marquee matchup with the all-time series and pregame win probability.`,
-      `Tonight's rundown: <b>${segments.join('</b> · <b>')}</b>. Every number comes from the live 2026 league feed and the completed Vault archive; no preseason result is invented.`,
+      `Tonight's rundown: <b>${segments.join('</b> · <b>')}</b>. Every number comes from the live 2026 league feed and the completed Record Book archive; no preseason result is invented.`,
     ] : [
       `${datelineTag()} The Week ${ctx.week} edition of the FSN Studio Show is cued up and ready to run. Your lead anchor takes the rankings, the chief analyst takes the rest, and neither of them is being paid enough to be diplomatic.`,
       `Tonight's rundown: <b>${segments.join('</b> · <b>')}</b>.`,
@@ -9341,7 +9340,7 @@ function tlPreseason(ctx){
       value: drought ? (drought.drought + ' season' + (drought.drought === 1 ? '' : 's')) : '—',
       note: drought
         ? `${esc(drought.displayName)} · ${drought.lastTitleYear ? 'last title ' + drought.lastTitleYear : 'never won it'} · ${drought.seasons} season${drought.seasons === 1 ? '' : 's'} on the books`
-        : 'Load the Vault to rank the droughts.' },
+        : 'Load the Record Book to rank the droughts.' },
     { label:'Week 1 marquee rematch',
       value: lead ? lead.tape : (marquee ? 'First meeting' : '—'),
       note: marquee
@@ -9357,7 +9356,7 @@ function tlPreseason(ctx){
 
   const repeatNote = rep.repeat.chances >= 3
     ? `Repeat rate in this league: ${rep.repeat.repeats} of ${rep.repeat.chances} title defenses. PPG uses regular-season games from the ${year} final table.`
-    : `Final standings from ${rep.seasonCount} completed season${rep.seasonCount === 1 ? '' : 's'} in the Vault. PPG replaces raw points-for in this report.`;
+    : `Final standings from ${rep.seasonCount} completed season${rep.seasonCount === 1 ? '' : 's'} in the Record Book. PPG replaces raw points-for in this report.`;
 
   const quotePool = [
     'The trophy remembers December. The draft room only remembers what it wants to remember.',
@@ -9442,9 +9441,7 @@ const aiQueue = [];
 let aiActive = 0;
 const AI_CONCURRENCY = 2;
 
-function getAIKey(){
-  try{ return (localStorage.getItem(OPENAI_KEY_STORE) || '').trim(); }catch(e){ return ''; }
-}
+function getAIKey(){ return 'backend'; }
 function aiCacheKey(storyId, ctx){
   return `fsn_ai_${selectedLeagueId()}_${viewedSeasonYear()}_${ctx.week}_${storyId}`;
 }
@@ -9544,7 +9541,7 @@ function applyCachedAI(list, ctx){
 }
 async function fetchAIStory(a, ctx){
   const key = getAIKey();
-  if(!key) throw new Error('No OpenAI API key');
+  if(!key) throw new Error('Backend OpenAI unavailable');
   const facts = serializableFacts(factsForStory(a, ctx));
   const baseline = plainArticleText(a);
   const phase = seasonToneBucket(ctx.week);
@@ -9560,9 +9557,9 @@ async function fetchAIStory(a, ctx){
     'Return strict JSON only with exactly this shape: {"headline":"...","dek":"...","paragraphs":["...","...","..."],"quote":{"text":"...","who":"..."}}.'
   ].filter(Boolean).join(' ');
   const user = `Story ID: ${a.id}\nStory kind: ${a.kind}\nDeterministic draft for factual/editorial context: ${JSON.stringify(baseline)}\nREAL LEAGUE/MATCHUP FACTS: ${JSON.stringify(facts)}\nAnalyze coaching blunders and real player performances when roster facts are present. Mention exact margins, actual high-scoring starter names, bench mistakes and historical rivalry stats naturally when supplied.`;
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+  const res = await fetch('/api/ai-news', {
     method:'POST',
-    headers:{'Content-Type':'application/json','Authorization':'Bearer ' + key},
+    headers:{'Content-Type':'application/json'},
     body:JSON.stringify({
       model:AI_MODEL, temperature:0.88,
       response_format:{type:'json_object'},
@@ -9876,7 +9873,7 @@ return {
      · A low ambience bed: a sub drone plus a soft pulse on a lookahead
        scheduler, sitting far enough under the dialogue to be felt.
      · Optional ElevenLabs voicing (eleven_flash_v2_5) for the two hosts,
-       keyed client-side from Setup, with an in-memory clip cache and a
+       proxied server-side, with an in-memory clip cache and a
        prefetch hook so the next line is decoded before it is needed.
 
    Nothing here is required for the show to run: with no AudioContext, no
@@ -9896,7 +9893,7 @@ const prefs = {
   mode: 'auto',          // 'auto' | 'device' | 'cc'
   sfx: true,
   bed: true,
-  key: '',
+  key: 'backend',
   voiceHost: '',
   voiceAnalyst: '',
 };
@@ -9908,20 +9905,26 @@ function loadPrefs(){
     if(saved.mode === 'auto' || saved.mode === 'device' || saved.mode === 'cc') prefs.mode = saved.mode;
     if(typeof saved.sfx === 'boolean') prefs.sfx = saved.sfx;
     if(typeof saved.bed === 'boolean') prefs.bed = saved.bed;
-    prefs.key = typeof saved.key === 'string' ? saved.key : '';
+    prefs.key = 'backend';
     prefs.voiceHost = typeof saved.voiceHost === 'string' ? saved.voiceHost : '';
     prefs.voiceAnalyst = typeof saved.voiceAnalyst === 'string' ? saved.voiceAnalyst : '';
   }
+  prefs.key = 'backend';
+  try{
+    const persisted = Object.assign({}, prefs);
+    delete persisted.key;
+    localStorage.setItem(PREF_KEY, JSON.stringify(persisted));
+  }catch(e){}
   return prefs;
 }
 function savePrefs(patch){
   Object.assign(prefs, patch || {});
-  try{ localStorage.setItem(PREF_KEY, JSON.stringify(prefs)); }catch(e){}
+  try{ const persisted = Object.assign({}, prefs); delete persisted.key; localStorage.setItem(PREF_KEY, JSON.stringify(persisted)); }catch(e){}
   return prefs;
 }
 function clearPrefs(){
   try{ localStorage.removeItem(PREF_KEY); }catch(e){}
-  Object.assign(prefs, { mode:'auto', sfx:true, bed:true, key:'', voiceHost:'', voiceAnalyst:'' });
+  Object.assign(prefs, { mode:'auto', sfx:true, bed:true, key:'backend', voiceHost:'', voiceAnalyst:'' });
   clipCache.clear();
 }
 loadPrefs();
@@ -10242,17 +10245,17 @@ function fetchClip(text, speaker){
   const c = ensure();
   if(!c) return Promise.reject(new Error('No audio context'));
   const key = (prefs.key || '').trim();
-  if(!key) return Promise.reject(new Error('No ElevenLabs key'));
+  if(!key) return Promise.reject(new Error('Backend ElevenLabs unavailable'));
 
   const vid = voiceId(speaker);
   const ck = cacheKey(vid, text);
   if(clipCache.has(ck)) return clipCache.get(ck);
 
-  const p = fetch('https://api.elevenlabs.io/v1/text-to-speech/' + encodeURIComponent(vid) +
-                  '?output_format=mp3_44100_128', {
+  const p = fetch('/api/tts', {
     method: 'POST',
-    headers: { 'xi-api-key': key, 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
+    headers: { 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
     body: JSON.stringify({
+      voiceId: vid,
       text: String(text == null || String(text).trim() === '' ? 'The desk is standing by while the league feed updates.' : text),
       model_id: ELEVEN_MODEL,
       voice_settings: speaker === 'analyst'
@@ -10268,7 +10271,7 @@ function fetchClip(text, speaker){
           const detail = j && j.detail;
           if(detail) msg += ' · ' + (detail.message || detail.status || JSON.stringify(detail).slice(0, 140));
         }catch(e){ if(body) msg += ' · ' + body.slice(0, 140); }
-        if(res.status === 401) msg = 'ElevenLabs rejected that key (401).';
+        if(res.status === 401) msg = 'ElevenLabs backend authentication failed (401).';
         if(res.status === 429) msg = 'ElevenLabs rate limit or quota reached (429).';
         throw new Error(msg);
       });
@@ -10386,7 +10389,7 @@ return {
    sting fires, the graphic flips, the speaking host lights up, the lower
    third takes the headline and the debate question, and the line goes to
    whichever voice source is live — ElevenLabs (eleven_flash_v2_5) when a key
-   is saved in Setup, the device's speech synthesis otherwise. With audio
+   is available from the backend, the device's speech synthesis otherwise. With audio
    muted or unavailable it falls back to a timed read so the captions and
    graphics still pace like a broadcast.
 ============================================================================ */
@@ -10886,20 +10889,20 @@ function segGameOfWeek(week){
     },
   };
 
-  let vault = null;
+  let recordbook = null;
   try{
-    if(LeagueData.hasHistory() && A.ownerId && B.ownerId && window.getH2H) vault = window.getH2H(A.ownerId, B.ownerId);
-  }catch(e){ vault = null; }
+    if(LeagueData.hasHistory() && A.ownerId && B.ownerId && window.getH2H) recordbook = window.getH2H(A.ownerId, B.ownerId);
+  }catch(e){ recordbook = null; }
 
-  const vaultGfx = vault && vault.meetingCount ? {
-    title: 'The Vault · All-Time Series',
+  const recordBookGfx = recordbook && recordbook.meetingCount ? {
+    title: 'The Record Book · All-Time Series',
     rows: [
-      { idx:'H2H', name: A.name + ' vs ' + B.name, sub:'ALL-TIME HEAD TO HEAD', value: (Number(vault.winsFor)||0) + '-' + (Number(vault.winsAgainst)||0) + (vault.ties ? '-' + vault.ties : '') },
-      { idx:'PTS', name:'Career points in this series', sub: A.name + ' differential', value: ((Number(vault.diff)||0) >= 0 ? '+' : '−') + n1(Math.abs(Number(vault.diff)||0)), dir: (Number(vault.diff)||0) >= 0 ? 'up' : 'down' },
-      vault.lastMeeting ? { idx:'LST', name:'Last meeting', sub: (vault.lastMeeting.year || '—') + ' · Week ' + (vault.lastMeeting.week || '—'), value: n1(vault.lastMeeting.scoreFor) + '–' + n1(vault.lastMeeting.scoreAgainst) } : null,
-      (Number(vault.streakCount)||0) > 1 ? { idx:'STK', name:'Current streak', sub:'Consecutive results in this series', value: vault.streakCount + ' STRAIGHT' } : null,
+      { idx:'H2H', name: A.name + ' vs ' + B.name, sub:'ALL-TIME HEAD TO HEAD', value: (Number(recordbook.winsFor)||0) + '-' + (Number(recordbook.winsAgainst)||0) + (recordbook.ties ? '-' + recordbook.ties : '') },
+      { idx:'PTS', name:'Career points in this series', sub: A.name + ' differential', value: ((Number(recordbook.diff)||0) >= 0 ? '+' : '−') + n1(Math.abs(Number(recordbook.diff)||0)), dir: (Number(recordbook.diff)||0) >= 0 ? 'up' : 'down' },
+      recordbook.lastMeeting ? { idx:'LST', name:'Last meeting', sub: (recordbook.lastMeeting.year || '—') + ' · Week ' + (recordbook.lastMeeting.week || '—'), value: n1(recordbook.lastMeeting.scoreFor) + '–' + n1(recordbook.lastMeeting.scoreAgainst) } : null,
+      (Number(recordbook.streakCount)||0) > 1 ? { idx:'STK', name:'Current streak', sub:'Consecutive results in this series', value: recordbook.streakCount + ' STRAIGHT' } : null,
     ].filter(Boolean),
-    note: vault.meetingCount + ' career meetings on record.',
+    note: recordbook.meetingCount + ' career meetings on record.',
   } : null;
 
   const favourite = prob >= 50 ? A : B;
@@ -10928,14 +10931,14 @@ function segGameOfWeek(week){
       'tale_of_the_tape', tape, 'ANALYSIS · ' + String(dog.name).toUpperCase() + ' LIVE UNDERDOG',
       { q:{ kind:'quote', text:'"They do not need to be better for sixteen weeks. Just for one Sunday."' } }),
 
-    vaultGfx ? cue('host',
-      `And there is history here. All time, this series is ${Number(vault.winsFor)||0} and ${Number(vault.winsAgainst)||0} across ${vault.meetingCount} meetings.`,
-      'record_alert', vaultGfx, 'RECORD ALERT · ' + (Number(vault.winsFor)||0) + '-' + (Number(vault.winsAgainst)||0) + ' ALL-TIME',
+    recordBookGfx ? cue('host',
+      `And there is history here. All time, this series is ${Number(recordbook.winsFor)||0} and ${Number(recordbook.winsAgainst)||0} across ${recordbook.meetingCount} meetings.`,
+      'record_alert', recordBookGfx, 'RECORD ALERT · ' + (Number(recordbook.winsFor)||0) + '-' + (Number(recordbook.winsAgainst)||0) + ' ALL-TIME',
       { sfx:'breaking' }) : null,
 
-    vaultGfx && (Number(vault.streakCount)||0) > 1 ? cue('analyst',
-      `And the current streak is ${vault.streakCount} straight in this matchup. At some point that stops being variance and starts being a personality trait.`,
-      'record_alert', vaultGfx, 'STREAK · ' + vault.streakCount + ' STRAIGHT IN THE SERIES') : null,
+    recordBookGfx && (Number(recordbook.streakCount)||0) > 1 ? cue('analyst',
+      `And the current streak is ${recordbook.streakCount} straight in this matchup. At some point that stops being variance and starts being a personality trait.`,
+      'record_alert', recordBookGfx, 'STREAK · ' + recordbook.streakCount + ' STRAIGHT IN THE SERIES') : null,
 
     cue('analyst',
       scored
@@ -11168,7 +11171,7 @@ function segStateOfLeague(week){
     rows,
     note: rep.repeat.chances >= 3
       ? 'Title defenses in this league: ' + rep.repeat.repeats + ' successful in ' + rep.repeat.chances + '.'
-      : 'Read from ' + rep.seasonCount + ' completed season' + (rep.seasonCount === 1 ? '' : 's') + ' in the Vault.',
+      : 'Read from ' + rep.seasonCount + ' completed season' + (rep.seasonCount === 1 ? '' : 's') + ' in the Record Book.',
   };
 
   const marqueeSay = marquee
@@ -11271,7 +11274,7 @@ function seg2026HonorRoll(week){
     dir:(Number(entry.profile.titles)||0) > 0 ? 'up' : '',
   }));
   if(!rows.length){
-    rows.push({ idx:'—', name:champ.displayName || '2025 champion', sub:'Vault career rows are still loading', value:'2025 CHAMP' });
+    rows.push({ idx:'—', name:champ.displayName || '2025 champion', sub:'Record Book career rows are still loading', value:'2025 CHAMP' });
   }
   const board = {
     title:'All-Time Franchise Honor Roll',
@@ -11282,7 +11285,7 @@ function seg2026HonorRoll(week){
     cue('host', `Welcome to the 2026 Preseason Special. I'm Jim Tolliver with Dee Rawls, and the first fact on the board belongs to ${champ.displayName}: the 2025 title is theirs until somebody takes it away.`, 'rundown', board, '2026 PRESEASON SPECIAL · STATE OF THE LEAGUE', { sfx:'whoosh' }),
     cue('analyst', drought
       ? `${drought.displayName} owns the longest active championship drought on this board${drought.lastTitleYear ? `, without a ring since ${drought.lastTitleYear}` : ', still waiting on the first one'}. That is the pressure point I am watching before Week 1.`
-      : `The Vault has the champion, but the drought table is still resolving. We will keep this to verified history instead of inventing a grievance.`,
+      : `The Record Book has the champion, but the drought table is still resolving. We will keep this to verified history instead of inventing a grievance.`,
       'rundown', board, drought ? 'LONGEST DROUGHT · ' + String(drought.displayName).toUpperCase() : 'HONOR ROLL · VAULT VERIFIED'),
     cue('host', `The honor roll is the expectation setter: titles first, career win percentage next, and the 2025 final rank beside it. Everybody starts 2026 at zero and zero, but nobody starts with the same résumé.`, 'rundown', board, 'ALL-TIME HONOR ROLL · 2026 EXPECTATIONS'),
   ]);
@@ -11347,7 +11350,7 @@ function seg2026Week1Spotlight(week){
   const meetings = historyMatch ? Number(historyMatch.meetings || 0) : 0;
   const seriesText = series && meetings
     ? `${Number(series.winsFor)||0}-${Number(series.winsAgainst)||0}${Number(series.ties)||0 ? '-' + Number(series.ties) : ''} across ${meetings} meeting${meetings === 1 ? '' : 's'}`
-    : 'first meeting in the loaded Vault';
+    : 'first meeting in the loaded Record Book';
   const qbA = safeStudioCall('week one away starter', ()=> FSNIntel.startingQB(week, away.id), null);
   const qbB = safeStudioCall('week one home starter', ()=> FSNIntel.startingQB(week, home.id), null);
   const tape = {
@@ -11359,7 +11362,7 @@ function seg2026Week1Spotlight(week){
   const favProb = awayProb >= 50 ? awayProb : 100 - awayProb;
   return seg('preseason-week1', 'Matchup of the Week 1 Spotlight', [
     cue('host', `Marquee Game: ${away.name} versus ${home.name}. This is the Week 1 matchup we are putting under the studio lights before a single point is scored.`, 'tale_of_the_tape', tape, 'MARQUEE GAME · ' + String(away.name).toUpperCase() + ' VS ' + String(home.name).toUpperCase(), { sfx:'whoosh' }),
-    cue('analyst', `The Vault has this series at ${seriesText}. That matters as context, not destiny; these are new 2026 rosters and the scoreboard is still untouched.`, 'tale_of_the_tape', tape, 'ALL-TIME SERIES · ' + seriesText.toUpperCase()),
+    cue('analyst', `The Record Book has this series at ${seriesText}. That matters as context, not destiny; these are new 2026 rosters and the scoreboard is still untouched.`, 'tale_of_the_tape', tape, 'ALL-TIME SERIES · ' + seriesText.toUpperCase()),
     cue('host', `The pregame model leans ${favourite.name} at roughly ${Math.round(favProb)} percent. That is a win probability, not a final score, and Week 1 is exactly when preseason certainty gets stress-tested.`, 'tale_of_the_tape', tape, 'WIN PROBABILITY · ' + String(favourite.name).toUpperCase() + ' ' + Math.round(favProb) + '%', { sfx:'sting' }),
   ]);
 }
@@ -11936,7 +11939,7 @@ function renderGraphic(type, data){
     </div>`;
   }
 
-  const badge = data.badge || (type === 'record_alert' ? 'The Vault'
+  const badge = data.badge || (type === 'record_alert' ? 'The Record Book'
               : type === 'rundown' ? 'Rankings'
               : type === 'draft' ? 'Draft'
               : 'Spotlight');
@@ -12712,7 +12715,7 @@ function wireSetupAudio(){
 
   $('elevenTest').addEventListener('click', ()=>{
     if(!a.hasKey()){
-      $('elevenStatus').textContent = 'Paste an ElevenLabs API key first.';
+      $('elevenStatus').textContent = 'Backend ElevenLabs is not available.';
       return;
     }
     a.unlock();
@@ -12823,7 +12826,7 @@ const MATCHUP_FLAVOR = {
 
 const ui = {
   screen: 'home',
-  vaultTab: 'franchises',
+  recordBookTab: 'franchises',
   topic: 'all',
   storyCategory: '',
   storyAuthorId: '',
@@ -12975,7 +12978,7 @@ function availableSeasonYears(){
   const active = uiActiveSeasonYear();
   const selected = parseInt(($('seasonYear').value || '').trim(), 10) || active;
 
-  // Before the Vault is loaded, still expose the requested quick range. In 2026
+  // Before the Record Book is loaded, still expose the requested quick range. In 2026
   // this is exactly 2018–2026; in later seasons it rolls forward by nine years.
   if(!years.length){
     const first = Math.max(2018, active - 8);
@@ -13384,6 +13387,11 @@ function renderTicker(){
 /* ============================================================
    HOME — THE DESK
 ============================================================ */
+function renderDesk(){
+  renderHome();
+  renderHomeStories();
+}
+
 function renderHome(){
   const live = LeagueData.hasLive();
   $('homeNoData').classList.toggle('hidden', live);
@@ -13688,23 +13696,23 @@ function matchupSide(team, score, leading, status, projected, week){
 }
 
 /* ============================================================
-   THE VAULT
+   THE RECORD BOOK
 ============================================================ */
-function renderVault(){
+function renderRecordBook(){
   const hasHist = LeagueData.hasHistory();
 
-  $('vaultMeta').textContent = hasHist
+  $('recordBookMeta').textContent = hasHist
     ? `${LeagueData.seasonCount()} seasons · ${Object.keys(LeagueData.leagueHistory.managers).length} managers · ${LeagueData.matchupCount().toLocaleString()} matchups`
     : 'No history loaded';
 
   if(!hasHist){
-    $('vaultBody').innerHTML = emptyState('THE VAULT IS SEALED', 'Load your all-time league history from Setup to unlock franchise resumes, rivalries and records.', 'setup');
+    $('recordBookBody').innerHTML = emptyState('THE RECORD BOOK IS SEALED', 'Load your all-time league history from Setup to unlock franchise resumes, rivalries and records.', 'setup');
     return;
   }
 
-  if(ui.vaultTab === 'franchises')      safeRun('franchises', renderFranchises, ()=> renderScreenFallback('vault'));
-  else if(ui.vaultTab === 'rivalries')  safeRun('rivalries', renderRivalries, ()=> renderScreenFallback('vault'));
-  else                                  safeRun('records', renderRecords, ()=> renderScreenFallback('vault'));
+  if(ui.recordBookTab === 'franchises')      safeRun('franchises', renderFranchises, ()=> renderScreenFallback('recordbook'));
+  else if(ui.recordBookTab === 'rivalries')  safeRun('rivalries', renderRivalries, ()=> renderScreenFallback('recordbook'));
+  else                                  safeRun('records', renderRecords, ()=> renderScreenFallback('recordbook'));
 }
 
 /* ---- FRANCHISE RESUMES ---- */
@@ -13723,11 +13731,11 @@ function renderFranchises(){
                  || y.r.wins - x.r.wins);
 
   if(!rows.length){
-    $('vaultBody').innerHTML = emptyState('NO RESUMES', 'The loaded seasons had no final standings to build resumes from.', null);
+    $('recordBookBody').innerHTML = emptyState('NO RESUMES', 'The loaded seasons had no final standings to build resumes from.', null);
     return;
   }
 
-  $('vaultBody').innerHTML = `<div class="vault-card-stack max-w-6xl mx-auto w-full">${rows.map(({m, r}, i)=>{
+  $('recordBookBody').innerHTML = `<div class="record-book-card-stack max-w-6xl mx-auto w-full">${rows.map(({m, r}, i)=>{
     const info = managerLatestInfo(m.id);
     const titlePill = r.champs > 0
       ? `<span class="franchise-ring">🏆 ${r.champs}× Champ</span>`
@@ -13758,7 +13766,7 @@ function renderFranchises(){
     </article>`;
   }).join('')}</div>`;
 
-  wireFranchiseCards($('vaultBody'));
+  wireFranchiseCards($('recordBookBody'));
 }
 
 function franchiseMetric(label, value, color){
@@ -13821,7 +13829,7 @@ function hideFranchiseTrendTips(root){
 function showFranchiseTrendTip(node, pinned){
   const wrap = node.closest('.fr-trend-wrap');
   if(!wrap) return;
-  hideFranchiseTrendTips(node.closest('#vaultBody, #franchiseModalBody') || document);
+  hideFranchiseTrendTips(node.closest('#recordBookBody, #franchiseModalBody') || document);
   const tip = wrap.querySelector('.fr-trend-tip');
   if(!tip) return;
   const nodeBox = node.getBoundingClientRect();
@@ -14064,7 +14072,7 @@ function openFranchiseModal(ownerId){
     <div class="dossier-share">
       <section class="dossier-share-card">
         <div class="dossier-share-top">
-          <div class="kicker text-[var(--cyan)]">FSN · The Vault · Franchise Resume</div>
+          <div class="kicker text-[var(--cyan)]">FSN · The Record Book · Franchise Resume</div>
           <div class="flex items-center gap-4 mt-4">
             ${crest(info.teamName || manager.name, info.logo, 76)}
             <div class="min-w-0">
@@ -14129,7 +14137,7 @@ function renderRivalries(){
   const hist = LeagueData.leagueHistory;
 
   if(managers.length < 2){
-    $('vaultBody').innerHTML = emptyState('NO RIVALRIES', 'At least two managers are needed to build a head-to-head record.', null);
+    $('recordBookBody').innerHTML = emptyState('NO RIVALRIES', 'At least two managers are needed to build a head-to-head record.', null);
     return;
   }
 
@@ -14146,7 +14154,7 @@ function renderRivalries(){
   const topRivalries = Object.values(hist.h2h)
     .slice().sort((x,y)=> y.meetings.length - x.meetings.length).slice(0,5);
 
-  $('vaultBody').innerHTML = `
+  $('recordBookBody').innerHTML = `
     <div class="card p-4 mb-3">
       <div class="section-head"><span class="bar"></span><h2>Head to Head</h2></div>
       <div class="grid grid-cols-2 gap-2.5">
@@ -14180,12 +14188,12 @@ function renderRivalries(){
   $('rivalA').addEventListener('change', (e)=>{ ui.rivalA = e.target.value; renderRivalryResult(); });
   $('rivalB').addEventListener('change', (e)=>{ ui.rivalB = e.target.value; renderRivalryResult(); });
 
-  $('vaultBody').querySelectorAll('[data-rival-a]').forEach(btn=>{
+  $('recordBookBody').querySelectorAll('[data-rival-a]').forEach(btn=>{
     btn.addEventListener('click', ()=>{
       ui.rivalA = btn.dataset.rivalA;
       ui.rivalB = btn.dataset.rivalB;
       renderRivalries();
-      $('vaultBody').scrollIntoView({ behavior:'smooth', block:'start' });
+      $('recordBookBody').scrollIntoView({ behavior:'smooth', block:'start' });
     });
   });
 
@@ -14267,7 +14275,7 @@ function renderRecords(){
   const blowouts = r.biggestBlowouts || (r.biggestBlowout ? [r.biggestBlowout] : []);
 
   if(!ppgBoard.length && !pointsBoard.length && !highest.length && !lowest.length && !blowouts.length){
-    $('vaultBody').innerHTML = emptyState('NO RECORDS', 'The loaded seasons held no completed games to build records from.', null);
+    $('recordBookBody').innerHTML = emptyState('NO RECORDS', 'The loaded seasons held no completed games to build records from.', null);
     return;
   }
 
@@ -14285,30 +14293,30 @@ function renderRecords(){
       info.name, `${x.startYear} WK${x.startWeek} → ${x.endYear} WK${x.endWeek}`, info.logo, ''));
   }
 
-  $('vaultBody').innerHTML = `<div class="vault-records">
-    <div class="vault-leaderboard-grid">
+  $('recordBookBody').innerHTML = `<div class="record-book-records">
+    <div class="record-book-leaderboard-grid">
       ${careerLeaderboardPanel('Top 5 Career PPG', 'Regular season + playoff points divided by every game played · minimum one archived season', ppgBoard, 'ppg')}
       ${careerLeaderboardPanel('Top 5 Career Points For', 'The all-time scoring volume board across every loaded matchup', pointsBoard, 'points')}
     </div>
 
-    <div class="vault-milestone-grid">
+    <div class="record-book-milestone-grid">
       ${recordPodium('Highest Single-Game Scores', 'gold', highest, 'high')}
       ${recordPodium('Hall of Shame · Lowest Scores', 'red', lowest, 'low')}
       ${recordPodium('Biggest Blowouts', 'cyan', blowouts, 'blowout')}
     </div>
 
-    ${streakCards.length ? `<div class="vault-streak-grid">${streakCards.join('')}</div>` : ''}
+    ${streakCards.length ? `<div class="record-book-streak-grid">${streakCards.join('')}</div>` : ''}
   </div>`;
 }
 
 function careerLeaderboardPanel(title, subtitle, rows, mode){
-  return `<section class="vault-leaderboard">
-    <header class="vault-leaderboard-head">
+  return `<section class="record-book-leaderboard">
+    <header class="record-book-leaderboard-head">
       <div class="kicker text-[var(--cyan)]">All-Time Leaderboard</div>
-      <div class="vault-leaderboard-title">${esc(title)}</div>
-      <div class="vault-leaderboard-sub">${esc(subtitle)}</div>
+      <div class="record-book-leaderboard-title">${esc(title)}</div>
+      <div class="record-book-leaderboard-sub">${esc(subtitle)}</div>
     </header>
-    <div class="vault-leaderboard-list">
+    <div class="record-book-leaderboard-list">
       ${rows.map((row,index)=>{
         const info = managerLatestInfo(row.ownerId);
         const main = mode === 'ppg'
@@ -14317,11 +14325,11 @@ function careerLeaderboardPanel(title, subtitle, rows, mode){
         const sub = mode === 'ppg'
           ? `${row.totalGames} games · Best ${row.bestSeasonPpg.toFixed(1)} PPG`
           : `${row.totalGames} games · ${row.seasons} season${row.seasons===1?'':'s'}`;
-        return `<div class="vault-leader-row">
-          <div class="vault-leader-rank">${index+1}</div>
+        return `<div class="record-book-leader-row">
+          <div class="record-book-leader-rank">${index+1}</div>
           ${crest(info.teamName || info.name, info.logo, 34)}
-          <div class="vault-leader-name"><strong>${esc(info.name)}</strong><span>${esc(info.teamName || 'Franchise')}</span></div>
-          <div class="vault-leader-value"><strong>${esc(main)}</strong><span>${esc(sub)}</span></div>
+          <div class="record-book-leader-name"><strong>${esc(info.name)}</strong><span>${esc(info.teamName || 'Franchise')}</span></div>
+          <div class="record-book-leader-value"><strong>${esc(main)}</strong><span>${esc(sub)}</span></div>
         </div>`;
       }).join('') || `<div class="p-4 text-[11px] text-[var(--dim)]">No qualifying franchises.</div>`}
     </div>
@@ -14331,11 +14339,11 @@ function careerLeaderboardPanel(title, subtitle, rows, mode){
 function recordPodium(title, tone, rows, mode){
   const colorMap = { gold:'var(--gold)', red:'var(--red)', cyan:'var(--cyan)' };
   const color = colorMap[tone] || 'var(--cyan)';
-  return `<section class="vault-podium">
-    <header class="vault-podium-head">
+  return `<section class="record-book-podium">
+    <header class="record-book-podium-head">
       <div class="kicker" style="color:${color}">${esc(title)}</div>
     </header>
-    <div class="vault-podium-list">
+    <div class="record-book-podium-list">
       ${rows.slice(0,3).map((row,index)=>{
         const ownerId = mode === 'blowout' ? row.winnerOwnerId : row.ownerId;
         const info = managerLatestInfo(ownerId);
@@ -14344,11 +14352,11 @@ function recordPodium(title, tone, rows, mode){
           ? `${row.winnerScore.toFixed(1)}–${row.loserScore.toFixed(1)} over ${row.loserTeamName}`
           : `${row.year} · Week ${row.week}`;
         const value = mode === 'blowout' ? `+${row.margin.toFixed(1)}` : `${row.score.toFixed(1)} PTS`;
-        return `<div class="vault-podium-row">
-          <div class="vault-podium-rank">${index+1}</div>
+        return `<div class="record-book-podium-row">
+          <div class="record-book-podium-rank">${index+1}</div>
           ${crest(teamName || info.name, info.logo, 32)}
-          <div class="vault-podium-copy"><strong>${esc(teamName || info.name)}</strong><span>${esc(detail)}</span></div>
-          <div class="vault-podium-value" style="color:${index===0?color:'var(--off)'}">${esc(value)}</div>
+          <div class="record-book-podium-copy"><strong>${esc(teamName || info.name)}</strong><span>${esc(detail)}</span></div>
+          <div class="record-book-podium-value" style="color:${index===0?color:'var(--off)'}">${esc(value)}</div>
         </div>`;
       }).join('') || `<div class="p-4 text-[11px] text-[var(--dim)]">No qualifying games.</div>`}
     </div>
@@ -14430,7 +14438,7 @@ function applyLeagueHistory(yearsData, skipped, sourceLabel, options){
   $('historyStatus').textContent = msg;
 
   showHistoryBanner(`✓ Loaded ${yearsData.length} season${yearsData.length===1?'':'s'} (${yearRange}) and ${matchupCount.toLocaleString()} total matchups.`);
-  if(!opts.silent) toast('Vault unlocked — rivalries and records are live.');
+  if(!opts.silent) toast('Record Book unlocked — rivalries and records are live.');
 
   // A fresh archive invalidates whichever rivalry was on screen.
   ui.rivalA = ''; ui.rivalB = '';
@@ -14484,7 +14492,7 @@ function applyFetchedHistoryPayload(historyResult, options){
 
   // fetchAllTimeHistory already computed/stored the archive immediately after
   // the sequential requests completed. Reuse that exact cache here for UI status,
-  // banners, Vault metadata, and the season time-machine.
+  // banners, Record Book metadata, and the season time-machine.
   const merged = withCurrentSeason(yearsData);
   const summary = applyLeagueHistory(merged, skipped, 'Fetched automatically from ESPN', options);
   renderWeekScrubbers();
@@ -14507,137 +14515,67 @@ async function fetchLeagueData(options){
   $('leagueIdInput').value = league;
   setFetchLoading(true);
   hideHistoryBanner();
-  $('fetchStatus').textContent = silent
-    ? 'Restoring live league + full league history…'
-    : 'Fetching live season + consolidated league history…';
-  $('historyStatus').textContent = 'Loading league history…';
-
-  /* A 401/403 from ESPN means the league is private — the proxy reads ESPN
-     anonymously, so a private league can never hydrate. Track it across both
-     branches so the failure message can name the real cause instead of a
-     generic "could not be loaded". A 404 (season not renewed) is NOT auth. */
-  let sawAuthError = false;
-  const noteAuthError = (err)=>{
-    if(err && /\bHTTP 40[13]\b/.test(String(err.message || err))) sawAuthError = true;
-  };
-
-  /* DUAL-ROUTE INGESTION — both branches run together and each degrades
-     gracefully. The live branch resolves to null (never throws) so a 404 for a
-     season the league has not renewed yet cannot sink the whole load; the
-     archive branch tries the consolidated leagueHistory route first and falls
-     back to sequential per-year hydration. */
-  const liveTask = fetchLeagueDataViaProxies(liveUrl)
-    .then(raw=>{
-      const single = Array.isArray(raw) ? raw[raw.length - 1] : raw;
-      return (single && Array.isArray(single.teams) && single.teams.length) ? single : null;
-    })
-    .catch(err=>{
-      noteAuthError(err);
-      console.warn('[FSN] Live season request failed (likely not yet renewed for ' + currentYear + ', or a private league); using latest historical season as active.', err);
-      return null;
-    });
-
-  const historyTask = fetchLeagueHistoryArchive(league).catch(err=>{
-    noteAuthError(err);
-    console.warn('[FSN] League history archive fetch failed entirely.', err);
-    return { yearsData:[], skipped:[], route:'none', error:err };
-  });
+  $('fetchStatus').textContent = silent ? 'Restoring current season…' : 'Fetching current season…';
+  $('historyStatus').textContent = LeagueData.hasHistory()
+    ? $('historyStatus').textContent
+    : 'Historical archive is optional — upload one JSON export to unlock the full Record Book.';
 
   try{
-    const [liveData, archive] = await Promise.all([liveTask, historyTask]);
-    const archiveYears = archive && Array.isArray(archive.yearsData) ? archive.yearsData : [];
-
-    /* Resolve the active season. Prefer the live current-year payload; when it
-       is unavailable (404 / not renewed) fall back to the most recent
-       historical season so the app still opens on a real, populated state. */
-    let activeLeagueData = liveData;
-    let activeFromLive = !!liveData;
-    if(!activeLeagueData && archiveYears.length){
-      activeLeagueData = archiveYears[archiveYears.length - 1].leagueData;
+    const raw = await fetchLeagueDataViaProxies(liveUrl);
+    const liveData = Array.isArray(raw) ? raw[raw.length - 1] : raw;
+    if(!liveData || !Array.isArray(liveData.teams) || !liveData.teams.length){
+      throw new Error('NO_LIVE_LEAGUE_DATA');
     }
 
-    if(!activeLeagueData){
-      throw new Error('NO_LEAGUE_DATA');
+    const liveInfo = applyLiveLeaguePayload(league, liveData, currentYear);
+    setConn('live');
+
+    // Keep an uploaded archive intact, but never fetch historical ESPN routes
+    // from this instant League-ID path.
+    const uploadedArchive = Array.isArray(window._franchiseYearsData)
+      ? window._franchiseYearsData.slice()
+      : [];
+    let historySeed = uploadedArchive;
+    if(!historySeed.length){
+      historySeed = normalizeHistoryPayload([liveData]).yearsData || [];
     }
-
-    const liveInfo = applyLiveLeaguePayload(league, activeLeagueData, activeFromLive ? currentYear : null);
-    setConn(activeFromLive ? 'live' : 'history');
-
-    let summary = null;
-    if(archiveYears.length){
-      // fetchLeagueHistoryArchive already flattened + de-duped the seasons;
-      // applyFetchedHistoryPayload folds in the active season, computes the
-      // all-time stats, and stores the raw list on window._franchiseYearsData.
-      summary = applyFetchedHistoryPayload({ yearsData: archiveYears, skipped: archive.skipped || [] }, { silent });
-    } else if(activeLeagueData && Array.isArray(activeLeagueData.teams) && activeLeagueData.teams.length){
-      // No archive landed — still aggregate the single active season so the
-      // Vault, Timeline, and Record Book have something to render.
-      summary = processMultiYearHistory([activeLeagueData], 'Fetched automatically from ESPN');
+    if(historySeed.length){
+      applyLeagueHistory(
+        withCurrentSeason(historySeed),
+        [],
+        uploadedArchive.length ? 'Historical archive + current season' : 'Current season',
+        { silent:true }
+      );
       renderWeekScrubbers();
     }
 
-    const loadedYears = summary && Array.isArray(summary.years) && summary.years.length
-      ? summary.years.slice().sort((a,b)=> a - b)
-      : [liveInfo.activeSeason];
-    const seasonCount = loadedYears.length;
-    const matchupCount = summary && typeof summary.matchups === 'number' ? summary.matchups : 0;
-    const rangeLabel = seasonCount > 1
-      ? `${loadedYears[0]}–${loadedYears[seasonCount - 1]}`
-      : `${loadedYears[0]}`;
-
-    $('fetchStatus').textContent =
-      `✓ Connected — Loaded ${seasonCount} Season${seasonCount === 1 ? '' : 's'} (${rangeLabel}) · ${matchupCount.toLocaleString()} Total Matchups`;
-    if(!activeFromLive){
-      $('historyStatus').textContent = `Live ${currentYear} season not published yet — showing ${loadedYears[seasonCount - 1]} as the active season.`;
+    $('fetchStatus').textContent = `✓ Current season connected — ${liveInfo.activeSeason} · ${liveData.teams.length} teams`;
+    if(!uploadedArchive.length){
+      $('historyStatus').textContent = 'Current season is ready. Historical seasons remain optional — upload one JSON export to unlock the full Record Book.';
     }
 
     try{ localStorage.setItem(SAVED_LEAGUE_ID_KEY, league); }catch(e){}
     savePrefs();
     refreshHistoryUrlLink();
     refreshOpenAIStatus();
-    if(navigate){
-      // Data parsed and stored successfully — leave the Setup screen behind and
-      // open the Home/Desk so the user is not stranded on `setup`.
-      ui.screen = 'home';
 
-      // Switch active screen to 'home' / Desk
-      document.querySelectorAll('.screen').forEach(s => s.setAttribute('data-active', 'false'));
-      const homeScreen = document.querySelector('[data-screen="home"]');
-      if (homeScreen) homeScreen.setAttribute('data-active', 'true');
+    if(navigate) setScreen('home');
 
-      // Update bottom tab bar active state
-      document.querySelectorAll('.tab-btn').forEach(b => b.setAttribute('data-active', 'false'));
-      const deskTab = document.querySelector('.tab-btn[data-tab="home"]');
-      if (deskTab) deskTab.setAttribute('data-active', 'true');
+    // Explicit renderer warm-up requested by the two-path setup flow.
+    safeRun('desk', renderDesk, ()=> renderScreenFallback('home'));
+    safeRun('matchups', renderMatchups, ()=> renderScreenFallback('matchups'));
+    safeRun('recordbook', renderRecordBook, ()=> renderScreenFallback('recordbook'));
+    safeRun('news', renderNews, ()=> renderScreenFallback('news'));
 
-      window.scrollTo({ top:0, behavior:'auto' });
-    }
-
-    /* Repaint through the guarded pipeline. renderAll() dispatches the active
-       screen's renderers (renderHome + renderHomeStories for the Desk) so the
-       cards populate immediately, and every step is wrapped so a single failing
-       widget can neither blank a screen nor bubble into the catch below and
-       falsely report the fetch as failed. */
-    renderAll();
-
-    if(navigate){
-      // Warm the other data screens so switching tabs lands on populated views.
-      // Wrapped individually — these must never sink a successful fetch.
-      safeRun('news', renderNews, ()=> renderScreenFallback('news'));
-      safeRun('vault', renderVault, ()=> renderScreenFallback('vault'));
-    }
-
-    if(!silent) toast(`League connected · ${seasonCount} season${seasonCount === 1 ? '' : 's'} · ${matchupCount.toLocaleString()} matchups`);
+    if(!silent) toast(`Current season connected · ${liveInfo.activeSeason}`);
     return true;
   }catch(err){
     console.error(err);
     setConn('error');
-    if(sawAuthError){
-      $('fetchStatus').textContent = 'ESPN denied access (401/403) — this league is PRIVATE. Set the league visibility to public in ESPN (League → Settings → Basic Settings), or use the JSON fallback below.';
-    } else {
-      $('fetchStatus').textContent = 'The league could not be loaded through the ESPN data route. Check the League ID or use the JSON fallback below.';
-    }
-    if(!LeagueData.hasHistory()) $('historyStatus').textContent = 'League history hydration did not complete.';
+    const auth = /\bHTTP 40[13]\b/.test(String(err && (err.message || err)));
+    $('fetchStatus').textContent = auth
+      ? 'ESPN denied the current-season request (401/403). Confirm the league is public or configure ESPN authentication.'
+      : 'The current season could not be loaded. Check the League ID and try again.';
     return false;
   }finally{
     setFetchLoading(false);
@@ -14724,7 +14662,7 @@ function applyRawPayload(rawData, sourceLabel){
 
   // Also treat it as a live season when it carries a usable team list.
   const single = Array.isArray(rawData) ? rawData[rawData.length - 1] : rawData;
-  if(single && single.teams && single.teams.length){
+  if(!LeagueData.hasLive() && single && single.teams && single.teams.length){
     resetWeekContext(true);
     ui.sourceMode = 'manual';
     ui.currentWeek = deriveCurrentWeek(single);
@@ -14742,7 +14680,7 @@ function applyRawPayload(rawData, sourceLabel){
   }
 
   renderAll();
-  setScreen(LeagueData.hasLive() ? 'home' : 'vault');
+  setScreen(LeagueData.hasLive() ? 'home' : 'recordbook');
 }
 
 const dz = $('dropzone');
@@ -14799,7 +14737,7 @@ function loadPrefs(){
   $('leagueIdInput').value = savedLeagueId || (saved && saved.leagueId) || '';
   $('seasonYear').value = (saved && saved.season) || String(uiActiveSeasonYear());
   $('weekNum').value = (saved && saved.week) || '';
-  try{ $('openaiKey').value = localStorage.getItem(OPENAI_KEY_STORE) || ''; }catch(e){ $('openaiKey').value = ''; }
+  try{ localStorage.removeItem(OPENAI_KEY_STORE); $('openaiKey').value = 'backend'; }catch(e){ $('openaiKey').value = 'backend'; }
   try{ if($('espnS2Input'))   $('espnS2Input').value   = localStorage.getItem('fsn.espn.s2.v1')   || ''; }catch(e){}
   try{ if($('espnSwidInput')) $('espnSwidInput').value = localStorage.getItem('fsn.espn.swid.v1') || ''; }catch(e){}
   refreshOpenAIStatus();
@@ -14842,15 +14780,11 @@ function refreshOpenAIStatus(){
   if(!el) return;
   const viewed = parseInt(($('seasonYear').value || '').trim(), 10) || 0;
   const active = uiActiveSeasonYear();
-  let key = '';
-  try{ key = (localStorage.getItem(OPENAI_KEY_STORE) || '').trim(); }catch(e){}
   if(viewed && viewed !== active){
     const relation = viewed < active ? 'historical' : 'not the active season';
     el.innerHTML = `<span style="color:var(--green)">DETERMINISTIC MODE</span> · ${viewed} is ${relation}; active season is ${active}, so AI requests are bypassed completely.`;
-  } else if(!key){
-    el.innerHTML = `<span style="color:var(--gold)">FALLBACK READY</span> · No key saved. Current-season news uses the deterministic no-replacement engine.`;
   } else {
-    el.innerHTML = `<span style="color:var(--cyan)">AI MODE ARMED</span> · Active-season stories use gpt-4o-mini and cache once per story; failures fall back locally.`;
+    el.innerHTML = `<span style="color:var(--green)">BACKEND AI CONNECTED</span> · OpenAI requests are proxied through /api/ai-news; no API key is stored in this browser.`;
   }
 }
 $('openaiKey').addEventListener('input', ()=>{
@@ -14871,6 +14805,17 @@ $('openaiReveal').addEventListener('click', ()=>{
 $('leagueIdInput').addEventListener('input', ()=>{
   savePrefs();
   refreshHistoryUrlLink();
+});
+
+$('historyUnlockToggle').addEventListener('click', ()=>{
+  const panel = $('historyUploadPanel');
+  const btn = $('historyUnlockToggle');
+  const opening = panel.classList.contains('hidden');
+  panel.classList.toggle('hidden', !opening);
+  btn.setAttribute('aria-expanded', String(opening));
+  btn.textContent = opening
+    ? 'Hide historical archive upload'
+    : 'Want to unlock historical seasons & the Record Book?';
 });
 
 /* Private-league ESPN cookies — persisted locally, never sent anywhere except
@@ -14919,7 +14864,7 @@ $('resetBtn').addEventListener('click', ()=>{
   window._franchiseYearsData = null;
   ui.week = null; ui.rivalA = ''; ui.rivalB = '';
   $('leagueIdInput').value = ''; $('seasonYear').value = String(uiActiveSeasonYear()); $('weekNum').value = '';
-  $('openaiKey').value = '';
+  $('openaiKey').value = 'backend';
   if($('espnS2Input')) $('espnS2Input').value = '';
   if($('espnSwidInput')) $('espnSwidInput').value = '';
   refreshOpenAIStatus();
@@ -15943,13 +15888,13 @@ document.addEventListener('click', (e)=>{
   if(el) setScreen(el.dataset.goto);
 });
 
-$('vaultSeg').addEventListener('click', (e)=>{
-  const btn = e.target.closest('[data-vault]');
+$('recordBookSeg').addEventListener('click', (e)=>{
+  const btn = e.target.closest('[data-record-book]');
   if(!btn) return;
-  ui.vaultTab = btn.dataset.vault;
-  $('vaultSeg').querySelectorAll('button').forEach(b=>
-    b.dataset.active = String(b.dataset.vault === ui.vaultTab));
-  safeRun('vault', renderVault, ()=> renderScreenFallback('vault'));
+  ui.recordBookTab = btn.dataset.recordBook;
+  $('recordBookSeg').querySelectorAll('button').forEach(b=>
+    b.dataset.active = String(b.dataset.recordBook === ui.recordBookTab));
+  safeRun('recordbook', renderRecordBook, ()=> renderScreenFallback('recordbook'));
 });
 
 /* ============================================================
@@ -15979,7 +15924,7 @@ function renderScreenFallback(name){
     home:     'homeQuickScores',
     matchups: 'matchupList',
     news:     'newsLeadWrap',
-    vault:    'vaultBody',
+    recordbook:    'recordBookBody',
   }[name];
   if(name === 'home'){
     const hc = $('homeContent'), hn = $('homeNoData');
@@ -16010,7 +15955,7 @@ function renderAll(){
   }
   else if(ui.screen === 'matchups') safeRun('matchups', renderMatchups, ()=> renderScreenFallback('matchups'));
   else if(ui.screen === 'news')     safeRun('news', renderNews, ()=> renderScreenFallback('news'));
-  else if(ui.screen === 'vault')    safeRun('vault', renderVault, ()=> renderScreenFallback('vault'));
+  else if(ui.screen === 'recordbook')    safeRun('recordbook', renderRecordBook, ()=> renderScreenFallback('recordbook'));
   // Setup is static markup; only its status chips change.
 }
 
