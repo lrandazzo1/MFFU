@@ -2157,39 +2157,25 @@ html[data-studio-historical="true"] #studio{
           Current-season stories can be rewritten by <span class="font-mono text-[var(--off)]">gpt-4o-mini</span> through the secure backend proxy.
           Historical seasons always bypass AI and use the instant deterministic desk. Successful AI stories are cached once per league, season, week and story.
         </p>
-        <input id="openaiKey" type="hidden" value="backend">
-        <button id="openaiReveal" type="button" hidden>SHOW</button>
-        <div class="pill pill-green w-full justify-center" role="status">● Backend AI Connected</div>
-        <p class="text-[10.5px] text-[var(--dim)] leading-relaxed mt-2">
-          Stored only in <span class="font-mono">localStorage</span>. OpenAI keys are sent straight from this page to
-          <span class="font-mono">api.openai.com</span>; no FSN server or backend route is involved. A browser-side key is visible to anyone with access to this device/profile, so use a restricted key.
-        </p>
+<div class="pill pill-green w-full justify-center" role="status">● Backend AI Connected</div>
+        <p class="text-[10.5px] text-[var(--dim)] leading-relaxed mt-2">OpenAI credentials are configured only on the server through <span class="font-mono">OPENAI_API_KEY</span>. The browser never stores or receives the secret.</p>
         <p id="openaiStatus" class="text-[11.5px] text-[var(--dim)] leading-relaxed mt-2"><span style="color:var(--gold)">FALLBACK READY</span> · Backend AI is unavailable; current-season news uses the deterministic no-replacement engine.</p>
       </div>
 
-      <!-- ALL-TIME HISTORY — fetched automatically with the live league -->
-      <div class="card p-4">
-        <div class="section-head"><span class="bar" style="background:var(--gold)"></span><h2>All-Time History</h2></div>
-        <p class="text-[11.5px] text-[var(--dim)] leading-relaxed">
-          The archive loads automatically with <span class="text-[var(--off)] font-semibold">FETCH LEAGUE DATA</span> using lightweight sequential requests for 2025–2018, avoiding oversized archive payloads and proxy rate limits.
-        </p>
-        <div id="historyBanner" class="mt-3 text-[12px] leading-relaxed text-[var(--green)] bg-[rgba(57,255,140,.07)] border border-[rgba(57,255,140,.28)] rounded-lg p-2.5">✓ Loaded 8 seasons (2019–2026) and 687 total matchups.</div>
-        <p id="historyStatus" class="text-[11.5px] text-[var(--dim)] leading-relaxed mt-2">Archive: 2025 failed (NO_SEASONS)</p>
-        <a id="historyUrlLink" class="block mt-3 text-[10px] font-mono text-[var(--cyan)] break-all underline decoration-dotted" target="_blank" rel="noopener" href="https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/leagueHistory/57155288?view=mTeam&amp;view=mRoster&amp;view=mMatchup&amp;view=mMatchupScore&amp;view=mSettings" style="color: var(--cyan); text-decoration: underline dotted;">https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/leagueHistory/57155288?view=mTeam&amp;view=mRoster&amp;view=mMatchup&amp;view=mMatchupScore&amp;view=mSettings</a>
-      </div>
+      
 
       <!-- HISTORICAL ARCHIVE / RECORD BOOK -->
       <div id="historyUploadPanel" class="card p-4 hidden">
         <div class="section-head"><span class="bar" style="background:var(--cyan)"></span><h2>Historical Archive &amp; Record Book</h2></div>
         <p class="text-[11.5px] text-[var(--dim)] leading-relaxed mb-3">
-          ESPN locks historical endpoints behind authentication. To unlock past seasons, rivalries and all-time records, upload one JSON export containing the league's historical seasons. The file is read locally in your browser and is never sent to OpenAI or ElevenLabs.
+          Historical seasons are optional. ESPN historical access can require authentication, so the most reliable path is a one-time JSON export for the league. On mobile, use the native file picker below or paste JSON instead. If no archive is loaded, the current-season app continues normally. The file is read locally and is never sent to OpenAI or ElevenLabs.
         </p>
 
         <div id="dropzone" tabindex="0" role="button" aria-label="Upload historical league archive JSON">
-          <div class="font-display text-[15px] tracking-wide">DROP .JSON</div>
-          <div class="text-[11px] text-[var(--dim)] mt-1.5">or tap to browse files</div>
+          <div class="font-display text-[15px] tracking-wide">HISTORICAL JSON</div>
+          <div class="text-[11px] text-[var(--dim)] mt-1.5">Tap to choose a file · drag & drop on desktop</div>
         </div>
-        <input id="fileInput" type="file" accept=".json,application/json,text/plain,*/*" style="position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none;">
+        <input id="fileInput" class="field mt-3" type="file" accept=".json,application/json,text/plain" aria-label="Choose historical JSON archive" style="font-size:12px; padding:10px 12px;">
 
         <div class="mt-3">
           <label class="label" for="jsonPaste">Paste raw JSON</label>
@@ -2234,19 +2220,8 @@ html[data-studio-historical="true"] #studio{
             Studio Show voices use <span class="font-mono text-[var(--off)]">eleven_flash_v2_5</span> through the secure backend proxy.
             The ElevenLabs API key stays server-side in <span class="font-mono text-[var(--off)]">ELEVENLABS_API_KEY</span> and is never exposed to the browser.
           </p>
-          <input id="elevenKey" type="hidden" value="backend">
-          <button id="elevenReveal" type="button" hidden>SHOW</button>
-          <div class="pill pill-green w-full justify-center" role="status">● Backend AI Connected</div>
-          <div class="grid grid-cols-2 gap-3 mt-3">
-            <div>
-              <label class="label" for="elevenVoiceHost">Anchor Voice ID</label>
-              <input id="elevenVoiceHost" class="field font-mono" style="font-size:11px" autocomplete="off" spellcheck="false" placeholder="pNInz6obpgDQGcFmaJgB">
-            </div>
-            <div>
-              <label class="label" for="elevenVoiceAnalyst">Analyst Voice ID</label>
-              <input id="elevenVoiceAnalyst" class="field font-mono" style="font-size:11px" autocomplete="off" spellcheck="false" placeholder="21m00Tcm4TlvDq8ikWAM">
-            </div>
-          </div>
+<div class="pill pill-green w-full justify-center" role="status">● Backend AI Connected</div>
+          <p class="text-[10.5px] text-[var(--dim)] leading-relaxed mt-3">Anchor and analyst voices are locked to the application defaults; no speaker IDs or API credentials are editable in the browser.</p>
           <button id="elevenTest" class="btn-ghost mt-3">
             <span id="elevenSpinner" class="spinner hidden"></span>
             <span id="elevenTestLabel">TEST BOTH VOICES</span>
@@ -9885,17 +9860,13 @@ window.FSNAudio = (function(){
 
 const PREF_KEY = 'fsn.audio.v1';
 const ELEVEN_MODEL = 'eleven_flash_v2_5';
-/* ElevenLabs' stock library voices — a male read for the anchor, a female
-   read for the analyst. Both are overridable in Setup. */
+/* ElevenLabs stock voices are fixed application defaults. Speaker IDs are not editable in Setup. */
 const DEFAULT_VOICES = { host:'pNInz6obpgDQGcFmaJgB', analyst:'21m00Tcm4TlvDq8ikWAM' };
 
 const prefs = {
   mode: 'auto',          // 'auto' | 'device' | 'cc'
   sfx: true,
   bed: true,
-  key: 'backend',
-  voiceHost: '',
-  voiceAnalyst: '',
 };
 
 function loadPrefs(){
@@ -9905,36 +9876,30 @@ function loadPrefs(){
     if(saved.mode === 'auto' || saved.mode === 'device' || saved.mode === 'cc') prefs.mode = saved.mode;
     if(typeof saved.sfx === 'boolean') prefs.sfx = saved.sfx;
     if(typeof saved.bed === 'boolean') prefs.bed = saved.bed;
-    prefs.key = 'backend';
-    prefs.voiceHost = typeof saved.voiceHost === 'string' ? saved.voiceHost : '';
-    prefs.voiceAnalyst = typeof saved.voiceAnalyst === 'string' ? saved.voiceAnalyst : '';
   }
-  prefs.key = 'backend';
   try{
     const persisted = Object.assign({}, prefs);
-    delete persisted.key;
     localStorage.setItem(PREF_KEY, JSON.stringify(persisted));
   }catch(e){}
   return prefs;
 }
 function savePrefs(patch){
   Object.assign(prefs, patch || {});
-  try{ const persisted = Object.assign({}, prefs); delete persisted.key; localStorage.setItem(PREF_KEY, JSON.stringify(persisted)); }catch(e){}
+  try{ localStorage.setItem(PREF_KEY, JSON.stringify(prefs)); }catch(e){}
   return prefs;
 }
 function clearPrefs(){
   try{ localStorage.removeItem(PREF_KEY); }catch(e){}
-  Object.assign(prefs, { mode:'auto', sfx:true, bed:true, key:'backend', voiceHost:'', voiceAnalyst:'' });
+  Object.assign(prefs, { mode:'auto', sfx:true, bed:true });
   clipCache.clear();
 }
 loadPrefs();
 
 function voiceId(speaker){
-  const v = speaker === 'analyst' ? prefs.voiceAnalyst : prefs.voiceHost;
-  return (v && v.trim()) || DEFAULT_VOICES[speaker] || DEFAULT_VOICES.host;
+  return DEFAULT_VOICES[speaker] || DEFAULT_VOICES.host;
 }
-function elevenReady(){ return !!(prefs.key && prefs.key.trim()) && prefs.mode !== 'cc' && prefs.mode !== 'device'; }
-function hasKey(){ return !!(prefs.key && prefs.key.trim()); }
+function elevenReady(){ return prefs.mode !== 'cc' && prefs.mode !== 'device'; }
+function hasKey(){ return true; }
 
 /* ============================================================
    GRAPH
@@ -12653,9 +12618,6 @@ function paintAudioSetup(){
     const el = $(id);
     if(el){ el.dataset.on = String(on); el.setAttribute('aria-checked', String(on)); }
   });
-  $('elevenKey').value = p.key || '';
-  $('elevenVoiceHost').value = p.voiceHost || '';
-  $('elevenVoiceAnalyst').value = p.voiceAnalyst || '';
   syncAudioPip();
 }
 
@@ -12693,26 +12655,6 @@ function wireSetupAudio(){
   flip('audSfx', 'sfx');
   flip('audBed', 'bed');
 
-  const keyed = (id, key)=>{
-    const el = $(id);
-    if(!el) return;
-    el.addEventListener('input', ()=>{
-      a.savePrefs(Object.defineProperty({}, key, { value: el.value.trim(), enumerable:true }));
-      elevenDown = false; elevenFails = 0;
-      syncAudioPip();
-    });
-  };
-  keyed('elevenKey', 'key');
-  keyed('elevenVoiceHost', 'voiceHost');
-  keyed('elevenVoiceAnalyst', 'voiceAnalyst');
-
-  $('elevenReveal').addEventListener('click', ()=>{
-    const f = $('elevenKey');
-    const show = f.type === 'password';
-    f.type = show ? 'text' : 'password';
-    $('elevenReveal').textContent = show ? 'HIDE' : 'SHOW';
-  });
-
   $('elevenTest').addEventListener('click', ()=>{
     if(!a.hasKey()){
       $('elevenStatus').textContent = 'Backend ElevenLabs is not available.';
@@ -12727,7 +12669,7 @@ function wireSetupAudio(){
     a.testVoices().then((secs)=>{
       $('elevenStatus').innerHTML = '<span style="color:var(--green)">Both voices returned — ' +
         (secs ? secs.toFixed(1) + 's of audio playing now.' : 'playing now.') +
-        '</span> The Studio Show will use them while the key is saved.';
+        '</span> The Studio Show will use the secure backend voice service.';
       elevenDown = false; elevenFails = 0;
     }).catch((err)=>{
       $('elevenStatus').innerHTML = '<span style="color:var(--red)">' +
@@ -12741,7 +12683,7 @@ function wireSetupAudio(){
     });
   });
 
-  /* Clearing saved data should take the key with it. */
+  /* Reset audio preferences without touching server-side credentials. */
   const reset = $('resetBtn');
   if(reset) reset.addEventListener('click', ()=>{
     a.clearPrefs();
@@ -14626,7 +14568,8 @@ $('parseJsonBtn').addEventListener('click', ()=>{
 });
 
 function handleHistoryFile(file){
-  if(!file) return;
+  if(!file){ $('jsonStatus').textContent = 'No file selected. Current-season features remain available.'; return; }
+  if(Number(file.size || 0) > 25 * 1024 * 1024){ $('jsonStatus').textContent = 'That archive is larger than 25 MB. Paste a smaller JSON export instead; current-season features are unaffected.'; return; }
   /* iOS Safari can hand back Files-app selections with an empty or generic MIME
      type and even a temporary filename without .json. Read the bytes first and
      let JSON.parse() decide whether the payload is valid. */
@@ -14643,8 +14586,8 @@ function handleHistoryFile(file){
     }
     applyRawPayload(rawData, `Loaded from ${file.name}`);
   };
-  reader.onerror = ()=>{ $('jsonStatus').textContent = `Could not read ${file.name}. Try re-saving the file.`; };
-  reader.readAsText(file);
+  reader.onerror = ()=>{ $('jsonStatus').textContent = `Could not read ${file.name}. You can paste the JSON instead; current-season features are unaffected.`; };
+  try{ reader.readAsText(file); }catch(err){ $('jsonStatus').textContent = 'This browser could not open that file. Paste the JSON instead; current-season features are unaffected.'; }
 }
 
 /* One payload can be either a multi-season archive or a single week's league
@@ -14684,7 +14627,7 @@ function applyRawPayload(rawData, sourceLabel){
 }
 
 const dz = $('dropzone');
-dz.addEventListener('click', ()=> $('fileInput').click());
+dz.addEventListener('click', ()=>{ try{ $('fileInput').click(); }catch(e){ $('jsonStatus').textContent = 'Use the file picker below or paste JSON.'; } });
 dz.addEventListener('keydown', (e)=>{
   if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); $('fileInput').click(); }
 });
@@ -14737,8 +14680,8 @@ function loadPrefs(){
   $('leagueIdInput').value = savedLeagueId || (saved && saved.leagueId) || '';
   $('seasonYear').value = (saved && saved.season) || String(uiActiveSeasonYear());
   $('weekNum').value = (saved && saved.week) || '';
-  try{ localStorage.removeItem(OPENAI_KEY_STORE); $('openaiKey').value = 'backend'; }catch(e){ $('openaiKey').value = 'backend'; }
-  try{ if($('espnS2Input'))   $('espnS2Input').value   = localStorage.getItem('fsn.espn.s2.v1')   || ''; }catch(e){}
+  try{ localStorage.removeItem(OPENAI_KEY_STORE); }catch(e){}
+try{ if($('espnS2Input'))   $('espnS2Input').value   = localStorage.getItem('fsn.espn.s2.v1')   || ''; }catch(e){}
   try{ if($('espnSwidInput')) $('espnSwidInput').value = localStorage.getItem('fsn.espn.swid.v1') || ''; }catch(e){}
   refreshOpenAIStatus();
   refreshEspnAuthStatus();
@@ -14787,20 +14730,6 @@ function refreshOpenAIStatus(){
     el.innerHTML = `<span style="color:var(--green)">BACKEND AI CONNECTED</span> · OpenAI requests are proxied through /api/ai-news; no API key is stored in this browser.`;
   }
 }
-$('openaiKey').addEventListener('input', ()=>{
-  try{
-    const v = $('openaiKey').value.trim();
-    if(v) localStorage.setItem(OPENAI_KEY_STORE, v); else localStorage.removeItem(OPENAI_KEY_STORE);
-  }catch(e){}
-  refreshOpenAIStatus();
-  renderAll();
-});
-$('openaiReveal').addEventListener('click', ()=>{
-  const f = $('openaiKey');
-  const show = f.type === 'password';
-  f.type = show ? 'text' : 'password';
-  $('openaiReveal').textContent = show ? 'HIDE' : 'SHOW';
-});
 
 $('leagueIdInput').addEventListener('input', ()=>{
   savePrefs();
@@ -14864,7 +14793,6 @@ $('resetBtn').addEventListener('click', ()=>{
   window._franchiseYearsData = null;
   ui.week = null; ui.rivalA = ''; ui.rivalB = '';
   $('leagueIdInput').value = ''; $('seasonYear').value = String(uiActiveSeasonYear()); $('weekNum').value = '';
-  $('openaiKey').value = 'backend';
   if($('espnS2Input')) $('espnS2Input').value = '';
   if($('espnSwidInput')) $('espnSwidInput').value = '';
   refreshOpenAIStatus();
