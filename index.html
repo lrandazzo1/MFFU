@@ -742,6 +742,28 @@ body{
   cursor:pointer;
   margin-top:0;
 }
+/* The hero is one big target. Every descendant — pills, headline, byline, the
+   READ button — inherits the pointer so the affordance is never ambiguous. */
+#leadStoryCard,
+.news-lead-card,
+.lead-story-banner{
+  position:relative; z-index:30;
+  pointer-events:auto; cursor:pointer;
+  -webkit-tap-highlight-color:transparent;
+}
+#leadStoryCard *,
+.news-lead-card *,
+.lead-story-banner *{ cursor:pointer; }
+#leadStoryCard .tag, #leadStoryCard .pill,
+.news-lead-card .tag, .news-lead-card .pill,
+.lead-story-banner .tag, .lead-story-banner .pill,
+.lead-tag-pill, .lead-read-btn{
+  pointer-events:auto; cursor:pointer;
+}
+.lead-read-btn{ transition:transform .12s ease, box-shadow .12s ease; }
+#leadStoryCard:active{ transform:scale(.99); }
+#leadStoryCard:focus-visible,
+.news-lead-card:focus-visible{ outline:2px solid var(--cyan); outline-offset:2px; }
 .topic-scroll{ display:flex; gap:7px; overflow-x:auto; }
 .topic-pill{
   flex:none; display:inline-flex; align-items:center; gap:6px;
@@ -4437,7 +4459,53 @@ function leagueName(){
   const nm = d && d.settings && d.settings.name;
   return nm ? String(nm) : 'Fantasy Sports Network';
 }
-function dateline(){ return upper(leagueName()); }
+/* ============================================================
+   DATELINES
+   Two different things used to be spelled the same way, and every
+   generator hand-concatenated its own copy of the markup:
+
+     · the DESK dateline that opens the body copy ("THE WIRE —"), and
+     · the LEAGUE label that rides the byline row ("2 DAYS AGO · MERGE").
+
+   Because both resolved to the raw league name, a recap opened with the
+   league name printed twice back to back — the "MERGE —" artifact. The
+   body dateline is now the desk, the league label stays on the byline row,
+   and both are built by one helper apiece so no caller assembles the
+   markup by hand.
+============================================================ */
+const DESK_DATELINE = 'THE WIRE';
+
+/* Strips the debris a raw league name can carry — stray markup, HTML
+   entities from a re-imported payload, template braces, a trailing
+   separator dash — and rejects anything left that cannot read as a label. */
+function sanitizeDatelineText(raw){
+  const cleaned = String(raw == null ? '' : raw)
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&(?:#\d+|#x[0-9a-fA-F]+|[a-zA-Z]+);/g, ' ')
+    .replace(/[{}$`|\\]+/g, ' ')
+    .replace(/[\u2014\u2013-]+\s*$/, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if(!/[A-Za-z0-9]/.test(cleaned)) return '';
+  if(/^fantasy sports network$/i.test(cleaned)) return '';
+  return upper(cleaned);
+}
+
+/* The league label. Falls back to the desk when the league name is missing
+   or unusable, so the byline row never prints an empty separator. */
+function leagueDateline(){
+  return sanitizeDatelineText(leagueName()) || DESK_DATELINE;
+}
+
+/* The desk dateline that opens body copy. */
+function dateline(){ return DESK_DATELINE; }
+
+/* The only place the opening dateline markup is built. Any per-story
+   qualifier ("2025 FINAL", "WEEK 11 STRETCH RUN") rides the byline row with
+   the league label instead of being repeated here. */
+function datelineTag(){
+  return `<span class="dateline">${esc(dateline())} \u2014</span>`;
+}
 
 /* ============================================================
    ROSTER EXTRACTION
@@ -4596,6 +4664,31 @@ function seasonToneBucket(week){
   if(w <= 9) return 'mid';
   if(w <= 14) return 'stretch';
   return 'playoffs';
+}
+
+/* ============================================================
+   MARGIN ROUTING — one threshold table for the whole desk
+   A matchup is a thriller only under 5.0 points. Anything from 5.0 up to
+   20.0 is a standard competitive decision and must never be written up with
+   last-drive language, and 20.0 and over is a blowout. Every generator that
+   picks a tone reads these, so a 19.4-point game can no longer be described
+   as "the width of a garbage-time reception".
+============================================================ */
+const THRILLER_MARGIN = 5.0;    // margin < 5.0  → close / NAIL-BITER / thriller
+const BLOWOUT_MARGIN  = 20.0;   // margin >= 20.0 → blowout
+
+function marginOf(value){
+  const m = Math.abs(Number(value));
+  return Number.isFinite(m) ? m : 0;
+}
+function isThrillerMargin(margin){ return marginOf(margin) < THRILLER_MARGIN; }
+function isBlowoutMargin(margin){ return marginOf(margin) >= BLOWOUT_MARGIN; }
+
+/* 'close' | 'competitive' | 'blowout' — the editorial deck key for a margin. */
+function marginCategory(margin){
+  if(isThrillerMargin(margin)) return 'close';
+  if(isBlowoutMargin(margin)) return 'blowout';
+  return 'competitive';
 }
 
 const EDITORIAL_MATRIX = {
@@ -4793,6 +4886,104 @@ const EDITORIAL_MATRIX = {
       "That game was a coin flip with Wi-Fi.",
       "I would like the record to show that I never doubted us. Delete my Sunday texts.",
       "We found a way, and I am not asking the process to explain itself."
+    ]
+  },
+  "competitive": {
+    "headline": [
+      "{WIN} HANDLES {LOSE}: {DIFF_CLAUSE}",
+      "COMPETITIVE DECISION: {WIN} BEATS {LOSE} {WSCORE}–{LSCORE}",
+      "{WIN} CONTROLS THE MARGIN AGAINST {LOSE} IN WEEK {WEEK}",
+      "MATCHUP RECAP: {WIN} FINISHES {DIFF_CLAUSE} {LOSE}",
+      "{WIN} BANKS A {MARGIN}-POINT WIN OVER {LOSE}",
+      "NO LATE DRAMA: {WIN} SEES OFF {LOSE} {WSCORE}–{LSCORE}",
+      "{WIN} BUILDS THE CUSHION AND KEEPS IT AGAINST {LOSE}",
+      "WEEK {WEEK} DECISION: {WIN} OVER {LOSE} BY {MARGIN}",
+      "{WIN} DOES ENOUGH, {LOSE} DOES NOT: {DIFF_CLAUSE}",
+      "STEADY HAND: {WIN} PUTS AWAY {LOSE} {WSCORE}–{LSCORE}",
+      "{WIN} WINS THE MIDDLE OF THE BOARD OVER {LOSE}",
+      "MATCHUP RECAP: {LOSE} STAYS IN IT, {WIN} STAYS AHEAD",
+      "{WIN} CLOSES OUT {LOSE} WITHOUT THE SWEAT",
+      "A CLEAN {MARGIN}: {WIN} DISPOSES OF {LOSE}",
+      "{WIN} TAKES CARE OF {LOSE} IN A WEEK {WEEK} DECISION",
+      "ROUTINE BUSINESS: {WIN} BEATS {LOSE} BY {MARGIN}",
+      "{WIN} NEVER TRAILED LONG ENOUGH TO WORRY ABOUT {LOSE}",
+      "MARGIN CONTROL: {WIN} FINISHES {DIFF_CLAUSE} {LOSE}",
+      "{LOSE} HANGS AROUND, {WIN} STILL WINS BY {MARGIN}",
+      "WEEK {WEEK} LEDGER: {WIN} {WSCORE}, {LOSE} {LSCORE}",
+      "{WIN} PUTS A {MARGIN}-POINT GAP BETWEEN ITSELF AND {LOSE}",
+      "THE COMFORTABLE KIND: {WIN} OVER {LOSE} {WSCORE}–{LSCORE}",
+      "{WIN} ANSWERS EVERY PUSH {LOSE} MAKES",
+      "MATCHUP RECAP: {WIN} SETTLES IT EARLY AGAINST {LOSE}",
+      "{WIN} WINS THE AFTERNOON, {LOSE} WINS NOTHING",
+      "DECISION, NOT DRAMA: {WIN} HANDLES {LOSE} IN WEEK {WEEK}",
+      "{WIN} KEEPS {LOSE} AT ARM'S LENGTH FOR {MARGIN}",
+      "ON THE BOARD: {WIN} BEATS {LOSE} WITHOUT A LATE SWING",
+      "{WIN} GETS THE {MARGIN} AND MOVES ON FROM {LOSE}",
+      "WEEK {WEEK} RECAP: {WIN} FINISHES {DIFF_CLAUSE} {LOSE}"
+    ],
+    "lede": [
+      "{WIN} beat {LOSE} {WSCORE}–{LSCORE}, a Week {WEEK} decision settled by {MARGIN} points. {WPLAYER} led the winning lineup with {WPTS}; {LPLAYER} answered with {LPTS} without closing the gap.",
+      "The margin never got small enough to be interesting: {WIN} {WSCORE}, {LOSE} {LSCORE}. {WPLAYER} led the winning lineup with {WPTS}; {LPLAYER} answered with {LPTS} without closing the gap.",
+      "{WIN} finished {DIFF_CLAUSE} {LOSE} in a matchup that stayed competitive without ever turning. {WPLAYER} led the winning lineup with {WPTS}; {LPLAYER} answered with {LPTS} without closing the gap.",
+      "A {MARGIN}-point result put {WIN} past {LOSE} on a {TOTAL}-point afternoon. {WPLAYER} led the winning lineup with {WPTS}; {LPLAYER} answered with {LPTS} without closing the gap.",
+      "{LOSE} kept the scoreboard honest and still lost by {MARGIN}. {WPLAYER} led the winning lineup with {WPTS}; {LPLAYER} answered with {LPTS} without closing the gap.",
+      "{WIN} beat {LOSE} {WSCORE}–{LSCORE}, a Week {WEEK} decision settled by {MARGIN} points. The winning side got {WPTS} out of {WPLAYER}, and the rest of the lineup held the cushion.",
+      "The margin never got small enough to be interesting: {WIN} {WSCORE}, {LOSE} {LSCORE}. The winning side got {WPTS} out of {WPLAYER}, and the rest of the lineup held the cushion.",
+      "{WIN} finished {DIFF_CLAUSE} {LOSE} in a matchup that stayed competitive without ever turning. The winning side got {WPTS} out of {WPLAYER}, and the rest of the lineup held the cushion.",
+      "A {MARGIN}-point result put {WIN} past {LOSE} on a {TOTAL}-point afternoon. The winning side got {WPTS} out of {WPLAYER}, and the rest of the lineup held the cushion.",
+      "{LOSE} kept the scoreboard honest and still lost by {MARGIN}. The winning side got {WPTS} out of {WPLAYER}, and the rest of the lineup held the cushion.",
+      "{WIN} beat {LOSE} {WSCORE}–{LSCORE}, a Week {WEEK} decision settled by {MARGIN} points. {LPLAYER} put up {LPTS} for {LOSE}, which was the right idea in the wrong matchup.",
+      "The margin never got small enough to be interesting: {WIN} {WSCORE}, {LOSE} {LSCORE}. {LPLAYER} put up {LPTS} for {LOSE}, which was the right idea in the wrong matchup.",
+      "{WIN} finished {DIFF_CLAUSE} {LOSE} in a matchup that stayed competitive without ever turning. {LPLAYER} put up {LPTS} for {LOSE}, which was the right idea in the wrong matchup.",
+      "A {MARGIN}-point result put {WIN} past {LOSE} on a {TOTAL}-point afternoon. {LPLAYER} put up {LPTS} for {LOSE}, which was the right idea in the wrong matchup.",
+      "{LOSE} kept the scoreboard honest and still lost by {MARGIN}. {LPLAYER} put up {LPTS} for {LOSE}, which was the right idea in the wrong matchup.",
+      "{WIN} took the Week {WEEK} matchup with {LOSE} {WSCORE}–{LSCORE} and never had to survive anything. {WPLAYER} led the winning lineup with {WPTS}; {LPLAYER} answered with {LPTS} without closing the gap.",
+      "There was no late swing to argue about: {WIN} finished {DIFF_CLAUSE} {LOSE} on a {TOTAL}-point board. {WPLAYER} led the winning lineup with {WPTS}; {LPLAYER} answered with {LPTS} without closing the gap.",
+      "{WIN} built the margin in the early window and spent the rest of Week {WEEK} keeping it. {WPLAYER} led the winning lineup with {WPTS}; {LPLAYER} answered with {LPTS} without closing the gap.",
+      "{LOSE} scored enough to beat most of this week's board and still lost to {WIN} by {MARGIN}. {WPLAYER} led the winning lineup with {WPTS}; {LPLAYER} answered with {LPTS} without closing the gap.",
+      "The Week {WEEK} ledger reads {WIN} {WSCORE}, {LOSE} {LSCORE} — competitive throughout, decided well before the end. {WPLAYER} led the winning lineup with {WPTS}; {LPLAYER} answered with {LPTS} without closing the gap.",
+      "{WIN} took the Week {WEEK} matchup with {LOSE} {WSCORE}–{LSCORE} and never had to survive anything. The winning side got {WPTS} out of {WPLAYER}, and the rest of the lineup held the cushion.",
+      "There was no late swing to argue about: {WIN} finished {DIFF_CLAUSE} {LOSE} on a {TOTAL}-point board. The winning side got {WPTS} out of {WPLAYER}, and the rest of the lineup held the cushion.",
+      "{WIN} built the margin in the early window and spent the rest of Week {WEEK} keeping it. The winning side got {WPTS} out of {WPLAYER}, and the rest of the lineup held the cushion.",
+      "{LOSE} scored enough to beat most of this week's board and still lost to {WIN} by {MARGIN}. The winning side got {WPTS} out of {WPLAYER}, and the rest of the lineup held the cushion.",
+      "The Week {WEEK} ledger reads {WIN} {WSCORE}, {LOSE} {LSCORE} — competitive throughout, decided well before the end. The winning side got {WPTS} out of {WPLAYER}, and the rest of the lineup held the cushion.",
+      "{WIN} took the Week {WEEK} matchup with {LOSE} {WSCORE}–{LSCORE} and never had to survive anything. {LPLAYER} put up {LPTS} for {LOSE}, which was the right idea in the wrong matchup.",
+      "There was no late swing to argue about: {WIN} finished {DIFF_CLAUSE} {LOSE} on a {TOTAL}-point board. {LPLAYER} put up {LPTS} for {LOSE}, which was the right idea in the wrong matchup.",
+      "{WIN} built the margin in the early window and spent the rest of Week {WEEK} keeping it. {LPLAYER} put up {LPTS} for {LOSE}, which was the right idea in the wrong matchup.",
+      "{LOSE} scored enough to beat most of this week's board and still lost to {WIN} by {MARGIN}. {LPLAYER} put up {LPTS} for {LOSE}, which was the right idea in the wrong matchup.",
+      "The Week {WEEK} ledger reads {WIN} {WSCORE}, {LOSE} {LSCORE} — competitive throughout, decided well before the end. {LPLAYER} put up {LPTS} for {LOSE}, which was the right idea in the wrong matchup."
+    ],
+    "quote": [
+      "We were in control of the number, if not the entertainment value.",
+      "A {MARGIN}-point win is the kind you take without a press conference.",
+      "I never felt comfortable, and I also never felt behind.",
+      "The lineup did its job. Nobody needs to hear more than that.",
+      "{WPLAYER} gave us {WPTS} and the rest of the roster refused to give it back.",
+      "We built the lead early and spent the afternoon protecting it.",
+      "That is what a normal win looks like. I would like several more.",
+      "{LOSE} is better than that scoreline. We were just better on the day.",
+      "I would call it comfortable, but I do not want to jinx anything.",
+      "No heroics required, which is my favorite kind of Sunday.",
+      "We won the middle of the board, and the middle of the board is where seasons get decided.",
+      "The margin says it was settled. My group chat says otherwise.",
+      "I am not going to pretend that was a classic. I am going to bank it.",
+      "We answered every push they made. That is the whole recap.",
+      "It was competitive. It was never really close. Both things are true.",
+      "I would rather win by {MARGIN} boring points than by one exciting one.",
+      "The scoreboard was never in danger. My blood pressure was fine.",
+      "We did the ordinary things well and the extraordinary things not at all.",
+      "{LOSE} made us earn it. We earned it. That is the story.",
+      "There was never a moment I thought we were losing that matchup.",
+      "I have had closer wins and enjoyed them a great deal less.",
+      "A win like that does not make the highlight reel. It makes the standings.",
+      "We had the better afternoon by {MARGIN} points and I will take it every week.",
+      "I would like to credit the process, mostly because the process worked.",
+      "No panic, no comeback, no story. Perfect Sunday.",
+      "{WPLAYER} set the floor at {WPTS} and nobody on our side dropped below it.",
+      "That was a decision, not a coin flip. I prefer decisions.",
+      "We were ahead early and I spent the afternoon refusing to celebrate.",
+      "The margin held all day. That is the entire postgame analysis.",
+      "Beat a good team by a real number. I am not asking for more than that."
     ]
   },
   "bench": {
@@ -5191,6 +5382,8 @@ function matrixCopy(ctx, category, ordinal, facts){
     const finalScore = `${n1(facts.winnerScore)}–${n1(facts.loserScore)}`;
     const scoreLead = category === 'close'
       ? `${win} edged ${lose} ${finalScore} in a ${margin}-point thriller decided across the final drive.`
+      : category === 'competitive'
+        ? `${win} beat ${lose} ${finalScore}, a ${margin}-point decision built across the full lineup rather than one late swing.`
       : category === 'bench'
         ? `${win} beat ${lose} ${finalScore} by ${margin} points, with the result decided by lineup-wide production and roster choices.`
         : category === 'fraud'
@@ -5205,7 +5398,9 @@ function matrixCopy(ctx, category, ordinal, facts){
         ? 'The lineup decisions mattered. The margin is small enough that every slot belongs in the review.'
         : category === 'fraud'
           ? 'The scoreboard is the case. That gap is too large to explain away.'
-          : 'A finish that close belongs to the whole lineup. Every point carried weight.';
+          : category === 'competitive'
+            ? 'We controlled the number. The whole lineup gets the credit for that.'
+            : 'A finish that close belongs to the whole lineup. Every point carried weight.';
     }
   }
 
@@ -5327,14 +5522,15 @@ function assembleDeterministicStory(ctx, category, ordinal, facts, overrides){
   const phase = seasonToneBucket(ctx.week);
   const phaseLine = PHASE_OUTROS[phase][hash(selectedLeagueId() + ':' + viewedSeasonYear() + ':' + ctx.week + ':' + category + ':' + ordinal) % PHASE_OUTROS[phase].length];
   const o = overrides || {};
-  const defaultTags = { blowout:'BLOWOUT', close:'NAIL-BITER', bench:'LINEUP MALPRACTICE', fraud:'FRAUD ALERT' };
+  const defaultTags = { blowout:'BLOWOUT', close:'NAIL-BITER', competitive:'MATCHUP RECAP', bench:'LINEUP MALPRACTICE', fraud:'FRAUD ALERT' };
   return article({
-    id:o.id, kind:o.kind || category, tag:o.tag || defaultTags[category] || 'FSN', tone:o.tone || (category === 'blowout' ? 'gold' : 'red'),
+    id:o.id, kind:o.kind || category, tag:o.tag || defaultTags[category] || 'FSN',
+    tone:o.tone || (category === 'blowout' ? 'gold' : (category === 'competitive' ? 'white' : 'red')),
     live:!!o.live, priority:o.priority || 80, byline:o.byline || BYLINES[0], ageMin:o.ageMin || 45,
     crest:o.crest || (winner.name ? {name:winner.name, logo:winner.logo} : null),
     headline, dek:esc(lede),
     paragraphs:[
-      `<span class="dateline">${esc(dateline())} —</span> ${esc(lede)}`,
+      `${datelineTag()} ${esc(lede)}`,
       context,
       `${esc(outro)} ${esc(phaseLine)}`,
     ],
@@ -5351,35 +5547,65 @@ function assembleDeterministicStory(ctx, category, ordinal, facts, overrides){
   });
 }
 
+/* Per-category story furniture. The category itself always comes from
+   marginCategory(), so nothing here can put thriller language on a
+   double-digit margin. */
+const RECAP_PROFILES = {
+  close:       { kind:'heartbreak', tag:'NAIL-BITER',           tone:'red',   priority:94, byline:'FSN Senior League Insider' },
+  competitive: { kind:'recap',      tag:'COMPETITIVE DECISION', tone:'white', priority:86, byline:'FSN Senior League Insider' },
+  blowout:     { kind:'shootout',   tag:'BLOWOUT',              tone:'gold',  priority:91, byline:'FSN Numbers Desk' },
+};
+
+/* Competitive decisions are the bulk of a normal slate, so the desk files at
+   most this many of them — the thrillers and the blowouts are the news. */
+const MAX_COMPETITIVE_RECAPS = 2;
+
 function genCombinatorialRecaps(ctx){
   const decided = ctx.scored.filter(s=> s.winner && s.loser);
   if(!decided.length) return [];
   const out = [];
   let notable = 0;
+
+  /* When the slate has no thriller and no blowout, the closest finishes are
+     the ones worth writing up — but they are still competitive decisions. */
+  const competitiveOrder = decided
+    .filter(s=> marginCategory(s.margin) === 'competitive')
+    .slice()
+    .sort((a,b)=> a.margin - b.margin);
+  let competitiveFiled = 0;
+
   decided.forEach((s, gameIdx)=>{
-    let category = null;
-    if(s.margin <= 10) category = 'close';
-    else if(s.margin >= 24) category = 'blowout';
-    if(!category) return;
-    notable++;
+    const category = marginCategory(s.margin);
+    if(category === 'competitive'){
+      const rank = competitiveOrder.indexOf(s);
+      if(rank < 0 || rank >= MAX_COMPETITIVE_RECAPS) return;
+      competitiveFiled++;
+    } else {
+      notable++;
+    }
+    const profile = RECAP_PROFILES[category];
     const facts = matrixFacts(ctx, s);
     out.push(assembleDeterministicStory(ctx, category, gameIdx, facts, {
       id:`matrix-${category}-${ctx.week}-${s.winner.id}-${s.loser.id}`,
-      kind:category === 'close' ? 'heartbreak' : 'shootout',
-      tag:category === 'close' ? 'NAIL-BITER' : 'BLOWOUT',
-      tone:category === 'close' ? 'red' : 'gold',
-      priority:category === 'close' ? 94 : 91,
-      byline:category === 'close' ? 'FSN Senior League Insider' : 'FSN Numbers Desk',
+      kind:profile.kind,
+      tag:profile.tag,
+      tone:profile.tone,
+      priority:profile.priority,
+      byline:profile.byline,
       live:!s.decided,
     }));
   });
-  // A quiet slate still gets one matchup story: use the closest final, but do not invent a blowout.
-  if(!notable){
+
+  // A quiet slate still gets one matchup story: use the closest final, and let
+  // its own margin pick the voice rather than assuming a nail-biter.
+  if(!notable && !competitiveFiled){
     const s = decided.slice().sort((a,b)=> a.margin - b.margin)[0];
     const gameIdx = ctx.sides.indexOf(s);
-    out.push(assembleDeterministicStory(ctx, 'close', Math.max(0, gameIdx), matrixFacts(ctx, s), {
-      id:`matrix-close-${ctx.week}-${s.winner.id}-${s.loser.id}`, kind:'heartbreak', tag:'MATCHUP FILE', tone:'white', priority:82,
-      byline:'FSN Senior League Insider', live:!s.decided,
+    const category = marginCategory(s.margin);
+    out.push(assembleDeterministicStory(ctx, category, Math.max(0, gameIdx), matrixFacts(ctx, s), {
+      id:`matrix-${category}-${ctx.week}-${s.winner.id}-${s.loser.id}`,
+      kind:RECAP_PROFILES[category].kind, tag:'MATCHUP FILE', tone:'white', priority:82,
+      byline:RECAP_PROFILES[category].byline, live:!s.decided,
     }));
   }
   return out;
@@ -5521,7 +5747,7 @@ function article(o){
     byline: o.byline || BYLINES[0],
     ageMin: o.ageMin || 60,
     createdAt: o.createdAt || null,   // set on commissioner copy so it ages properly
-    dateline: o.dateline || dateline(),
+    dateline: o.dateline || leagueDateline(),
     paragraphs: o.paragraphs || [],
     quote: o.quote || null,
     numbers: o.numbers || null,
@@ -5586,7 +5812,7 @@ function genBenchDisaster(ctx){
         ? `${esc(r.topBench.name)} put up ${n1(left)} from the bench. The margin was ${n1(s.margin)}. Do the math.`
         : `${esc(team.name)} left ${n1(benchTotal)} points in street clothes; ${esc(teamLabel(s.winner))} finished ${pointDifferenceClause(s.winnerScore, s.loserScore)} ${esc(team.name)}.`,
       paragraphs: [
-        `<span class="dateline">${esc(dateline())} —</span> There is losing, and there is losing with the answer sitting on your own bench. ` +
+        `${datelineTag()} There is losing, and there is losing with the answer sitting on your own bench. ` +
         `<b>${esc(team.name)}</b> managed the second kind on Sunday, falling <b>${n1(s.loserScore)}–${n1(s.winnerScore)}</b> to <b>${esc(teamLabel(s.winner))}</b> ` +
         `while <b>${esc(r.topBench.name)}</b>${r.topBench.pos ? ' (' + esc(r.topBench.pos) + ')' : ''} ${verb} the box score for <b>${n1(left)}</b> points in a uniform nobody asked him to wear.`,
 
@@ -5626,7 +5852,7 @@ function genBenchDisaster(ctx){
 
   /* ---- 1b. The heartbreaker: any loss inside 10 points ---- */
   const close = ctx.scored
-    .filter(s=> s.decided && s.loser && s.margin > 0 && s.margin < 10)
+    .filter(s=> s.decided && s.loser && s.margin > 0 && isThrillerMargin(s.margin))
     .sort((a,b)=> a.margin - b.margin)[0];
 
   if(close && !(worst && worst.fatal && worst.s === close)){
@@ -5636,7 +5862,7 @@ function genBenchDisaster(ctx){
     const lr = close.loserRoster;
 
     const paragraphs = [
-      `<span class="dateline">${esc(dateline())} —</span> <b>${esc(team.name)}</b> did almost everything right and lost anyway, dropping a <b>${n1(close.loserScore)}–${n1(close.winnerScore)}</b> decision to <b>${esc(teamLabel(close.winner))}</b> ` +
+      `${datelineTag()} <b>${esc(team.name)}</b> did almost everything right and lost anyway, dropping a <b>${n1(close.loserScore)}–${n1(close.winnerScore)}</b> decision to <b>${esc(teamLabel(close.winner))}</b> ` +
       `by <b>${swingNeeded}</b> points — the narrowest result on the Week ${ctx.week} board.`,
 
       `${pick([
@@ -5733,7 +5959,7 @@ function genFraudAlert(ctx){
   const noun = pick(['a fire drill','a bye week with extra steps','an unforced surrender','a scheduling error','community theatre'], seed + 'n');
 
   const paragraphs = [
-    `<span class="dateline">${esc(dateline())} —</span> Somebody has to finish last, and in Week ${ctx.week} <b>${esc(team.name)}</b> ${verb} to the tune of <b>${n1(score)}</b> points — ` +
+    `${datelineTag()} Somebody has to finish last, and in Week ${ctx.week} <b>${esc(team.name)}</b> ${verb} to the tune of <b>${n1(score)}</b> points — ` +
     `dead last in a ${ctx.allScores.length}-score league and <b>${n1(belowAvg)}</b> beneath the weekly average of <b>${n1(ctx.avg)}</b>.`,
 
     `Put differently: ${esc(mgr)} scored <b>${pct(100 - belowPct)}</b> of what a league-average roster produced, while the week's high finished <b>${esc(pointDifferenceClause(ctx.high, score))}</b> ${esc(mgr)}. ` +
@@ -5811,7 +6037,7 @@ function genShootout(ctx){
 
   const g = best.game;
   const seed = 'shoot' + ctx.week + g.homeTeam.id + g.awayTeam.id;
-  const classic = best.margin < 10;
+  const classic = isThrillerMargin(best.margin);
   const winner = best.winner, loser = best.loser;
   const bothAboveAvg = best.homeScore > ctx.avg && best.awayScore > ctx.avg;
 
@@ -5831,7 +6057,7 @@ function genShootout(ctx){
     s === best || best.winnerScore > Math.max(s.homeScore, s.awayScore)).length;
 
   const paragraphs = [
-    `<span class="dateline">${esc(dateline())} —</span> The best game on the Week ${ctx.week} board was never in doubt as a spectacle. ` +
+    `${datelineTag()} The best game on the Week ${ctx.week} board was never in doubt as a spectacle. ` +
     `<b>${esc(g.awayTeam.name)}</b> and <b>${esc(g.homeTeam.name)}</b> ${openVerb} for <b>${n1(best.total)}</b> combined points — ` +
     `a combined total <b>${esc(pointDifferenceClause(best.total, ctx.avg * 2))}</b> two average-team outputs — before ` +
     (winner ? `<b>${esc(winner.name)}</b> came out the other side <b>${n1(best.winnerScore)}–${n1(best.loserScore)}</b>.` : `the scoreboard settled dead even at <b>${n1(best.homeScore)}</b>.`),
@@ -5966,7 +6192,7 @@ function genMilestone(ctx){
         ? `The old mark — ${n1(old.score)} by ${esc(old.teamName)} in ${old.year} — stood until Week ${ctx.week}.`
         : `${esc(old.teamName)}'s ${n1(old.score)} from ${old.year} survives another weekend.`,
       paragraphs: [
-        `<span class="dateline">${esc(dateline())} —</span> ${broke
+        `${datelineTag()} ${broke
           ? `It took ${archiveLine}, and on an ordinary Week ${ctx.week} Sunday <b>${esc(team.name)}</b> rewrote the top line of it, hanging <b>${n1(top.value)}</b> points and erasing a record that had stood since ${old.year}.`
           : `<b>${esc(team.name)}</b> spent Sunday afternoon within sight of the biggest number in ${archiveLine}, finishing at <b>${n1(top.value)}</b> — <b>${n1(diff)}</b> short of the all-time high.`}`,
 
@@ -6018,7 +6244,7 @@ function genMilestone(ctx){
       headline: `MASSACRE: ${upper(w.name)} WINS BY ${n1(s.margin)}, LARGEST MARGIN IN LEAGUE HISTORY`,
       dek: `The old record — ${n1(old.margin)} by ${esc(old.winnerTeamName)} in ${old.year} — lasted until Week ${ctx.week}.`,
       paragraphs: [
-        `<span class="dateline">${esc(dateline())} —</span> <b>${esc(w.name)}</b> did not beat <b>${esc(l.name)}</b> on Sunday so much as file a report about it, winning <b>${n1(s.winnerScore)}–${n1(s.loserScore)}</b> — ` +
+        `${datelineTag()} <b>${esc(w.name)}</b> did not beat <b>${esc(l.name)}</b> on Sunday so much as file a report about it, winning <b>${n1(s.winnerScore)}–${n1(s.loserScore)}</b> — ` +
         `a <b>${n1(s.margin)}</b>-point margin that is now the largest in ${archiveLine}.`,
 
         `The record it replaces belonged to <b>${esc(old.winnerTeamName)}</b>, who beat <b>${esc(old.loserTeamName)}</b> by <b>${n1(old.margin)}</b> back in ${old.year}. ` +
@@ -6070,7 +6296,7 @@ function genMilestone(ctx){
         ? `${esc(oldInfo.name || old.ownerId)}'s ${old.length}-game run set the mark. It has company.`
         : `${esc(oldInfo.name || old.ownerId)} still holds the all-time record at ${old.length}.`,
       paragraphs: [
-        `<span class="dateline">${esc(dateline())} —</span> <b>${esc(team.name)}</b> won again in Week ${ctx.week}, ` +
+        `${datelineTag()} <b>${esc(team.name)}</b> won again in Week ${ctx.week}, ` +
         `pushing the run to <b>${len}</b> consecutive regular-season wins — ` +
         `${record ? `level with the longest streak in ${archiveLine}.` : `the longest active streak in the league.`}`,
 
@@ -6126,7 +6352,7 @@ function genPreview(ctx){
     headline: `WEEK ${ctx.week} PREVIEW: ${ctx.games.length} GAMES, NO EXCUSES LEFT`,
     dek: `${esc(marquee.awayTeam.name)} at ${esc(marquee.homeTeam.name)} headlines a board with nothing on it yet.`,
     paragraphs: [
-      `<span class="dateline">${esc(dateline())} —</span> <b>${ctx.games.length}</b> games are on the Week ${ctx.week} board and not one of them has a point on it. ` +
+      `${datelineTag()} <b>${ctx.games.length}</b> games are on the Week ${ctx.week} board and not one of them has a point on it. ` +
       `That will change by Sunday afternoon, and so will roughly half of this league's opinion of itself.`,
 
       `The headline matchup sends <b>${esc(marquee.awayTeam.name)}</b> (${esc(FSNIntel.getRecordAsOfWeek(marquee.awayTeam.id, ctx.week))}) into <b>${esc(marquee.homeTeam.name)}</b> (${esc(FSNIntel.getRecordAsOfWeek(marquee.homeTeam.id, ctx.week))}). ` +
@@ -6214,7 +6440,7 @@ function composeCustom(input){
   })();
 
   const paragraphs = [
-    `<span class="dateline">${esc(dateline())} —</span> <b>${esc(lead)}</b>. ` +
+    `${datelineTag()} <b>${esc(lead)}</b>. ` +
     `The desk confirmed the development ${pick(['within the hour','late Tuesday','moments before the waiver run','ahead of Sunday\'s kickoff'], seed)}, ` +
     `and the reaction around the league was ${pick(['immediate','loud','deeply unserious','unprintable'], seed + 'r')}.` +
     (rest ? ` ${esc(rest)}` : ''),
@@ -6406,7 +6632,7 @@ function tlGameDay(ctx){
       headline: (()=>{
         const side = ctx.scored.find(x=> x.winner && String(x.winner.id) === String(t.id));
         if(side && side.decided){
-          const cat = side.margin >= 24 ? 'blowout' : 'close';
+          const cat = marginCategory(side.margin);
           return esc(upper(matrixCopy(ctx, cat, 24, matrixFacts(ctx, side)).headline));
         }
         return esc(upper(auxiliaryCopy(ctx, 'gamedayHigh', 0, {TEAM:t.name, WEEK:ctx.week, SCORE:n1(s), OVER:n1(over)}).headline));
@@ -6414,13 +6640,13 @@ function tlGameDay(ctx){
       dek: (()=>{
         const side = ctx.scored.find(x=> x.winner && String(x.winner.id) === String(t.id));
         if(side && side.decided){
-          const cat = side.margin >= 24 ? 'blowout' : 'close';
+          const cat = marginCategory(side.margin);
           return esc(matrixCopy(ctx, cat, 24, matrixFacts(ctx, side)).lede);
         }
         return `${esc(t.name)} is ${esc(pointDifferenceClause(s, ctx.avg))} the Week ${ctx.week} league average. Nobody else is close.`;
       })(),
       paragraphs: [
-        `<span class="dateline">${esc(dateline())} —</span> <b>${esc(t.name)}</b> put <b>${n1(s)}</b> on the board in Week ${ctx.week}, ` +
+        `${datelineTag()} <b>${esc(t.name)}</b> put <b>${n1(s)}</b> on the board in Week ${ctx.week}, ` +
         `<b>${esc(pointDifferenceClause(s, ctx.avg))}</b> a league average of ${n1(ctx.avg)}. ` +
         pick(['It was not close. It was not interesting. It was a formality by the second quarter.',
               'The scoreboard stopped being a competition and started being a receipt.',
@@ -6431,7 +6657,7 @@ function tlGameDay(ctx){
       quote: (()=>{
         const side = ctx.scored.find(x=> x.winner && String(x.winner.id) === String(t.id));
         if(side && side.decided){
-          const cat = side.margin >= 24 ? 'blowout' : 'close';
+          const cat = marginCategory(side.margin);
           return { text:matrixCopy(ctx, cat, 24, matrixFacts(ctx, side)).quote, who:upper(managerLabel(t)) };
         }
         return null;
@@ -6472,7 +6698,7 @@ function tlGameDay(ctx){
         return (()=>{ const nextLow = (ctx.allScores.slice().sort((a,b)=>a-b)[1] || s); return `Dead last in Week ${ctx.week}, ${esc(pointDifferenceClause(s, nextLow))} the next-lowest score.`; })();
       })(),
       paragraphs: [
-        `<span class="dateline">${esc(dateline())} —</span> <b>${esc(t.name)}</b> finished the week's scoring with <b>${n1(s)} points</b> — ` +
+        `${datelineTag()} <b>${esc(t.name)}</b> finished the week's scoring with <b>${n1(s)} points</b> — ` +
         `The league average finished <b>${esc(pointDifferenceClause(ctx.avg, s))}</b> ${esc(t.name)}, while the week's high finished <b>${esc(pointDifferenceClause(ctx.high, s))}</b> ${esc(t.name)}.`,
         pick([
           'There is no injury excuse large enough to cover this. The desk checked.',
@@ -6532,7 +6758,7 @@ function tlRecap(ctx){
     headline: `FSN POWER INDEX · WEEK ${ctx.week}: ${esc(upper(top.team.name))} LEADS THE MODEL`,
     dek: `Model-Driven Power Rankings, NOT raw standings. Week ${ctx.week} rewards scoring strength and lineup efficiency while keeping wins meaningful.`,
     paragraphs: [
-      `<span class="dateline">${esc(dateline())} —</span> The desk re-ran the board after Week ${ctx.week}. ` +
+      `${datelineTag()} The desk re-ran the board after Week ${ctx.week}. ` +
       `<b>${esc(top.team.name)}</b> (${esc(top.recordLabel)}, ${n1(top.pf)} PF) sits at No. 1, ` +
       `${pick(['and the case against them is thin.','which is starting to feel less like a hot streak and more like a tier.','on merit, not vibes.'], seed)}`,
 
@@ -6571,7 +6797,7 @@ function tlRecap(ctx){
         ? `${esc(last.recordLabel)}, ${n1(last.pf)} points — an early sample that calls for a rotation check, not a September verdict.`
         : `${esc(last.recordLabel)}, ${n1(last.pf)} points, and ${secondLast ? `${esc(pointDifferenceClause(secondLast.pf, last.pf))} ${esc(last.team.name)}.` : 'nobody below them.'}`,
       paragraphs: early ? [
-        `<span class="dateline">${esc(dateline())} —</span> Through Week ${ctx.week}, <b>${esc(last.team.name)}</b> is No. ${table.length} in the model at <b>${esc(last.recordLabel)}</b> with <b>${n1(last.pf)}</b> points — ${n1(last.avg)} a week.`,
+        `${datelineTag()} Through Week ${ctx.week}, <b>${esc(last.team.name)}</b> is No. ${table.length} in the model at <b>${esc(last.recordLabel)}</b> with <b>${n1(last.pf)}</b> points — ${n1(last.avg)} a week.`,
         secondLast
           ? `<b>${esc(secondLast.team.name)}</b> is the next team up, separated by <b>${n1(Math.abs(last.pf - secondLast.pf))}</b> points-for. At this stage, one strong Sunday can reorder the entire bottom half.`
           : `The sample is still tiny. The useful question is which lineup and roster decisions can change the next result.`,
@@ -6579,7 +6805,7 @@ function tlRecap(ctx){
           ? `A win is already on the board, so this is a <b>${pressureTag}</b>, not a declaration that the season is headed anywhere permanent.`
           : `The win column is still empty, which earns a <b>${pressureTag}</b>. The calendar still leaves plenty of room for the roster to answer it.`,
       ] : [
-        `<span class="dateline">${esc(dateline())} —</span> Somebody has to finish last, and through Week ${ctx.week} it is ` +
+        `${datelineTag()} Somebody has to finish last, and through Week ${ctx.week} it is ` +
         `<b>${esc(last.team.name)}</b> at <b>${esc(last.recordLabel)}</b> with <b>${n1(last.pf)}</b> points — ${n1(last.avg)} a week.`,
         secondLast
           ? `<b>${esc(secondLast.team.name)}</b> is the only thing standing between them and the trophy nobody wants, ` +
@@ -6597,29 +6823,61 @@ function tlRecap(ctx){
     }));
   }
 
-  /* ---- MATCHUP DEBRIEFS ---- */
+  /* ---- MATCHUP DEBRIEFS ----
+     The debrief covers the tightest final on the board, but "tightest" is not
+     a synonym for "thriller". The margin picks the deck, the tag and the
+     closing clause, so a week whose closest game finished by 19.4 is written
+     up as a competitive decision instead of a last-drive classic. */
   const decided = ctx.scored.filter(s=> s.winner && s.loser);
   if(decided.length){
     const tight = decided.slice().sort((a,b)=> a.margin - b.margin)[0];
     const dseed = 'debrief' + ctx.week + tight.winner.id;
+    const dCategory = marginCategory(tight.margin);
+    const dCopy = matrixCopy(ctx, dCategory, 20, matrixFacts(ctx, tight));
+    const avgMargin = decided.reduce((acc,d)=> acc + d.margin, 0) / decided.length;
+    const MARGIN_CLAUSES = {
+      close: [
+        'one stat correction from being the other result.',
+        'the width of a garbage-time reception.',
+        'close enough that both managers will claim they controlled it.',
+      ],
+      competitive: [
+        'enough separation to be a decision rather than a coin flip.',
+        'a real margin — the kind a lineup earns over an afternoon, not on one snap.',
+        'close on the board and settled everywhere it mattered.',
+      ],
+      blowout: [
+        'the tightest game of the week, which tells you what the rest of the board looked like.',
+        'a gap wide enough that this was the closest anyone came all week.',
+        'and it was still the least lopsided result on the slate.',
+      ],
+    };
+    const DEBRIEF_TAGS = { close:'NAIL-BITER', competitive:'COMPETITIVE DECISION', blowout:'MATCHUP DEBRIEF' };
+    const secondPara = dCategory === 'close'
+      ? `Every other game on the board finished by an average of <b>${n1(avgMargin)}</b>. ` +
+        `This one was decided by less than a running back's afternoon.`
+      : `Every game on the board finished by an average of <b>${n1(avgMargin)}</b>, ` +
+        `so a <b>${n1(tight.margin)}</b>-point result was the closest thing Week ${ctx.week} had to a fight.`;
+    const thirdPara = dCategory === 'close'
+      ? `The loss drops <b>${esc(tight.loser.name)}</b> into a week of what-ifs. The desk has heard three of them already.`
+      : `<b>${esc(tight.loser.name)}</b> was in it without ever being ahead of it, which is a different kind of week to carry.`;
     out.push(tl({
       id: 'tl-debrief-' + ctx.week,
       kind:'debrief', topic:'matchups', slot:'recap', offset: 90 + (hash(dseed) % 150),
       metaTag:'DEBRIEF',
-      tag:'MATCHUP DEBRIEF', tone:'white', priority: 62,
+      tag: DEBRIEF_TAGS[dCategory] || 'MATCHUP DEBRIEF', tone:'white', priority: 62,
       byline:'FSN Senior League Insider',
       crest:{ name: tight.winner.name, logo: tight.winner.logo },
-      headline: esc(upper(matrixCopy(ctx, 'close', 20, matrixFacts(ctx, tight)).headline)),
-      dek: esc(matrixCopy(ctx, 'close', 20, matrixFacts(ctx, tight)).lede),
+      headline: esc(upper(dCopy.headline)),
+      dek: esc(dCopy.lede),
       paragraphs: [
-        `<span class="dateline">${esc(dateline())} —</span> <b>${esc(tight.winner.name)}</b> ${n1(tight.winnerScore)}, ` +
+        `${datelineTag()} <b>${esc(tight.winner.name)}</b> ${n1(tight.winnerScore)}, ` +
         `<b>${esc(tight.loser.name)}</b> ${n1(tight.loserScore)}. A <b>${n1(tight.margin)}</b>-point margin — ` +
-        `${pick(['one stat correction from being the other result.','the width of a garbage-time reception.','close enough that both managers will claim they controlled it.'], dseed)}`,
-        `Every other game on the board finished by an average of <b>${n1(decided.reduce((s,d)=> s + d.margin, 0) / decided.length)}</b>. ` +
-        `This one was decided by less than a running back's afternoon.`,
-        `The loss drops <b>${esc(tight.loser.name)}</b> into a week of what-ifs. The desk has heard three of them already.`,
+        `${pick(MARGIN_CLAUSES[dCategory], dseed)}`,
+        secondPara,
+        thirdPara,
       ],
-      quote: { text:matrixCopy(ctx, 'close', 20, matrixFacts(ctx, tight)).quote, who:upper(managerLabel(tight.winner)) },
+      quote: { text:dCopy.quote, who:upper(managerLabel(tight.winner)) },
       numbers: { title:'Week ' + ctx.week + ' Margins', rows: decided.slice().sort((a,b)=> a.margin - b.margin).slice(0,4).map(d=>({
         label: `${esc(d.winner.name)} over ${esc(d.loser.name)}`, value: n1(d.margin),
       })), note:'Closest finishes first.' },
@@ -6628,7 +6886,7 @@ function tlRecap(ctx){
     /* The other end of the same board — a debrief desk that only covers the
        one-possession games is not a debrief desk. */
     const blowout = decided.slice().sort((a,b)=> b.margin - a.margin)[0];
-    if(blowout && blowout !== tight && blowout.margin > tight.margin + 15){
+    if(blowout && blowout !== tight && isBlowoutMargin(blowout.margin) && blowout.margin > tight.margin + 15){
       const bseed = 'blowout' + ctx.week + blowout.winner.id;
       out.push(tl({
         id: 'tl-blowout-' + ctx.week,
@@ -6640,7 +6898,7 @@ function tlRecap(ctx){
         headline: esc(upper(matrixCopy(ctx, 'blowout', 20, matrixFacts(ctx, blowout)).headline)),
         dek: esc(matrixCopy(ctx, 'blowout', 20, matrixFacts(ctx, blowout)).lede),
         paragraphs: [
-          `<span class="dateline">${esc(dateline())} —</span> <b>${esc(blowout.winner.name)}</b> ${n1(blowout.winnerScore)}, ` +
+          `${datelineTag()} <b>${esc(blowout.winner.name)}</b> ${n1(blowout.winnerScore)}, ` +
           `<b>${esc(blowout.loser.name)}</b> ${n1(blowout.loserScore)}. A <b>${n1(blowout.margin)}</b>-point margin in a week where the average game finished by ` +
           `<b>${n1(decided.reduce((s2,d)=> s2 + d.margin, 0) / decided.length)}</b>.`,
           `<b>${n1(blowout.loserScore)}</b> would have lost to <b>${decided.filter(d=> d.loserScore > blowout.loserScore).length}</b> of the other losing scores on this board too. ` +
@@ -6703,10 +6961,10 @@ function tlWaivers(ctx){
         : `$${report.totalSpent} changed hands in the Week ${ctx.week} run.`,
       paragraphs: [
         spend && team
-          ? `<span class="dateline">${esc(dateline())} —</span> <b>${esc(team.name)}</b> put <b>$${spend.bid}</b> of free-agent budget on ` +
+          ? `${datelineTag()} <b>${esc(team.name)}</b> put <b>$${spend.bid}</b> of free-agent budget on ` +
             `<b>${esc((target && target.name) || 'the top name on the wire')}</b>${target && target.meta && target.meta.pos ? ` (${esc(target.meta.pos)}${target.meta.proTeam ? ', ' + esc(target.meta.proTeam) : ''})` : ''} ` +
             `and dared the rest of the league to say something.`
-          : `<span class="dateline">${esc(dateline())} —</span> The Week ${ctx.week} waiver run processed <b>${report.claimCount}</b> claims and left ` +
+          : `${datelineTag()} The Week ${ctx.week} waiver run processed <b>${report.claimCount}</b> claims and left ` +
             `<b>${report.lost.length}</b> managers refreshing a page that was never going to change.`,
 
         hb
@@ -6743,7 +7001,7 @@ function tlWaivers(ctx){
       headline: `${upper((r.team && r.team.name) || 'SOMEBODY')} JUST DROPPED ${upper(r.player.name || 'A DRAFT PICK')}`,
       dek: `${esc(roundLabel)}. Cut loose in Week ${r.week || ctx.week}. There is no coming back from this one emotionally.`,
       paragraphs: [
-        `<span class="dateline">${esc(dateline())} —</span> <b>${esc(r.player.name || 'A drafted player')}</b>` +
+        `${datelineTag()} <b>${esc(r.player.name || 'A drafted player')}</b>` +
         `${r.player.meta && r.player.meta.pos ? ` (${esc(r.player.meta.pos)}${r.player.meta.proTeam ? ', ' + esc(r.player.meta.proTeam) : ''})` : ''} ` +
         `— ${esc(roundLabel)} — is on the wire, released by <b>${esc((r.team && r.team.name) || 'their manager')}</b>. ` +
         pick(['This was not a roster move. This was a feeling.',
@@ -6838,7 +7096,7 @@ function tlPrimer(ctx){
       }).lede);
     })(),
     paragraphs: [
-      `<span class="dateline">${esc(dateline())} —</span> The Week ${ctx.week} board has one game that matters more than the rest: ` +
+      `${datelineTag()} The Week ${ctx.week} board has one game that matters more than the rest: ` +
       `<b>${esc(A.name)}</b> (${esc(recordA)}) at <b>${esc(B.name)}</b> (${esc(recordB)}). ` +
       `The model gives ${esc(probA >= 50 ? A.name : B.name)} a <b>${Math.round(Math.max(probA, 100 - probA))}%</b> edge, which is ` +
       pick(['not the same as a prediction.','close enough to be worthless.','the polite way of saying coin flip.'], seed),
@@ -6869,7 +7127,7 @@ function tlPrimer(ctx){
       headline: `THURSDAY WARNING: ${inj.length} STARTER${inj.length === 1 ? '' : 'S'} IN THIS LEAGUE ARE NOT LOCKED IN`,
       dek: `Lineups lock at kickoff. ${esc(inj[0].player.name)} is ${esc(inj[0].label)} and still in a starting slot.`,
       paragraphs: [
-        `<span class="dateline">${esc(dateline())} —</span> The Thursday sweep of this league's active lineups found <b>${inj.length}</b> ` +
+        `${datelineTag()} The Thursday sweep of this league's active lineups found <b>${inj.length}</b> ` +
         `player${inj.length === 1 ? '' : 's'} carrying a designation while sitting in a starting slot. ` +
         `Top of the list: <b>${esc(inj[0].player.name)}</b>${inj[0].player.pos ? ` (${esc(inj[0].player.pos)}${inj[0].player.proTeam ? ', ' + esc(inj[0].player.proTeam) : ''})` : ''}, listed <b>${esc(inj[0].label)}</b>` +
         `${inj[0].team ? `, started by <b>${esc(inj[0].team.name)}</b>` : ''}.`,
@@ -6906,7 +7164,7 @@ function tlShowDay(ctx){
     headline: `FSN STUDIO SHOW · WEEK ${ctx.week} IS ON THE AIR`,
     dek: `Four segments, two hosts, one league getting dismantled live. Tap to launch the broadcast.`,
     paragraphs: [
-      `<span class="dateline">${esc(dateline())} —</span> The Week ${ctx.week} edition of the FSN Studio Show is cued up and ready to run. ` +
+      `${datelineTag()} The Week ${ctx.week} edition of the FSN Studio Show is cued up and ready to run. ` +
       `Your lead anchor takes the rankings, the chief analyst takes the rest, and neither of them is being paid enough to be diplomatic.`,
       `Tonight's rundown: <b>${segments.join('</b> · <b>')}</b>.`,
       `The show reads your league's actual numbers out loud. Headphones recommended. Thin skin not.`,
@@ -6940,7 +7198,7 @@ function tlInjury(ctx){
     headline: `INJURY WIRE: ${counts.OUT + counts.IR} OUT, ${counts.QUESTIONABLE} QUESTIONABLE ACROSS THE LEAGUE`,
     dek: `${esc(top[0].player.name)} headlines a report that is going to ruin somebody's Sunday.`,
     paragraphs: [
-      `<span class="dateline">${esc(dateline())} —</span> The Saturday sweep across every roster in this league returned ` +
+      `${datelineTag()} The Saturday sweep across every roster in this league returned ` +
       `<b>${list.length}</b> players carrying a designation: <b>${counts.OUT + counts.IR}</b> ruled out, ` +
       `<b>${counts.DOUBTFUL}</b> doubtful and <b>${counts.QUESTIONABLE}</b> questionable.`,
       `<b>${esc(top[0].player.name)}</b>${top[0].player.pos ? ` (${esc(top[0].player.pos)}${top[0].player.proTeam ? ', ' + esc(top[0].player.proTeam) : ''})` : ''} is listed <b>${esc(top[0].label)}</b>` +
@@ -6990,7 +7248,7 @@ function tlDraft(ctx){
         ? `${n1(Math.abs(shocker.delta))} picks ahead of ADP. The room went quiet.`
         : `${n1(shocker.delta)} picks past ADP. Nobody stopped it.`,
       paragraphs: [
-        `<span class="dateline">${esc(dateline())} —</span> With the <b>${esc(ordinal(shocker.overall))}</b> pick of the draft, ` +
+        `${datelineTag()} With the <b>${esc(ordinal(shocker.overall))}</b> pick of the draft, ` +
         `<b>${esc((shocker.team && shocker.team.name) || 'a manager')}</b> selected <b>${esc(shocker.name)}</b>` +
         `${shocker.pos ? ` (${esc(shocker.pos)}${shocker.proTeam ? ', ' + esc(shocker.proTeam) : ''})` : ''}` +
         `${shocker.adp ? `, a player the market had going at <b>${n1(shocker.adp)}</b>` : ''}.`,
@@ -7022,7 +7280,7 @@ function tlDraft(ctx){
       headline: `REACH OF THE DRAFT: ${upper(reach.name)} AT ${reach.overall}, ${n1(Math.abs(reach.delta))} PICKS EARLY`,
       dek: `ADP said ${n1(reach.adp)}. ${esc((reach.team && reach.team.name) || 'One manager')} said now.`,
       paragraphs: [
-        `<span class="dateline">${esc(dateline())} —</span> <b>${esc((reach.team && reach.team.name) || 'A manager')}</b> spent pick <b>${reach.overall}</b> ` +
+        `${datelineTag()} <b>${esc((reach.team && reach.team.name) || 'A manager')}</b> spent pick <b>${reach.overall}</b> ` +
         `(Round ${reach.round}, ${esc(ordinal(reach.pickInRound))} off the board) on <b>${esc(reach.name)}</b>, ` +
         `a player available at <b>${n1(reach.adp)}</b> in every other draft on earth.`,
         `That is <b>${n1(Math.abs(reach.delta))}</b> picks of value handed back to the room in a single click — ` +
@@ -7053,7 +7311,7 @@ function tlDraft(ctx){
       headline: `STEAL OF THE DRAFT: ${upper(steal.name)} FELL TO ${steal.overall} AND NOBODY STOPPED IT`,
       dek: `${n1(steal.delta)} picks of value, sitting there in Round ${steal.round}.`,
       paragraphs: [
-        `<span class="dateline">${esc(dateline())} —</span> <b>${esc(steal.name)}</b>${steal.pos ? ` (${esc(steal.pos)}${steal.proTeam ? ', ' + esc(steal.proTeam) : ''})` : ''} ` +
+        `${datelineTag()} <b>${esc(steal.name)}</b>${steal.pos ? ` (${esc(steal.pos)}${steal.proTeam ? ', ' + esc(steal.proTeam) : ''})` : ''} ` +
         `carried an ADP of <b>${n1(steal.adp)}</b> into this draft and came off the board at <b>${steal.overall}</b>, ` +
         `to <b>${esc((steal.team && steal.team.name) || 'the room\'s most patient manager')}</b>.`,
         `<b>${n1(steal.delta)}</b> picks of free value. Nine other managers passed. Several of them will explain why for the rest of the season.`,
@@ -7084,7 +7342,7 @@ function tlDraft(ctx){
       headline: `DRAFT REPORT CARDS: ${upper((best.team && best.team.name) || 'ONE ROOM')} GETS THE ${best.grade}, ${upper((worst.team && worst.team.name) || 'SOMEBODY')} GETS THE ${worst.grade}`,
       dek: `Every roster in the league, graded against ADP. No participation trophies.`,
       paragraphs: [
-        `<span class="dateline">${esc(dateline())} —</span> The desk graded all <b>${grades.length}</b> drafts against average draft position, ` +
+        `${datelineTag()} The desk graded all <b>${grades.length}</b> drafts against average draft position, ` +
         `weighted by round so a late flyer can't paper over an early mistake.`,
         `<b>${esc((best.team && best.team.name) || 'The top room')}</b> takes the <b>${best.grade}</b>` +
         `${best.best ? `, built on ${esc(best.best.name)} at ${best.best.overall} (ADP ${n1(best.best.adp)})` : ''}. ` +
@@ -7165,12 +7423,12 @@ function tlPlayoffPicture(ctx){
     metaTag:"PLAYOFF PICTURE: WHAT'S AT STAKE",
     tag:'PLAYOFF PICTURE', tone:'gold', priority:290,
     byline:'FSN Playoff Desk',
-    dateline:`${dateline()} · WEEK ${ctx.week} STRETCH RUN`,
+    dateline:`${leagueDateline()} · WEEK ${ctx.week} STRETCH RUN`,
     crest:{ name:'Playoff Picture', logo:'' },
     headline:"PLAYOFF PICTURE: WHAT'S AT STAKE",
     dek:`Week ${ctx.week} now has four lanes: championship byes, projected 3–6 / 4–5 wild cards, the 7–8 cut line, and the bottom-four punishment bracket.`,
     paragraphs:[
-      `<span class="dateline">${esc(dateline())} —</span> <b>Championship Byes:</b> ${byeCopy}`,
+      `${datelineTag()} <b>Championship Byes:</b> ${byeCopy}`,
       `<b>Projected Wild Cards:</b> ${wildCopy} <b>Bubble Cut-Line:</b> ${bubbleCopy}`,
       `<b>Sacko / Toilet Bowl Projection:</b> ${sackoCopy}`,
     ],
@@ -7211,7 +7469,8 @@ function tlPreseason(ctx){
   if(!rep || !rep.champion || !rep.sacko) return [];
 
   const champ = rep.champion, sacko = rep.sacko, year = Number(rep.lastSeason.year);
-  const seasonDateline = `${dateline()} · ${year} FINAL / ${rep.upcomingYear} PRESEASON`;
+  const seasonQualifier = `${year} FINAL / ${rep.upcomingYear} PRESEASON`;
+  const seasonDateline = `${leagueDateline()} · ${seasonQualifier}`;
   const drought = rep.droughtLeader, heart = rep.heartbreak, marquee = rep.marquee;
   const teamCount = rep.lastSeason.teamCount;
   const seed = 'sotl' + year + champ.ownerId + sacko.ownerId;
@@ -7277,19 +7536,19 @@ function tlPreseason(ctx){
 
   const runNarratives = {
     cinderella: [
-      `<span class="dateline">${esc(seasonDateline)} —</span> Call it <b>${esc(archetype.label)}</b>. <b>${esc(champName)}</b> did not enter the bracket as the obvious final boss; the champion arrived at <b>${titleRun}</b> and then turned the postseason into a heater. ${pathSentence}`,
+      `${datelineTag()} Call it <b>${esc(archetype.label)}</b>. <b>${esc(champName)}</b> did not enter the bracket as the obvious final boss; the champion arrived at <b>${titleRun}</b> and then turned the postseason into a heater. ${pathSentence}`,
       `That is the dangerous part of a lower-seed champion: the regular season explains how the bracket was reached, not how the trophy was won. At <b>${n1(champPpg)} PPG</b>, ${esc(champ.manager || champName)} found the scoring gear that mattered after elimination became one bad Sunday away. ${esc(archetype.reason)}.`,
     ],
     juggernaut: [
-      `<span class="dateline">${esc(seasonDateline)} —</span> This was <b>${esc(archetype.label)}</b>. <b>${esc(champName)}</b> carried the league's biggest target and still finished the job: <b>${titleRun}</b>. ${pathSentence}`,
+      `${datelineTag()} This was <b>${esc(archetype.label)}</b>. <b>${esc(champName)}</b> carried the league's biggest target and still finished the job: <b>${titleRun}</b>. ${pathSentence}`,
       `There was no need to invent an underdog story. The title run was built on repeatable weekly pressure — <b>${n1(champPpg)} PPG</b>${rep.lastSeason.maxPpg && Math.abs(champPpg-rep.lastSeason.maxPpg) < .05 ? ', the best scoring rate in the league' : ''} — and the bracket never found the off switch. ${esc(archetype.reason)}.`,
     ],
     survival: [
-      `<span class="dateline">${esc(seasonDateline)} —</span> The trophy came out of <b>${esc(archetype.label)}</b>. <b>${esc(champName)}</b> survived a regular season at <b>${n1(champPpg)} PPG</b>, below the league's <b>${n1(rep.lastSeason.averagePpg)}</b> average, then won the only games that could not be repaired a week later. ${pathSentence}`,
+      `${datelineTag()} The trophy came out of <b>${esc(archetype.label)}</b>. <b>${esc(champName)}</b> survived a regular season at <b>${n1(champPpg)} PPG</b>, below the league's <b>${n1(rep.lastSeason.averagePpg)}</b> average, then won the only games that could not be repaired a week later. ${pathSentence}`,
       `That profile is a warning to every preseason spreadsheet: scoring rank is predictive, not sovereign. ${esc(champ.manager || champName)} got to the bracket, absorbed the variance, and closed. ${esc(archetype.reason)}. The defense begins with the whole league asking whether survival can be repeated on command.`,
     ],
     closer: [
-      `<span class="dateline">${esc(seasonDateline)} —</span> <b>${esc(champName)}</b> won as <b>${esc(archetype.label)}</b>: neither a fairy-tale seed nor a wire-to-wire scoring monopoly, just a contender that became ruthless when the bracket arrived. The final regular-season line was <b>${titleRun}</b>. ${pathSentence}`,
+      `${datelineTag()} <b>${esc(champName)}</b> won as <b>${esc(archetype.label)}</b>: neither a fairy-tale seed nor a wire-to-wire scoring monopoly, just a contender that became ruthless when the bracket arrived. The final regular-season line was <b>${titleRun}</b>. ${pathSentence}`,
       `The useful number is the weekly one: <b>${n1(champPpg)} PPG</b>. That rate kept the roster in striking distance all season, and the postseason supplied the finish. ${esc(archetype.reason)}. Now the league gets a full offseason to decide whether that was timing, roster construction, or both.`,
     ],
   };
@@ -7512,7 +7771,7 @@ function mergeAIIntoArticle(a, story){
   a.headline = esc(story.headline);
   a.dek = esc(story.dek || '');
   a.paragraphs = (story.paragraphs || []).map((p,i)=> i === 0
-    ? `<span class="dateline">${esc(dateline())} —</span> ${esc(p)}`
+    ? `${datelineTag()} ${esc(p)}`
     : esc(p));
   a.quote = story.quote && story.quote.text ? {text:esc(story.quote.text), who:esc(story.quote.who || 'FSN News Desk')} : a.quote;
   a.engine = 'ai';
@@ -7763,6 +8022,8 @@ return {
   generate, all, weekContext, relTime, age, toPlainText,
   getTimelineStream, tickerHeadlines, restamp, stamp,
   getShuffledDeck, seasonToneBucket, viewedSeasonYear, activeSeasonYear, isActiveSeasonForAI,
+  /* Margin routing — exported so every surface tags a game the same way. */
+  THRILLER_MARGIN, BLOWOUT_MARGIN, marginCategory, isThrillerMargin, isBlowoutMargin,
   TOPICS, SLOTS,
   CUSTOM_TAGS,
   composeCustom,
@@ -10181,6 +10442,18 @@ return {
 const esc = (s)=> LeagueData.esc(s);
 const $  = (id)=> document.getElementById(id);
 
+/* One-decimal formatter. The engine layers each carry their own copy; the UI
+   layer needs one too, because the playoff bracket renderer below formats
+   seeds, PPG and PF differentials straight from the intel snapshot. Without
+   it every Playoff Picture story threw a ReferenceError mid-render and the
+   reader silently refused to open. */
+const n1 = (v)=> (Math.round((Number(v)||0) * 10) / 10).toFixed(1);
+
+/* Margin routing, borrowed from the News Desk so the Desk card and the
+   editorial copy can never disagree about what counts as a nail-biter. */
+const marginCategory = NewsDesk.marginCategory;
+const MATCHUP_FLAVOR = { close:'NAIL-BITER', competitive:'COMPETITIVE', blowout:'SHOOTOUT' };
+
 const ui = {
   screen: 'home',
   vaultTab: 'franchises',
@@ -10799,7 +11072,9 @@ function renderHome(){
       : (st === 'live'
           ? `<span class="pill pill-live"><span class="live-dot"></span>LIVE</span>`
           : (st === 'final' ? `<span class="pill pill-final">FINAL</span>` : `<span class="pill pill-cyan">PROJECTED</span>`));
-    const flavor = pregameWeek ? 'MARQUEE MATCHUP' : (margin < 10 ? 'NAIL-BITER' : (margin < 25 ? 'COMPETITIVE' : 'SHOOTOUT'));
+    /* Same thresholds the News Desk writes to: under 5.0 is a nail-biter,
+       5.0 to 20.0 is a competitive decision, 20.0 and up is a shootout. */
+    const flavor = pregameWeek ? 'MARQUEE MATCHUP' : MATCHUP_FLAVOR[marginCategory(margin)];
     const centerStat = pregameWeek
       ? (bestTotal > 0 ? `PROJECTED TOTAL ${bestTotal.toFixed(1)}` : 'PROJECTIONS PENDING')
       : `${margin.toFixed(1)} PT MARGIN`;
@@ -12067,9 +12342,10 @@ function newsList(){
 }
 function articleById(id){ return ui.newsCache ? ui.newsCache[id] : null; }
 
-function tagPill(a, extra){
+function tagPill(a, extra, articleId){
   const dot = (a.live || a.tag === 'BREAKING') ? '<span class="dot"></span>' : '';
-  return `<span class="tag tag-${esc(a.tone)} ${extra || ''}">${dot}${esc(a.tag)}</span>`;
+  const hook = articleId ? ` data-article="${esc(articleId)}"` : '';
+  return `<span class="tag tag-${esc(a.tone)} ${extra || ''}"${hook}>${dot}${esc(a.tag)}</span>`;
 }
 
 function bylineLine(a){
@@ -12101,12 +12377,18 @@ function railCard(a, idx){
 /* ---- Lead story on the News tab ---- */
 function leadCard(a){
   const c = toneVar(a.tone);
-  return `<button class="card w-full text-left" data-article="${esc(a.id)}" style="border-color:${c}33">
+  /* Every interactive surface of the lead carries the story id, so a tap on the
+     tag pill or the READ button resolves to the same article as a tap on the
+     card body even if something upstream stops the event from bubbling. */
+  const id = esc(a.id);
+  return `<button id="leadStoryCard" class="card news-lead-card lead-story-banner w-full text-left"
+      data-article="${id}" data-story-id="${id}" aria-label="Read: ${esc(String(a.headline || '').replace(/<[^>]+>/g, ''))}"
+      style="border-color:${c}33">
     <div style="height:3px;background:${c};box-shadow:0 0 18px ${c}"></div>
     <div class="p-4" style="background:radial-gradient(130% 100% at 0% 0%, ${c}14, transparent 60%)">
       <div class="flex items-center gap-2 mb-3">
-        ${tagPill(a)}
-        ${a.custom ? '<span class="tag tag-dim">FILED BY YOU</span>' : ''}
+        ${tagPill(a, 'lead-tag-pill', id)}
+        ${a.custom ? `<span class="tag tag-dim lead-tag-pill" data-article="${id}">FILED BY YOU</span>` : ''}
         <span class="kicker text-[var(--dim)] ml-auto">Lead</span>
       </div>
       <h2 class="headline" style="font-size:25px">${a.headline}</h2>
@@ -12114,7 +12396,7 @@ function leadCard(a){
       <div class="flex items-center gap-2.5 mt-3.5 pt-3 border-t border-[var(--line)]">
         ${a.crest ? crest(a.crest.name, a.crest.logo, 30) : ''}
         <span class="byline">${bylineLine(a)}</span>
-        <span class="ml-auto pill pill-cyan">READ ›</span>
+        <span class="ml-auto pill pill-cyan lead-read-btn" data-article="${id}" data-lead-read="1">READ ›</span>
       </div>
     </div>
   </button>`;
@@ -12263,10 +12545,27 @@ function articleHtml(a){
 }
 
 function openReader(id){
-  const a = articleById(id);
+  let a = articleById(id);
+  /* A cache miss means the timeline was rebuilt (week or season change) between
+     the paint and the tap. Rebuild it once and look again before giving up. */
+  if(!a && id){
+    try{ newsList(); }catch(err){ console.warn('[FSN] timeline rebuild failed', err); }
+    a = articleById(id);
+  }
   if(!a) return;
   ui.readerId = id;
-  $('readerBody').innerHTML = articleHtml(a);
+  /* A story whose body fails to render must still open — swallowing the throw
+     here is what made a broken renderer look like a dead click target. */
+  let body;
+  try{
+    body = articleHtml(a);
+  }catch(err){
+    console.error('[FSN] article render failed', id, err);
+    body = `<div class="px-4 pt-5 pb-8"><h1 class="headline" style="font-size:26px">${a.headline || 'Story unavailable'}</h1>
+      <p class="dek mt-3">${esc(a.dek || '')}</p>
+      <p class="text-[11px] text-[var(--dim)] mt-4">This story could not be fully rendered. The rest of the wire is unaffected.</p></div>`;
+  }
+  $('readerBody').innerHTML = body;
   /* Show first, then reset the scroll — a display:none element has no scroll
      box, so setting scrollTop before opening is silently dropped and the
      previous article's position carries over. */
@@ -12668,6 +12967,43 @@ document.addEventListener('keydown', (e)=>{
   if(!card) return;
   e.preventDefault();
   openArticleModal(card.dataset.storyIdx);
+});
+
+/* THE NEWS DESK LEAD.
+   Runs in the capture phase and ahead of every other delegated listener, so a
+   tap anywhere inside the hero — the card body, the tag pill, the READ button
+   — resolves the story and opens the reader. Nothing downstream can cancel it
+   with stopPropagation(), which is what previously left the hero looking
+   interactive but dead. */
+function leadStoryId(root){
+  if(!root) return '';
+  return root.dataset.storyId || root.dataset.article ||
+    ((root.querySelector('[data-article]') || {}).dataset || {}).article || '';
+}
+function openLeadStory(root){
+  const id = leadStoryId(root);
+  if(!id) return false;
+  openReader(id);
+  return true;
+}
+document.addEventListener('click', (e)=>{
+  if(!e.target.closest) return;
+  const lead = e.target.closest('#leadStoryCard, .news-lead-card, .lead-story-banner');
+  if(!lead) return;
+  /* The launch button is the one child of a lead that owns its own action. */
+  if(e.target.closest('[data-action="launch-studio"], [data-studio], [data-del-story]')) return;
+  e.preventDefault();
+  e.stopPropagation();
+  if(typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+  openLeadStory(lead);
+}, true);
+document.addEventListener('keydown', (e)=>{
+  if(e.key !== 'Enter' && e.key !== ' ') return;
+  if(!e.target.closest) return;
+  const lead = e.target.closest('#leadStoryCard, .news-lead-card, .lead-story-banner');
+  if(!lead) return;
+  e.preventDefault();
+  openLeadStory(lead);
 });
 
 // Any [data-article] control anywhere — lead, feed row, saved list.
