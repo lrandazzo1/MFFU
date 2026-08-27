@@ -399,6 +399,10 @@
             <span class="block text-[10px] font-mono text-white">TEMPLATE F</span>
             <span class="block font-display text-sm mt-1">RECORD<br>BOOK</span>
           </button>
+          <button data-template="G" class="tmpl-btn rounded-lg p-3 text-left">
+            <span class="block text-[10px] font-mono text-[var(--cyan)]">TEMPLATE G</span>
+            <span class="block font-display text-sm mt-1">FRANCHISE<br>RESUME</span>
+          </button>
         </div>
       </div>
 
@@ -440,9 +444,16 @@
 
       <!-- Template B fields -->
       <div id="fields-B" class="tmpl-fields hidden space-y-3">
+        <div class="card rounded-lg p-4 space-y-2">
+          <p class="section-label text-[var(--gold)]">Mode</p>
+          <div class="flex gap-1 p-1 bg-[#0b0e14] rounded-lg border border-white/10">
+            <button id="rankModeWeekly" class="rank-mode-btn flex-1 py-2 rounded-md text-[10px] font-semibold tracking-wide bg-[var(--gold)] text-[#04150a]">IN-SEASON WEEKLY</button>
+            <button id="rankModeAllTime" class="rank-mode-btn flex-1 py-2 rounded-md text-[10px] font-semibold tracking-wide text-gray-400">ALL-TIME FRANCHISE</button>
+          </div>
+        </div>
         <div class="card rounded-lg p-4 space-y-3">
           <div class="flex items-center justify-between">
-            <p class="section-label text-[var(--gold)]">Rankings (drag order via # field)</p>
+            <p class="section-label text-[var(--gold)]">Rankings (# / Name / Mgr / Record / Diff / Δ)</p>
             <button id="addRankRow" class="btn-ghost rounded px-2 py-1 text-xs">+ ADD</button>
           </div>
           <div id="rankRows" class="space-y-2 max-h-[420px] overflow-y-auto pr-1"></div>
@@ -517,6 +528,22 @@
         </div>
       </div>
 
+      <!-- Template G fields — Franchise Resume -->
+      <div id="fields-G" class="tmpl-fields hidden space-y-3">
+        <div class="card rounded-lg p-4 space-y-3">
+          <p class="section-label text-[var(--cyan)]">Franchise Resume</p>
+          <input data-f="g_team" placeholder="Team name" class="input-field w-full rounded px-3 py-2 text-sm">
+          <input data-f="g_manager" placeholder="Manager name" class="input-field w-full rounded px-3 py-2 text-sm">
+          <input data-f="g_avg" placeholder="Avg finishing position (e.g. 4.2)" class="input-field w-full rounded px-3 py-2 text-sm font-mono">
+          <input data-f="g_champs" placeholder="Championships (e.g. 2)" class="input-field w-full rounded px-3 py-2 text-sm font-mono">
+          <input data-f="g_top3" placeholder="Top 3 finishes (e.g. 5)" class="input-field w-full rounded px-3 py-2 text-sm font-mono">
+          <input data-f="g_playoffs" placeholder="Playoff appearances (e.g. 4)" class="input-field w-full rounded px-3 py-2 text-sm font-mono">
+          <input data-f="g_record" placeholder="All-time record (42-54-0)" class="input-field w-full rounded px-3 py-2 text-sm font-mono">
+          <input data-f="g_seasons" placeholder="Seasons played (e.g. 7)" class="input-field w-full rounded px-3 py-2 text-sm font-mono">
+          <input data-f-img="g_img" type="file" accept="image/*" class="text-xs w-full">
+        </div>
+      </div>
+
     </section>
 
 
@@ -552,37 +579,65 @@
         <div id="tpl-A" class="tpl absolute inset-0 hidden">
           <div class="absolute inset-0" style="background:radial-gradient(ellipse at 50% 0%, #101823 0%, #05070a 60%);"></div>
           <div class="absolute top-0 left-0 right-0 h-[10px]" style="background:linear-gradient(90deg,var(--cyan),var(--pink));"></div>
-          <div class="absolute top-[70px] left-0 right-0 text-center">
-            <p class="font-mono text-[var(--cyan)] text-[26px] tracking-[0.3em]" id="a-week">WEEK 7</p>
-            <h2 class="font-display text-white text-[56px] leading-none mt-2 glow-cyan">TALE OF THE TAPE</h2>
+          <div class="absolute top-[50px] left-0 right-0 text-center">
+            <p class="font-mono text-[var(--cyan)] text-[24px] tracking-[0.3em]" id="a-week">WEEK 7</p>
+            <h2 class="font-display text-white text-[52px] leading-none mt-1 glow-cyan">TALE OF THE TAPE</h2>
           </div>
 
           <!-- Team A -->
-          <div class="absolute top-[280px] left-0 w-1/2 flex flex-col items-center px-8">
-            <div class="w-[280px] h-[280px] rounded-full overflow-hidden bg-[#1a2230] avatar-frame text-[var(--cyan)] flex items-center justify-center">
-              <img id="a-img" class="w-full h-full object-cover hidden">
-              <span id="a-img-ph" class="font-display text-[110px] text-[var(--cyan)]">A</span>
+          <div class="absolute top-[210px] left-0 w-1/2 flex flex-col items-center px-6">
+            <div class="w-[240px] h-[240px] rounded-full overflow-hidden bg-[#1a2230] avatar-frame text-[var(--cyan)]" style="position:relative;">
+              <img id="a-img" class="w-full h-full object-cover hidden" style="position:absolute;inset:0;">
+              <span id="a-img-ph" class="font-display text-[95px] text-[var(--cyan)]" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;">A</span>
             </div>
-            <h3 id="a-name" class="font-display text-white text-[46px] text-center mt-8 leading-tight">HOME TEAM</h3>
-            <p id="a-owner" class="font-condensed text-gray-400 text-[26px] mt-1">Manager Name</p>
-            <p id="a-record" class="font-mono text-[var(--cyan)] text-[24px] mt-2 px-4 py-1 border border-[var(--cyan)]/40 rounded-full">7-3</p>
+            <h3 id="a-name" class="font-display text-white text-[40px] text-center mt-5 leading-tight">HOME TEAM</h3>
+            <p id="a-owner" class="font-condensed text-gray-400 text-[24px] mt-1">Manager Name</p>
+            <p id="a-record" class="font-mono text-[var(--cyan)] text-[22px] mt-2 px-4 py-1 border border-[var(--cyan)]/40 rounded-full">7-3</p>
           </div>
 
           <!-- Team B -->
-          <div class="absolute top-[280px] right-0 w-1/2 flex flex-col items-center px-8">
-            <div class="w-[280px] h-[280px] rounded-full overflow-hidden bg-[#1a2230] avatar-frame text-[var(--pink)] flex items-center justify-center">
-              <img id="b-img" class="w-full h-full object-cover hidden">
-              <span id="b-img-ph" class="font-display text-[110px] text-[var(--pink)]">B</span>
+          <div class="absolute top-[210px] right-0 w-1/2 flex flex-col items-center px-6">
+            <div class="w-[240px] h-[240px] rounded-full overflow-hidden bg-[#1a2230] avatar-frame text-[var(--pink)]" style="position:relative;">
+              <img id="b-img" class="w-full h-full object-cover hidden" style="position:absolute;inset:0;">
+              <span id="b-img-ph" class="font-display text-[95px] text-[var(--pink)]" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;">B</span>
             </div>
-            <h3 id="b-name" class="font-display text-white text-[46px] text-center mt-8 leading-tight">AWAY TEAM</h3>
-            <p id="b-owner" class="font-condensed text-gray-400 text-[26px] mt-1">Manager Name</p>
-            <p id="b-record" class="font-mono text-[var(--pink)] text-[24px] mt-2 px-4 py-1 border border-[var(--pink)]/40 rounded-full">5-5</p>
+            <h3 id="b-name" class="font-display text-white text-[40px] text-center mt-5 leading-tight">AWAY TEAM</h3>
+            <p id="b-owner" class="font-condensed text-gray-400 text-[24px] mt-1">Manager Name</p>
+            <p id="b-record" class="font-mono text-[var(--pink)] text-[22px] mt-2 px-4 py-1 border border-[var(--pink)]/40 rounded-full">5-5</p>
           </div>
 
-          <div class="absolute top-[380px] left-1/2 -translate-x-1/2 font-display text-white text-[64px] glow-cyan">VS</div>
+          <div class="absolute top-[300px] left-1/2 -translate-x-1/2 font-display text-white text-[58px] glow-cyan">VS</div>
+
+          <!-- Matchup Comparison Grid -->
+          <div id="a-matchup-grid" class="absolute left-[60px] right-[60px]" style="top:700px;">
+            <div style="display:flex; flex-direction:column; gap:0;">
+              <div style="display:flex; align-items:center; padding:22px 24px; background:rgba(16,20,28,0.7); border:1px solid rgba(255,255,255,0.06); border-radius:14px 14px 0 0;">
+                <span class="font-mono" style="font-size:16px; color:#5b667a; letter-spacing:0.12em; flex:1;">ALL-TIME H2H</span>
+                <span id="a-h2h-a" class="font-display" style="font-size:36px; color:var(--cyan); width:120px; text-align:right;">--</span>
+                <span class="font-mono" style="font-size:18px; color:#3a4356; width:40px; text-align:center;">—</span>
+                <span id="a-h2h-b" class="font-display" style="font-size:36px; color:var(--pink); width:120px; text-align:left;">--</span>
+              </div>
+              <div style="display:flex; align-items:center; padding:22px 24px; background:rgba(12,16,22,0.8); border:1px solid rgba(255,255,255,0.04); border-top:none;">
+                <span class="font-mono" style="font-size:16px; color:#5b667a; letter-spacing:0.12em; flex:1;">PTS PER GAME</span>
+                <span id="a-ppg-a" class="font-mono" style="font-size:30px; color:var(--cyan); width:120px; text-align:right; font-weight:700;">--</span>
+                <span class="font-mono" style="font-size:18px; color:#3a4356; width:40px; text-align:center;">—</span>
+                <span id="a-ppg-b" class="font-mono" style="font-size:30px; color:var(--pink); width:120px; text-align:left; font-weight:700;">--</span>
+              </div>
+              <div style="display:flex; align-items:center; padding:22px 24px; background:rgba(16,20,28,0.7); border:1px solid rgba(255,255,255,0.06); border-top:none;">
+                <span class="font-mono" style="font-size:16px; color:#5b667a; letter-spacing:0.12em; flex:1;">CURRENT STREAK</span>
+                <span id="a-streak" class="font-condensed" style="font-size:28px; color:#e8ecf2; width:280px; text-align:center;" colspan="3">--</span>
+              </div>
+              <div style="display:flex; align-items:center; padding:22px 24px; background:rgba(12,16,22,0.8); border:1px solid rgba(255,255,255,0.04); border-top:none; border-radius:0 0 14px 14px;">
+                <span class="font-mono" style="font-size:16px; color:#5b667a; letter-spacing:0.12em; flex:1;">CURRENT RANK</span>
+                <span id="a-rank-a" class="font-display" style="font-size:36px; color:var(--cyan); width:120px; text-align:right;">--</span>
+                <span class="font-mono" style="font-size:18px; color:#3a4356; width:40px; text-align:center;">—</span>
+                <span id="a-rank-b" class="font-display" style="font-size:36px; color:var(--pink); width:120px; text-align:left;">--</span>
+              </div>
+            </div>
+          </div>
 
           <!-- Score panel -->
-          <div class="absolute bottom-[140px] left-[60px] right-[60px] card rounded-2xl p-8" style="background:rgba(16,20,28,0.85); border:1px solid rgba(255,255,255,0.1);">
+          <div class="absolute left-[60px] right-[60px] card rounded-2xl p-8" style="top:1120px; background:rgba(16,20,28,0.85); border:1px solid rgba(255,255,255,0.1);">
             <div class="grid grid-cols-2 gap-6 text-center">
               <div>
                 <p class="section-label mb-2">PROJECTED</p>
@@ -597,43 +652,42 @@
             <div class="grid grid-cols-2 gap-6 text-center">
               <div>
                 <p class="section-label mb-2 text-[var(--cyan)]">ACTUAL</p>
-                <p id="a-actual" class="font-display text-[var(--cyan)] text-[64px] glow-cyan">--</p>
+                <p id="a-actual" class="font-display text-[var(--cyan)] text-[72px] glow-cyan">--</p>
               </div>
               <div>
                 <p class="section-label mb-2 text-[var(--pink)]">ACTUAL</p>
-                <p id="b-actual" class="font-display text-[var(--pink)] text-[64px] glow-pink">--</p>
+                <p id="b-actual" class="font-display text-[var(--pink)] text-[72px] glow-pink">--</p>
               </div>
             </div>
           </div>
           <div class="absolute bottom-[50px] left-0 right-0 text-center font-mono text-[16px] tracking-[0.3em] text-gray-500">GRIDIRON GRAPHICS · LEAGUE NETWORK</div>
         </div>
 
-        <!-- TEMPLATE B -->
+        <!-- TEMPLATE B — 2-column power rankings (canvas-rendered for export) -->
         <div id="tpl-B" class="tpl absolute inset-0 hidden">
-          <div class="absolute inset-0" style="background:radial-gradient(ellipse at 50% 0%, #1a1508 0%, #05070a 55%);"></div>
-          <div class="absolute top-0 left-0 right-0 h-[10px]" style="background:linear-gradient(90deg,var(--gold),#ff8a00);"></div>
-          <div class="absolute top-[64px] left-0 right-0 text-center">
-            <p class="font-mono text-[var(--gold)] text-[24px] tracking-[0.3em]" id="b-week-label">WEEK 7</p>
-            <h2 id="rank-title" class="font-display text-white text-[52px] leading-none mt-2 glow-gold px-10">POWER RANKINGS</h2>
-          </div>
-          <div id="rank-list" class="absolute top-[260px] left-[56px] right-[56px] space-y-3"></div>
-          <div class="absolute bottom-[50px] left-0 right-0 text-center font-mono text-[16px] tracking-[0.3em] text-gray-500">GRIDIRON GRAPHICS · LEAGUE NETWORK</div>
+          <canvas id="tpl-B-canvas" width="1080" height="1920" style="width:100%; height:100%; display:block;"></canvas>
         </div>
 
         <!-- TEMPLATE C -->
         <div id="tpl-C" class="tpl absolute inset-0 hidden">
-          <div class="absolute inset-0 bg-[#05070a]"></div>
-          <img id="c-img" class="absolute inset-0 w-full h-full object-cover hidden">
-          <div id="c-img-ph" class="absolute inset-0 flex items-center justify-center" style="background:linear-gradient(160deg,#1a0d14,#05070a);">
-            <span class="font-display text-[220px] text-[var(--pink)]/20">?</span>
-          </div>
-          <div class="absolute inset-0" style="background:linear-gradient(0deg, rgba(5,7,10,1) 15%, rgba(5,7,10,0.2) 45%, rgba(5,7,10,0.55) 100%);"></div>
+          <div class="absolute inset-0 bg-[#05070a]" style="z-index:0;"></div>
 
-          <div class="absolute top-[90px] left-[56px]">
+          <!-- Featured image — bounded to upper-center region, not full-screen -->
+          <div class="absolute" style="z-index:1; top:120px; left:140px; right:140px; height:650px; border-radius:18px; overflow:hidden; background:#0d1119;">
+            <img id="c-img" class="hidden" style="width:100%; height:100%; object-fit:cover; position:absolute; inset:0;">
+            <div id="c-img-ph" style="position:absolute; inset:0; background:linear-gradient(160deg,#1a0d14,#05070a); display:flex; align-items:center; justify-content:center;">
+              <span class="font-display text-[220px] text-[var(--pink)]/20">?</span>
+            </div>
+          </div>
+
+          <!-- Gradient overlay for text contrast -->
+          <div class="absolute inset-0" style="z-index:2; background:linear-gradient(0deg, rgba(5,7,10,1) 20%, rgba(5,7,10,0.7) 42%, rgba(5,7,10,0.15) 58%, rgba(5,7,10,0.6) 100%);"></div>
+
+          <div class="absolute top-[90px] left-[56px]" style="z-index:3;">
             <span id="c-tag" class="tag-pill inline-block bg-[var(--pink)] text-[#1a0209] px-4 py-2 rounded font-bold text-[20px] tracking-widest">TRADE ALERT</span>
           </div>
 
-          <div class="absolute bottom-0 left-0 right-0">
+          <div class="absolute bottom-0 left-0 right-0" style="z-index:3;">
             <div class="h-[10px]" style="background:linear-gradient(90deg,var(--pink),#ff7a00);"></div>
             <div class="p-8 pb-16" style="background:linear-gradient(180deg, rgba(5,7,10,0.4), rgba(5,7,10,0.97) 30%);">
               <h2 id="c-headline" class="font-display text-white text-[58px] leading-[1.02] glow-pink">TRADE SHAKES UP THE LEAGUE</h2>
@@ -650,27 +704,51 @@
         <div id="tpl-D" class="tpl absolute inset-0 hidden">
           <div class="absolute inset-0" style="background:radial-gradient(ellipse at 50% 30%, #0a1a10 0%, #05070a 60%);"></div>
           <div class="absolute top-0 left-0 right-0 h-[10px]" style="background:repeating-linear-gradient(45deg, var(--green) 0 20px, #05070a 20px 40px);"></div>
-          <div class="absolute top-[70px] left-0 right-0 text-center">
-            <p class="font-mono text-[var(--green)] text-[24px] tracking-[0.35em]" id="d-week">WEEK 7</p>
-            <h2 class="font-display text-white text-[68px] leading-none mt-3 glow-green">HOT SEAT</h2>
-            <p class="font-condensed text-gray-400 text-[28px] mt-1 tracking-widest">FRAUD ALERT · LOWEST SCORE</p>
+          <div class="absolute top-[50px] left-0 right-0 text-center">
+            <p class="font-mono text-[var(--green)] text-[22px] tracking-[0.35em]" id="d-week">WEEK 7</p>
+            <h2 class="font-display text-white text-[64px] leading-none mt-2 glow-green">HOT SEAT</h2>
+            <p class="font-condensed text-gray-400 text-[26px] mt-1 tracking-widest">FRAUD ALERT · LOWEST SCORE</p>
           </div>
 
-          <div class="absolute top-[340px] left-1/2 -translate-x-1/2">
-            <div class="w-[420px] h-[420px] rounded-lg overflow-hidden bg-[#1a2230] flex items-center justify-center" style="box-shadow:0 0 0 6px #05070a, 0 0 0 12px var(--green), 0 30px 70px rgba(0,0,0,0.7); filter:grayscale(0.4) contrast(1.1);">
-              <img id="d-img" class="w-full h-full object-cover hidden">
-              <span id="d-img-ph" class="font-display text-[160px] text-[var(--green)]">?</span>
+          <div class="absolute top-[270px] left-1/2 -translate-x-1/2">
+            <div class="w-[380px] h-[380px] rounded-lg overflow-hidden bg-[#1a2230]" style="box-shadow:0 0 0 6px #05070a, 0 0 0 12px var(--green), 0 30px 70px rgba(0,0,0,0.7); filter:grayscale(0.4) contrast(1.1); position:relative;">
+              <img id="d-img" class="w-full h-full object-cover hidden" style="position:absolute;inset:0;">
+              <span id="d-img-ph" class="font-display text-[140px] text-[var(--green)]" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;">?</span>
             </div>
-            <div class="absolute -bottom-6 left-1/2 -translate-x-1/2 bg-[var(--green)] text-[#04150a] font-display text-[26px] px-6 py-2 rounded tracking-wide whitespace-nowrap">WANTED FOR FANTASY FRAUD</div>
+            <div class="absolute -bottom-6 left-1/2 -translate-x-1/2 bg-[var(--green)] text-[#04150a] font-display text-[24px] px-6 py-2 rounded tracking-wide whitespace-nowrap">WANTED FOR FANTASY FRAUD</div>
           </div>
 
-          <div class="absolute top-[860px] left-0 right-0 text-center">
-            <h3 id="d-name" class="font-display text-white text-[52px] px-10 leading-tight">MANAGER NAME</h3>
-            <p class="font-mono text-[var(--green)] text-[22px] mt-3 tracking-widest">SCORED ONLY</p>
-            <p id="d-score" class="font-display text-[var(--green)] text-[120px] leading-none glow-green">58.2</p>
+          <div class="absolute top-[740px] left-0 right-0 text-center">
+            <h3 id="d-name" class="font-display text-white text-[48px] px-10 leading-tight">MANAGER NAME</h3>
+            <p class="font-mono text-[var(--green)] text-[20px] mt-2 tracking-widest">SCORED ONLY</p>
+            <p id="d-score" class="font-display text-[var(--green)] text-[110px] leading-none glow-green">58.2</p>
           </div>
 
-          <div class="absolute bottom-[130px] left-[70px] right-[70px] card rounded-xl p-6" style="background:rgba(16,20,28,0.85); border:1px solid rgba(57,255,140,0.25);">
+          <!-- Crime Sheet / Bench Blunder Box -->
+          <div class="absolute left-[60px] right-[60px]" style="top:1060px;">
+            <div style="border-radius:16px; overflow:hidden; border:1px solid rgba(57,255,140,0.2);">
+              <div style="background:rgba(57,255,140,0.12); padding:14px 24px; display:flex; align-items:center; gap:10px;">
+                <span style="font-size:20px;">🚨</span>
+                <span class="font-display" style="font-size:22px; color:var(--green); letter-spacing:0.12em;">CRIME SHEET</span>
+              </div>
+              <div style="background:rgba(16,20,28,0.85); padding:20px 24px;">
+                <div style="display:flex; align-items:center; justify-content:space-between; padding:12px 0; border-bottom:1px solid rgba(255,255,255,0.06);">
+                  <span class="font-mono" style="font-size:15px; color:#5b667a; letter-spacing:0.1em;">LEAGUE AVG THIS WEEK</span>
+                  <span id="d-league-avg" class="font-mono" style="font-size:24px; color:#8892a6; font-weight:700;">--</span>
+                </div>
+                <div style="display:flex; align-items:center; justify-content:space-between; padding:12px 0; border-bottom:1px solid rgba(255,255,255,0.06);">
+                  <span class="font-mono" style="font-size:15px; color:#5b667a; letter-spacing:0.1em;">POINTS BELOW AVG</span>
+                  <span id="d-below-avg" class="font-mono" style="font-size:24px; color:var(--pink); font-weight:700;">--</span>
+                </div>
+                <div style="display:flex; align-items:center; justify-content:space-between; padding:12px 0;">
+                  <span class="font-mono" style="font-size:15px; color:#5b667a; letter-spacing:0.1em;">WEEK HIGH SCORE</span>
+                  <span id="d-week-high" class="font-mono" style="font-size:24px; color:var(--cyan); font-weight:700;">--</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="absolute left-[60px] right-[60px] card rounded-xl p-6" style="top:1420px; background:rgba(16,20,28,0.85); border:1px solid rgba(57,255,140,0.25);">
             <p class="section-label mb-2 text-[var(--green)]">THE CHARGE</p>
             <p id="d-roast" class="font-condensed text-white text-[28px] leading-snug">Benched their best player. Started a bye-week ghost. Guilty as charged.</p>
           </div>
@@ -690,29 +768,29 @@
 
           <!-- Manager A -->
           <div class="absolute top-[260px] left-0 w-1/2 flex flex-col items-center px-8">
-            <div class="w-[240px] h-[240px] rounded-full overflow-hidden bg-[#1a1608] flex items-center justify-center" style="box-shadow:0 0 0 4px #05070a, 0 0 0 7px var(--bronze), 0 20px 50px rgba(0,0,0,0.6);">
-              <img id="e-a-img" class="w-full h-full object-cover hidden">
-              <span id="e-a-img-ph" class="font-display text-[90px] text-[var(--bronze)]">A</span>
+            <div class="w-[240px] h-[240px] rounded-full overflow-hidden bg-[#1a1608]" style="box-shadow:0 0 0 4px #05070a, 0 0 0 7px var(--bronze), 0 20px 50px rgba(0,0,0,0.6); position:relative;">
+              <img id="e-a-img" class="w-full h-full object-cover hidden" style="position:absolute;inset:0;">
+              <span id="e-a-img-ph" class="font-display text-[90px] text-[var(--bronze)]" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;">A</span>
             </div>
             <h3 id="e-a-name" class="font-display text-white text-[38px] text-center mt-6 leading-tight">MANAGER A</h3>
           </div>
 
           <!-- Manager B -->
           <div class="absolute top-[260px] right-0 w-1/2 flex flex-col items-center px-8">
-            <div class="w-[240px] h-[240px] rounded-full overflow-hidden bg-[#1a1608] flex items-center justify-center" style="box-shadow:0 0 0 4px #05070a, 0 0 0 7px var(--bronze), 0 20px 50px rgba(0,0,0,0.6);">
-              <img id="e-b-img" class="w-full h-full object-cover hidden">
-              <span id="e-b-img-ph" class="font-display text-[90px] text-[var(--bronze)]">B</span>
+            <div class="w-[240px] h-[240px] rounded-full overflow-hidden bg-[#1a1608]" style="box-shadow:0 0 0 4px #05070a, 0 0 0 7px var(--bronze), 0 20px 50px rgba(0,0,0,0.6); position:relative;">
+              <img id="e-b-img" class="w-full h-full object-cover hidden" style="position:absolute;inset:0;">
+              <span id="e-b-img-ph" class="font-display text-[90px] text-[var(--bronze)]" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;">B</span>
             </div>
             <h3 id="e-b-name" class="font-display text-white text-[38px] text-center mt-6 leading-tight">MANAGER B</h3>
           </div>
 
           <!-- Series score -->
-          <div class="absolute top-[640px] left-0 right-0 text-center">
+          <div class="absolute top-[600px] left-0 right-0 text-center">
             <p class="section-label mb-2">ALL-TIME SERIES</p>
-            <p id="e-series" class="font-display text-[var(--bronze)] text-[140px] leading-none glow-bronze">8-4</p>
+            <p id="e-series" class="font-display text-[var(--bronze)] text-[120px] leading-none glow-bronze">8-4</p>
           </div>
 
-          <div class="absolute top-[900px] left-[70px] right-[70px] card rounded-2xl p-8 space-y-5" style="background:rgba(16,20,28,0.85); border:1px solid rgba(201,151,74,0.3);">
+          <div class="absolute top-[830px] left-[60px] right-[60px] card rounded-2xl p-7 space-y-4" style="background:rgba(16,20,28,0.85); border:1px solid rgba(201,151,74,0.3);">
             <div class="flex items-center justify-between">
               <p class="section-label">POINT DIFFERENTIAL</p>
               <p id="e-diff" class="font-mono text-[var(--bronze)] text-[26px]">+142.6</p>
@@ -729,6 +807,17 @@
             </div>
           </div>
 
+          <!-- Last 3 Matchups Breakdown -->
+          <div class="absolute left-[60px] right-[60px]" style="top:1260px;">
+            <p class="font-display" style="font-size:20px; letter-spacing:0.15em; color:var(--bronze); margin-bottom:12px;">LAST 3 MATCHUPS</p>
+            <div id="e-last3" style="display:flex; flex-direction:column; gap:8px;">
+              <div style="display:flex; align-items:center; padding:18px 22px; background:rgba(16,20,28,0.75); border:1px solid rgba(201,151,74,0.15); border-radius:12px;">
+                <span class="font-mono" style="font-size:16px; color:#5b667a; width:120px;">NO DATA</span>
+                <span class="font-condensed" style="font-size:24px; color:#3a4356; flex:1; text-align:center;">Load history to populate</span>
+              </div>
+            </div>
+          </div>
+
           <div class="absolute bottom-[50px] left-0 right-0 text-center font-mono text-[16px] tracking-[0.3em] text-gray-500">GRIDIRON GRAPHICS · LEAGUE NETWORK</div>
         </div>
 
@@ -740,28 +829,144 @@
 
           <div class="absolute top-0 left-0 right-0 h-[10px]" style="background:linear-gradient(90deg,var(--gold),var(--pink),var(--cyan));"></div>
 
-          <div class="absolute top-[130px] left-0 right-0 text-center px-10">
-            <span id="f-kicker" class="tag-pill inline-block bg-white text-[#0a0c10] px-5 py-2 rounded font-bold text-[20px] tracking-widest">ALL-TIME RECORD</span>
-            <p class="font-mono text-gray-500 text-[20px] tracking-[0.3em] mt-8">GRIDIRON GRAPHICS PRESENTS</p>
-            <h2 class="font-display text-white text-[46px] mt-2 tracking-wide">THE LEAGUE RECORD BOOK</h2>
+          <div class="absolute top-[60px] left-0 right-0 text-center px-10">
+            <span id="f-kicker" class="tag-pill inline-block bg-white text-[#0a0c10] px-6 py-3 rounded font-bold text-[24px] tracking-widest">ALL-TIME RECORD</span>
+            <p class="font-mono text-gray-500 text-[22px] tracking-[0.3em] mt-6">GRIDIRON GRAPHICS PRESENTS</p>
+            <h2 class="font-display text-white text-[52px] mt-2 tracking-wide">THE LEAGUE RECORD BOOK</h2>
           </div>
 
-          <div class="absolute top-[560px] left-0 right-0 text-center px-6">
-            <p id="f-headline" class="font-display text-white text-[130px] leading-none glow-gold">184.6 PTS</p>
-            <p id="f-subtext" class="font-condensed text-gray-300 text-[32px] mt-6 leading-snug px-12">Highest single-game score in league history</p>
+          <div class="absolute top-[380px] left-0 right-0 text-center px-6">
+            <p id="f-headline" class="font-display text-white text-[140px] leading-none glow-gold">184.6 PTS</p>
+            <p id="f-subtext" class="font-condensed text-gray-300 text-[36px] mt-6 leading-snug px-12">Highest single-game score in league history</p>
           </div>
 
-          <div class="absolute bottom-[220px] left-[70px] right-[70px] card rounded-2xl p-8" style="background:rgba(16,20,28,0.85); border:1px solid rgba(255,255,255,0.1);">
+          <div class="absolute left-[60px] right-[60px] card rounded-2xl p-8" style="top:720px; background:rgba(16,20,28,0.85); border:1px solid rgba(255,255,255,0.1);">
             <div class="flex items-center justify-between">
               <div>
-                <p class="section-label mb-2">RECORD HOLDER</p>
-                <p id="f-owner" class="font-display text-white text-[36px]">MANAGER NAME</p>
+                <p class="font-display" style="font-size:22px; letter-spacing:0.12em; color:var(--gold);">RECORD HOLDER</p>
+                <p id="f-owner" class="font-display text-white text-[42px] mt-1">MANAGER NAME</p>
               </div>
-              <p id="f-meta" class="font-mono text-[var(--gold)] text-[22px]">2022 · WEEK 5</p>
+              <p id="f-meta" class="font-mono text-[var(--gold)] text-[26px]">2022 · WEEK 5</p>
+            </div>
+          </div>
+
+          <!-- Record Comparison Stats -->
+          <div class="absolute left-[60px] right-[60px]" style="top:950px;">
+            <p class="font-display" style="font-size:22px; letter-spacing:0.15em; color:var(--gold); margin-bottom:16px;">BY THE NUMBERS</p>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+              <div style="border-radius:14px; padding:28px 24px; text-align:center; background:rgba(16,20,28,0.85); border:1px solid rgba(255,196,0,0.2);">
+                <p id="f-league-avg" class="font-display" style="font-size:64px; color:var(--gold); line-height:1;">--</p>
+                <p class="font-display" style="font-size:18px; letter-spacing:0.1em; color:#8a95a9; margin-top:10px;">LEAGUE AVG</p>
+              </div>
+              <div style="border-radius:14px; padding:28px 24px; text-align:center; background:rgba(16,20,28,0.85); border:1px solid rgba(255,196,0,0.2);">
+                <p id="f-above-avg" class="font-display" style="font-size:64px; color:var(--green); line-height:1;">--</p>
+                <p class="font-display" style="font-size:18px; letter-spacing:0.1em; color:#8a95a9; margin-top:10px;">ABOVE AVG</p>
+              </div>
+              <div style="border-radius:14px; padding:28px 24px; text-align:center; background:rgba(16,20,28,0.85); border:1px solid rgba(255,196,0,0.2);">
+                <p id="f-season-high" class="font-display" style="font-size:64px; color:var(--cyan); line-height:1;">--</p>
+                <p class="font-display" style="font-size:18px; letter-spacing:0.1em; color:#8a95a9; margin-top:10px;">SEASON HIGH</p>
+              </div>
+              <div style="border-radius:14px; padding:28px 24px; text-align:center; background:rgba(16,20,28,0.85); border:1px solid rgba(255,196,0,0.2);">
+                <p id="f-season-low" class="font-display" style="font-size:64px; color:var(--pink); line-height:1;">--</p>
+                <p class="font-display" style="font-size:18px; letter-spacing:0.1em; color:#8a95a9; margin-top:10px;">SEASON LOW</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Runner Up -->
+          <div class="absolute left-[60px] right-[60px] card rounded-xl p-6" style="top:1480px; background:rgba(16,20,28,0.75); border:1px solid rgba(255,255,255,0.08);">
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="font-display" style="font-size:18px; letter-spacing:0.1em; color:#5b667a;">RUNNER-UP</p>
+                <p id="f-runner" class="font-condensed text-white" style="font-size:30px; margin-top:4px;">--</p>
+              </div>
+              <p id="f-runner-score" class="font-mono" style="font-size:28px; color:#8a95a9;">--</p>
             </div>
           </div>
 
           <div class="absolute bottom-[50px] left-0 right-0 text-center font-mono text-[16px] tracking-[0.3em] text-gray-500">GRIDIRON GRAPHICS · LEAGUE NETWORK</div>
+        </div>
+
+        <!-- TEMPLATE G — FRANCHISE RESUME (Bleacher Report / ESPN Mobile card aesthetic) -->
+        <div id="tpl-G" class="tpl absolute inset-0 hidden">
+          <div class="absolute inset-0" style="background:linear-gradient(180deg, #060a12 0%, #0a1018 30%, #080c14 100%);"></div>
+          <!-- Subtle top accent bar -->
+          <div class="absolute top-0 left-0 right-0 h-[6px]" style="background:linear-gradient(90deg,var(--cyan),#1a6dff,var(--cyan));"></div>
+
+          <!-- ===== HEADER & HERO STAT BLOCK ===== -->
+          <div class="absolute top-[32px] left-[56px] right-[56px]">
+            <!-- Avatar + Identity Row -->
+            <div style="display:flex; align-items:center; gap:32px;">
+              <!-- Avatar with metallic ring -->
+              <div style="position:relative; width:160px; height:160px; flex-shrink:0;">
+                <div style="position:absolute; inset:-6px; border-radius:50%; background:conic-gradient(from 0deg, #4a5568, #a0aec0, #e2e8f0, #a0aec0, #4a5568); padding:5px;">
+                  <div style="width:100%; height:100%; border-radius:50%; background:#0a0e16; padding:3px;">
+                    <div style="width:100%; height:100%; border-radius:50%; overflow:hidden; background:#1a2230; position:relative;">
+                      <img id="g-img" class="hidden" style="width:100%; height:100%; object-fit:cover; position:absolute; inset:0;">
+                      <span id="g-img-ph" class="font-display" style="font-size:64px; color:var(--cyan); position:absolute; inset:0; display:flex; align-items:center; justify-content:center;">?</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <!-- Name Stack -->
+              <div style="flex:1; min-width:0;">
+                <h2 id="g-team-title" class="font-display" style="font-size:56px; line-height:0.95; color:#fff; text-shadow:0 0 40px rgba(0,224,255,0.3), 0 0 80px rgba(0,224,255,0.1);">TEAM NAME</h2>
+                <p id="g-manager-title" class="font-condensed" style="font-size:28px; color:#8a95a9; margin-top:8px; letter-spacing:0.05em;"><span id="g-manager-name">Manager Name</span> · FRANCHISE RESUME</p>
+              </div>
+            </div>
+
+            <!-- Hero Accent Card — Average Finish -->
+            <div id="g-hero-card" style="margin-top:30px; width:100%; border-radius:18px; padding:36px 44px; display:flex; align-items:center; justify-content:space-between; background:linear-gradient(135deg, rgba(0,224,255,0.1) 0%, rgba(26,109,255,0.07) 50%, rgba(0,224,255,0.05) 100%); border:1.5px solid rgba(0,224,255,0.25); backdrop-filter:blur(10px);">
+              <div>
+                <p class="font-display" style="font-size:28px; letter-spacing:0.08em; color:var(--cyan);">AVERAGE FINISH</p>
+                <p id="g-hero-rank" class="font-condensed" style="font-size:22px; color:#6b7a90; margin-top:4px;">ALL-TIME LEAGUE RANK</p>
+              </div>
+              <div id="g-avg" class="font-display" style="font-size:110px; line-height:1; color:#fff; text-shadow:0 0 50px rgba(0,224,255,0.5), 0 0 100px rgba(0,224,255,0.2);">--</div>
+            </div>
+          </div>
+
+          <!-- ===== 3-COLUMN CAREER HARDWARE GRID ===== -->
+          <div class="absolute" style="top:440px; left:56px; right:56px;">
+            <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:18px;">
+              <!-- Championships -->
+              <div style="border-radius:16px; padding:36px 16px 32px; text-align:center; background:rgba(12,16,24,0.92); border:1.5px solid rgba(255,196,0,0.35); border-top:4px solid var(--gold);">
+                <div id="g-champs" class="font-display" style="font-size:88px; line-height:1; color:var(--gold); text-shadow:0 0 40px rgba(255,196,0,0.5);">0</div>
+                <p class="font-display" style="font-size:18px; letter-spacing:0.1em; color:var(--gold); margin-top:14px;">CHAMPIONSHIPS</p>
+              </div>
+              <!-- Playoff Apps -->
+              <div style="border-radius:16px; padding:36px 16px 32px; text-align:center; background:rgba(12,16,24,0.92); border:1.5px solid rgba(0,224,255,0.3); border-top:4px solid var(--cyan);">
+                <div id="g-playoffs" class="font-display" style="font-size:88px; line-height:1; color:var(--cyan); text-shadow:0 0 40px rgba(0,224,255,0.45);">0</div>
+                <p class="font-display" style="font-size:18px; letter-spacing:0.1em; color:var(--cyan); margin-top:14px;">PLAYOFF APPS</p>
+              </div>
+              <!-- Top 3 Finishes -->
+              <div style="border-radius:16px; padding:36px 16px 32px; text-align:center; background:rgba(12,16,24,0.92); border:1.5px solid rgba(255,176,0,0.3); border-top:4px solid #ffb000;">
+                <div id="g-top3" class="font-display" style="font-size:88px; line-height:1; color:#ffb000; text-shadow:0 0 40px rgba(255,176,0,0.45);">0</div>
+                <p class="font-display" style="font-size:18px; letter-spacing:0.1em; color:#ffb000; margin-top:14px;">TOP 3 FINISHES</p>
+              </div>
+            </div>
+
+            <!-- Sub-card: Record + Win Pct -->
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:18px; margin-top:18px;">
+              <div style="border-radius:14px; padding:24px 28px; display:flex; align-items:center; justify-content:space-between; background:rgba(12,16,24,0.88); border:1px solid rgba(255,255,255,0.1);">
+                <span class="font-display" style="font-size:18px; letter-spacing:0.08em; color:#8a95a9;">ALL-TIME RECORD</span>
+                <span id="g-record" class="font-mono" style="font-size:30px; color:#fff; font-weight:700;">0-0-0</span>
+              </div>
+              <div style="border-radius:14px; padding:24px 28px; display:flex; align-items:center; justify-content:space-between; background:rgba(12,16,24,0.88); border:1px solid rgba(255,255,255,0.1);">
+                <span class="font-display" style="font-size:18px; letter-spacing:0.08em; color:#8a95a9;">WIN PCT</span>
+                <span id="g-winpct" class="font-mono" style="font-size:30px; color:#fff; font-weight:700;">.000</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- ===== TRAJECTORY LINE GRAPH (full bottom half) ===== -->
+          <div class="absolute" style="top:780px; left:56px; right:56px; bottom:55px;">
+            <p class="font-display" style="font-size:22px; letter-spacing:0.15em; color:var(--cyan); margin-bottom:14px;">YEAR-BY-YEAR RANK TRAJECTORY</p>
+            <div style="border-radius:18px; padding:28px 24px 40px 24px; height:calc(100% - 40px); background:rgba(12,16,24,0.88); border:1px solid rgba(0,224,255,0.15);">
+              <svg id="g-chart" width="100%" height="100%" viewBox="0 0 920 820" preserveAspectRatio="xMidYMid meet"></svg>
+            </div>
+          </div>
+
+          <div class="absolute bottom-[16px] left-0 right-0 text-center font-mono" style="font-size:14px; letter-spacing:0.3em; color:#3a4356;">GRIDIRON GRAPHICS · LEAGUE NETWORK</div>
         </div>
 
       </div>
@@ -1022,8 +1227,8 @@
   <section id="rd-tab-broadcast" class="rd-panel hidden">
     <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
       <div>
-        <p class="font-display text-sm text-[var(--rd-amber)] tracking-wide">ANIMATED BROADCAST EXPORTER</p>
-        <p class="text-[11px] text-[var(--rd-muted)] font-mono mt-1">Lower third slides up · ticker runs the whole league across the bottom</p>
+        <p class="font-display text-sm text-[var(--rd-amber)] tracking-wide">ESPN L-BAR BROADCAST EXPORTER</p>
+        <p class="text-[11px] text-[var(--rd-muted)] font-mono mt-1">Left-side topic wheel + bottom ticker · L-Bar overlay runs full duration</p>
       </div>
       <p class="text-[11px] font-mono text-[var(--rd-muted)]">EXPORT · 1080×1920 · 60 FPS · ALPHA WEBM / CHROMA MP4</p>
     </div>
@@ -1033,8 +1238,45 @@
       <!-- ---- CONTROL COLUMN ---- -->
       <div class="panel rounded-xl p-5 h-fit">
 
-        <!-- Chyron content -->
-        <p class="section-label text-[10px] uppercase tracking-[.15em] mb-3">01 · Chyron</p>
+        <!-- L-Bar Header Pill -->
+        <p class="section-label text-[10px] uppercase tracking-[.15em] mb-3">01 · L-Bar Header</p>
+        <div class="space-y-3.5 mb-4">
+          <div><label class="field-label">Broadcast badge</label><input type="text" id="rd-v-badge" value="MFFL TOTAL ACCESS · LIVE" maxlength="40"></div>
+          <div class="grid grid-cols-2 gap-3">
+            <div class="flex items-end gap-3">
+              <input type="color" id="rd-v-color" value="#F5A623">
+              <div class="pb-1"><label class="field-label block">Accent</label></div>
+            </div>
+            <div class="flex items-end gap-3">
+              <input type="color" id="rd-v-color2" value="#E8232B">
+              <div class="pb-1"><label class="field-label block">Active highlight</label></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Topic Carousel -->
+        <p class="section-label text-[10px] uppercase tracking-[.15em] mb-3">02 · Segment Topics</p>
+        <div class="panel-2 rounded-lg p-3 mb-4 space-y-2">
+          <p class="text-[11px] font-mono text-[var(--rd-muted)] mb-1">Enter 4–6 topics for the left-side rundown wheel</p>
+          <div class="space-y-1.5" id="rd-v-topicList">
+            <div class="flex items-center gap-2"><span class="text-[11px] font-mono text-[var(--rd-muted)] w-4">1.</span><input type="text" class="rd-v-topic flex-1" value="Opening Statement" maxlength="28" placeholder="Topic 1"></div>
+            <div class="flex items-center gap-2"><span class="text-[11px] font-mono text-[var(--rd-muted)] w-4">2.</span><input type="text" class="rd-v-topic flex-1" value="Keeper Drama" maxlength="28" placeholder="Topic 2"></div>
+            <div class="flex items-center gap-2"><span class="text-[11px] font-mono text-[var(--rd-muted)] w-4">3.</span><input type="text" class="rd-v-topic flex-1" value="Trade Fallout" maxlength="28" placeholder="Topic 3"></div>
+            <div class="flex items-center gap-2"><span class="text-[11px] font-mono text-[var(--rd-muted)] w-4">4.</span><input type="text" class="rd-v-topic flex-1" value="Waiver Heist" maxlength="28" placeholder="Topic 4"></div>
+            <div class="flex items-center gap-2"><span class="text-[11px] font-mono text-[var(--rd-muted)] w-4">5.</span><input type="text" class="rd-v-topic flex-1" value="Floor Questions" maxlength="28" placeholder="Topic 5"></div>
+          </div>
+          <div class="flex gap-2 pt-1">
+            <button id="rd-v-addTopic" class="btn-ghost flex-1 py-1.5 rounded-md text-[11px] uppercase tracking-wide">+ Add topic</button>
+            <button id="rd-v-removeTopic" class="btn-ghost flex-1 py-1.5 rounded-md text-[11px] uppercase tracking-wide">− Remove last</button>
+          </div>
+          <div class="pt-1">
+            <label class="field-label">Topic advance interval · <span id="rd-v-topicIntervalLabel" class="font-mono">3.0</span>s</label>
+            <input type="range" id="rd-v-topicInterval" min="1.5" max="8" step="0.5" value="3.0">
+          </div>
+        </div>
+
+        <!-- Chyron content (lower-third manager card) -->
+        <p class="section-label text-[10px] uppercase tracking-[.15em] mb-3">03 · Chyron Card</p>
         <div class="panel-2 rounded-lg p-3 mb-4 space-y-2" data-league-block>
           <p class="field-label">Pull from league data</p>
           <select id="rd-v-source"><option value="">No league data loaded…</option></select>
@@ -1047,16 +1289,12 @@
           <div><label class="field-label">Team name</label><input type="text" id="rd-v-team" value="THE GRIDIRON GAMBLERS" maxlength="30"></div>
           <div class="grid grid-cols-2 gap-3">
             <div><label class="field-label">Record</label><input type="text" id="rd-v-record" value="4-3-0" maxlength="10"></div>
-            <div class="flex items-end gap-3">
-              <input type="color" id="rd-v-color" value="#F5A623">
-              <div class="pb-1"><label class="field-label block">Accent</label></div>
-            </div>
           </div>
           <div><label class="field-label">Chyron subline</label><input type="text" id="rd-v-subline" value="WEEK 7 · POSTGAME PRESSER" maxlength="60"></div>
         </div>
 
         <!-- Ticker stream -->
-        <p class="section-label text-[10px] uppercase tracking-[.15em] mt-6 mb-3">02 · Ticker stream</p>
+        <p class="section-label text-[10px] uppercase tracking-[.15em] mt-6 mb-3">04 · Ticker stream</p>
         <div class="panel-2 rounded-lg p-3 space-y-2.5">
           <label class="stream-toggle"><input type="checkbox" class="rd-v-stream" data-stream="scores" checked> Weekly matchup scores</label>
           <label class="stream-toggle"><input type="checkbox" class="rd-v-stream" data-stream="news" checked> League news &amp; blunder blurbs</label>
@@ -1073,12 +1311,13 @@
         </div>
 
         <!-- Export -->
-        <p class="section-label text-[10px] uppercase tracking-[.15em] mt-6 mb-3">03 · Export</p>
+        <p class="section-label text-[10px] uppercase tracking-[.15em] mt-6 mb-3">05 · Export</p>
         <label class="field-label">Clip length</label>
-        <div class="grid grid-cols-3 gap-2 mt-1.5 mb-4">
+        <div class="grid grid-cols-4 gap-2 mt-1.5 mb-4">
           <button class="rd-v-dur seg-btn" data-dur="5" data-active="false">5s</button>
           <button class="rd-v-dur seg-btn" data-dur="10" data-active="true">10s</button>
           <button class="rd-v-dur seg-btn" data-dur="15" data-active="false">15s</button>
+          <button class="rd-v-dur seg-btn" data-dur="30" data-active="false">30s</button>
         </div>
 
         <label class="field-label">Background mode</label>
@@ -1122,7 +1361,8 @@
         </div>
         <p class="text-[11px] font-mono text-[var(--rd-muted)] text-center max-w-[420px] leading-relaxed">
           Checkerboard = transparent area. The preview loops the same frames the recorder writes:
-          banner and manager card ease up over the first 0.8s, the ticker never stops.
+          L-Bar topic wheel slides in from the left, chyron card and ticker rise from the bottom over 0.8s.
+          Topics auto-advance on the set interval; the ticker never stops.
         </p>
       </div>
     </div>
@@ -1330,11 +1570,22 @@ const state = {
     e_a_name:'MANAGER A', e_a_img:null, e_b_name:'MANAGER B', e_b_img:null,
     e_series:'8-4', e_diff:'+142.6', e_last:'2024 · WK9 · WON 118.4–101.2', e_streak:'ON A 3-GAME STREAK',
     f_kicker:'ALL-TIME RECORD', f_headline:'184.6 PTS', f_subtext:'Highest single-game score in league history', f_owner:'MANAGER NAME', f_meta:'2022 · WEEK 5', f_img:null,
+    g_team:'TEAM NAME', g_manager:'Manager Name', g_avg:'--', g_champs:'0', g_top3:'0', g_playoffs:'0', g_record:'0-0-0', g_seasons:'0', g_img:null, g_yearRanks:[],
   },
+  rankMode: 'weekly',
   ranks: [
-    {rank:1, name:'Dynasty Warriors', record:'8-2', diff:'+142.5'},
-    {rank:2, name:'Gridiron Gurus', record:'7-3', diff:'+98.1'},
-    {rank:3, name:'The Comeback Kids', record:'6-4', diff:'+40.2'},
+    {rank:1, name:'Dynasty Warriors', record:'8-2', diff:'+142.5', delta:'+1', manager:'Jake Rivera', logo:null, winPct:''},
+    {rank:2, name:'Gridiron Gurus', record:'7-3', diff:'+98.1', delta:'0', manager:'Mike Kim', logo:null, winPct:''},
+    {rank:3, name:'The Comeback Kids', record:'6-4', diff:'+40.2', delta:'-2', manager:'Leo Randazzo', logo:null, winPct:''},
+    {rank:4, name:'Waiver Wire Bandits', record:'6-4', diff:'+22.0', delta:'+3', manager:'Tom Sullivan', logo:null, winPct:''},
+    {rank:5, name:'Touchdown Titans', record:'5-5', diff:'+10.4', delta:'0', manager:'Alex Brown', logo:null, winPct:''},
+    {rank:6, name:'The Commish', record:'5-5', diff:'-8.2', delta:'-1', manager:'Dan Carter', logo:null, winPct:''},
+    {rank:7, name:'Monday Night Miracles', record:'5-5', diff:'-15.6', delta:'+2', manager:'Kyle West', logo:null, winPct:''},
+    {rank:8, name:'Bench Warmers Club', record:'4-6', diff:'-28.3', delta:'-1', manager:'Pat Lee', logo:null, winPct:''},
+    {rank:9, name:'Bye Week Blunders', record:'4-6', diff:'-44.1', delta:'-2', manager:'Greg Hill', logo:null, winPct:''},
+    {rank:10, name:'Autodraft Legends', record:'3-7', diff:'-62.8', delta:'0', manager:'Nick Ford', logo:null, winPct:''},
+    {rank:11, name:'Fantasy Frauds', record:'3-7', diff:'-80.5', delta:'+1', manager:'Brian Moore', logo:null, winPct:''},
+    {rank:12, name:'Last Place Larry', record:'2-8', diff:'-112.0', delta:'-1', manager:'Eli Jones', logo:null, winPct:''},
   ]
 };
 
@@ -1430,14 +1681,24 @@ function setTemplate(t){
 function renderRankRows(){
   rankRowsEl.innerHTML = '';
   state.ranks.forEach((r, i)=>{
+    if(!r.delta) r.delta = '0';
+    if(!r.manager) r.manager = '';
+    if(!r.winPct) r.winPct = '';
     const row = document.createElement('div');
-    row.className = 'flex items-center gap-2 bg-[#0b0e14] border border-white/10 rounded p-2';
+    row.className = 'bg-[#0b0e14] border border-white/10 rounded p-2 space-y-1';
     row.innerHTML = `
-      <input type="number" value="${r.rank}" class="input-field w-12 rounded px-1 py-1 text-xs font-mono text-center" data-rr="rank">
-      <input type="text" value="${r.name}" placeholder="Team name" class="input-field flex-1 rounded px-2 py-1 text-xs" data-rr="name">
-      <input type="text" value="${r.record}" placeholder="W-L" class="input-field w-16 rounded px-2 py-1 text-xs font-mono" data-rr="record">
-      <input type="text" value="${r.diff}" placeholder="+diff" class="input-field w-20 rounded px-2 py-1 text-xs font-mono" data-rr="diff">
-      <button class="text-gray-500 hover:text-[var(--pink)] text-xs px-1" data-rr="del">✕</button>
+      <div class="flex items-center gap-1.5">
+        <input type="number" value="${r.rank}" class="input-field w-10 rounded px-1 py-1 text-xs font-mono text-center" data-rr="rank" title="Rank">
+        <input type="text" value="${escapeHtml(r.name)}" placeholder="Team name" class="input-field flex-1 rounded px-2 py-1 text-xs" data-rr="name">
+        <input type="text" value="${escapeHtml(r.record)}" placeholder="W-L" class="input-field w-14 rounded px-1 py-1 text-xs font-mono" data-rr="record">
+        <input type="text" value="${escapeHtml(r.delta||'0')}" placeholder="Δ" class="input-field w-10 rounded px-1 py-1 text-xs font-mono text-center" data-rr="delta" title="Rank change">
+        <button class="text-gray-500 hover:text-[var(--pink)] text-xs px-1" data-rr="del">✕</button>
+      </div>
+      <div class="flex items-center gap-1.5">
+        <input type="text" value="${escapeHtml(r.manager||'')}" placeholder="Manager full name" class="input-field flex-1 rounded px-2 py-1 text-xs" data-rr="manager">
+        <input type="text" value="${escapeHtml(r.diff)}" placeholder="+diff" class="input-field w-16 rounded px-1 py-1 text-xs font-mono" data-rr="diff">
+        <input type="text" value="${escapeHtml(r.winPct||'')}" placeholder="Win%" class="input-field w-14 rounded px-1 py-1 text-xs font-mono" data-rr="winPct" title="Win % (.583)">
+      </div>
     `;
     row.querySelectorAll('[data-rr]').forEach(el=>{
       const attr = el.dataset.rr;
@@ -1457,20 +1718,667 @@ function renderRankRows(){
 /* ============================================================
    RENDER
 ============================================================ */
-function setImgOrPlaceholder(imgId, phId, dataUrl){
+/* ============================================================
+   GLOBAL CANVAS IMAGE LOADER
+   Centralised helper used everywhere before drawing to <canvas>
+   or assigning an <img>.src in any template.
+   • Upgrades http → https
+   • Sets crossOrigin = "anonymous"
+   • Times out after 6 s so a blocked CDN never hangs the render
+   Returns: { ok:true, img } on success,
+            { ok:false }      on any failure (caller renders monogram)
+============================================================ */
+async function loadCanvasImage(url, timeoutMs){
+  if(!url) return { ok:false };
+  const src = url.replace(/^http:\/\//i, 'https://');
+  return new Promise(resolve => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    const timer = setTimeout(()=>{ img.src=''; resolve({ ok:false }); }, timeoutMs || 6000);
+    img.onload  = ()=>{ clearTimeout(timer); resolve({ ok:true, img }); };
+    img.onerror = ()=>{ clearTimeout(timer); resolve({ ok:false }); };
+    img.src = src;
+  });
+}
+
+/* Build a monogram-badge data-URL (circular gradient + bold initials).
+   Used as fallback everywhere an avatar/logo fails to load. */
+function buildMonogramDataUrl(initials, accentColor, size){
+  size = size || 280;
+  const c = document.createElement('canvas');
+  c.width = size; c.height = size;
+  const ctx = c.getContext('2d');
+  const r = size / 2;
+  // gradient circle
+  const g = ctx.createLinearGradient(0, 0, size, size);
+  g.addColorStop(0, accentColor || '#39ff8c');
+  g.addColorStop(1, shiftColor(accentColor || '#39ff8c', -40));
+  ctx.beginPath(); ctx.arc(r, r, r, 0, Math.PI*2); ctx.closePath();
+  ctx.fillStyle = g; ctx.fill();
+  // initials
+  const letters = (initials || '??').toUpperCase().slice(0,2);
+  ctx.fillStyle = '#fff';
+  ctx.font = `700 ${Math.round(size*0.42)}px "Teko", "Anton", sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(letters, r, r + size*0.03);
+  return c.toDataURL('image/png');
+}
+
+function shiftColor(hex, amount){
+  let c = hex.replace('#','');
+  if(c.length===3) c = c[0]+c[0]+c[1]+c[1]+c[2]+c[2];
+  const n = parseInt(c,16);
+  const r = Math.min(255, Math.max(0, ((n>>16)&0xff)+amount));
+  const g = Math.min(255, Math.max(0, ((n>>8)&0xff)+amount));
+  const b = Math.min(255, Math.max(0, (n&0xff)+amount));
+  return '#'+((1<<24)+(r<<16)+(g<<8)+b).toString(16).slice(1);
+}
+
+/* Draw a monogram badge directly onto a 2d canvas context. */
+function drawMonogramBadge(ctx, cx, cy, radius, initials, accentColor){
+  ctx.save();
+  const g = ctx.createLinearGradient(cx-radius, cy-radius, cx+radius, cy+radius);
+  g.addColorStop(0, accentColor || '#39ff8c');
+  g.addColorStop(1, shiftColor(accentColor || '#39ff8c', -40));
+  ctx.beginPath(); ctx.arc(cx, cy, radius, 0, Math.PI*2); ctx.closePath();
+  ctx.fillStyle = g; ctx.fill();
+  const letters = (initials || '??').toUpperCase().slice(0,2);
+  ctx.fillStyle = '#fff';
+  ctx.font = `700 ${Math.round(radius*0.9)}px "Teko", "Anton", sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(letters, cx, cy + radius*0.06);
+  ctx.restore();
+}
+
+/* Resolve a drawable image for a canvas: loads the URL, or falls back to a
+   monogram badge rendered as an Image element.
+   Returns an Image (either the loaded photo or a monogram). */
+async function getDrawableAvatar(url, initials, accentColor, size){
+  const result = await loadCanvasImage(url);
+  if(result.ok) return result.img;
+  const dataUrl = buildMonogramDataUrl(initials, accentColor, size || 280);
+  return new Promise(resolve => {
+    const img = new Image();
+    img.onload = ()=> resolve(img);
+    img.src = dataUrl;
+  });
+}
+
+/* ============================================================
+   TEMPLATE B — hi-DPI 1080×1920 canvas renderer (single-column)
+============================================================ */
+async function renderTemplateBCanvas(){
+  const canvas = document.getElementById('tpl-B-canvas');
+  if(!canvas) return;
+  const W = 1080, H = 1920;
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+
+  await document.fonts.ready;
+
+  const f = state.fields;
+  const isAllTime = state.rankMode === 'alltime';
+  const sorted = [...state.ranks].sort((a,b)=>a.rank-b.rank).slice(0,12);
+
+  // --- Background ---
+  const bgGrad = ctx.createRadialGradient(W/2, -H*0.05, 0, W/2, -H*0.05, H*0.7);
+  bgGrad.addColorStop(0, '#1a1508');
+  bgGrad.addColorStop(0.4, '#0a0c10');
+  bgGrad.addColorStop(0.7, '#05070a');
+  ctx.fillStyle = bgGrad; ctx.fillRect(0, 0, W, H);
+
+  // Subtle scanlines
+  ctx.fillStyle = 'rgba(255,196,0,0.012)';
+  for(let y = 3; y < H; y += 4) ctx.fillRect(0, y, W, 1);
+
+  // Top gold bar
+  const barGrad = ctx.createLinearGradient(0,0,W,0);
+  barGrad.addColorStop(0,'#ffc400'); barGrad.addColorStop(0.5,'#ff8a00'); barGrad.addColorStop(1,'#ffc400');
+  ctx.fillStyle = barGrad; ctx.fillRect(0, 0, W, 8);
+
+  // --- Header text ---
+  const weekLabel = f.rank_week || (isAllTime ? 'ALL-TIME STANDINGS' : 'WEEK');
+  const title = f.rank_title || (isAllTime ? 'ALL-TIME POWER RANKINGS' : 'POWER RANKINGS');
+  const subtitle = isAllTime ? 'HISTORICAL FRANCHISE STANDINGS (2019–PRESENT)' : 'ESPN FANTASY · UPDATED WEEKLY';
+
+  ctx.textAlign = 'center';
+  ctx.font = '400 22px "Space Mono", monospace';
+  ctx.fillStyle = '#ffc400';
+  if('letterSpacing' in ctx) ctx.letterSpacing = '7px';
+  ctx.fillText(weekLabel, W/2, 58);
+  if('letterSpacing' in ctx) ctx.letterSpacing = '0px';
+
+  ctx.font = '400 58px "Anton", sans-serif';
+  ctx.fillStyle = '#ffffff';
+  ctx.shadowColor = 'rgba(255,196,0,0.55)'; ctx.shadowBlur = 30;
+  ctx.fillText(title, W/2, 118);
+  ctx.shadowBlur = 0;
+
+  ctx.font = '400 14px "Space Mono", monospace';
+  ctx.fillStyle = '#5b667a';
+  if('letterSpacing' in ctx) ctx.letterSpacing = '4px';
+  ctx.fillText(subtitle, W/2, 148);
+  if('letterSpacing' in ctx) ctx.letterSpacing = '0px';
+
+  // --- Single-column full-width layout ---
+  const padX = 40;
+  const gridTop = 180;
+  const gridBottom = H - 70;
+  const gridH = gridBottom - gridTop;
+  const rowCount = sorted.length || 12;
+  const cardGap = 10;
+  const totalGaps = (rowCount - 1) * cardGap;
+  const cardH = Math.floor((gridH - totalGaps) / rowCount);
+  const cardW = W - padX * 2;
+
+  const avatarPromises = sorted.map(r => {
+    const mgrName = r.manager || '';
+    const ini = mgrName ? mgrName.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase() : r.name.split(' ').map(w=>w[0]).join('').slice(0,2).toUpperCase();
+    const accentHex = r.rank === 1 ? '#ffc400' : r.rank === 2 ? '#00e0ff' : r.rank === 3 ? '#c9974a' : '#5b667a';
+    return getDrawableAvatar(r.logo, ini, accentHex, 120);
+  });
+  const avatarImgs = await Promise.all(avatarPromises);
+
+  for(let i = 0; i < sorted.length; i++){
+    const r = sorted[i];
+    const x = padX;
+    const y = gridTop + i * (cardH + cardGap);
+    const cy = y + cardH / 2;
+
+    const isChamp = r.rank <= 3;
+    const isPlayoff = r.rank >= 4 && r.rank <= 8;
+    const isFirst = r.rank === 1;
+    const isSecond = r.rank === 2;
+    const isThird = r.rank === 3;
+
+    let cardBg, borderColor, borderW, rankColor, nameColor, mgrColor, statColor, glowColor;
+    if(isChamp){
+      rankColor = isFirst ? '#ffc400' : isSecond ? '#00e0ff' : '#c9974a';
+      glowColor = rankColor;
+      cardBg = isFirst ? 'rgba(255,196,0,0.10)' : isSecond ? 'rgba(0,224,255,0.07)' : 'rgba(201,151,74,0.08)';
+      borderColor = isFirst ? 'rgba(255,196,0,0.55)' : isSecond ? 'rgba(0,224,255,0.45)' : 'rgba(201,151,74,0.40)';
+      borderW = 2;
+      nameColor = '#ffffff';
+      mgrColor = '#9aa3b4';
+      statColor = rankColor;
+    } else if(isPlayoff){
+      rankColor = '#8892a6';
+      glowColor = null;
+      cardBg = 'rgba(22,28,39,0.85)';
+      borderColor = 'rgba(255,255,255,0.07)';
+      borderW = 1;
+      nameColor = '#e4e8f0';
+      mgrColor = '#5b667a';
+      statColor = '#c7cdd8';
+    } else {
+      rankColor = '#4a5060';
+      glowColor = null;
+      cardBg = 'rgba(14,16,22,0.85)';
+      borderColor = 'rgba(255,255,255,0.04)';
+      borderW = 1;
+      nameColor = '#7a8094';
+      mgrColor = '#3e4456';
+      statColor = '#5a6070';
+    }
+
+    // Card background + border
+    ctx.save();
+    roundRect(ctx, x, y, cardW, cardH, 14);
+    ctx.fillStyle = cardBg;
+    ctx.fill();
+    if(glowColor){
+      ctx.shadowColor = glowColor;
+      ctx.shadowBlur = 18;
+    }
+    ctx.strokeStyle = borderColor;
+    ctx.lineWidth = borderW;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.restore();
+
+    // --- Far left: rank number ---
+    const rankX = x + 44;
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = '400 48px "Anton", sans-serif';
+    ctx.fillStyle = rankColor;
+    if(glowColor){
+      ctx.shadowColor = glowColor;
+      ctx.shadowBlur = 28;
+    }
+    ctx.fillText(String(r.rank), rankX, cy + 2);
+    ctx.restore();
+
+    // --- Avatar ---
+    const avatarR = 30;
+    const avatarCx = x + 104 + avatarR;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(avatarCx, cy, avatarR, 0, Math.PI*2);
+    ctx.closePath();
+    ctx.clip();
+    const avImg = avatarImgs[i];
+    if(avImg) ctx.drawImage(avImg, avatarCx - avatarR, cy - avatarR, avatarR*2, avatarR*2);
+    ctx.restore();
+    // ring
+    ctx.beginPath();
+    ctx.arc(avatarCx, cy, avatarR + 1.5, 0, Math.PI*2);
+    ctx.strokeStyle = isChamp ? borderColor : 'rgba(255,255,255,0.08)';
+    ctx.lineWidth = isChamp ? 2.5 : 1.5;
+    ctx.stroke();
+
+    // --- Middle: team name + manager ---
+    const textX = avatarCx + avatarR + 22;
+    ctx.save();
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.font = '400 28px "Anton", sans-serif';
+    ctx.fillStyle = nameColor;
+    const teamName = r.name || '';
+    ctx.fillText(teamName, textX, cy - 10);
+    ctx.restore();
+
+    const mgrName = r.manager || '';
+    if(mgrName){
+      ctx.save();
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.font = '500 20px "Teko", sans-serif';
+      ctx.fillStyle = mgrColor;
+      ctx.fillText(mgrName, textX, cy + 16);
+      ctx.restore();
+    }
+
+    // --- Far right: primary stat + record ---
+    const rightEdge = x + cardW - 24;
+    const wp = r.winPct || '';
+    const record = r.record || '';
+
+    if(wp || record){
+      const primaryStat = wp || record;
+      const secondaryStat = wp ? record : '';
+
+      ctx.save();
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
+      ctx.font = '700 32px "Anton", sans-serif';
+      ctx.fillStyle = statColor;
+      if(glowColor){ ctx.shadowColor = glowColor; ctx.shadowBlur = 16; }
+      ctx.fillText(primaryStat, rightEdge, secondaryStat ? cy - 8 : cy + 2);
+      ctx.shadowBlur = 0;
+      ctx.restore();
+
+      if(secondaryStat){
+        ctx.save();
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'middle';
+        ctx.font = '400 16px "Space Mono", monospace';
+        ctx.fillStyle = mgrColor;
+        ctx.fillText(secondaryStat, rightEdge, cy + 16);
+        ctx.restore();
+      }
+    }
+
+    // Delta indicator (weekly mode, far right below stat)
+    if(!isAllTime){
+      const deltaVal = parseInt(r.delta) || 0;
+      if(deltaVal !== 0){
+        const pillText = deltaVal > 0 ? '▲ +' + deltaVal : '▼ ' + deltaVal;
+        const pillColor = deltaVal > 0 ? '#39ff8c' : '#ff2d6d';
+        ctx.save();
+        ctx.textAlign = 'right';
+        ctx.textBaseline = 'middle';
+        ctx.font = '700 14px "Space Mono", monospace';
+        ctx.fillStyle = pillColor;
+        const deltaY = (wp && record) ? cy + 34 : cy + 18;
+        ctx.fillText(pillText, rightEdge, deltaY);
+        ctx.restore();
+      }
+    }
+  }
+
+  // --- Footer ---
+  ctx.save();
+  const footY = H - 26;
+  const lineGrad = ctx.createLinearGradient(80, 0, W-80, 0);
+  lineGrad.addColorStop(0, 'transparent');
+  lineGrad.addColorStop(0.5, 'rgba(255,196,0,0.3)');
+  lineGrad.addColorStop(1, 'transparent');
+  ctx.fillStyle = lineGrad;
+  ctx.fillRect(80, footY - 18, W - 160, 1);
+  ctx.textAlign = 'center';
+  ctx.font = '400 14px "Space Mono", monospace';
+  ctx.fillStyle = '#5b667a';
+  if('letterSpacing' in ctx) ctx.letterSpacing = '5px';
+  ctx.fillText('GRIDIRON POWER INDEX · UPDATED WEEKLY', W/2, footY);
+  if('letterSpacing' in ctx) ctx.letterSpacing = '0px';
+  ctx.restore();
+}
+
+function roundRect(ctx, x, y, w, h, r){
+  ctx.beginPath();
+  ctx.moveTo(x+r, y);
+  ctx.lineTo(x+w-r, y);
+  ctx.quadraticCurveTo(x+w, y, x+w, y+r);
+  ctx.lineTo(x+w, y+h-r);
+  ctx.quadraticCurveTo(x+w, y+h, x+w-r, y+h);
+  ctx.lineTo(x+r, y+h);
+  ctx.quadraticCurveTo(x, y+h, x, y+h-r);
+  ctx.lineTo(x, y+r);
+  ctx.quadraticCurveTo(x, y, x+r, y);
+  ctx.closePath();
+}
+
+function setImgOrPlaceholder(imgId, phId, dataUrl, initials, accentColor){
   const img = document.getElementById(imgId);
   const ph = document.getElementById(phId);
   if(dataUrl){
-    img.src = dataUrl; img.classList.remove('hidden');
-    if(ph) ph.classList.add('hidden');
+    const safeSrc = dataUrl.replace(/^http:\/\//i, 'https://');
+    img.crossOrigin = 'anonymous';
+    img.classList.add('hidden');
+    if(ph){ ph.classList.add('hidden'); ph.style.background = ''; ph.innerHTML = ''; }
+    img.onload = ()=>{
+      img.classList.remove('hidden');
+      if(ph){ ph.classList.add('hidden'); ph.style.background = ''; ph.innerHTML = ''; }
+    };
+    img.onerror = ()=>{
+      img.classList.add('hidden');
+      img.removeAttribute('src');
+      if(ph){ ph.classList.remove('hidden'); renderMonogramPlaceholder(ph, initials, accentColor); }
+    };
+    img.src = safeSrc;
   } else {
     img.classList.add('hidden');
-    if(ph) ph.classList.remove('hidden');
+    img.removeAttribute('src');
+    if(ph){ ph.classList.remove('hidden'); renderMonogramPlaceholder(ph, initials, accentColor); }
   }
+}
+
+function renderMonogramPlaceholder(el, initials, accentColor){
+  if(!el) return;
+  const letters = (initials || '??').toUpperCase().slice(0,2);
+  const color = accentColor || '#39ff8c';
+  const dark = shiftColor(color, -40);
+  el.innerHTML = '';
+  el.style.background = `linear-gradient(135deg, ${color}, ${dark})`;
+  el.style.display = 'flex'; el.style.alignItems = 'center'; el.style.justifyContent = 'center';
+  const span = document.createElement('span');
+  span.textContent = letters;
+  span.style.cssText = `font-family:"Teko","Anton",sans-serif; font-weight:700; color:#fff; line-height:1; letter-spacing:0.03em;`;
+  const parentW = el.offsetWidth || el.clientWidth || 280;
+  span.style.fontSize = Math.round(parentW * 0.42) + 'px';
+  el.appendChild(span);
 }
 
 function escapeHtml(str){
   return LeagueData.esc(str);
+}
+
+function initialsFrom(name){
+  if(!name) return '??';
+  return name.split(/\s+/).map(w=>w[0]).join('').slice(0,2).toUpperCase() || '??';
+}
+
+function renderFranchiseChart(yearRanks){
+  const svg = document.getElementById('g-chart');
+  if(!svg) return;
+  svg.innerHTML = '';
+  if(!yearRanks.length) {
+    const t = document.createElementNS('http://www.w3.org/2000/svg','text');
+    t.setAttribute('x','460'); t.setAttribute('y','410'); t.setAttribute('text-anchor','middle');
+    t.setAttribute('fill','#5b667a'); t.setAttribute('font-family','Space Mono,monospace'); t.setAttribute('font-size','18');
+    t.textContent = 'Load league history to populate chart';
+    svg.appendChild(t);
+    return;
+  }
+  const W=920, H=820, padL=70, padR=40, padT=70, padB=90;
+  const n=yearRanks.length;
+  const maxRank=12;
+  const xStep = n>1 ? (W-padL-padR)/(n-1) : 0;
+  const yScale = (H-padT-padB)/(maxRank-1);
+
+  // Defs for glow filter and gradient fill
+  const defs = document.createElementNS('http://www.w3.org/2000/svg','defs');
+  defs.innerHTML = `
+    <filter id="glow-f" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="5" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="rgba(0,224,255,0.28)"/>
+      <stop offset="100%" stop-color="rgba(0,224,255,0)"/>
+    </linearGradient>
+    <filter id="node-glow" x="-100%" y="-100%" width="300%" height="300%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="8" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  `;
+  svg.appendChild(defs);
+
+  // ---- TIER ZONE BANDS (background context) ----
+  // Championship zone: ranks 1-3 (gold tint)
+  const zoneChampY1 = padT;
+  const zoneChampY2 = padT + 2 * yScale;
+  const zoneR = document.createElementNS('http://www.w3.org/2000/svg','rect');
+  zoneR.setAttribute('x', padL); zoneR.setAttribute('y', zoneChampY1);
+  zoneR.setAttribute('width', W-padL-padR); zoneR.setAttribute('height', zoneChampY2 - zoneChampY1);
+  zoneR.setAttribute('fill','rgba(255,196,0,0.04)'); zoneR.setAttribute('rx','4');
+  svg.appendChild(zoneR);
+  // Zone label
+  const zl1 = document.createElementNS('http://www.w3.org/2000/svg','text');
+  zl1.setAttribute('x', W-padR-8); zl1.setAttribute('y', zoneChampY1+20);
+  zl1.setAttribute('text-anchor','end'); zl1.setAttribute('fill','rgba(255,196,0,0.35)');
+  zl1.setAttribute('font-family','Oswald,sans-serif'); zl1.setAttribute('font-size','18'); zl1.setAttribute('font-weight','700');
+  zl1.textContent='CHAMPIONSHIP ZONE';
+  svg.appendChild(zl1);
+
+  // Playoff zone: ranks 4-6 (cyan tint)
+  const zonePlayY1 = padT + 3 * yScale;
+  const zonePlayY2 = padT + 5 * yScale;
+  const zoneP = document.createElementNS('http://www.w3.org/2000/svg','rect');
+  zoneP.setAttribute('x', padL); zoneP.setAttribute('y', zonePlayY1);
+  zoneP.setAttribute('width', W-padL-padR); zoneP.setAttribute('height', zonePlayY2 - zonePlayY1);
+  zoneP.setAttribute('fill','rgba(0,224,255,0.025)'); zoneP.setAttribute('rx','4');
+  svg.appendChild(zoneP);
+  const zl2 = document.createElementNS('http://www.w3.org/2000/svg','text');
+  zl2.setAttribute('x', W-padR-8); zl2.setAttribute('y', zonePlayY1+20);
+  zl2.setAttribute('text-anchor','end'); zl2.setAttribute('fill','rgba(0,224,255,0.3)');
+  zl2.setAttribute('font-family','Oswald,sans-serif'); zl2.setAttribute('font-size','18'); zl2.setAttribute('font-weight','700');
+  zl2.textContent='PLAYOFF CUT LINE';
+  svg.appendChild(zl2);
+
+  // Basement zone: ranks 10-12 (pink/red tint)
+  const zoneBasY1 = padT + 9 * yScale;
+  const zoneBasY2 = padT + 11 * yScale;
+  const zoneB = document.createElementNS('http://www.w3.org/2000/svg','rect');
+  zoneB.setAttribute('x', padL); zoneB.setAttribute('y', zoneBasY1);
+  zoneB.setAttribute('width', W-padL-padR); zoneB.setAttribute('height', zoneBasY2 - zoneBasY1);
+  zoneB.setAttribute('fill','rgba(255,45,109,0.025)'); zoneB.setAttribute('rx','4');
+  svg.appendChild(zoneB);
+  const zl3 = document.createElementNS('http://www.w3.org/2000/svg','text');
+  zl3.setAttribute('x', W-padR-8); zl3.setAttribute('y', zoneBasY1+20);
+  zl3.setAttribute('text-anchor','end'); zl3.setAttribute('fill','rgba(255,45,109,0.3)');
+  zl3.setAttribute('font-family','Oswald,sans-serif'); zl3.setAttribute('font-size','18'); zl3.setAttribute('font-weight','700');
+  zl3.textContent='CONSOLATION BRACKET';
+  svg.appendChild(zl3);
+
+  // Grid lines with rank labels
+  [1,2,3,4,5,6,7,8,9,10,11,12].forEach(r=>{
+    const y=padT+(r-1)*yScale;
+    const line=document.createElementNS('http://www.w3.org/2000/svg','line');
+    line.setAttribute('x1',padL); line.setAttribute('x2',W-padR);
+    line.setAttribute('y1',y); line.setAttribute('y2',y);
+    if(r===1){
+      line.setAttribute('stroke','rgba(255,196,0,0.3)');
+      line.setAttribute('stroke-dasharray','10,7');
+      line.setAttribute('stroke-width','2');
+    } else if(r===7){
+      line.setAttribute('stroke','rgba(0,224,255,0.15)');
+      line.setAttribute('stroke-dasharray','6,6');
+      line.setAttribute('stroke-width','1.5');
+    } else {
+      line.setAttribute('stroke','rgba(255,255,255,0.05)');
+      line.setAttribute('stroke-width','1');
+    }
+    svg.appendChild(line);
+    const label=document.createElementNS('http://www.w3.org/2000/svg','text');
+    label.setAttribute('x',padL-14); label.setAttribute('y',y+6);
+    label.setAttribute('text-anchor','end');
+    label.setAttribute('fill', r===1?'rgba(255,196,0,0.7)': r<=3?'#5b667a':'#3a4356');
+    label.setAttribute('font-family','Space Mono,monospace'); label.setAttribute('font-size','16');
+    label.setAttribute('font-weight','700');
+    label.textContent = String(r);
+    svg.appendChild(label);
+  });
+
+  const points = yearRanks.map((yr,i)=>{
+    const x=padL+(n>1?i*xStep:((W-padL-padR)/2));
+    const y=padT+(yr.rank-1)*yScale;
+    return {x,y,year:yr.year,rank:yr.rank};
+  });
+
+  // Area fill
+  if(points.length>1){
+    const areaD = 'M'+points[0].x+','+points[0].y +
+      points.slice(1).map(p=> ' L'+p.x+','+p.y).join('') +
+      ' L'+points[points.length-1].x+','+(H-padB) +
+      ' L'+points[0].x+','+(H-padB)+' Z';
+    const area=document.createElementNS('http://www.w3.org/2000/svg','path');
+    area.setAttribute('d',areaD);
+    area.setAttribute('fill','url(#areaGrad)');
+    svg.appendChild(area);
+  }
+
+  // Line path with glow — thicker
+  if(points.length>1){
+    const pathD = points.map((p,i)=> (i===0?'M':'L')+p.x+','+p.y).join(' ');
+    const glow=document.createElementNS('http://www.w3.org/2000/svg','path');
+    glow.setAttribute('d',pathD); glow.setAttribute('fill','none');
+    glow.setAttribute('stroke','rgba(0,224,255,0.6)'); glow.setAttribute('stroke-width','10');
+    glow.setAttribute('stroke-linejoin','round'); glow.setAttribute('filter','url(#glow-f)');
+    svg.appendChild(glow);
+    const path=document.createElementNS('http://www.w3.org/2000/svg','path');
+    path.setAttribute('d',pathD); path.setAttribute('fill','none');
+    path.setAttribute('stroke','#00e0ff'); path.setAttribute('stroke-width','5');
+    path.setAttribute('stroke-linejoin','round'); path.setAttribute('stroke-linecap','round');
+    svg.appendChild(path);
+  }
+
+  // Glowing nodes, callout pills, and season labels — all enlarged
+  points.forEach(p=>{
+    const nodeColor = p.rank===1?'#ffc400': p.rank<=3?'#00e0ff':'#5b8aaa';
+    // outer glow circle
+    const gc=document.createElementNS('http://www.w3.org/2000/svg','circle');
+    gc.setAttribute('cx',p.x); gc.setAttribute('cy',p.y); gc.setAttribute('r','18');
+    gc.setAttribute('fill', nodeColor); gc.setAttribute('opacity','0.3');
+    gc.setAttribute('filter','url(#node-glow)');
+    svg.appendChild(gc);
+    // solid node
+    const c=document.createElementNS('http://www.w3.org/2000/svg','circle');
+    c.setAttribute('cx',p.x); c.setAttribute('cy',p.y); c.setAttribute('r','10');
+    c.setAttribute('fill', nodeColor);
+    c.setAttribute('stroke','#fff'); c.setAttribute('stroke-width','3');
+    svg.appendChild(c);
+
+    // Data callout pill above point
+    const pillW=64, pillH=32, pillY=p.y-38;
+    const pill=document.createElementNS('http://www.w3.org/2000/svg','rect');
+    pill.setAttribute('x',p.x-pillW/2); pill.setAttribute('y',pillY-pillH/2);
+    pill.setAttribute('width',pillW); pill.setAttribute('height',pillH);
+    pill.setAttribute('rx','16'); pill.setAttribute('fill', p.rank===1?'rgba(255,196,0,0.25)':'rgba(0,224,255,0.18)');
+    pill.setAttribute('stroke', p.rank===1?'rgba(255,196,0,0.6)':'rgba(0,224,255,0.4)');
+    pill.setAttribute('stroke-width','1.5');
+    svg.appendChild(pill);
+    const rl=document.createElementNS('http://www.w3.org/2000/svg','text');
+    rl.setAttribute('x',p.x); rl.setAttribute('y',pillY+7);
+    rl.setAttribute('text-anchor','middle');
+    rl.setAttribute('fill', p.rank===1?'#ffc400':'#fff');
+    rl.setAttribute('font-family','Anton,sans-serif'); rl.setAttribute('font-size','20');
+    rl.textContent='#'+p.rank;
+    svg.appendChild(rl);
+
+    // Season label at bottom
+    const yl=document.createElementNS('http://www.w3.org/2000/svg','text');
+    yl.setAttribute('x',p.x); yl.setAttribute('y',H-28);
+    yl.setAttribute('text-anchor','middle');
+    yl.setAttribute('fill','#8a95a9');
+    yl.setAttribute('font-family','Space Mono,monospace'); yl.setAttribute('font-size','20');
+    yl.setAttribute('font-weight','700');
+    yl.textContent="'"+String(p.year).slice(-2);
+    svg.appendChild(yl);
+  });
+}
+
+function computeFranchiseResume(ownerId){
+  const hist = state.leagueHistory;
+  if(!hist) return null;
+  const m = hist.managers[ownerId];
+  if(!m) return null;
+
+  const yearRanks = [];
+  let totalWins=0, totalLosses=0, totalTies=0, champs=0, top3=0, playoffApps=0;
+  const yearsPlayed = Object.keys(m.teamNamesByYear).map(Number).sort((a,b)=>a-b);
+
+  // We need the raw leagueHistory yearsData — stored on LeagueData
+  const rawHistory = window._franchiseYearsData;
+  if(!rawHistory) return null;
+
+  yearsPlayed.forEach(year=>{
+    const seasonEntry = rawHistory.find(yd=> yd.year === year);
+    if(!seasonEntry) return;
+    const ld = seasonEntry.leagueData;
+    if(!ld || !ld.teams) return;
+
+    const team = ld.teams.find(t=>{
+      const tid = t.primaryOwner || (t.owners && t.owners[0]) || '';
+      return tid === ownerId;
+    });
+    if(!team) return;
+
+    const rank = team.rankCalculatedFinal;
+    if(typeof rank === 'number' && rank > 0){
+      yearRanks.push({ year, rank });
+      if(rank === 1) champs++;
+      if(rank <= 3) top3++;
+    }
+
+    // Record
+    const rec = team.record && team.record.overall;
+    if(rec){
+      totalWins += rec.wins || 0;
+      totalLosses += rec.losses || 0;
+      totalTies += rec.ties || 0;
+    }
+
+    // Playoff appearances
+    const playoffTeamCount = (ld.settings && ld.settings.scheduleSettings && ld.settings.scheduleSettings.playoffTeamCount) || 6;
+    if(typeof team.playoffSeed === 'number' && team.playoffSeed > 0 && team.playoffSeed <= playoffTeamCount){
+      playoffApps++;
+    } else {
+      // Fallback: check schedule for WINNERS_BRACKET games
+      const schedule = ld.schedule || [];
+      const inBracket = schedule.some(g=>{
+        if(g.playoffTierType !== 'WINNERS_BRACKET') return false;
+        const hid = g.home && g.home.teamId;
+        const aid = g.away && g.away.teamId;
+        return hid === team.id || aid === team.id;
+      });
+      if(inBracket) playoffApps++;
+    }
+  });
+
+  const avgFinish = yearRanks.length ? (yearRanks.reduce((s,yr)=>s+yr.rank,0)/yearRanks.length) : null;
+
+  return {
+    yearRanks,
+    avgFinish: avgFinish !== null ? avgFinish.toFixed(1) : '--',
+    champs,
+    top3,
+    playoffApps,
+    record: `${totalWins}-${totalLosses}-${totalTies}`,
+    seasons: yearsPlayed.length,
+  };
 }
 
 function render(){
@@ -1488,45 +2396,107 @@ function render(){
   document.getElementById('b-proj').textContent = f.b_proj || '--';
   document.getElementById('b-actual').textContent = f.b_actual || '--';
   document.getElementById('a-week').textContent = f.matchup_week || 'WEEK';
-  setImgOrPlaceholder('a-img','a-img-ph', f.a_img);
-  setImgOrPlaceholder('b-img','b-img-ph', f.b_img);
+  setImgOrPlaceholder('a-img','a-img-ph', f.a_img, initialsFrom(f.a_name || f.a_owner), '#00e0ff');
+  setImgOrPlaceholder('b-img','b-img-ph', f.b_img, initialsFrom(f.b_name || f.b_owner), '#ff2d6d');
 
-  // Template B
-  document.getElementById('rank-title').textContent = f.rank_title || 'POWER RANKINGS';
-  document.getElementById('b-week-label').textContent = f.rank_week || 'WEEK';
-  const list = document.getElementById('rank-list');
-  list.innerHTML = '';
-  const sorted = [...state.ranks].sort((a,b)=>a.rank-b.rank);
-  sorted.forEach((r)=>{
-    const tierColor = r.rank===1 ? 'var(--gold)' : r.rank<=3 ? 'var(--cyan)' : '#5b667a';
-    const row = document.createElement('div');
-    row.className = 'flex items-center gap-5 rounded-xl px-6 py-4';
-    row.style.background = 'rgba(16,20,28,0.85)';
-    row.style.border = '1px solid rgba(255,255,255,0.08)';
-    row.innerHTML = `
-      <div class="font-display text-[42px] w-[70px] text-center" style="color:${tierColor}">${r.rank}</div>
-      <div class="flex-1">
-        <div class="font-display text-white text-[30px] leading-tight">${escapeHtml(r.name)}</div>
-        <div class="font-mono text-gray-500 text-[16px] mt-0.5">${escapeHtml(r.record)}</div>
-      </div>
-      <div class="font-mono text-[24px]" style="color:${tierColor}">${escapeHtml(r.diff)}</div>
-    `;
-    list.appendChild(row);
-  });
+  // Template A — matchup comparison grid
+  {
+    const hist = state.leagueHistory;
+    let h2hA='--', h2hB='--', ppgA='--', ppgB='--', streak='--', rankA='--', rankB='--';
+    if(hist && state.espnData){
+      const teams = getTeams();
+      const teamA = teams.find(t=> t.name.toUpperCase() === (f.a_name||'').toUpperCase());
+      const teamB = teams.find(t=> t.name.toUpperCase() === (f.b_name||'').toUpperCase());
+      if(teamA && teamB){
+        const recA = (teamA.record||'0-0').split('-');
+        const recB = (teamB.record||'0-0').split('-');
+        const winsA = parseInt(recA[0])||0, lossA = parseInt(recA[1])||0;
+        const winsB = parseInt(recB[0])||0, lossB = parseInt(recB[1])||0;
+        const totalA = winsA+lossA, totalB = winsB+lossB;
+        rankA = '#' + (teams.slice().sort((a,b)=>{
+          const wa = parseInt((a.record||'0-0').split('-')[0])||0;
+          const wb = parseInt((b.record||'0-0').split('-')[0])||0;
+          return wb-wa;
+        }).findIndex(t=>t.id===teamA.id)+1);
+        rankB = '#' + (teams.slice().sort((a,b)=>{
+          const wa = parseInt((a.record||'0-0').split('-')[0])||0;
+          const wb = parseInt((b.record||'0-0').split('-')[0])||0;
+          return wb-wa;
+        }).findIndex(t=>t.id===teamB.id)+1);
+      }
+      if(teamA && teamB){
+        const ownerA = state.espnData.teams.find(t=>t.id===teamA.id);
+        const ownerB = state.espnData.teams.find(t=>t.id===teamB.id);
+        if(ownerA && ownerB){
+          const oidA = ownerA.primaryOwner||(ownerA.owners&&ownerA.owners[0])||'';
+          const oidB = ownerB.primaryOwner||(ownerB.owners&&ownerB.owners[0])||'';
+          const h = getH2H(oidA, oidB);
+          if(h){
+            h2hA = String(h.winsFor); h2hB = String(h.winsAgainst);
+            const meetA = h.winsFor+h.winsAgainst+(h.ties||0);
+            if(meetA>0){
+              ppgA = (h.pointsFor/meetA).toFixed(1);
+              ppgB = (h.pointsAgainst/meetA).toFixed(1);
+            }
+            if(h.streakCount>0){
+              const who = h.streakOwnerId===oidA ? (f.a_name||'A') : (f.b_name||'B');
+              streak = `${who} · ${h.streakCount}W STREAK`;
+            }
+          }
+        }
+      }
+    }
+    const el = (id)=> document.getElementById(id);
+    if(el('a-h2h-a')) el('a-h2h-a').textContent = h2hA;
+    if(el('a-h2h-b')) el('a-h2h-b').textContent = h2hB;
+    if(el('a-ppg-a')) el('a-ppg-a').textContent = ppgA;
+    if(el('a-ppg-b')) el('a-ppg-b').textContent = ppgB;
+    if(el('a-streak')) el('a-streak').textContent = streak;
+    if(el('a-rank-a')) el('a-rank-a').textContent = rankA;
+    if(el('a-rank-b')) el('a-rank-b').textContent = rankB;
+  }
+
+  // Template B — canvas-based 2-column render
+  renderTemplateBCanvas();
 
   // Template C
   document.getElementById('c-tag').textContent = f.news_tag || 'BREAKING NEWS';
   document.getElementById('c-headline').textContent = f.news_headline || '';
   document.getElementById('c-sub').textContent = f.news_sub || '';
   document.getElementById('c-manager').textContent = 'REPORTED BY ' + (f.news_manager || '').toUpperCase();
-  setImgOrPlaceholder('c-img','c-img-ph', f.news_img);
+  setImgOrPlaceholder('c-img','c-img-ph', f.news_img, initialsFrom(f.news_manager), '#ff2d6d');
 
   // Template D
   document.getElementById('d-name').textContent = f.hs_name || 'MANAGER NAME';
   document.getElementById('d-score').textContent = f.hs_score || '--';
   document.getElementById('d-week').textContent = f.hs_week || 'WEEK';
   document.getElementById('d-roast').textContent = f.hs_roast || '';
-  setImgOrPlaceholder('d-img','d-img-ph', f.hs_img);
+  setImgOrPlaceholder('d-img','d-img-ph', f.hs_img, initialsFrom(f.hs_name), '#39ff8c');
+
+  // Template D — Crime Sheet stats
+  {
+    const el = (id)=> document.getElementById(id);
+    let leagueAvg='--', belowAvg='--', weekHigh='--';
+    if(state.espnData){
+      const week = weekNumInput.value.trim();
+      const extremes = LeagueData.getWeekExtremes(week);
+      const games = LeagueData.getWeekMatchups(week);
+      if(games.length){
+        let totalPts=0, count=0;
+        games.forEach(g=>{
+          totalPts += parseFloat(g.homeScore)||0; count++;
+          totalPts += parseFloat(g.awayScore)||0; count++;
+        });
+        if(count>0) leagueAvg = (totalPts/count).toFixed(1);
+        const hsScore = parseFloat(f.hs_score)||0;
+        if(leagueAvg!=='--') belowAvg = '-' + (parseFloat(leagueAvg)-hsScore).toFixed(1);
+      }
+      if(extremes.high) weekHigh = extremes.high.score.toFixed(1);
+    }
+    if(el('d-league-avg')) el('d-league-avg').textContent = leagueAvg;
+    if(el('d-below-avg')) el('d-below-avg').textContent = belowAvg;
+    if(el('d-week-high')) el('d-week-high').textContent = weekHigh;
+  }
 
   // Template E — Rivalry Vault
   document.getElementById('e-a-name').textContent = f.e_a_name || 'MANAGER A';
@@ -1535,8 +2505,49 @@ function render(){
   document.getElementById('e-diff').textContent = f.e_diff || '--';
   document.getElementById('e-last').textContent = f.e_last || '';
   document.getElementById('e-streak').textContent = f.e_streak || '';
-  setImgOrPlaceholder('e-a-img','e-a-img-ph', f.e_a_img);
-  setImgOrPlaceholder('e-b-img','e-b-img-ph', f.e_b_img);
+  setImgOrPlaceholder('e-a-img','e-a-img-ph', f.e_a_img, initialsFrom(f.e_a_name), '#c9974a');
+  setImgOrPlaceholder('e-b-img','e-b-img-ph', f.e_b_img, initialsFrom(f.e_b_name), '#c9974a');
+
+  // Template E — Last 3 Matchups
+  {
+    const container = document.getElementById('e-last3');
+    if(container){
+      container.innerHTML = '';
+      let meetings = [];
+      if(state.leagueHistory){
+        const managers = Object.values(state.leagueHistory.managers);
+        const mgrA = managers.find(m=> m.name.toUpperCase() === (f.e_a_name||'').toUpperCase());
+        const mgrB = managers.find(m=> m.name.toUpperCase() === (f.e_b_name||'').toUpperCase());
+        if(mgrA && mgrB){
+          const key = [mgrA.id, mgrB.id].sort().join('__');
+          const rec = state.leagueHistory.h2h[key];
+          if(rec){
+            const aIsRecA = mgrA.id === rec.a;
+            meetings = rec.meetings.slice().sort((x,y)=> y.year-x.year || y.week-x.week).slice(0,3);
+            meetings.forEach(m=>{
+              const scoreFor = aIsRecA ? m.scoreA : m.scoreB;
+              const scoreAgainst = aIsRecA ? m.scoreB : m.scoreA;
+              const won = m.winnerOwnerId === mgrA.id;
+              const row = document.createElement('div');
+              row.style.cssText = 'display:flex; align-items:center; padding:18px 22px; border-radius:12px; border:1px solid ' + (won ? 'rgba(57,255,140,0.2)' : 'rgba(255,45,109,0.15)') + '; background:' + (won ? 'rgba(57,255,140,0.05)' : 'rgba(255,45,109,0.04)') + ';';
+              row.innerHTML = `
+                <span class="font-mono" style="font-size:16px; color:#5b667a; width:120px; flex-shrink:0;">${m.year} · WK${m.week}</span>
+                <span class="font-display" style="font-size:28px; color:${won?'var(--green)':'var(--pink)'}; width:60px; text-align:center; flex-shrink:0;">${won?'W':'L'}</span>
+                <span class="font-mono" style="font-size:26px; color:#e8ecf2; flex:1; text-align:right; font-weight:700;">${scoreFor.toFixed(1)} - ${scoreAgainst.toFixed(1)}</span>
+              `;
+              container.appendChild(row);
+            });
+          }
+        }
+      }
+      if(!meetings.length){
+        const empty = document.createElement('div');
+        empty.style.cssText = 'display:flex; align-items:center; padding:18px 22px; background:rgba(16,20,28,0.75); border:1px solid rgba(201,151,74,0.15); border-radius:12px;';
+        empty.innerHTML = '<span class="font-condensed" style="font-size:24px; color:#3a4356; flex:1; text-align:center;">Load history to populate</span>';
+        container.appendChild(empty);
+      }
+    }
+  }
 
   // Template F — League Record Book
   document.getElementById('f-kicker').textContent = f.f_kicker || 'ALL-TIME RECORD';
@@ -1545,7 +2556,54 @@ function render(){
   document.getElementById('f-owner').textContent = f.f_owner || 'MANAGER NAME';
   document.getElementById('f-meta').textContent = f.f_meta || '';
   const fImg = document.getElementById('f-img');
-  if(f.f_img){ fImg.src = f.f_img; fImg.classList.remove('hidden'); } else { fImg.classList.add('hidden'); }
+  if(f.f_img){
+    fImg.crossOrigin = 'anonymous';
+    fImg.src = f.f_img.replace(/^http:\/\//i, 'https://');
+    fImg.onload = ()=> fImg.classList.remove('hidden');
+    fImg.onerror = ()=> fImg.classList.add('hidden');
+    fImg.classList.remove('hidden');
+  } else { fImg.classList.add('hidden'); }
+
+  // Template F comparison stats — use history data if available, else live data
+  {
+    let allScores = [];
+    const hist = state.leagueHistory;
+    if(hist && hist.allGameScores && hist.allGameScores.length){
+      allScores = hist.allGameScores.filter(s=> s >= 40.0);
+    } else {
+      const ld = window.LeagueData && window.LeagueData.get();
+      if(ld && ld.scores){
+        allScores = Object.values(ld.scores).flat().filter(s=> s >= 40.0);
+      }
+    }
+    if(allScores.length){
+      const avg = (allScores.reduce((a,b)=>a+b,0)/allScores.length).toFixed(1);
+      const headline = parseFloat(f.f_headline) || 0;
+      const diff = headline > 0 ? '+' + (headline - parseFloat(avg)).toFixed(1) : '--';
+      document.getElementById('f-league-avg').textContent = avg;
+      document.getElementById('f-above-avg').textContent = diff;
+      document.getElementById('f-season-high').textContent = Math.max(...allScores).toFixed(1);
+      document.getElementById('f-season-low').textContent = Math.min(...allScores.filter(s=> s >= 40.0)).toFixed(1);
+    }
+    document.getElementById('f-runner').textContent = f.f_runner || '--';
+    document.getElementById('f-runner-score').textContent = f.f_runner_score || '--';
+  }
+
+  // Template G — Franchise Resume
+  document.getElementById('g-team-title').textContent = f.g_team || 'TEAM NAME';
+  document.getElementById('g-manager-name').textContent = f.g_manager || 'Manager Name';
+  document.getElementById('g-avg').textContent = f.g_avg || '--';
+  document.getElementById('g-champs').textContent = f.g_champs || '0';
+  document.getElementById('g-top3').textContent = f.g_top3 || '0';
+  document.getElementById('g-playoffs').textContent = f.g_playoffs || '0';
+  document.getElementById('g-record').textContent = f.g_record || '0-0-0';
+  // Compute win pct from record
+  const recParts = (f.g_record || '0-0-0').split('-').map(Number);
+  const totalGames = (recParts[0]||0)+(recParts[1]||0)+(recParts[2]||0);
+  const winPct = totalGames > 0 ? ((recParts[0]||0)/totalGames).toFixed(3) : '.000';
+  document.getElementById('g-winpct').textContent = String(winPct).startsWith('0') ? winPct.slice(1) : winPct;
+  setImgOrPlaceholder('g-img','g-img-ph', f.g_img, initialsFrom(f.g_team || f.g_manager), '#00e0ff');
+  renderFranchiseChart(f.g_yearRanks || []);
 }
 
 function syncInputsFromState(){
@@ -1739,6 +2797,7 @@ function hideHistorySuccessBanner(){
 /* Shared by the fetch button, the paste box, and the .json upload: run the
    aggregator over the parsed seasons, store it, and report what landed. */
 function applyLeagueHistory(yearsData, skipped, sourceLabel){
+  window._franchiseYearsData = yearsData;
   state.leagueHistory = computeLeagueHistoryStats(yearsData);
   const managerCount = Object.keys(state.leagueHistory.managers).length;
   const matchupCount = countMatchups(state.leagueHistory);
@@ -1757,7 +2816,7 @@ function applyLeagueHistory(yearsData, skipped, sourceLabel){
   // Fill the two history-driven templates right away so the canvas reflects
   // the new data without the user having to re-pick anything.
   autofillHistoryTemplates();
-  if(state.template === 'E' || state.template === 'F') renderEspnPicker();
+  if(state.template === 'E' || state.template === 'F' || state.template === 'G') renderEspnPicker();
   render();
 
   return { seasons: yearsData.length, matchups: matchupCount, managers: managerCount };
@@ -1789,6 +2848,7 @@ function computeLeagueHistoryStats(yearsData){
   const careerPoints = {};        // ownerId -> cumulative points scored
 
   let highestScore = null, lowestScore = null, biggestBlowout = null;
+  const allGameScores = [];
 
   function ensureManager(ownerId, displayName, teamName, logo, year){
     if(!managers[ownerId]){
@@ -1852,8 +2912,11 @@ function computeLeagueHistoryStats(yearsData){
         { ownerId:ownerA, teamName:teamNameA, score:scoreA },
         { ownerId:ownerB, teamName:teamNameB, score:scoreB },
       ].forEach(entry=>{
+        allGameScores.push(entry.score);
         if(!highestScore || entry.score > highestScore.score) highestScore = { ...entry, year, week };
-        if(!lowestScore || entry.score < lowestScore.score) lowestScore = { ...entry, year, week };
+        if(entry.score >= 40.0){
+          if(!lowestScore || entry.score < lowestScore.score) lowestScore = { ...entry, year, week };
+        }
       });
 
       // Biggest blowout / margin of victory
@@ -1930,7 +2993,7 @@ function computeLeagueHistoryStats(yearsData){
     .sort((a,b)=> b.totalPoints - a.totalPoints);
 
   return {
-    managers, h2h, perManagerGameLog,
+    managers, h2h, perManagerGameLog, allGameScores,
     records: { highestScore, lowestScore, biggestBlowout, longestWinStreak, longestLossStreak, careerPointsLeaderboard },
   };
 }
@@ -2003,11 +3066,12 @@ function findLowestScorerForWeek(week){
 }
 
 function renderEspnPicker(){
-  if(state.template === 'E' || state.template === 'F'){
+  if(state.template === 'E' || state.template === 'F' || state.template === 'G'){
     if(!state.leagueHistory){ espnPicker.classList.add('hidden'); return; }
     espnPicker.classList.remove('hidden');
     if(state.template === 'E') renderRivalryPicker();
-    else renderRecordBookPicker();
+    else if(state.template === 'F') renderRecordBookPicker();
+    else renderFranchiseResumePicker();
     return;
   }
 
@@ -2054,17 +3118,23 @@ function renderEspnPicker(){
       showToast('Applied live ESPN matchup data.');
     });
   } else if(state.template === 'B'){
-    espnPickerBody.innerHTML = `<button id="applyPickB" class="btn-ghost w-full rounded py-1.5 text-xs">LOAD ALL TEAMS INTO RANKINGS</button>`;
+    let html = `<button id="applyPickB" class="btn-ghost w-full rounded py-1.5 text-xs">LOAD ALL TEAMS INTO RANKINGS</button>`;
+    if(state.leagueHistory){
+      html += `<button id="applyAllTimePR" class="btn-ghost w-full rounded py-1.5 text-xs mt-2" style="border-color:rgba(201,151,74,0.5); color:var(--bronze);">LOAD ALL-TIME FRANCHISE POWER RANKINGS</button>`;
+    }
+    espnPickerBody.innerHTML = html;
     document.getElementById('applyPickB').addEventListener('click', ()=>{
       const withWins = teams.map(t=>{
         const wins = parseInt((t.record||'0-0').split('-')[0], 10) || 0;
         return { t, wins };
       }).sort((a,b)=> b.wins - a.wins);
-      state.ranks = withWins.map((x,i)=>({rank:i+1, name:x.t.name.toUpperCase(), record:x.t.record, diff:'+0.0'}));
+      state.ranks = withWins.map((x,i)=>({rank:i+1, name:x.t.name.toUpperCase(), record:x.t.record, diff:'+0.0', delta:'0', manager:'', logo:x.t.logo||null, winPct:''}));
       renderRankRows();
       render();
       showToast('Loaded teams into rankings, sorted by record — set point differentials manually.');
     });
+    const allTimeBtn = document.getElementById('applyAllTimePR');
+    if(allTimeBtn) allTimeBtn.addEventListener('click', loadAllTimePowerRankings);
   } else if(state.template === 'D'){
     const week = weekNumInput.value.trim();
     espnPickerBody.innerHTML = `
@@ -2209,6 +3279,76 @@ function renderRecordBookPicker(){
   });
 }
 
+/* Finds the runner-up for highest/lowest score milestones by re-scanning history */
+function findRunnerUp(type){
+  const raw = window._franchiseYearsData;
+  if(!raw) return '';
+  let best = null;
+  const hist = state.leagueHistory;
+  const r = hist && hist.records;
+  if(!r) return '';
+  const primary = type === 'highest' ? r.highestScore : r.lowestScore;
+  if(!primary) return '';
+  raw.forEach(({year, leagueData})=>{
+    if(!leagueData || !leagueData.teams) return;
+    const teamOwnerMap = {};
+    leagueData.teams.forEach(t=>{
+      const oid = t.primaryOwner || (t.owners && t.owners[0]) || '';
+      teamOwnerMap[t.id] = oid;
+    });
+    (leagueData.schedule || []).forEach(game=>{
+      const home = game.home, away = game.away;
+      if(!home || !away) return;
+      if(typeof home.totalPoints !== 'number' || typeof away.totalPoints !== 'number') return;
+      if(home.totalPoints === 0 && away.totalPoints === 0) return;
+      [home.totalPoints, away.totalPoints].forEach((score, idx)=>{
+        if(score === primary.score && year === primary.year && game.matchupPeriodId === primary.week) return;
+        if(type === 'lowest' && score < 40.0) return;
+        if(type === 'highest'){
+          if(!best || score > best.score) best = { score, year, week: game.matchupPeriodId, teamId: idx===0 ? home.teamId : away.teamId };
+        } else {
+          if(!best || score < best.score) best = { score, year, week: game.matchupPeriodId, teamId: idx===0 ? home.teamId : away.teamId };
+        }
+      });
+    });
+  });
+  if(!best) return '';
+  const seasonEntry = raw.find(yd=> yd.year === best.year);
+  if(!seasonEntry) return '';
+  const team = seasonEntry.leagueData.teams.find(t=> t.id === best.teamId);
+  if(!team) return '';
+  return (((team.location||'') + ' ' + (team.nickname||'')).trim() || team.name || '').toUpperCase();
+}
+function findRunnerUpScore(type){
+  const raw = window._franchiseYearsData;
+  if(!raw) return '';
+  const hist = state.leagueHistory;
+  const r = hist && hist.records;
+  if(!r) return '';
+  const primary = type === 'highest' ? r.highestScore : r.lowestScore;
+  if(!primary) return '';
+  let best = null;
+  raw.forEach(({year, leagueData})=>{
+    if(!leagueData || !leagueData.teams) return;
+    (leagueData.schedule || []).forEach(game=>{
+      const home = game.home, away = game.away;
+      if(!home || !away) return;
+      if(typeof home.totalPoints !== 'number' || typeof away.totalPoints !== 'number') return;
+      if(home.totalPoints === 0 && away.totalPoints === 0) return;
+      [home.totalPoints, away.totalPoints].forEach(score=>{
+        if(score === primary.score && year === primary.year && game.matchupPeriodId === primary.week) return;
+        if(type === 'lowest' && score < 40.0) return;
+        if(type === 'highest'){
+          if(!best || score > best) best = score;
+        } else {
+          if(!best || score < best) best = score;
+        }
+      });
+    });
+  });
+  return best !== null ? best.toFixed(1) + ' PTS' : '';
+}
+
 /* Fills the Record Book fields for one milestone. Split out of the picker so
    the .json upload can populate the template automatically. */
 function applyRecordMilestone(type, silent){
@@ -2222,6 +3362,8 @@ function applyRecordMilestone(type, silent){
       state.fields.f_subtext = 'Highest single-game score in league history';
       state.fields.f_owner = x.teamName.toUpperCase();
       state.fields.f_meta = `${x.year} · WEEK ${x.week}`;
+      state.fields.f_runner = findRunnerUp('highest');
+      state.fields.f_runner_score = findRunnerUpScore('highest');
     } else if(type === 'lowest'){
       const x = r.lowestScore;
       state.fields.f_kicker = 'HALL OF SHAME';
@@ -2229,6 +3371,8 @@ function applyRecordMilestone(type, silent){
       state.fields.f_subtext = 'Lowest single-game score in league history';
       state.fields.f_owner = x.teamName.toUpperCase();
       state.fields.f_meta = `${x.year} · WEEK ${x.week}`;
+      state.fields.f_runner = findRunnerUp('lowest');
+      state.fields.f_runner_score = findRunnerUpScore('lowest');
     } else if(type === 'blowout'){
       const x = r.biggestBlowout;
       state.fields.f_kicker = 'BIGGEST BLOWOUT';
@@ -2236,6 +3380,8 @@ function applyRecordMilestone(type, silent){
       state.fields.f_subtext = `${x.winnerTeamName} defeated ${x.loserTeamName} ${x.winnerScore.toFixed(1)}-${x.loserScore.toFixed(1)}`;
       state.fields.f_owner = x.winnerTeamName.toUpperCase();
       state.fields.f_meta = `${x.year} · WEEK ${x.week}`;
+      state.fields.f_runner = '';
+      state.fields.f_runner_score = '';
     } else if(type === 'winstreak'){
       const x = r.longestWinStreak;
       const info = managerLatestInfo(x.ownerId);
@@ -2245,6 +3391,8 @@ function applyRecordMilestone(type, silent){
       state.fields.f_owner = info.name.toUpperCase();
       state.fields.f_meta = `${x.startYear} WK${x.startWeek} \u2192 ${x.endYear} WK${x.endWeek}`;
       if(info.logo) state.fields.f_img = info.logo;
+      state.fields.f_runner = '';
+      state.fields.f_runner_score = '';
     } else if(type === 'lossstreak'){
       const x = r.longestLossStreak;
       const info = managerLatestInfo(x.ownerId);
@@ -2254,6 +3402,8 @@ function applyRecordMilestone(type, silent){
       state.fields.f_owner = info.name.toUpperCase();
       state.fields.f_meta = `${x.startYear} WK${x.startWeek} \u2192 ${x.endYear} WK${x.endWeek}`;
       if(info.logo) state.fields.f_img = info.logo;
+      state.fields.f_runner = '';
+      state.fields.f_runner_score = '';
     } else if(type === 'career'){
       const x = r.careerPointsLeaderboard[0];
       const info = managerLatestInfo(x.ownerId);
@@ -2263,6 +3413,12 @@ function applyRecordMilestone(type, silent){
       state.fields.f_owner = info.name.toUpperCase();
       state.fields.f_meta = 'CAREER TOTAL';
       if(info.logo) state.fields.f_img = info.logo;
+      if(r.careerPointsLeaderboard.length > 1){
+        const ru = r.careerPointsLeaderboard[1];
+        const ruInfo = managerLatestInfo(ru.ownerId);
+        state.fields.f_runner = ruInfo.name.toUpperCase();
+        state.fields.f_runner_score = ru.totalPoints.toFixed(1) + ' PTS';
+      } else { state.fields.f_runner = ''; state.fields.f_runner_score = ''; }
     } else {
       return false;
     }
@@ -2284,6 +3440,10 @@ function autofillHistoryTemplates(){
   const topRivalry = Object.values(hist.h2h).sort((x,y)=> y.meetings.length - x.meetings.length)[0];
   if(topRivalry) applyRivalryMatchup(topRivalry.a, topRivalry.b, true);
 
+  // Template G — first manager's franchise resume
+  const allManagers = Object.keys(hist.managers);
+  if(allManagers.length) applyFranchiseResume(allManagers[0], true);
+
   // Template F — first milestone that actually computed.
   const r = hist.records;
   const order = [
@@ -2296,6 +3456,98 @@ function autofillHistoryTemplates(){
   ];
   const firstAvailable = order.find(([, value])=> !!value);
   if(firstAvailable) applyRecordMilestone(firstAvailable[0], true);
+
+  render();
+}
+
+/* Template G picker — manager dropdown; applying computes franchise resume */
+function renderFranchiseResumePicker(){
+  const managers = Object.values(state.leagueHistory.managers).sort((a,b)=> a.name.localeCompare(b.name));
+  if(managers.length < 1){
+    espnPickerBody.innerHTML = `<p class="text-xs text-gray-500">No managers found in loaded history.</p>`;
+    return;
+  }
+  const options = managers.map(m=> `<option value="${escapeHtml(m.id)}">${escapeHtml(m.name)}</option>`).join('');
+  espnPickerBody.innerHTML = `
+    <select id="pickResumeManager" class="input-field w-full rounded px-2 py-1.5 text-xs"><option value="">Select manager…</option>${options}</select>
+    <button id="applyResume" class="btn-ghost w-full rounded py-1.5 text-xs mt-2">LOAD FRANCHISE RESUME</button>
+  `;
+  document.getElementById('applyResume').addEventListener('click', ()=>{
+    const id = document.getElementById('pickResumeManager').value;
+    if(!id){ showToast('Pick a manager first.'); return; }
+    applyFranchiseResume(id);
+  });
+}
+
+function applyFranchiseResume(ownerId, silent){
+  const resume = computeFranchiseResume(ownerId);
+  if(!resume){ if(!silent) showToast('Could not compute franchise resume.'); return; }
+  const info = managerLatestInfo(ownerId);
+  state.fields.g_team = (info.teamName || info.name).toUpperCase();
+  state.fields.g_manager = info.name;
+  state.fields.g_avg = resume.avgFinish;
+  state.fields.g_champs = String(resume.champs);
+  state.fields.g_top3 = String(resume.top3);
+  state.fields.g_playoffs = String(resume.playoffApps);
+  state.fields.g_record = resume.record;
+  state.fields.g_seasons = String(resume.seasons);
+  state.fields.g_yearRanks = resume.yearRanks;
+  if(info.logo) state.fields.g_img = info.logo;
+  syncInputsFromState();
+  if(!silent){ render(); showToast('Loaded franchise resume for ' + info.name + '.'); }
+}
+
+/* All-Time Power Rankings — computes career W-L-T and win % from leagueHistory */
+function loadAllTimePowerRankings(){
+  const hist = state.leagueHistory;
+  if(!hist){ showToast('Load league history first.'); return; }
+  const rawHistory = window._franchiseYearsData;
+  if(!rawHistory){ showToast('No raw history data available.'); return; }
+
+  const managerStats = {};
+  rawHistory.forEach(({year, leagueData})=>{
+    if(!leagueData || !leagueData.teams) return;
+    leagueData.teams.forEach(t=>{
+      const oid = t.primaryOwner || (t.owners && t.owners[0]) || '';
+      if(!oid) return;
+      if(!managerStats[oid]) managerStats[oid] = {wins:0, losses:0, ties:0};
+      const rec = t.record && t.record.overall;
+      if(rec){
+        managerStats[oid].wins += rec.wins || 0;
+        managerStats[oid].losses += rec.losses || 0;
+        managerStats[oid].ties += rec.ties || 0;
+      }
+    });
+  });
+
+  const ranked = Object.keys(managerStats).map(oid=>{
+    const s = managerStats[oid];
+    const total = s.wins + s.losses + s.ties;
+    const winPct = total > 0 ? s.wins / total : 0;
+    const info = managerLatestInfo(oid);
+    return { ownerId:oid, name:info.name, wins:s.wins, losses:s.losses, ties:s.ties, winPct, total };
+  }).sort((a,b)=> b.winPct - a.winPct || b.wins - a.wins);
+
+  state.ranks = ranked.map((r,i)=>({
+    rank: i+1,
+    name: r.name.toUpperCase(),
+    record: `${r.wins}-${r.losses}-${r.ties}`,
+    diff: '.' + (r.winPct * 1000).toFixed(0).padStart(3,'0'),
+    winPct: '.' + (r.winPct * 1000).toFixed(0).padStart(3,'0'),
+    delta: '0',
+    manager: r.name,
+    logo: null,
+  }));
+
+  state.rankMode = 'alltime';
+  document.getElementById('rankModeAllTime').className = 'rank-mode-btn flex-1 py-2 rounded-md text-[10px] font-semibold tracking-wide bg-[var(--gold)] text-[#04150a]';
+  document.getElementById('rankModeWeekly').className = 'rank-mode-btn flex-1 py-2 rounded-md text-[10px] font-semibold tracking-wide text-gray-400';
+  state.fields.rank_title = 'ALL-TIME POWER RANKINGS';
+  state.fields.rank_week = 'ALL-TIME STANDINGS';
+  syncInputsFromState();
+  renderRankRows();
+  render();
+  showToast('Loaded all-time power rankings by career win %.');
 }
 
 /* ============================================================
@@ -2351,8 +3603,22 @@ document.querySelectorAll('[data-f-img]').forEach(inp=>{
 });
 
 addRankRowBtn.addEventListener('click', ()=>{
-  state.ranks.push({rank: state.ranks.length+1, name:'New Team', record:'0-0', diff:'+0.0'});
+  state.ranks.push({rank: state.ranks.length+1, name:'New Team', record:'0-0', diff:'+0.0', delta:'0', manager:'', logo:null, winPct:''});
   renderRankRows();
+  render();
+});
+
+// Template B mode toggle
+document.getElementById('rankModeWeekly').addEventListener('click', ()=>{
+  state.rankMode = 'weekly';
+  document.getElementById('rankModeWeekly').className = 'rank-mode-btn flex-1 py-2 rounded-md text-[10px] font-semibold tracking-wide bg-[var(--gold)] text-[#04150a]';
+  document.getElementById('rankModeAllTime').className = 'rank-mode-btn flex-1 py-2 rounded-md text-[10px] font-semibold tracking-wide text-gray-400';
+  render();
+});
+document.getElementById('rankModeAllTime').addEventListener('click', ()=>{
+  state.rankMode = 'alltime';
+  document.getElementById('rankModeAllTime').className = 'rank-mode-btn flex-1 py-2 rounded-md text-[10px] font-semibold tracking-wide bg-[var(--gold)] text-[#04150a]';
+  document.getElementById('rankModeWeekly').className = 'rank-mode-btn flex-1 py-2 rounded-md text-[10px] font-semibold tracking-wide text-gray-400';
   render();
 });
 
@@ -2574,20 +3840,32 @@ zoomRange.addEventListener('input', ()=> applyZoom(parseFloat(zoomRange.value)))
 
 downloadBtn.addEventListener('click', async ()=>{
   exportStatus.textContent = 'Rendering…';
-  const originalTransform = exportRoot.style.transform;
-  exportRoot.style.transform = 'none'; // capture at true 1080x1920 size
   try{
-    const canvas = await html2canvas(exportRoot, {
-      width: 1080,
-      height: 1920,
-      scale: 1,
-      backgroundColor: '#05070a',
-      useCORS: true,
-    });
+    await document.fonts.ready;
+    const tplNames = {A:'matchup', B:'power-rankings', C:'breaking-news', D:'hot-seat', E:'rivalry-vault', F:'record-book', G:'franchise-resume'};
+    let dataUrl;
+
+    if(state.template === 'B'){
+      await renderTemplateBCanvas();
+      const bCanvas = document.getElementById('tpl-B-canvas');
+      dataUrl = bCanvas.toDataURL('image/png');
+    } else {
+      const originalTransform = exportRoot.style.transform;
+      exportRoot.style.transform = 'none';
+      try{
+        const canvas = await html2canvas(exportRoot, {
+          width: 1080, height: 1920, scale: 1,
+          backgroundColor: '#05070a', useCORS: true,
+        });
+        dataUrl = canvas.toDataURL('image/png');
+      }finally{
+        exportRoot.style.transform = originalTransform;
+      }
+    }
+
     const link = document.createElement('a');
-    const tplNames = {A:'matchup', B:'power-rankings', C:'breaking-news', D:'hot-seat', E:'rivalry-vault', F:'record-book'};
     link.download = `gridiron-graphics-${tplNames[state.template]}-${Date.now()}.png`;
-    link.href = canvas.toDataURL('image/png');
+    link.href = dataUrl;
     link.click();
     exportStatus.textContent = '✓ Downloaded.';
     showToast('PNG downloaded.');
@@ -2595,8 +3873,6 @@ downloadBtn.addEventListener('click', async ()=>{
     exportStatus.textContent = 'Export failed: ' + err.message;
     showToast('Export failed — see console.');
     console.error(err);
-  }finally{
-    exportRoot.style.transform = originalTransform;
   }
 });
 
@@ -2604,8 +3880,12 @@ resetBtn.addEventListener('click', ()=>{
   if(!confirm('Clear all fields and images?')) return;
   document.querySelectorAll('[data-f]').forEach(inp=>{ inp.value=''; state.fields[inp.dataset.f]=''; });
   document.querySelectorAll('[data-f-img]').forEach(inp=> inp.value='');
-  ['a_img','b_img','news_img','hs_img','e_a_img','e_b_img','f_img'].forEach(k=> state.fields[k]=null);
+  ['a_img','b_img','news_img','hs_img','e_a_img','e_b_img','f_img','g_img'].forEach(k=> state.fields[k]=null);
+  state.fields.g_yearRanks = [];
   state.ranks = [];
+  state.rankMode = 'weekly';
+  document.getElementById('rankModeWeekly').className = 'rank-mode-btn flex-1 py-2 rounded-md text-[10px] font-semibold tracking-wide bg-[var(--gold)] text-[#04150a]';
+  document.getElementById('rankModeAllTime').className = 'rank-mode-btn flex-1 py-2 rounded-md text-[10px] font-semibold tracking-wide text-gray-400';
   renderRankRows();
   render();
   showToast('Cleared.');
@@ -3063,14 +4343,14 @@ document.querySelectorAll('.rd-copy-btn').forEach(btn=>{
 })();
 </script>
 
-<!-- ============ TAB 02 LOGIC · BROADCAST VIDEO EXPORTER ============ -->
+<!-- ============ TAB 02 LOGIC · ESPN L-BAR BROADCAST EXPORTER ============ -->
 <script>
 /* ============================================================
-   ANIMATED BROADCAST EXPORTER (tab 02, sub-tab 03)
-   One 1080x1920 canvas renderer used twice: once by the on-page
-   preview loop, once by the MediaRecorder pass. Both call the
-   same drawFrame(ctx, t, opts), so what plays in the phone
-   mock-up is exactly what lands in the file.
+   ESPN L-BAR BROADCAST EXPORTER (tab 02, sub-tab 03)
+   Full-duration L-Bar overlay: left-side animated topic carousel
+   with auto-advancing highlight + bottom scrolling ticker.
+   One 1080x1920 canvas renderer used for both the on-page preview
+   and the MediaRecorder pass via shared drawFrame(ctx, t, opts).
 ============================================================ */
 (function(){
 const LD = window.LeagueData;
@@ -3079,16 +4359,22 @@ const toast = (msg)=> (window.studioToast ? window.studioToast(msg) : console.lo
 
 const W = 1080, H = 1920;
 
-/* ---- Stage geometry. The ticker owns 1680-1780; everything else
-   stacks upward from it so the whole lower third moves as one. ---- */
-const TICKER_Y = 1680, TICKER_H = 100;
-const RULE_H   = 5;                       // accent rule sitting on the ticker
-const SUB_Y    = 1636, SUB_H  = 34;       // subline strip
-const CARD_H   = 180, CARD_BOTTOM = SUB_Y - 4;
-const CARD_Y   = CARD_BOTTOM - CARD_H;    // 1452
-const BAR_H    = 10, BAR_W = 520;         // accent bar capping the card
-const GROUP_TOP = CARD_Y - BAR_H;
-const ENTRANCE = 0.8;                     // seconds of slide-up
+/* ---- L-Bar geometry ---- */
+const LBAR_X = 40, LBAR_W = 320;  // left rail: 40px to 360px
+const LBAR_TOP = 260;
+const HEADER_H = 56;
+const TOPIC_H = 72, TOPIC_GAP = 6, TOPIC_RADIUS = 10;
+const POINTER_W = 8;
+
+/* ---- Bottom ticker ---- */
+const TICKER_Y = 1720, TICKER_H = 120;
+const TICKER_RULE_H = 5;
+
+/* ---- Lower-third chyron card (right of L-bar) ---- */
+const CARD_X = 400, CARD_Y = 1520, CARD_W = 640, CARD_H = 160;
+const SUB_Y = CARD_Y + CARD_H + 4, SUB_H = 30;
+
+const ENTRANCE = 0.8;
 
 const BADGE_COLORS = {
   'FINAL':'#E8232B',
@@ -3100,8 +4386,31 @@ const BADGE_COLORS = {
 };
 
 /* ============================================================
-   TICKER STREAM — chains badges, live scores, news blurbs and
-   record-book lines into one flat list of pills.
+   TOPIC ADD / REMOVE
+============================================================ */
+$('rd-v-addTopic').addEventListener('click', ()=>{
+  const list = $('rd-v-topicList');
+  const count = list.querySelectorAll('.rd-v-topic').length;
+  if(count >= 6) { toast('Maximum 6 topics.'); return; }
+  const row = document.createElement('div');
+  row.className = 'flex items-center gap-2';
+  row.innerHTML = `<span class="text-[11px] font-mono text-[var(--rd-muted)] w-4">${count+1}.</span><input type="text" class="rd-v-topic flex-1" value="" maxlength="28" placeholder="Topic ${count+1}">`;
+  list.appendChild(row);
+});
+$('rd-v-removeTopic').addEventListener('click', ()=>{
+  const list = $('rd-v-topicList');
+  const rows = list.querySelectorAll('.flex');
+  if(rows.length <= 4) { toast('Minimum 4 topics.'); return; }
+  list.removeChild(rows[rows.length - 1]);
+});
+
+const topicIntervalEl = $('rd-v-topicInterval');
+topicIntervalEl.addEventListener('input', ()=>{
+  $('rd-v-topicIntervalLabel').textContent = parseFloat(topicIntervalEl.value).toFixed(1);
+});
+
+/* ============================================================
+   TICKER STREAM
 ============================================================ */
 function tickerItems(){
   const wanted = {};
@@ -3109,7 +4418,6 @@ function tickerItems(){
   const items = [];
   const week = LD.meta.week || '';
 
-  // ---- weekly matchup scores ----
   if(wanted.scores && LD.hasLive()){
     LD.getWeekMatchups(week).forEach(g=>{
       const decided = g.winner && g.winner !== 'UNDECIDED';
@@ -3120,14 +4428,12 @@ function tickerItems(){
     });
   }
 
-  // ---- league news + blunder blurbs ----
   if(wanted.news){
     if(LD.hasLive()){
       const { low, high } = LD.getWeekExtremes(week);
       if(high) items.push({ badge:'LEAGUE NEWS', text:`${high.team.name} tops the week with ${high.score.toFixed(1)}`.toUpperCase() });
       if(low)  items.push({ badge:'LEAGUE NEWS', text:`${low.team.name} bottoms out at ${low.score.toFixed(1)}`.toUpperCase() });
     }
-    // Whatever is currently loaded in the chyron / desk-notes forms rides along.
     const l1 = ($('rd-b-line1')||{}).value || '';
     const l2 = ($('rd-b-line2')||{}).value || '';
     if(l1 || l2) items.push({ badge:'LEAGUE NEWS', text:`${l1} ${l2}`.trim().toUpperCase() });
@@ -3135,7 +4441,6 @@ function tickerItems(){
     if(blunder) items.push({ badge:'LEAGUE NEWS', text:blunder.toUpperCase() });
   }
 
-  // ---- all-time records and streaks ----
   if(wanted.records){
     const r = LD.leagueHistory && LD.leagueHistory.records;
     if(r){
@@ -3161,7 +4466,6 @@ function tickerItems(){
   const custom = (($('rd-v-custom')||{}).value || '').trim();
   if(custom) items.push({ badge:'DESK', text:custom.toUpperCase() });
 
-  // Nothing loaded yet — the ticker still has to have something to say.
   if(!items.length){
     items.push(
       { badge:'MATCHUP',         text:'LOAD LEAGUE DATA ON THE GRAPHIC GENERATOR TAB' },
@@ -3186,23 +4490,20 @@ function roundRect(ctx, x, y, w, h, r){
   ctx.closePath();
 }
 
-const BADGE_FONT = '700 26px "JetBrains Mono", monospace';
-const ITEM_FONT  = '600 30px Inter, sans-serif';
-const ITEM_GAP   = 64;
+const BADGE_FONT = '700 24px "JetBrains Mono", monospace';
+const ITEM_FONT  = '600 28px Inter, sans-serif';
+const ITEM_GAP   = 56;
 
-/* Measure once per frame batch: badge pill + label, laid end to end.
-   `total` is the seamless loop width — draw the same strip again at
-   +total and the wrap is invisible. */
 function layoutTicker(ctx, items){
   const parts = [];
   let x = 0;
   items.forEach(it=>{
     ctx.font = BADGE_FONT;
-    const badgeW = ctx.measureText(it.badge).width + 34;
+    const badgeW = ctx.measureText(it.badge).width + 30;
     ctx.font = ITEM_FONT;
     const textW = ctx.measureText(it.text).width;
-    parts.push({ badge:it.badge, text:it.text, x, badgeW, textW, w: badgeW + 18 + textW });
-    x += badgeW + 18 + textW + ITEM_GAP;
+    parts.push({ badge:it.badge, text:it.text, x, badgeW, textW, w: badgeW + 16 + textW });
+    x += badgeW + 16 + textW + ITEM_GAP;
   });
   return { parts, total: Math.max(x, W + 1) };
 }
@@ -3211,29 +4512,125 @@ function drawTickerStrip(ctx, layout, originX, accent){
   const midY = TICKER_Y + TICKER_H/2;
   layout.parts.forEach(p=>{
     const x = originX + p.x;
-    if(x > W || x + p.w < 0) return;               // fully off-stage
-    // badge pill
+    if(x > W || x + p.w < 0) return;
     ctx.fillStyle = BADGE_COLORS[p.badge] || accent;
-    roundRect(ctx, x, midY - 22, p.badgeW, 44, 8);
+    roundRect(ctx, x, midY - 20, p.badgeW, 40, 7);
     ctx.fill();
     ctx.fillStyle = '#0A0D14';
     ctx.font = BADGE_FONT;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    ctx.fillText(p.badge, x + 17, midY + 1);
-    // label
+    ctx.fillText(p.badge, x + 15, midY + 1);
     ctx.fillStyle = '#FFFFFF';
     ctx.font = ITEM_FONT;
-    ctx.fillText(p.text, x + p.badgeW + 18, midY + 1);
-    // separator before the next item
+    ctx.fillText(p.text, x + p.badgeW + 16, midY + 1);
     ctx.fillStyle = 'rgba(255,255,255,0.22)';
-    ctx.fillRect(x + p.w + ITEM_GAP/2 - 1.5, midY - 13, 3, 26);
+    ctx.fillRect(x + p.w + ITEM_GAP/2 - 1.5, midY - 12, 3, 24);
   });
 }
 
 const easeOutCubic = (p)=> 1 - Math.pow(1 - p, 3);
+const easeInOutCubic = (p)=> p < 0.5 ? 4*p*p*p : 1 - Math.pow(-2*p+2, 3)/2;
 
-/* One frame of the broadcast. `t` is seconds since the clip started. */
+/* ---- Draw the left-side topic carousel ---- */
+function drawTopicWheel(ctx, t, o){
+  const topics = o.topics;
+  const n = topics.length;
+  if(!n) return;
+
+  const interval = o.topicInterval;
+  const transitionDur = 0.4;
+
+  // Active topic index with transition progress
+  const elapsed = Math.max(0, t - ENTRANCE);
+  const rawIndex = elapsed / interval;
+  const activeIdx = Math.min(Math.floor(rawIndex), n - 1);
+  const transProgress = Math.min(1, (rawIndex - activeIdx) * interval / transitionDur);
+
+  const lx = LBAR_X;
+  const ly = LBAR_TOP;
+  const lw = LBAR_W;
+
+  // Header pill
+  ctx.fillStyle = 'rgba(10,13,20,0.92)';
+  roundRect(ctx, lx, ly, lw, HEADER_H, 10);
+  ctx.fill();
+  ctx.fillStyle = o.highlight;
+  ctx.fillRect(lx, ly, lw, 4);
+  ctx.font = '700 18px "JetBrains Mono", monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillText(o.badge, lx + lw/2, ly + HEADER_H/2 + 2);
+
+  // Topic blocks
+  const topicsTop = ly + HEADER_H + 14;
+  for(let i = 0; i < n; i++){
+    const ty = topicsTop + i * (TOPIC_H + TOPIC_GAP);
+    const isActive = (i === activeIdx);
+    const isNext = (i === activeIdx + 1 && activeIdx < n - 1);
+
+    // Smooth highlight transition
+    let highlightAlpha = 0;
+    if(isActive){
+      highlightAlpha = transProgress < 1 ? 1 : 1 - easeInOutCubic(transProgress);
+      if(activeIdx >= n - 1) highlightAlpha = 1;
+    }
+    if(isNext && transProgress > 0 && activeIdx < n - 1){
+      highlightAlpha = easeInOutCubic(transProgress);
+    }
+
+    // Block background
+    if(highlightAlpha > 0){
+      ctx.fillStyle = o.highlight;
+      ctx.globalAlpha = highlightAlpha * 0.85;
+      roundRect(ctx, lx, ty, lw, TOPIC_H, TOPIC_RADIUS);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+
+    ctx.fillStyle = highlightAlpha > 0.5 ? 'rgba(10,13,20,0.15)' : 'rgba(10,13,20,0.82)';
+    if(highlightAlpha <= 0.5){
+      roundRect(ctx, lx, ty, lw, TOPIC_H, TOPIC_RADIUS);
+      ctx.fill();
+    }
+
+    // Active pointer bar
+    if(highlightAlpha > 0){
+      ctx.fillStyle = o.accent;
+      ctx.globalAlpha = highlightAlpha;
+      roundRect(ctx, lx, ty, POINTER_W, TOPIC_H, TOPIC_RADIUS/2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+
+    // Number circle
+    const cx = lx + 32;
+    const cy = ty + TOPIC_H/2;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 16, 0, Math.PI*2);
+    ctx.fillStyle = highlightAlpha > 0.5 ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.08)';
+    ctx.fill();
+    ctx.font = '700 18px "JetBrains Mono", monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = highlightAlpha > 0.5 ? '#FFFFFF' : 'rgba(255,255,255,0.6)';
+    ctx.fillText(String(i+1), cx, cy + 1);
+
+    // Topic text
+    ctx.font = highlightAlpha > 0.5 ? '700 22px Inter, sans-serif' : '500 22px Inter, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = highlightAlpha > 0.5 ? '#FFFFFF' : 'rgba(255,255,255,0.55)';
+    ctx.fillText(topics[i].toUpperCase(), lx + 58, cy + 1);
+  }
+
+  // Vertical rail line behind topics
+  ctx.fillStyle = 'rgba(255,255,255,0.06)';
+  ctx.fillRect(lx + 3, topicsTop, 2, n * (TOPIC_H + TOPIC_GAP) - TOPIC_GAP);
+}
+
+/* One frame of the L-Bar broadcast. */
 function drawFrame(ctx, t, o){
   ctx.setTransform(1,0,0,1,0,0);
   ctx.clearRect(0,0,W,H);
@@ -3244,60 +4641,79 @@ function drawFrame(ctx, t, o){
 
   const accent = o.accent || '#F5A623';
 
-  // Entrance: the whole lower third rides up from under the frame.
+  // Entrance: entire L-Bar slides in from the left and bottom
   const p = Math.min(1, Math.max(0, t / ENTRANCE));
-  const slide = (1 - easeOutCubic(p)) * (H - GROUP_TOP);
+  const ease = easeOutCubic(p);
+  const fadeIn = Math.min(1, t / 0.35);
   ctx.save();
-  ctx.globalAlpha = Math.min(1, t / 0.35);
-  ctx.translate(0, slide);
+  ctx.globalAlpha = fadeIn;
 
-  // ---- accent bar + manager card ----
+  // ---- LEFT TOPIC WHEEL (slides in from left) ----
+  ctx.save();
+  ctx.translate((1 - ease) * -(LBAR_X + LBAR_W + 20), 0);
+  drawTopicWheel(ctx, t, o);
+  ctx.restore();
+
+  // ---- LOWER-THIRD CHYRON CARD (slides up from bottom) ----
+  const cardSlide = (1 - ease) * (H - CARD_Y + 40);
+  ctx.save();
+  ctx.translate(0, cardSlide);
+
   ctx.fillStyle = accent;
-  ctx.fillRect(60, CARD_Y - BAR_H, BAR_W, BAR_H);
+  ctx.fillRect(CARD_X, CARD_Y - 8, CARD_W * 0.5, 8);
 
   ctx.fillStyle = 'rgba(10,13,20,0.90)';
-  ctx.fillRect(60, CARD_Y, W - 120, CARD_H);
+  ctx.fillRect(CARD_X, CARD_Y, CARD_W, CARD_H);
   ctx.fillStyle = accent;
-  ctx.fillRect(60, CARD_Y, 10, CARD_H);
+  ctx.fillRect(CARD_X, CARD_Y, 8, CARD_H);
 
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
   ctx.fillStyle = accent;
-  ctx.font = '700 26px "JetBrains Mono", monospace';
-  ctx.fillText(o.team, 104, CARD_Y + 52);
+  ctx.font = '700 22px "JetBrains Mono", monospace';
+  ctx.fillText(o.team, CARD_X + 36, CARD_Y + 44);
 
   ctx.fillStyle = '#FFFFFF';
-  ctx.font = '64px Anton, sans-serif';
-  ctx.fillText(o.name, 104, CARD_Y + 138);
+  ctx.font = '56px Anton, sans-serif';
+  ctx.fillText(o.name, CARD_X + 36, CARD_Y + 118);
   const nameW = ctx.measureText(o.name).width;
 
   if(o.record){
-    ctx.font = '500 30px "JetBrains Mono", monospace';
+    ctx.font = '500 26px "JetBrains Mono", monospace';
     const recW = ctx.measureText(o.record).width;
-    const pillX = Math.min(104 + nameW + 22, W - 80 - recW - 32);
+    const pillX = Math.min(CARD_X + 36 + nameW + 18, CARD_X + CARD_W - 20 - recW - 28);
     ctx.fillStyle = 'rgba(255,255,255,0.12)';
-    roundRect(ctx, pillX, CARD_Y + 96, recW + 32, 52, 6);
+    roundRect(ctx, pillX, CARD_Y + 82, recW + 28, 44, 6);
     ctx.fill();
     ctx.fillStyle = '#FFFFFF';
-    ctx.fillText(o.record, pillX + 16, CARD_Y + 133);
+    ctx.fillText(o.record, pillX + 14, CARD_Y + 114);
   }
 
-  // ---- subline strip ----
   if(o.subline){
     ctx.fillStyle = 'rgba(10,13,20,0.92)';
-    ctx.fillRect(60, SUB_Y, W - 120, SUB_H);
+    ctx.fillRect(CARD_X, SUB_Y, CARD_W, SUB_H);
     ctx.fillStyle = accent;
-    ctx.font = '500 20px "JetBrains Mono", monospace';
-    ctx.fillText(o.subline, 76, SUB_Y + 24);
+    ctx.font = '500 17px "JetBrains Mono", monospace';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(o.subline, CARD_X + 14, SUB_Y + SUB_H/2);
   }
 
-  // ---- ticker bed ----
+  ctx.restore();
+
+  // ---- BOTTOM TICKER BAR (slides up from bottom) ----
+  const tickerSlide = (1 - ease) * (H - TICKER_Y + 20);
+  ctx.save();
+  ctx.translate(0, tickerSlide);
+
+  // Accent rule above ticker
   ctx.fillStyle = accent;
-  ctx.fillRect(0, TICKER_Y - RULE_H, W, RULE_H);
+  ctx.fillRect(0, TICKER_Y - TICKER_RULE_H, W, TICKER_RULE_H);
+
+  // Ticker bed
   ctx.fillStyle = '#0A0D14';
   ctx.fillRect(0, TICKER_Y, W, TICKER_H);
 
-  // ---- scrolling stream, clipped to the bed ----
+  // Scrolling stream
   ctx.save();
   ctx.beginPath();
   ctx.rect(0, TICKER_Y, W, TICKER_H);
@@ -3309,7 +4725,25 @@ function drawFrame(ctx, t, o){
   }
   ctx.restore();
 
+  ctx.restore(); // ticker slide
+
+  // ---- L-shaped connector: vertical bar from left rail down to ticker ----
+  ctx.save();
+  const lbarBottomSlide = (1 - ease) * -(LBAR_X + LBAR_W + 20);
+  const connectorX = LBAR_X;
+  const topics = o.topics;
+  const topicsBottom = LBAR_TOP + HEADER_H + 14 + topics.length * (TOPIC_H + TOPIC_GAP);
+  const connectorTop = topicsBottom + lbarBottomSlide;
+  const connectorBottom = TICKER_Y - TICKER_RULE_H + tickerSlide;
+  if(connectorBottom > connectorTop){
+    ctx.fillStyle = accent;
+    ctx.globalAlpha = fadeIn * 0.4;
+    ctx.fillRect(connectorX, connectorTop, 4, connectorBottom - connectorTop);
+    ctx.globalAlpha = 1;
+  }
   ctx.restore();
+
+  ctx.restore(); // master fade
 }
 
 /* ============================================================
@@ -3342,7 +4776,6 @@ document.querySelectorAll('.rd-v-bg').forEach(btn=>{
 const speedEl = $('rd-v-speed');
 speedEl.addEventListener('input', ()=> $('rd-v-speedLabel').textContent = speedEl.value);
 
-/* Re-measure the stream whenever anything that feeds it changes. */
 let cachedLayout = null;
 function invalidateTicker(){ cachedLayout = null; }
 document.querySelectorAll('.rd-v-stream').forEach(cb=> cb.addEventListener('change', invalidateTicker));
@@ -3352,6 +4785,12 @@ $('rd-v-custom').addEventListener('input', invalidateTicker);
   if(el) el.addEventListener('input', invalidateTicker);
 });
 
+function getTopics(){
+  return Array.from(document.querySelectorAll('.rd-v-topic'))
+    .map(el => el.value.trim())
+    .filter(v => v.length > 0);
+}
+
 function currentOptions(ctx){
   if(!cachedLayout){
     const items = tickerItems();
@@ -3359,19 +4798,23 @@ function currentOptions(ctx){
     $('rd-v-streamCount').textContent = `${items.length} item${items.length===1?'':'s'} queued in the ticker.`;
   }
   return {
-    name:    ($('rd-v-name').value || '').toUpperCase(),
-    team:    ($('rd-v-team').value || '').toUpperCase(),
-    record:  $('rd-v-record').value || '',
-    subline: ($('rd-v-subline').value || '').toUpperCase(),
-    accent:  $('rd-v-color').value,
-    speed:   parseInt(speedEl.value, 10),
-    bg:      bgMode,
-    layout:  cachedLayout,
+    name:          ($('rd-v-name').value || '').toUpperCase(),
+    team:          ($('rd-v-team').value || '').toUpperCase(),
+    record:        $('rd-v-record').value || '',
+    subline:       ($('rd-v-subline').value || '').toUpperCase(),
+    accent:        $('rd-v-color').value,
+    highlight:     $('rd-v-color2').value,
+    badge:         ($('rd-v-badge').value || '').toUpperCase(),
+    topics:        getTopics(),
+    topicInterval: parseFloat(topicIntervalEl.value) || 3.0,
+    speed:         parseInt(speedEl.value, 10),
+    bg:            bgMode,
+    layout:        cachedLayout,
   };
 }
 
 /* ============================================================
-   PREVIEW LOOP — loops the clip so the entrance replays.
+   PREVIEW LOOP
 ============================================================ */
 const previewCanvas = $('rd-v-previewCanvas');
 const previewCtx = previewCanvas.getContext('2d');
@@ -3390,7 +4833,7 @@ function previewTick(now){
 requestAnimationFrame(previewTick);
 
 /* ============================================================
-   SHARED DATA WIRING — same store the rest of the studio reads.
+   SHARED DATA WIRING
 ============================================================ */
 const vSource = $('rd-v-source');
 let vOptions = [];
@@ -3452,8 +4895,7 @@ $('rd-v-fromPress').addEventListener('click', ()=>{
 });
 
 /* ============================================================
-   RECORDING — captureStream(60) into MediaRecorder, driven by
-   the same rAF renderer as the preview.
+   RECORDING
 ============================================================ */
 function pickMime(){
   const candidates = bgMode === 'alpha'
@@ -3493,15 +4935,15 @@ recordBtn.addEventListener('click', async ()=>{
   const mime = pickMime();
   if(!mime){ toast('No supported recording format in this browser.'); return; }
 
-  // Web fonts must be resident before the first frame or the clip opens in fallback type.
   try{
     await document.fonts.ready;
     await Promise.all([
-      document.fonts.load('64px Anton'),
-      document.fonts.load('700 26px "JetBrains Mono"'),
-      document.fonts.load('600 30px Inter'),
+      document.fonts.load('56px Anton'),
+      document.fonts.load('700 24px "JetBrains Mono"'),
+      document.fonts.load('600 28px Inter'),
+      document.fonts.load('700 22px Inter'),
     ]);
-  }catch(e){ /* fonts already resolved or unsupported — draw anyway */ }
+  }catch(e){}
 
   recording = true;
   const btnHtml = recordBtn.innerHTML;
@@ -3509,7 +4951,6 @@ recordBtn.addEventListener('click', async ()=>{
   recordBtn.innerHTML = 'Recording…';
   $('rd-v-previewState').textContent = 'RECORDING';
 
-  // Hidden 1080x1920 stage — offscreen, full resolution, never scaled.
   const canvas = document.createElement('canvas');
   canvas.width = W; canvas.height = H;
   canvas.style.cssText = 'position:fixed; left:-99999px; top:0; width:1080px; height:1920px;';
@@ -3517,7 +4958,7 @@ recordBtn.addEventListener('click', async ()=>{
   const ctx = canvas.getContext('2d', { alpha: true });
 
   const opts = currentOptions(ctx);
-  cachedLayout = null;                       // preview re-measures on its own context
+  cachedLayout = null;
   const stream = canvas.captureStream(60);
   const chunks = [];
   let recorder;
@@ -3532,7 +4973,7 @@ recordBtn.addEventListener('click', async ()=>{
     recorder.onstop = ()=> resolve(new Blob(chunks, { type: mime.split(';')[0] }));
   });
 
-  drawFrame(ctx, 0, opts);                   // first frame before the tape rolls
+  drawFrame(ctx, 0, opts);
   recorder.start(200);
   const started = performance.now();
 
@@ -3562,7 +5003,7 @@ recordBtn.addEventListener('click', async ()=>{
   const link = document.createElement('a');
   const stamp = new Date().toISOString().replace(/[:.]/g,'-');
   link.href = url;
-  link.download = `broadcast-${bgMode === 'alpha' ? 'alpha' : 'chroma'}-${duration}s-${stamp}.${extFor(mime)}`;
+  link.download = `lbar-${bgMode === 'alpha' ? 'alpha' : 'chroma'}-${duration}s-${stamp}.${extFor(mime)}`;
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
@@ -3570,7 +5011,7 @@ recordBtn.addEventListener('click', async ()=>{
 
   const mb = (blob.size / (1024*1024)).toFixed(1);
   setProgress(100, `Done — ${duration}s .${extFor(mime)} downloaded (${mb} MB).`, 'done');
-  toast(`Exported a ${duration}s ${extFor(mime).toUpperCase()} clip.`);
+  toast(`Exported a ${duration}s ${extFor(mime).toUpperCase()} L-Bar clip.`);
 
   recording = false;
   recordBtn.disabled = false;
