@@ -1,0 +1,54 @@
+name: Apply 2026 Preseason Studio
+
+on:
+  push:
+    paths:
+      - 'scripts/apply_2026_preseason_studio.py'
+      - '.github/workflows/apply-2026-preseason-studio.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply targeted updater
+        run: python scripts/apply_2026_preseason_studio.py
+      - name: Validate preserved features and new behavior
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          s = Path('index.html').read_text()
+          required = [
+            'FSN STUDIO SHOW: 2026 PRESEASON PREVIEW & DRAFT AUDIT',
+            '2026 PRESEASON SPECIAL',
+            "NewsDesk.TOPICS.filter(t=> t.id !== 'studio')",
+            'function build2026PreseasonSpecial(week)',
+            "title:'All-Time Franchise Honor Roll'",
+            "title:'2026 Draft Report Card'",
+            "title:'Week 1 Tale of the Tape'",
+            "title:'Preseason FSN Power Index (1–12)'",
+            'function renderVault',
+            'playoffTierType',
+            'id="writeStoryBtn"',
+            'story-rail',
+            'composeCommunity',
+          ]
+          missing = [m for m in required if m not in s]
+          if missing:
+            raise SystemExit('Missing markers: ' + repr(missing))
+          print('Static integrity checks passed')
+          PY
+      - name: Commit generated index
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add index.html
+          git diff --cached --quiet && exit 0
+          git commit -m 'Add 2026 preseason Studio special'
+          git push
