@@ -41,6 +41,7 @@
   --green:#39ff8c;
   --off:#c7cdd8;
   --dim:#7c8698;
+  --oped:#b06bff;
   --nav-h:64px;
   --ticker-h:34px;
 }
@@ -883,6 +884,158 @@ body{
 }
 .topic-pill[data-active="true"]{ background:#eef2f8; color:#0a0d13; border-color:#eef2f8; }
 .topic-pill[data-active="true"] .cnt{ color:rgba(10,13,19,.55); }
+
+/* ---- the OP-ED / COMMUNITY pill wears the desk's user-copy accent ---- */
+.topic-pill[data-topic="oped"]{
+  border-color:rgba(176,107,255,.5); color:#d7b8ff;
+  background:linear-gradient(120deg,rgba(176,107,255,.16),rgba(176,107,255,.04));
+}
+.topic-pill[data-topic="oped"] .cnt{ color:#c79bff; }
+.topic-pill[data-topic="oped"][data-active="true"]{
+  background:var(--oped); color:#12031f; border-color:var(--oped);
+  box-shadow:0 0 18px -4px rgba(176,107,255,.75);
+}
+.topic-pill[data-topic="oped"][data-active="true"] .cnt{ color:rgba(18,3,31,.6); }
+
+/* ============================================================
+   WRITE STORY — the reader-facing publishing desk
+   The launcher lives on the News Desk filter row; the composer is a
+   full-screen dialog above the wire but below the Studio Show.
+============================================================ */
+.topic-bar-row{ display:flex; align-items:center; gap:9px; }
+/* The pill row scrolls under the launcher, so its trailing edge is faded
+   rather than guillotined mid-pill. */
+.topic-bar-row .topic-scroll{
+  flex:1 1 auto; min-width:0;
+  -webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 20px),transparent);
+  mask-image:linear-gradient(90deg,#000 calc(100% - 20px),transparent);
+}
+.write-story-btn{
+  flex:none; display:inline-flex; align-items:center; gap:7px;
+  padding:8px 14px; border-radius:999px; cursor:pointer;
+  border:1px solid var(--oped);
+  background:linear-gradient(100deg,var(--oped),#7b2fff);
+  color:#fff; font-family:'Anton',sans-serif;
+  font-size:11.5px; letter-spacing:.14em; text-transform:uppercase;
+  white-space:nowrap; position:relative; z-index:31; pointer-events:auto;
+  box-shadow:0 6px 20px -8px rgba(176,107,255,.95), 0 0 0 1px rgba(255,255,255,.06) inset;
+  transition:transform .12s ease, box-shadow .16s ease;
+}
+.write-story-btn:active{ transform:scale(.97); }
+.write-story-btn:focus-visible{ outline:2px solid #e6ccff; outline-offset:2px; }
+.write-story-btn .quill{ font-size:13px; line-height:1; }
+@media (max-width:400px){
+  .write-story-btn{ padding:8px 11px; font-size:10.5px; letter-spacing:.09em; }
+}
+@media (max-width:340px){
+  .write-story-btn .wsb-long{ display:none; }
+}
+
+/* ---- the composer dialog ---- */
+#opedComposer{
+  position:fixed; inset:0; z-index:110;
+  background:var(--ink);
+  display:none; flex-direction:column;
+}
+#opedComposer[data-open="true"]{ display:flex; }
+#opedComposer[data-open="true"] .oped-body{ animation:readerIn .26s cubic-bezier(.2,.7,.3,1) both; }
+.oped-bar{
+  flex:none;
+  height:calc(52px + env(safe-area-inset-top));
+  padding-top:env(safe-area-inset-top);
+  display:flex; align-items:center; gap:10px; padding-left:8px; padding-right:12px;
+  background:rgba(8,10,14,.94);
+  backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px);
+  border-bottom:1px solid var(--line);
+}
+.oped-bar-title{ flex:1; min-width:0; }
+.oped-body{
+  flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch;
+  padding:18px 16px calc(30px + env(safe-area-inset-bottom));
+}
+.oped-shell{ max-width:720px; margin:0 auto; width:100%; }
+.oped-masthead{
+  border:1px solid rgba(176,107,255,.32); border-radius:14px;
+  background:radial-gradient(130% 110% at 0% 0%, rgba(176,107,255,.16), transparent 62%), #0c1017;
+  padding:14px 15px; margin-bottom:18px;
+}
+.oped-masthead h2{
+  font-family:'Anton',sans-serif; font-size:20px; letter-spacing:.04em;
+  text-transform:uppercase; margin:6px 0 0; color:#fff;
+}
+.oped-masthead p{ font-size:11.5px; line-height:1.55; color:var(--dim); margin:7px 0 0; }
+.oped-field{ margin-bottom:16px; }
+.oped-label-row{ display:flex; align-items:baseline; gap:8px; margin-bottom:6px; }
+.oped-label-row .label{ margin:0; }
+.oped-count{
+  margin-left:auto; font-family:'JetBrains Mono',monospace;
+  font-size:10px; font-weight:700; letter-spacing:.04em; color:var(--dim);
+}
+.oped-count[data-state="near"]{ color:var(--gold); }
+.oped-count[data-state="over"]{ color:var(--red); }
+.oped-author-row{ display:flex; align-items:center; gap:11px; }
+.oped-author-row .field-select{ flex:1; min-width:0; }
+.oped-avatar{ flex:none; }
+.oped-cats{ display:flex; flex-wrap:wrap; gap:7px; }
+.oped-cat{
+  padding:8px 12px; border-radius:999px; cursor:pointer;
+  border:1px solid var(--line-2); background:#0f1420; color:var(--dim);
+  font-family:'Oswald',sans-serif; font-weight:600;
+  font-size:10px; letter-spacing:.14em; text-transform:uppercase; white-space:nowrap;
+  transition:background .15s ease, color .15s ease, border-color .15s ease;
+}
+.oped-cat[data-active="true"]{
+  background:var(--oped-tone,#eef2f8); color:var(--oped-ink,#0a0d13);
+  border-color:var(--oped-tone,#eef2f8);
+  box-shadow:0 0 16px -5px var(--oped-tone,#eef2f8);
+}
+.oped-textarea{
+  font-family:'Oswald',sans-serif; font-size:14.5px; line-height:1.6;
+  resize:vertical; min-height:150px;
+}
+.oped-hint{ font-size:10.5px; line-height:1.55; color:#5d6879; margin-top:7px; }
+.oped-error{
+  display:none; margin:0 0 14px;
+  border:1px solid rgba(255,45,85,.4); border-left-width:3px;
+  border-radius:11px; background:rgba(255,45,85,.08);
+  padding:10px 12px; font-size:11.5px; line-height:1.5; color:#ffc2ce;
+}
+.oped-error[data-show="true"]{ display:block; }
+.oped-actions{
+  display:grid; grid-template-columns:1fr 1.4fr; gap:10px;
+  margin-top:22px; padding-top:18px; border-top:1px solid var(--line);
+}
+.oped-publish{
+  border-radius:12px; padding:15px;
+  background:linear-gradient(100deg,var(--oped),#7b2fff);
+  color:#fff; font-family:'Anton',sans-serif;
+  font-size:15px; letter-spacing:.09em; text-transform:uppercase;
+  display:flex; align-items:center; justify-content:center; gap:9px;
+  box-shadow:0 6px 22px -8px rgba(176,107,255,.85);
+  transition:transform .12s ease, opacity .12s ease;
+}
+.oped-publish:active{ transform:scale(.98); }
+.oped-publish:disabled{ opacity:.4; box-shadow:none; cursor:not-allowed; }
+@media (max-width:420px){ .oped-actions{ grid-template-columns:1fr; } }
+
+/* ---- the OP-ED badge that rides every community story ---- */
+.tag-oped{
+  background:var(--oped); color:#12031f;
+  box-shadow:0 0 14px -3px rgba(176,107,255,.9);
+}
+.oped-reader-actions{ display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:14px; }
+.oped-danger{
+  border-radius:12px; padding:13px;
+  background:rgba(255,45,85,.09); border:1px solid rgba(255,45,85,.42); color:#ff8098;
+  font-size:12px; font-weight:600; letter-spacing:.14em; text-transform:uppercase;
+  display:flex; align-items:center; justify-content:center; gap:8px;
+}
+.oped-danger:active{ transform:scale(.98); }
+@media (max-width:420px){ .oped-reader-actions{ grid-template-columns:1fr; } }
+@media (prefers-reduced-motion:reduce){
+  #opedComposer[data-open="true"] .oped-body{ animation:none; }
+  .write-story-btn{ transition:none; }
+}
 
 /* ---- the vertical spine the feed hangs off ---- */
 .tl-wrap{ position:relative; padding-left:26px; }
@@ -1955,10 +2108,15 @@ body{
     <!-- UNIFIED SEASON / WEEK TOOLBAR -->
     <div id="newsWeekScrubber" class="px-4 pb-3"></div>
 
-    <!-- TOPIC FILTER PILLS -->
+    <!-- TOPIC FILTER PILLS + THE PUBLISHING DESK LAUNCHER -->
     <div class="px-4">
       <div class="topic-bar">
-        <div class="topic-scroll no-bar" id="topicBar"></div>
+        <div class="topic-bar-row">
+          <div class="topic-scroll no-bar" id="topicBar"></div>
+          <button type="button" class="write-story-btn" id="writeStoryBtn" aria-label="Write a story for the league wire">
+            <span class="quill" aria-hidden="true">&#9997;</span><span>WRITE<span class="wsb-long"> STORY</span></span>
+          </button>
+        </div>
       </div>
     </div>
 
@@ -2248,6 +2406,95 @@ body{
       <button type="button" class="dossier-info-close" id="dossierInfoClose" aria-label="Close explanation">×</button>
     </div>
     <p class="dossier-info-body" id="dossierInfoBody"></p>
+  </div>
+</div>
+
+<!-- ============================================================
+     WRITE STORY — the league's own publishing desk
+     A full article composer: byline, category, headline, deck, body and
+     an optional subject tag. Everything it files lands on the wire.
+============================================================ -->
+<div id="opedComposer" data-open="false" role="dialog" aria-modal="true" aria-labelledby="opedComposerTitle">
+  <div class="oped-bar">
+    <button class="icon-btn" id="opedCancelTop" type="button" aria-label="Close the story composer">
+      <svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"></path></svg>
+    </button>
+    <div class="oped-bar-title">
+      <div class="kicker" style="color:var(--oped)">FSN Publishing Desk</div>
+      <div class="text-[11px] text-[var(--dim)] truncate mt-0.5" id="opedComposerWeek">Week —</div>
+    </div>
+    <span class="pill" style="border-color:rgba(176,107,255,.45);color:#d7b8ff;background:rgba(176,107,255,.1)">OP-ED</span>
+  </div>
+
+  <div class="oped-body no-bar">
+    <div class="oped-shell">
+      <div class="oped-masthead">
+        <div class="kicker" style="color:var(--oped)">League Op-Ed &middot; Community Exclusive</div>
+        <h2 id="opedComposerTitle">WRITE YOUR OWN STORY</h2>
+        <p>Pick your byline, choose a desk, and file it. Your story runs at the top of this week&rsquo;s wire alongside the automated recaps &mdash; saved on this device, for this league only.</p>
+      </div>
+
+      <div class="oped-error" id="opedError" role="alert" data-show="false"></div>
+
+      <div class="oped-field">
+        <div class="oped-label-row"><label class="label" for="opedAuthor">Author &middot; Byline</label></div>
+        <div class="oped-author-row">
+          <div class="oped-avatar" id="opedAuthorAvatar"></div>
+          <select id="opedAuthor" class="field-select"></select>
+        </div>
+        <p class="oped-hint" id="opedAuthorHint">Every manager in the league can take the byline.</p>
+      </div>
+
+      <div class="oped-field">
+        <div class="oped-label-row"><span class="label">Story Category</span></div>
+        <div class="oped-cats" id="opedCategories" role="group" aria-label="Story category"></div>
+      </div>
+
+      <div class="oped-field">
+        <div class="oped-label-row">
+          <label class="label" for="opedHeadline">Headline</label>
+          <span class="oped-count" id="opedHeadlineCount" data-state="ok">0 / 120</span>
+        </div>
+        <input id="opedHeadline" class="field" maxlength="120" autocomplete="off"
+               style="font-family:'Oswald',sans-serif;font-size:16px;font-weight:600"
+               placeholder="e.g. THE BENCH THAT COST HIM THE SEASON">
+      </div>
+
+      <div class="oped-field">
+        <div class="oped-label-row">
+          <label class="label" for="opedDeck">Subheadline / Deck <span class="normal-case tracking-normal">(optional)</span></label>
+          <span class="oped-count" id="opedDeckCount" data-state="ok">0 / 200</span>
+        </div>
+        <input id="opedDeck" class="field" maxlength="200" autocomplete="off"
+               style="font-family:'Oswald',sans-serif;font-size:14px"
+               placeholder="One line of context under the headline.">
+      </div>
+
+      <div class="oped-field">
+        <div class="oped-label-row">
+          <label class="label" for="opedBody">Article Body</label>
+          <span class="oped-count" id="opedBodyCount" data-state="ok">0 / 4000</span>
+        </div>
+        <textarea id="opedBody" class="field oped-textarea" rows="9" maxlength="4000"
+                  placeholder="Write it out. Leave a blank line between paragraphs."></textarea>
+        <p class="oped-hint">Blank lines start a new paragraph. Single line breaks are kept as written.</p>
+      </div>
+
+      <div class="oped-field">
+        <div class="oped-label-row"><label class="label" for="opedSubject">Target Subject / Matchup Tag <span class="normal-case tracking-normal">(optional)</span></label></div>
+        <select id="opedSubject" class="field-select"></select>
+        <p class="oped-hint">Tag the manager you are calling out, or the matchup the story is about.</p>
+      </div>
+
+      <div class="oped-actions">
+        <button type="button" class="btn-ghost" id="opedCancel">CANCEL</button>
+        <button type="button" class="oped-publish" id="opedPublish" disabled>PUBLISH TO THE WIRE</button>
+      </div>
+
+      <p class="oped-hint" style="margin-top:14px">
+        Stories are stored in this browser only, scoped to this league &mdash; nothing is uploaded and nobody else sees them until you share the copy.
+      </p>
+    </div>
   </div>
 </div>
 
@@ -6856,6 +7103,14 @@ function article(o){
     teamId: o.teamId != null ? o.teamId : null,
     priority: o.priority || 0,
     custom: !!o.custom,
+    /* Reader-written copy: filed through the Write Story desk rather than
+       generated. It carries its own badge, its own filter pill and its own
+       delete path, and no generator or AI pass is ever allowed to touch it. */
+    oped: !!o.oped,
+    opedCategory: o.opedCategory || null,
+    badge: o.badge || null,
+    authorTeamId: o.authorTeamId != null ? o.authorTeamId : null,
+    subject: o.subject || null,
     week: o.week != null ? o.week : null,
     season: o.season != null ? o.season : null,
     facts: o.facts || null,             // structured grounding for deterministic + AI desks
@@ -7615,6 +7870,148 @@ function buildCustomNumbers(week, team){
 }
 
 /* ============================================================================
+   READER-WRITTEN OP-EDS — the league's own publishing desk
+   The Write Story composer files a complete article: the manager takes the
+   byline, picks a desk, and writes the headline, deck and body themselves.
+   Nothing here is generated, and nothing here is ever rewritten by the AI
+   pass — what the manager typed is what runs.
+
+   Storage is scoped to the league id, so two leagues open in the same browser
+   never see each other's copy.
+============================================================================ */
+const OPED_KEY_BASE = 'fsn.news.oped.v1';
+const OPED_MAX = 120;
+
+function opedKey(){ return OPED_KEY_BASE + '::' + String(selectedLeagueId() || 'league'); }
+
+function loadOpEd(){
+  try{
+    const raw = localStorage.getItem(opedKey());
+    const list = raw ? JSON.parse(raw) : [];
+    return Array.isArray(list) ? list.filter(a=> a && a.id) : [];
+  }catch(e){ return []; }
+}
+function saveOpEd(list){
+  try{ localStorage.setItem(opedKey(), JSON.stringify(list.slice(0, OPED_MAX))); }catch(e){}
+}
+function opedMatchesScope(a, week){
+  return !!a &&
+    String(a.week) === String(week) &&
+    String(a.season) === String(viewedSeasonYear());
+}
+function scopedOpEd(week){
+  return loadOpEd()
+    .filter(a=> opedMatchesScope(a, week))
+    .sort((x, y)=> (y.createdAt || 0) - (x.createdAt || 0));
+}
+
+/* The six desks a manager can file under. `badge` is the neon pill the story
+   wears everywhere it appears; `tone` drives the category pill colour. */
+const OPED_CATEGORIES = [
+  { tag:'TRASH TALK',        tone:'red',   badge:'COMMUNITY EXCLUSIVE', desk:'Trash Talk Desk' },
+  { tag:'BREAKING NEWS',     tone:'red',   badge:'LEAGUE OP-ED',        desk:'Breaking News Desk' },
+  { tag:'TRADE RUMOR',       tone:'cyan',  badge:'COMMUNITY EXCLUSIVE', desk:'Trade Wire' },
+  { tag:'COMMISSIONER MEMO', tone:'gold',  badge:'LEAGUE OP-ED',        desk:"Commissioner's Office" },
+  { tag:'HOT TAKE',          tone:'green', badge:'COMMUNITY EXCLUSIVE', desk:'Opinion Desk' },
+  { tag:'PRESS RELEASE',     tone:'white', badge:'LEAGUE OP-ED',        desk:'Press Box' },
+];
+function opedCategory(tag){
+  return OPED_CATEGORIES.find(c=> c.tag === tag) || OPED_CATEGORIES[0];
+}
+
+/* Typed copy becomes paragraphs: a blank line starts a new one, a single
+   newline stays a line break inside the current one. Everything is escaped
+   before any markup is added, so a headline full of angle brackets is text
+   and never markup. */
+function opedParagraphs(bodyRaw){
+  return String(bodyRaw || '')
+    .replace(/\r\n?/g, '\n')
+    .split(/\n{2,}/)
+    .map(block=> block.trim())
+    .filter(Boolean)
+    .map(block=> esc(block).replace(/\n/g, '<br>'));
+}
+
+/* Builds the finished article from the composer's fields. Returns null when
+   the required four (author, category, headline, body) are not all present —
+   the composer keeps Publish disabled until they are, and this is the second
+   line of defence. */
+function composeOpEd(input){
+  const author = input && input.author ? input.author : null;
+  const headline = String((input && input.headline) || '').trim();
+  const bodyRaw = String((input && input.body) || '').trim();
+  const cat = opedCategory(input && input.category);
+  if(!author || !author.name || !headline || !bodyRaw) return null;
+
+  const paragraphs = opedParagraphs(bodyRaw);
+  if(!paragraphs.length) return null;
+
+  const week = Math.max(1, parseInt(input.week, 10) || 1);
+  const season = viewedSeasonYear();
+  const deck = String((input && input.deck) || '').trim();
+  const subject = (input && input.subject && input.subject.label)
+    ? { label: String(input.subject.label), kind: String(input.subject.kind || 'manager') }
+    : null;
+
+  const authorLabel = author.owner ? `${author.owner} · ${author.name}` : author.name;
+  const dek = deck
+    ? esc(deck)
+    : `Filed to the wire by ${esc(authorLabel)} · Week ${week}.`;
+
+  const createdAt = Date.now();
+  return article({
+    id: 'oped-' + createdAt + '-' + (hash(headline + bodyRaw + String(author.id)) % 99991),
+    kind: 'oped',
+    oped: true,
+    opedCategory: cat.tag,
+    badge: cat.badge,
+    week,
+    season,
+    tag: cat.tag,
+    tone: cat.tone,
+    /* Above every generated story on the wire — a manager who files copy
+       expects to see it at the top of their own desk. */
+    priority: 900,
+    byline: authorLabel,
+    authorTeamId: author.id != null ? author.id : null,
+    subject,
+    ageMin: 1,
+    headline: esc(headline),
+    dek,
+    dateline: cat.desk.toUpperCase(),
+    crest: author.name ? { name: author.name, logo: author.logo || '' } : null,
+    teamId: author.id != null ? author.id : null,
+    paragraphs,
+    createdAt,
+  });
+}
+
+/* The share format for a group chat: short, plain, and readable in a
+   message bubble rather than the full broadsheet the reader renders. */
+function opedGroupChatText(a){
+  const strip = (html)=> String(html || '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+    .replace(/[ \t]+/g, ' ')
+    .trim();
+
+  const lines = [];
+  lines.push('📰 ' + String(a.badge || 'LEAGUE OP-ED') + ' · ' + String(a.tag || '').toUpperCase());
+  lines.push(strip(a.headline).toUpperCase());
+  if(a.dek) lines.push(strip(a.dek));
+  lines.push('');
+  lines.push('By ' + strip(a.byline) + (a.week ? ' · Week ' + a.week : ''));
+  if(a.subject && a.subject.label) lines.push('Re: ' + strip(a.subject.label));
+  lines.push('');
+  (a.paragraphs || []).forEach(pgraph=>{ lines.push(strip(pgraph)); lines.push(''); });
+  lines.push('— ' + leagueName() + ' · FSN News Desk');
+  return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+/* ============================================================================
    THE TIMELINE STREAM
    The News Desk stops being a static tab here and becomes a wire that moves
    with the calendar. Every story is stamped with the moment it would have
@@ -7648,6 +8045,7 @@ const TOPICS = [
   { id:'matchups', label:'Matchups',       icon:'🏈' },
   { id:'draft',    label:'Draft',          icon:'📋' },
   { id:'mine',     label:'Mine',           icon:'👑' },
+  { id:'oped',     label:'Op-Ed / Community', icon:'✍' },
 ];
 
 const DAY_NAMES = ['SUNDAY','MONDAY','TUESDAY','WEDNESDAY','THURSDAY','FRIDAY','SATURDAY'];
@@ -9083,17 +9481,17 @@ function tlPreseason(ctx){
 const LEGACY_SLOT = {
   bench:'gameday', heartbreak:'gameday', shootout:'gameday', fraud:'gameday',
   coaching:'recap', recap:'recap',
-  milestone:'recap', preview:'primer', custom:'gameday',
+  milestone:'recap', preview:'primer', custom:'gameday', oped:'gameday',
 };
 const LEGACY_TOPIC = {
   bench:'breaking', heartbreak:'breaking', shootout:'breaking', fraud:'breaking',
   coaching:'matchups', recap:'matchups',
-  milestone:'power', preview:'matchups', custom:'mine',
+  milestone:'power', preview:'matchups', custom:'mine', oped:'oped',
 };
 const LEGACY_META = {
   bench:'BENCH DISASTER', heartbreak:'FINAL', shootout:'FINAL', fraud:'FINAL',
   coaching:'MANAGER OF THE WEEK', recap:'FINAL',
-  milestone:'RECORD BOOK', preview:'PREVIEW', custom:'FILED BY YOU',
+  milestone:'RECORD BOOK', preview:'PREVIEW', custom:'FILED BY YOU', oped:'LEAGUE OP-ED',
 };
 
 function adopt(a, seedIdx){
@@ -9101,9 +9499,9 @@ function adopt(a, seedIdx){
   const slot = LEGACY_SLOT[a.kind] || 'gameday';
   const offset = (hash(a.id) % 200) + seedIdx * 7;
   a.slot = slot;
-  a.topic = a.custom ? 'mine' : (LEGACY_TOPIC[a.kind] || 'breaking');
+  a.topic = a.oped ? 'oped' : (a.custom ? 'mine' : (LEGACY_TOPIC[a.kind] || 'breaking'));
   a.at = a.createdAt ? a.createdAt : slotTime(slot, offset);
-  a.metaTag = a.custom ? 'FILED BY YOU' : (LEGACY_META[a.kind] || 'FSN');
+  a.metaTag = a.oped ? (a.badge || 'LEAGUE OP-ED') : (a.custom ? 'FILED BY YOU' : (LEGACY_META[a.kind] || 'FSN'));
   a.meta = stamp(a.at) + ' · ' + a.metaTag;
   a.timeline = true;
   return a;
@@ -9188,7 +9586,7 @@ function serializableFacts(f){
   return f;
 }
 function isAIEligible(a, ctx){
-  if(!a || a.custom || a.kind === 'studio') return false;
+  if(!a || a.custom || a.oped || a.kind === 'studio') return false;
   if(!LeagueData.hasLive() || !isActiveSeasonForAI()) return false; // historical seasons hard-bypass here
   if(!getAIKey()) return false;
   if(typeof navigator !== 'undefined' && navigator.onLine === false) return false;
@@ -9313,13 +9711,25 @@ const PLAYOFF_SUPPRESSED_KINDS = {
 let streamCache = { key:null, list:null };
 LeagueData.subscribe(()=>{ streamCache = { key:null, list:null }; });
 
+/* Reader-written op-eds ride the top of the wire. They are hoisted after the
+   chronological sort rather than given a fake timestamp, so the stream stays
+   honest about when everything else broke. */
+function hoistOpEds(list){
+  const mine = list.filter(a=> a && a.oped === true);
+  if(!mine.length) return list;
+  return mine.concat(list.filter(a=> !(a && a.oped === true)));
+}
+
 function getTimelineStream(week){
   const custom = scopedCustom(week);
+  const oped = scopedOpEd(week);
   if(!LeagueData.hasLive()){
-    return custom.map((a,i)=> adopt(a, i)).sort((a,b)=> b.at - a.at);
+    const offline = oped.concat(custom).map((a,i)=> adopt(a, i)).sort((a,b)=> b.at - a.at);
+    return hoistOpEds(offline);
   }
 
-  const key = String(viewedSeasonYear()) + ':' + String(week) + ':' + custom.map(a=> a.id).join(',');
+  const key = String(viewedSeasonYear()) + ':' + String(week) + ':' +
+    custom.map(a=> a.id).join(',') + ':' + oped.map(a=> a.id).join(',');
   if(streamCache.key === key && streamCache.list){
     const cachedCtx = weekContext(week);
     streamCache.list.forEach(a=>{ restamp(a); applySeasonTone(a, cachedCtx); });
@@ -9351,8 +9761,10 @@ function getTimelineStream(week){
     events = events.concat(generate(week).map((a,i)=> adopt(a, i)));
   }
   // Commissioner copy is scoped to this exact season/week and can exist even
-  // before the first live score posts.
+  // before the first live score posts. Reader-written op-eds are scoped the
+  // same way and join the wire on the same terms.
   events = events.concat(custom.map((a,i)=> adopt(a, i)));
+  events = events.concat(oped.map((a,i)=> adopt(a, i)));
 
   /* Draft season pulls its coverage to the front — in August nobody wants a
      Week 1 preview above the report cards. */
@@ -9374,7 +9786,7 @@ function getTimelineStream(week){
      the only questions left are bracket questions. Commissioner-filed copy is
      never suppressed — that is the one desk the app does not overrule. */
   if(ctx.playoffWeek){
-    list = list.filter(a=> a.custom === true || !PLAYOFF_SUPPRESSED_KINDS[a.kind]);
+    list = list.filter(a=> a.custom === true || a.oped === true || !PLAYOFF_SUPPRESSED_KINDS[a.kind]);
 
     /* The bracket is the lead of a postseason week, full stop. Timestamps put
        it on top already in a preview week; this makes it deterministic when a
@@ -9385,6 +9797,10 @@ function getTimelineStream(week){
       list.unshift(bracketStory);
     }
   }
+
+  /* The manager's own copy leads the desk — above the bracket, above the
+     recaps, above everything the generators filed this week. */
+  list = hoistOpEds(list);
 
   list.forEach(a=>{ restamp(a); applySeasonTone(a, ctx); });
   // Past seasons stop here: no key lookup, no queue, no network, $0.
@@ -9431,9 +9847,10 @@ function generate(week){
 }
 
 function all(week){
+  const oped = scopedOpEd(week);
   const custom = scopedCustom(week);
   const generated = generate(week);
-  return custom.concat(generated).sort((a,b)=> b.priority - a.priority);
+  return oped.concat(custom, generated).sort((a,b)=> b.priority - a.priority);
 }
 
 /* Plain-text rendering for copy / share — the article without the markup. */
@@ -9501,6 +9918,28 @@ return {
   addCustom(a){ const list = loadCustom(); list.unshift(a); saveCustom(list); return list; },
   removeCustom(id){ const list = loadCustom().filter(x=> x.id !== id); saveCustom(list); return list; },
   clearCustom(){ saveCustom([]); },
+
+  /* ---- reader-written op-eds ---- */
+  OPED_CATEGORIES,
+  opedCategory,
+  composeOpEd,
+  opedGroupChatText,
+  hoistOpEds,
+  getOpEd(week){ return scopedOpEd(week); },
+  getAllOpEd(){ return loadOpEd(); },
+  addOpEd(a){
+    if(!a || !a.id) return loadOpEd();
+    const list = loadOpEd().filter(x=> x.id !== a.id);
+    list.unshift(a);
+    saveOpEd(list);
+    return list;
+  },
+  removeOpEd(id){
+    const list = loadOpEd().filter(x=> x.id !== id);
+    saveOpEd(list);
+    return list;
+  },
+  clearOpEd(){ saveOpEd([]); },
 };
 })();
 </script>
@@ -11938,6 +12377,7 @@ const ui = {
   vaultTab: 'franchises',
   topic: 'all',
   customTag: 'BREAKING',
+  opedCategory: 'TRASH TALK',
   profileRole: 'member',
   newsCache: null,
   homeStoryIds: [],
@@ -13947,6 +14387,25 @@ function bylineLine(a){
   return `By ${esc(a.byline)} · ${esc(NewsDesk.relTime(NewsDesk.age(a)))}`;
 }
 
+/* The neon badge every reader-written story wears — LEAGUE OP-ED for the
+   official desks, COMMUNITY EXCLUSIVE for the opinion ones. */
+function opedBadge(a, extra, articleId){
+  if(!a || !a.oped) return '';
+  const hook = articleId ? ` data-article="${esc(articleId)}"` : '';
+  return `<span class="tag tag-oped ${extra || ''}"${hook}>${esc(a.badge || 'LEAGUE OP-ED')}</span>`;
+}
+
+/* Cards show one badge apiece: the op-ed badge where there is one, the
+   commissioner marker otherwise. */
+function authorBadge(a, label, extra, articleId){
+  if(a && a.oped) return opedBadge(a, extra, articleId);
+  if(a && a.custom){
+    const hook = articleId ? ` data-article="${esc(articleId)}"` : '';
+    return `<span class="tag tag-dim ${extra || ''}"${hook}>${esc(label)}</span>`;
+  }
+  return '';
+}
+
 /* ---- Desk carousel card ---- */
 function railCard(a, idx){
   const c = toneVar(a.tone);
@@ -13954,9 +14413,9 @@ function railCard(a, idx){
     <div class="glow" style="background:radial-gradient(120% 90% at 0% 0%, ${c}1f, transparent 62%)"></div>
     <div style="height:3px;background:${c};box-shadow:0 0 16px ${c}"></div>
     <div class="p-4 relative">
-      <div class="flex items-center gap-2 mb-2.5">
+      <div class="flex items-center flex-wrap gap-2 mb-2.5">
         ${tagPill(a)}
-        ${a.custom ? '<span class="tag tag-dim">FILED BY YOU</span>' : ''}
+        ${authorBadge(a, 'FILED BY YOU')}
       </div>
       <h3 class="headline headline-rail">${a.headline}</h3>
       <p class="dek mt-2" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${a.dek}</p>
@@ -13981,9 +14440,9 @@ function leadCard(a){
       style="border-color:${c}33">
     <div style="height:3px;background:${c};box-shadow:0 0 18px ${c}"></div>
     <div class="p-4" style="background:radial-gradient(130% 100% at 0% 0%, ${c}14, transparent 60%)">
-      <div class="flex items-center gap-2 mb-3">
+      <div class="flex items-center flex-wrap gap-2 mb-3">
         ${tagPill(a, 'lead-tag-pill', id)}
-        ${a.custom ? `<span class="tag tag-dim lead-tag-pill" data-article="${id}">FILED BY YOU</span>` : ''}
+        ${authorBadge(a, 'FILED BY YOU', 'lead-tag-pill', a.id)}
         <span class="kicker text-[var(--dim)] ml-auto">Lead</span>
       </div>
       <h2 class="headline" style="font-size:25px">${a.headline}</h2>
@@ -14011,9 +14470,9 @@ function feedRow(a){
   return `<button class="card story-row" data-article="${esc(a.id)}">
     ${thumb}
     <div class="min-w-0 flex-1">
-      <div class="flex items-center gap-1.5 mb-1.5">
+      <div class="flex items-center flex-wrap gap-1.5 mb-1.5">
         ${tagPill(a)}
-        ${a.custom ? '<span class="tag tag-dim">YOURS</span>' : ''}
+        ${authorBadge(a, 'YOURS')}
       </div>
       <h3 class="headline headline-sm">${a.headline}</h3>
       <div class="byline mt-1.5 truncate">${bylineLine(a)}</div>
@@ -14169,9 +14628,9 @@ function articleHtml(a){
 
   return `
     <div class="px-4 pt-5">
-      <div class="flex items-center gap-2 mb-3.5">
+      <div class="flex items-center gap-2 mb-3.5 flex-wrap">
         ${tagPill(a)}
-        ${a.custom ? '<span class="tag tag-dim">FILED BY YOU</span>' : ''}
+        ${authorBadge(a, 'FILED BY YOU')}
       </div>
       <h1 class="headline">${a.headline}</h1>
       ${a.dek ? `<p class="dek mt-3">${a.dek}</p>` : ''}
@@ -14181,6 +14640,9 @@ function articleHtml(a){
         <div class="min-w-0">
           <div class="byline" style="color:#e9edf4">${esc(a.byline)}</div>
           <div class="byline mt-0.5">${esc(NewsDesk.relTime(NewsDesk.age(a)))} · ${esc(a.dateline)}</div>
+          ${a.subject && a.subject.label
+            ? `<div class="byline mt-1" style="color:var(--oped)">Re: ${esc(a.subject.label)}</div>`
+            : ''}
         </div>
       </div>
     </div>
@@ -14200,9 +14662,15 @@ function articleHtml(a){
         <button class="btn-ghost" data-reader-copy>COPY STORY</button>
         <button class="btn-ghost" data-reader-share>SHARE</button>
       </div>
+      ${a.oped ? `<div class="oped-reader-actions">
+        <button class="btn-ghost" data-oped-copy="${esc(a.id)}">📋 Copy for Group Chat</button>
+        <button class="oped-danger" data-oped-delete="${esc(a.id)}">🗑 Delete Article</button>
+      </div>` : ''}
       <p class="text-[10.5px] text-[#4a5464] leading-relaxed mt-4 pt-4 border-t border-[var(--line)]">
-        Auto-generated by the FSN News Desk from this week's ESPN box scores.
-        Quotes are satirical and were never actually said out loud.
+        ${a.oped
+          ? `Written and filed by ${esc(a.byline)} through the FSN Write Story desk. Saved in this browser for this league only — opinions are the author's own.`
+          : `Auto-generated by the FSN News Desk from this week's ESPN box scores.
+        Quotes are satirical and were never actually said out loud.`}
       </p>
       <div class="text-center py-5">
         <div class="kicker text-[#2b3546]">FSN · Fantasy Sports Network</div>
@@ -14300,6 +14768,9 @@ function renderHomeStories(){
       return idx === -1 ? PLAYOFF_LEAD_KINDS.length : idx;
     };
     list = list.slice().sort((a,b)=> (rank(a) - rank(b)) || (b.at - a.at));
+    /* The bracket sort must not bury a story a manager just filed — reader
+       copy is hoisted back to the front of the carousel afterwards. */
+    list = NewsDesk.hoistOpEds(list);
   }
 
   list = list.slice(0, 5);
@@ -14318,6 +14789,7 @@ function renderHomeStories(){
 const TOPIC_TONE = {
   breaking:'var(--red)', waivers:'var(--green)', studio:'var(--cyan)',
   power:'var(--cyan)', matchups:'var(--gold)', draft:'#a78bfa', mine:'var(--gold)',
+  oped:'var(--oped)',
 };
 
 function dayKey(at){
@@ -14355,7 +14827,7 @@ function timelineCard(a){
         <div class="tl-head" style="margin-top:9px">
           ${crestHtml}
           <div class="min-w-0 flex-1">
-            <div class="flex items-center gap-1.5 mb-1.5">${tagPill(a)}${a.custom ? '<span class="tag tag-dim">YOURS</span>' : ''}</div>
+            <div class="flex items-center flex-wrap gap-1.5 mb-1.5">${tagPill(a)}${authorBadge(a, 'YOURS')}</div>
             <h3 class="tl-title">${a.headline}</h3>
           </div>
         </div>
@@ -14376,9 +14848,10 @@ function timelineCard(a){
 }
 
 function renderTopicBar(list){
-  const counts = { all: list.length, mine:0 };
+  const counts = { all: list.length, mine:0, oped:0 };
   list.forEach(a=>{
     if(a.custom) counts.mine += 1;
+    if(a.oped){ counts.oped += 1; return; }   // the op-ed pill owns its own count
     if(a.topic) counts[a.topic] = (counts[a.topic] || 0) + 1;
   });
   $('topicBar').innerHTML = NewsDesk.TOPICS.map(t=>{
@@ -14409,9 +14882,11 @@ function renderNews(){
 
   const list = ui.topic === 'all'
     ? all
-    : ui.topic === 'mine'
-      ? all.filter(a=> a.custom === true)
-      : all.filter(a=> a.topic === ui.topic);
+    : ui.topic === 'oped'
+      ? all.filter(a=> a.oped === true)
+      : ui.topic === 'mine'
+        ? all.filter(a=> a.custom === true)
+        : all.filter(a=> a.topic === ui.topic);
   $('newsCount').textContent = all.length ? all.length + ' STOR' + (all.length === 1 ? 'Y' : 'IES') : '—';
   $('timelineLive').textContent = list.some(a=> a.live) ? '● LIVE' : '● UPDATING';
   $('timelineLive').style.color = list.some(a=> a.live) ? 'var(--red)' : 'var(--dim)';
@@ -14423,7 +14898,9 @@ function renderNews(){
   }
 
   if(!list.length){
-    const msg = ui.topic === 'mine'
+    const msg = ui.topic === 'oped'
+      ? 'Nobody has filed a story for week ' + week + ' yet. Hit WRITE STORY and put one on the wire.'
+      : ui.topic === 'mine'
       ? (isCommissioner() ? 'Nothing filed yet. Break your own story below.' : 'No commissioner-filed stories exist for this season and week.')
       : (ui.topic === 'draft'
           ? 'No draft board in this payload. Re-fetch with the draft views once your league has drafted.'
@@ -14539,6 +15016,277 @@ function fileCustomStory(){
   openReader(story.id);
   toast('Filed to the wire');
 }
+
+/* ============================================================
+   WRITE STORY — the reader-facing publishing desk
+   The composer is a plain form over NewsDesk.composeOpEd: pick a byline
+   from the league's managers, pick a desk, write it, publish it. The
+   published story is a first-class wire article from that moment on.
+============================================================ */
+const OPED_HEADLINE_MAX = 120;
+const OPED_DECK_MAX = 200;
+const OPED_BODY_MAX = 4000;
+
+function opedManagers(){ return LeagueData.getTeams(); }
+
+function opedAuthorLabel(t){
+  return t.owner ? `${t.owner} — ${t.name}` : t.name;
+}
+
+/* One clipboard path for every copy button, with the non-secure-origin
+   fallback the reader's SHARE button already relies on. */
+async function copyPlainText(text, okMsg){
+  try{
+    await navigator.clipboard.writeText(text);
+    toast(okMsg);
+    return true;
+  }catch(err){
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.cssText = 'position:fixed;opacity:0;';
+    document.body.appendChild(ta);
+    ta.select();
+    let ok = false;
+    try{ ok = document.execCommand('copy'); }catch(e2){ ok = false; }
+    document.body.removeChild(ta);
+    toast(ok ? okMsg : 'Copy unavailable on this browser');
+    return ok;
+  }
+}
+
+function renderOpedAuthorAvatar(){
+  const teams = opedManagers();
+  const team = teams.find(t=> String(t.id) === String($('opedAuthor').value)) || null;
+  $('opedAuthorAvatar').innerHTML = team ? crest(team.name, team.logo, 40) : monoBadge('FSN', 40);
+  $('opedAuthorHint').textContent = team
+    ? `${team.abbrev} · ${team.name}${team.record ? ' · ' + team.record : ''}`
+    : 'Connect your ESPN league in Setup to file under a manager byline.';
+}
+
+function renderOpedAuthors(){
+  const sel = $('opedAuthor');
+  const teams = opedManagers();
+  const signature = teams.map(t=> String(t.id) + ':' + t.name).join('|');
+  if(sel.dataset.sig !== signature){
+    sel.dataset.sig = signature;
+    sel.innerHTML = teams.length
+      ? '<option value="">Select a manager…</option>' +
+        teams.map(t=> `<option value="${esc(String(t.id))}">${esc(opedAuthorLabel(t))}</option>`).join('')
+      : '<option value="">No managers loaded</option>';
+  }
+  renderOpedAuthorAvatar();
+}
+
+function renderOpedCategories(){
+  const el = $('opedCategories');
+  el.innerHTML = NewsDesk.OPED_CATEGORIES.map(c=>{
+    const tone = TONE_VAR[c.tone] || TONE_VAR.red;
+    const ink = c.tone === 'red' ? '#fff' : '#0a0d13';
+    return `<button type="button" class="oped-cat" data-oped-cat="${esc(c.tag)}"
+      data-active="${c.tag === ui.opedCategory}"
+      aria-pressed="${c.tag === ui.opedCategory}"
+      style="--oped-tone:${tone};--oped-ink:${ink}">${esc(c.tag)}</button>`;
+  }).join('');
+}
+
+function renderOpedSubjects(){
+  const sel = $('opedSubject');
+  const week = effectiveWeek();
+  const teams = opedManagers();
+  const games = LeagueData.hasLive() ? LeagueData.getWeekMatchups(week) : [];
+
+  const managerOpts = teams.map(t=>
+    `<option value="manager:${esc(String(t.id))}">${esc(opedAuthorLabel(t))}</option>`).join('');
+  const matchupOpts = games.map((g, i)=>
+    `<option value="matchup:${i}">${esc(g.awayTeam.name)} vs ${esc(g.homeTeam.name)}</option>`).join('');
+
+  const prev = sel.value;
+  sel.innerHTML = '<option value="">No subject tag</option>' +
+    (managerOpts ? `<optgroup label="Managers">${managerOpts}</optgroup>` : '') +
+    (matchupOpts ? `<optgroup label="Week ${week} matchups">${matchupOpts}</optgroup>` : '');
+  if(prev){
+    sel.value = prev;
+    if(sel.value !== prev) sel.value = '';
+  }
+}
+
+function opedSubjectFromValue(value){
+  const raw = String(value || '');
+  if(!raw) return null;
+  const cut = raw.indexOf(':');
+  const kind = cut === -1 ? '' : raw.slice(0, cut);
+  const key = cut === -1 ? '' : raw.slice(cut + 1);
+  if(kind === 'manager'){
+    const team = opedManagers().find(t=> String(t.id) === key);
+    return team ? { kind:'manager', label: opedAuthorLabel(team) } : null;
+  }
+  if(kind === 'matchup'){
+    const games = LeagueData.hasLive() ? LeagueData.getWeekMatchups(effectiveWeek()) : [];
+    const g = games[parseInt(key, 10)];
+    return g ? { kind:'matchup', label: `${g.awayTeam.name} vs ${g.homeTeam.name}` } : null;
+  }
+  return null;
+}
+
+function setOpedCount(el, len, max){
+  el.textContent = `${len} / ${max}`;
+  el.dataset.state = len >= max ? 'over' : (len >= max * 0.9 ? 'near' : 'ok');
+}
+
+function updateOpedCounts(){
+  setOpedCount($('opedHeadlineCount'), $('opedHeadline').value.length, OPED_HEADLINE_MAX);
+  setOpedCount($('opedDeckCount'), $('opedDeck').value.length, OPED_DECK_MAX);
+  setOpedCount($('opedBodyCount'), $('opedBody').value.length, OPED_BODY_MAX);
+}
+
+function opedFormState(){
+  return {
+    authorId: $('opedAuthor').value,
+    category: ui.opedCategory,
+    headline: $('opedHeadline').value.trim(),
+    body: $('opedBody').value.trim(),
+  };
+}
+
+/* Publish stays disabled until an author, a category, a headline and a body
+   all exist. Nothing else in the form is required. */
+function opedIsValid(){
+  const f = opedFormState();
+  return !!(f.authorId && f.category && f.headline && f.body);
+}
+
+function setOpedError(msg){
+  const el = $('opedError');
+  el.textContent = msg || '';
+  el.dataset.show = msg ? 'true' : 'false';
+}
+
+function refreshOpedValidity(){
+  const valid = opedIsValid();
+  $('opedPublish').disabled = !valid;
+  if(valid) setOpedError('');
+  return valid;
+}
+
+function openOpedComposer(){
+  ui.opedCategory = ui.opedCategory || NewsDesk.OPED_CATEGORIES[0].tag;
+  $('opedComposerWeek').textContent =
+    `Week ${effectiveWeek()} · ${NewsDesk.viewedSeasonYear() || ''}`.trim().replace(/ ·\s*$/, '');
+
+  $('opedHeadline').value = '';
+  $('opedDeck').value = '';
+  $('opedBody').value = '';
+  $('opedSubject').value = '';
+  setOpedError('');
+
+  renderOpedAuthors();
+  renderOpedCategories();
+  renderOpedSubjects();
+
+  /* Default the byline to the reader's own team when they have picked one. */
+  const mine = activeTeamId();
+  if(mine && opedManagers().some(t=> String(t.id) === String(mine))) $('opedAuthor').value = String(mine);
+  renderOpedAuthorAvatar();
+
+  if(!opedManagers().length){
+    setOpedError('No league loaded. Connect your ESPN league in Setup to file a story under a manager byline.');
+  }
+
+  updateOpedCounts();
+  refreshOpedValidity();
+
+  $('opedComposer').dataset.open = 'true';
+  $('opedComposer').querySelector('.oped-body').scrollTop = 0;
+  document.body.style.overflow = 'hidden';
+  setTimeout(()=>{ try{ $('opedHeadline').focus({preventScroll:true}); }catch(e){} }, 60);
+}
+
+function closeOpedComposer(){
+  $('opedComposer').dataset.open = 'false';
+  /* The reader may be open behind the composer — only release the page
+     scroll when nothing else is holding it. */
+  if($('reader').dataset.open !== 'true' && !FSNStudio.isOpen()) document.body.style.overflow = '';
+}
+
+function publishOpEd(){
+  if(!refreshOpedValidity()){
+    const f = opedFormState();
+    const missing = [];
+    if(!f.authorId) missing.push('an author');
+    if(!f.category) missing.push('a category');
+    if(!f.headline) missing.push('a headline');
+    if(!f.body) missing.push('a body');
+    setOpedError('Still needed: ' + missing.join(', ') + '.');
+    return;
+  }
+
+  const author = opedManagers().find(t=> String(t.id) === String($('opedAuthor').value));
+  if(!author){ setOpedError('That manager is no longer in the league payload. Pick another byline.'); return; }
+
+  const story = NewsDesk.composeOpEd({
+    author,
+    category: ui.opedCategory,
+    headline: $('opedHeadline').value.trim(),
+    deck: $('opedDeck').value.trim(),
+    body: $('opedBody').value,
+    subject: opedSubjectFromValue($('opedSubject').value),
+    week: effectiveWeek(),
+  });
+  if(!story){ setOpedError('That story could not be filed. Check the headline and body and try again.'); return; }
+
+  NewsDesk.addOpEd(story);
+  closeOpedComposer();
+  ui.topic = 'all';
+  renderNews();
+  renderHomeStories();
+  renderTicker();
+  openReader(story.id);
+  toast('Published to the wire');
+}
+
+function copyOpedForGroupChat(id){
+  const a = articleById(id) || (NewsDesk.getAllOpEd().find(x=> x.id === id) || null);
+  if(!a) return;
+  copyPlainText(NewsDesk.opedGroupChatText(a), 'Copied for the group chat');
+}
+
+function deleteOpEd(id){
+  if(!id) return;
+  NewsDesk.removeOpEd(id);
+  if(ui.readerId === id) closeReader();
+  renderNews();
+  renderHomeStories();
+  renderTicker();
+  toast('Article deleted');
+}
+
+/* ---- composer wiring ---- */
+$('writeStoryBtn').addEventListener('click', (e)=>{
+  e.preventDefault();
+  e.stopPropagation();
+  openOpedComposer();
+});
+$('opedCancel').addEventListener('click', closeOpedComposer);
+$('opedCancelTop').addEventListener('click', closeOpedComposer);
+$('opedPublish').addEventListener('click', publishOpEd);
+$('opedAuthor').addEventListener('change', ()=>{ renderOpedAuthorAvatar(); refreshOpedValidity(); });
+$('opedSubject').addEventListener('change', refreshOpedValidity);
+$('opedCategories').addEventListener('click', (e)=>{
+  const btn = e.target.closest('[data-oped-cat]');
+  if(!btn) return;
+  ui.opedCategory = btn.dataset.opedCat;
+  renderOpedCategories();
+  refreshOpedValidity();
+});
+['opedHeadline','opedDeck','opedBody'].forEach(id=>{
+  $(id).addEventListener('input', ()=>{ updateOpedCounts(); refreshOpedValidity(); });
+});
+document.addEventListener('keydown', (e)=>{
+  if(e.key !== 'Escape' || $('opedComposer').dataset.open !== 'true') return;
+  e.preventDefault();
+  closeOpedComposer();
+  if(typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+});
 
 /* ---- timeline wiring ---- */
 document.addEventListener('click', (e)=>{
@@ -14744,6 +15492,20 @@ $('franchiseModalBody').addEventListener('scroll', ()=>{ if(dossierInfoAnchor) c
 window.addEventListener('resize', ()=>{ if(dossierInfoAnchor) positionDossierInfo(); });
 $('franchiseScreenshotBtn').addEventListener('click', toggleFranchiseScreenshot);
 $('readerBody').addEventListener('click', (e)=>{
+  const groupChat = e.target.closest('[data-oped-copy]');
+  if(groupChat){
+    e.preventDefault();
+    e.stopPropagation();
+    copyOpedForGroupChat(groupChat.dataset.opedCopy);
+    return;
+  }
+  const kill = e.target.closest('[data-oped-delete]');
+  if(kill){
+    e.preventDefault();
+    e.stopPropagation();
+    deleteOpEd(kill.dataset.opedDelete);
+    return;
+  }
   if(e.target.closest('[data-reader-copy]'))  shareArticle('copy');
   if(e.target.closest('[data-reader-share]')) shareArticle('share');
 });
