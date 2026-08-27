@@ -26,7 +26,7 @@ const BROWSER_USER_AGENT =
 function applyCorsHeaders(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-espn-s2, x-espn-swid');
 }
 
 module.exports = async function handler(req, res) {
@@ -61,13 +61,32 @@ module.exports = async function handler(req, res) {
     return res.status(400).json({ error: 'Unsupported ESPN host' });
   }
 
+  // Optional ESPN auth for PRIVATE leagues. The front-end forwards the member's
+  // espn_s2 + SWID cookies (from their own browser) as request headers; replay
+  // them to ESPN as a Cookie header so the anonymous relay can read as the
+  // member. Absent headers => anonymous read, which is all a public league needs.
+  const espnS2 = req.headers['x-espn-s2'];
+  const espnSwidRaw = req.headers['x-espn-swid'];
+  const cookieParts = [];
+  if (typeof espnS2 === 'string' && espnS2.trim()) {
+    cookieParts.push('espn_s2=' + espnS2.trim());
+  }
+  if (typeof espnSwidRaw === 'string' && espnSwidRaw.trim()) {
+    let swid = espnSwidRaw.trim();
+    if (swid[0] !== '{') swid = '{' + swid.replace(/^\{|\}$/g, '') + '}';
+    cookieParts.push('SWID=' + swid);
+  }
+
+  const upstreamHeaders = {
+    Accept: 'application/json',
+    'User-Agent': BROWSER_USER_AGENT,
+  };
+  if (cookieParts.length) upstreamHeaders.Cookie = cookieParts.join('; ');
+
   try {
     const upstream = await fetch(target.toString(), {
       method: 'GET',
-      headers: {
-        Accept: 'application/json',
-        'User-Agent': BROWSER_USER_AGENT,
-      },
+      headers: upstreamHeaders,
       redirect: 'follow',
     });
 
