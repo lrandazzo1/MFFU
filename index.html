@@ -406,8 +406,61 @@ body{
 .dossier-section-title{ display:flex; align-items:center; gap:9px; margin:0 0 10px; font-family:'Anton',Impact,sans-serif; font-size:17px; letter-spacing:.055em; text-transform:uppercase; }
 .dossier-section-title::before{ content:''; width:3px; height:16px; border-radius:2px; background:var(--cyan); box-shadow:0 0 10px rgba(0,224,255,.45); }
 .dossier-vitals{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
-.dossier-vital{ padding:12px; border-radius:13px; border:1px solid var(--line); background:linear-gradient(150deg,#121821,#090d14); min-width:0; }
+.dossier-vital{ position:relative; padding:12px; border-radius:13px; border:1px solid var(--line); background:linear-gradient(150deg,#121821,#090d14); min-width:0; }
+.dossier-vital-head{ display:flex; align-items:flex-start; gap:6px; }
 .dossier-vital-label{ color:var(--dim); font-size:8.5px; font-weight:700; letter-spacing:.15em; text-transform:uppercase; }
+.dossier-vital-head .dossier-vital-label{ flex:1; min-width:0; }
+
+/* The (i) affordance next to a stat that needs explaining. */
+.dossier-info-btn{
+  flex:none; width:16px; height:16px; margin-top:-1px;
+  display:inline-flex; align-items:center; justify-content:center;
+  border-radius:50%; border:1px solid rgba(0,224,255,.5);
+  background:rgba(0,224,255,.10); color:var(--cyan);
+  font-family:'Oswald',sans-serif; font-size:10px; font-weight:700; line-height:1;
+  cursor:pointer; -webkit-tap-highlight-color:transparent;
+  transition:background .15s ease, box-shadow .15s ease, transform .12s ease;
+}
+.dossier-info-btn:hover{ background:rgba(0,224,255,.2); }
+.dossier-info-btn:active{ transform:scale(.9); }
+.dossier-info-btn[aria-expanded="true"]{
+  background:var(--cyan); color:#04121a; border-color:var(--cyan);
+  box-shadow:0 0 12px rgba(0,224,255,.55);
+}
+.dossier-info-btn:focus-visible{ outline:2px solid var(--cyan); outline-offset:2px; }
+
+#dossierInfoPop{
+  position:fixed; z-index:170; display:none;
+  width:min(320px, calc(100vw - 28px));
+  padding:13px 14px 14px; border-radius:14px;
+  border:1px solid rgba(0,224,255,.45);
+  background:rgba(9,13,20,.88);
+  backdrop-filter:blur(16px) saturate(140%);
+  -webkit-backdrop-filter:blur(16px) saturate(140%);
+  box-shadow:0 18px 44px -14px rgba(0,0,0,.85), 0 0 22px -6px rgba(0,224,255,.35);
+}
+#dossierInfoPop[data-open="true"]{ display:block; animation:dossierInfoIn .16s cubic-bezier(.2,.7,.3,1) both; }
+@keyframes dossierInfoIn{ from{ opacity:0; transform:translateY(-5px) scale(.985); } to{ opacity:1; transform:none; } }
+.dossier-info-head{ display:flex; align-items:flex-start; gap:10px; }
+.dossier-info-title{
+  flex:1; min-width:0; margin:0; color:var(--cyan);
+  font-family:'Oswald',sans-serif; font-size:10.5px; font-weight:700;
+  letter-spacing:.15em; text-transform:uppercase; line-height:1.35;
+}
+.dossier-info-close{
+  flex:none; width:20px; height:20px; margin:-3px -3px 0 0;
+  display:inline-flex; align-items:center; justify-content:center;
+  border-radius:50%; border:1px solid var(--line-2); background:transparent;
+  color:var(--dim); font-size:15px; line-height:1; cursor:pointer;
+}
+.dossier-info-close:hover{ color:#fff; border-color:var(--off); }
+.dossier-info-body{
+  margin:9px 0 0; color:#dfe5ee; font-size:12px; line-height:1.62;
+}
+.dossier-info-body b, .dossier-info-body strong{ color:#fff; font-weight:600; }
+@media (prefers-reduced-motion:reduce){
+  #dossierInfoPop[data-open="true"]{ animation:none; }
+}
 .dossier-vital-value{ margin-top:7px; font-family:'JetBrains Mono',monospace; font-size:16px; font-weight:800; color:#fff; }
 .dossier-vital-sub{ margin-top:5px; color:var(--dim); font-size:10px; line-height:1.4; }
 .dossier-delta-up{ color:var(--green); }
@@ -2124,6 +2177,16 @@ body{
     <button class="dossier-shot-btn" id="franchiseScreenshotBtn">Screenshot Resume</button>
   </div>
   <div id="franchiseModalBody" class="no-bar"></div>
+
+  <!-- Floating explainer for the vital stats that need one. Fixed to the
+       viewport so the scrolling dossier body cannot clip it. -->
+  <div id="dossierInfoPop" data-open="false" role="dialog" aria-modal="false" aria-labelledby="dossierInfoTitle">
+    <div class="dossier-info-head">
+      <h3 class="dossier-info-title" id="dossierInfoTitle">WHAT IS LUCK DIFFERENTIAL?</h3>
+      <button type="button" class="dossier-info-close" id="dossierInfoClose" aria-label="Close explanation">×</button>
+    </div>
+    <p class="dossier-info-body" id="dossierInfoBody"></p>
+  </div>
 </div>
 
 <!-- ============================================================
@@ -11488,12 +11551,83 @@ function dossierH2hCard(kind, entry){
   </div>`;
 }
 
-function dossierVital(label, value, sub, tone){
+/* ============================================================
+   VITAL-STAT EXPLAINERS
+   Some lifetime vitals are derived, not counted, and the number is
+   meaningless without the definition. Each entry here puts an (i) beside
+   the stat's header that toggles a floating explainer.
+============================================================ */
+const DOSSIER_INFO = {
+  luck: {
+    title:'WHAT IS LUCK DIFFERENTIAL?',
+    body:'Expected Wins represents the number of wins this franchise would have if it played every other team in the league every single week (All-Play Record). Luck Differential = Actual Wins − Expected Wins. A positive (+) number indicates favorable weekly schedule luck, while a negative (−) number indicates tough matchup draws.',
+  },
+};
+
+function dossierVital(label, value, sub, tone, infoKey){
+  const info = infoKey && DOSSIER_INFO[infoKey] ? infoKey : '';
+  const head = info
+    ? `<div class="dossier-vital-head">
+        <div class="dossier-vital-label">${esc(label)}</div>
+        <button type="button" class="dossier-info-btn" data-dossier-info="${esc(info)}"
+          aria-expanded="false" aria-label="${esc(DOSSIER_INFO[info].title)}">i</button>
+      </div>`
+    : `<div class="dossier-vital-label">${esc(label)}</div>`;
   return `<div class="dossier-vital">
-    <div class="dossier-vital-label">${esc(label)}</div>
+    ${head}
     <div class="dossier-vital-value ${tone||''}">${esc(value)}</div>
     <div class="dossier-vital-sub">${esc(sub)}</div>
   </div>`;
+}
+
+/* The popover is a single fixed element reused by every (i). It is anchored
+   to the button in viewport coordinates, so the scrolling dossier body can
+   neither clip it nor drag it out of alignment. */
+let dossierInfoAnchor = null;
+
+function positionDossierInfo(){
+  const pop = $('dossierInfoPop');
+  if(!pop || !dossierInfoAnchor || !document.contains(dossierInfoAnchor)){ closeDossierInfo(); return; }
+  const a = dossierInfoAnchor.getBoundingClientRect();
+  const box = pop.getBoundingClientRect();
+  const pad = 10;
+  let left = a.left + a.width / 2 - box.width / 2;
+  left = Math.max(pad, Math.min(left, window.innerWidth - box.width - pad));
+  /* Below the button when there is room, above it when there is not. */
+  let top = a.bottom + 8;
+  if(top + box.height > window.innerHeight - pad){
+    const above = a.top - box.height - 8;
+    top = above >= pad ? above : Math.max(pad, window.innerHeight - box.height - pad);
+  }
+  pop.style.left = Math.round(left) + 'px';
+  pop.style.top  = Math.round(top) + 'px';
+}
+
+function closeDossierInfo(){
+  const pop = $('dossierInfoPop');
+  if(!pop) return;
+  pop.dataset.open = 'false';
+  if(dossierInfoAnchor) dossierInfoAnchor.setAttribute('aria-expanded', 'false');
+  dossierInfoAnchor = null;
+}
+
+function openDossierInfo(btn){
+  const entry = DOSSIER_INFO[btn && btn.dataset.dossierInfo];
+  const pop = $('dossierInfoPop');
+  if(!entry || !pop) return;
+  document.querySelectorAll('.dossier-info-btn[aria-expanded="true"]')
+    .forEach(b=> b.setAttribute('aria-expanded', 'false'));
+  $('dossierInfoTitle').textContent = entry.title;
+  $('dossierInfoBody').textContent = entry.body;
+  dossierInfoAnchor = btn;
+  btn.setAttribute('aria-expanded', 'true');
+  pop.dataset.open = 'true';
+  positionDossierInfo();
+}
+
+function toggleDossierInfo(btn){
+  if(dossierInfoAnchor === btn) closeDossierInfo();
+  else openDossierInfo(btn);
 }
 
 function openFranchiseModal(ownerId){
@@ -11539,7 +11673,7 @@ function openFranchiseModal(ownerId){
           ${dossierVital('All-Time Record', resume.record, `${resume.winPct.toFixed(1)}% win rate`, '')}
           ${dossierVital('Career PPG', resume.careerPpg.toFixed(1), `${signedPpg} · League ${resume.leagueAveragePpg.toFixed(1)}`, ppgTone)}
           ${dossierVital('Career PAPG', resume.careerPapg.toFixed(1), `${resume.careerGames} total games`, '')}
-          ${dossierVital('Luck Differential', signedLuck, `Actual ${resume.actualWins.toFixed(1)} · Expected ${resume.expectedWins.toFixed(1)}`, luckTone)}
+          ${dossierVital('Luck Differential', signedLuck, `Actual ${resume.actualWins.toFixed(1)} · Expected ${resume.expectedWins.toFixed(1)}`, luckTone, 'luck')}
           ${dossierVital('Playoff Rate', `${resume.playoffApps}/${resume.seasons} · ${playoffRate.toFixed(0)}%`, 'Seasons reaching the title bracket', '')}
           ${dossierVital('Best Finish', best, resume.bestFinish ? resume.bestFinish.teamName : 'No final rank', 'dossier-delta-up')}
           ${dossierVital('Worst Finish', worst, resume.worstFinish ? resume.worstFinish.teamName : 'No final rank', 'dossier-delta-down')}
@@ -11615,6 +11749,7 @@ function openFranchiseModal(ownerId){
 }
 
 function closeFranchiseModal(){
+  closeDossierInfo();
   $('franchiseModal').dataset.open = 'false';
   $('franchiseModal').dataset.screenshot = 'false';
   ui.franchiseModalId = null;
@@ -13025,6 +13160,37 @@ $('readerClose').addEventListener('click', closeReader);
 $('readerCopy').addEventListener('click', ()=> shareArticle('copy'));
 $('readerShare').addEventListener('click', ()=> shareArticle('share'));
 $('franchiseModalClose').addEventListener('click', closeFranchiseModal);
+
+/* ---- Vital-stat explainer popover ----
+   Tapping the (i) toggles it; a second tap, the close button, a tap anywhere
+   outside, Escape, or scrolling the dossier body dismisses it. */
+$('franchiseModalBody').addEventListener('click', (e)=>{
+  const btn = e.target.closest('.dossier-info-btn');
+  if(!btn) return;
+  e.preventDefault();
+  e.stopPropagation();
+  toggleDossierInfo(btn);
+});
+$('dossierInfoClose').addEventListener('click', (e)=>{
+  e.preventDefault();
+  e.stopPropagation();
+  closeDossierInfo();
+});
+$('dossierInfoPop').addEventListener('click', (e)=> e.stopPropagation());
+document.addEventListener('click', (e)=>{
+  if(!dossierInfoAnchor) return;
+  if(e.target.closest && (e.target.closest('#dossierInfoPop') || e.target.closest('.dossier-info-btn'))) return;
+  closeDossierInfo();
+});
+document.addEventListener('keydown', (e)=>{
+  if(e.key !== 'Escape' || !dossierInfoAnchor) return;
+  /* The popover is the innermost layer — Escape dismisses it without also
+     closing the dossier behind it. */
+  closeDossierInfo();
+  if(typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+});
+$('franchiseModalBody').addEventListener('scroll', ()=>{ if(dossierInfoAnchor) closeDossierInfo(); }, {passive:true});
+window.addEventListener('resize', ()=>{ if(dossierInfoAnchor) positionDossierInfo(); });
 $('franchiseScreenshotBtn').addEventListener('click', toggleFranchiseScreenshot);
 $('readerBody').addEventListener('click', (e)=>{
   if(e.target.closest('[data-reader-copy]'))  shareArticle('copy');
