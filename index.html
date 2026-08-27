@@ -2110,59 +2110,17 @@ html[data-studio-historical="true"] #studio{
             <label class="label" for="leagueIdInput">League ID</label>
             <input id="leagueIdInput" class="field" inputmode="numeric" autocomplete="off" placeholder="e.g. 1234567">
           </div>
-          <div>
-            <button id="historyUnlockToggle" type="button" class="pill pill-cyan w-full justify-center" aria-expanded="false" aria-controls="historyUploadPanel">Want to unlock historical seasons &amp; the Record Book?</button>
-            <p class="text-[10.5px] text-[var(--dim)] leading-relaxed mt-2">Current season loads instantly from League ID only. Historical seasons are optional.</p>
-          </div>
-          <span id="seasonYear" hidden="" aria-hidden="true"></span>
-          <span id="weekNum" hidden="" aria-hidden="true"></span>
+          <span id="seasonYear" hidden aria-hidden="true"></span>
+          <span id="weekNum" hidden aria-hidden="true"></span>
           <button id="fetchBtn" class="btn-primary">
             <span id="fetchSpinner" class="spinner hidden"></span>
             <span id="fetchLabel">FETCH LEAGUE DATA</span>
           </button>
-          <p id="fetchStatus" class="text-[11.5px] text-[var(--dim)] leading-relaxed">✓ Connected — 2026 Live + 0 Historical Seasons Loaded — Archive: 2025 failed (NO_SEASONS)</p>
-          <button id="showUrlBtn" class="btn-ghost">SHOW API URL</button>
-          <div id="apiUrlBox" class="hidden">
-            <p class="text-[10px] text-[var(--dim)] leading-relaxed break-all font-mono bg-[#0b0f16] border border-[var(--line)] rounded-lg p-2.5" id="apiUrlDisplay"></p>
-          </div>
-
-          <details id="espnAuthDetails" class="mt-1">
-            <summary class="label" style="cursor:pointer;">Private league? Add ESPN cookies (optional)</summary>
-            <div class="space-y-2 mt-2">
-              <p class="text-[10.5px] text-[var(--dim)] leading-relaxed">
-                Only needed if your league is <span class="text-[var(--off)]">private</span>. While logged in at
-                <span class="font-mono">fantasy.espn.com</span>, open DevTools → Application → Cookies and copy the
-                <span class="font-mono">espn_s2</span> and <span class="font-mono">SWID</span> values.
-                Stored only in this browser's <span class="font-mono">localStorage</span> and sent solely to the
-                same-origin <span class="font-mono">/api/espn</span> relay so it can read your league as you.
-              </p>
-              <div>
-                <label class="label" for="espnS2Input">espn_s2</label>
-                <input id="espnS2Input" class="field" type="password" autocomplete="off" spellcheck="false" placeholder="AEB…long value">
-              </div>
-              <div>
-                <label class="label" for="espnSwidInput">SWID</label>
-                <input id="espnSwidInput" class="field" type="password" autocomplete="off" spellcheck="false" placeholder="{XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}">
-              </div>
-              <p id="espnAuthStatus" class="text-[11px] text-[var(--dim)] leading-relaxed"></p>
-            </div>
-          </details>
+          <p id="fetchStatus" class="text-[11.5px] text-[var(--dim)] leading-relaxed">Enter your ESPN League ID to load the live 2026 season.</p>
+          <button id="historyUnlockToggle" type="button" class="pill pill-cyan w-full justify-center" aria-expanded="false" aria-controls="historyUploadPanel">OPTIONAL · LOAD ARCHIVE JSON</button>
+          <p class="text-[10.5px] text-[var(--dim)] leading-relaxed">Historical seasons are optional and only needed for the full Record Book archive.</p>
         </div>
       </div>
-
-      <!-- AI NEWS DESK -->
-      <div class="card p-4">
-        <div class="section-head"><span class="bar" style="background:var(--cyan)"></span><h2>AI News Desk</h2></div>
-        <p class="text-[11.5px] text-[var(--dim)] leading-relaxed mb-3">
-          Current-season stories can be rewritten by <span class="font-mono text-[var(--off)]">gpt-4o-mini</span> through the secure backend proxy.
-          Historical seasons always bypass AI and use the instant deterministic desk. Successful AI stories are cached once per league, season, week and story.
-        </p>
-<div class="pill pill-green w-full justify-center" role="status">● Backend AI Connected</div>
-        <p class="text-[10.5px] text-[var(--dim)] leading-relaxed mt-2">OpenAI credentials are configured only on the server through <span class="font-mono">OPENAI_API_KEY</span>. The browser never stores or receives the secret.</p>
-        <p id="openaiStatus" class="text-[11.5px] text-[var(--dim)] leading-relaxed mt-2"><span style="color:var(--gold)">FALLBACK READY</span> · Backend AI is unavailable; current-season news uses the deterministic no-replacement engine.</p>
-      </div>
-
-      
 
       <!-- HISTORICAL ARCHIVE / RECORD BOOK -->
       <div id="historyUploadPanel" class="card p-4 hidden">
@@ -2183,62 +2141,6 @@ html[data-studio-historical="true"] #studio{
           <button id="parseJsonBtn" class="btn-ghost mt-2.5">PARSE PASTED JSON</button>
         </div>
         <p id="jsonStatus" class="text-[11.5px] text-[var(--dim)] leading-relaxed mt-2">✓ Loaded from 57155288.json: 8 seasons, 687 matchups, 16 managers.</p>
-      </div>
-
-      <!-- BROADCAST AUDIO -->
-      <div class="card p-4">
-        <div class="section-head"><span class="bar" style="background:var(--cyan)"></span><h2>Broadcast Audio</h2></div>
-        <p class="text-[11.5px] text-[var(--dim)] leading-relaxed mb-3">
-          Controls the Studio Show: how the two hosts are voiced, plus the sound design under them.
-        </p>
-
-        <label class="label">Host Voice Source</label>
-        <div class="seg-pick" id="audModePick">
-          <button data-mode="auto" data-on="true">Auto</button>
-          <button data-mode="device" data-on="false">Device</button>
-          <button data-mode="cc" data-on="false">Captions</button>
-        </div>
-        <p class="text-[10.5px] text-[var(--dim)] leading-relaxed mt-2">
-          <b class="text-[var(--off)]">Auto</b> uses the secure ElevenLabs backend and falls back to the device voice.
-          <b class="text-[var(--off)]">Captions</b> runs the show silently on a timed read.
-        </p>
-
-        <div class="mt-3 space-y-0">
-          <div class="aud-row">
-            <div class="lab"><b>Sound effects</b><span>Segment whoosh, buzzer and the breaking-news alert tone.</span></div>
-            <button class="sw" id="audSfx" data-on="true" role="switch" aria-checked="true" aria-label="Sound effects"></button>
-          </div>
-          <div class="aud-row">
-            <div class="lab"><b>Studio ambience</b><span>Low bed and pulse under the desk. Ducks while a host is talking.</span></div>
-            <button class="sw" id="audBed" data-on="true" role="switch" aria-checked="true" aria-label="Studio ambience"></button>
-          </div>
-        </div>
-
-        <div class="mt-4 pt-3" style="border-top:1px solid var(--line)">
-          <div class="kicker text-[var(--gold)] mb-2">ElevenLabs · Secure Backend</div>
-          <p class="text-[11px] text-[var(--dim)] leading-relaxed mb-3">
-            Studio Show voices use <span class="font-mono text-[var(--off)]">eleven_flash_v2_5</span> through the secure backend proxy.
-            The ElevenLabs API key stays server-side in <span class="font-mono text-[var(--off)]">ELEVENLABS_API_KEY</span> and is never exposed to the browser.
-          </p>
-<div class="pill pill-green w-full justify-center" role="status">● Backend AI Connected</div>
-          <p class="text-[10.5px] text-[var(--dim)] leading-relaxed mt-3">Anchor and analyst voices are locked to the application defaults; no speaker IDs or API credentials are editable in the browser.</p>
-          <button id="elevenTest" class="btn-ghost mt-3">
-            <span id="elevenSpinner" class="spinner hidden"></span>
-            <span id="elevenTestLabel">TEST BOTH VOICES</span>
-          </button>
-          <p id="elevenStatus" class="text-[11.5px] text-[var(--dim)] leading-relaxed mt-2"></p>
-        </div>
-      </div>
-
-      <!-- ADD TO HOME SCREEN -->
-      <div class="card p-4">
-        <div class="section-head"><span class="bar" style="background:var(--green)"></span><h2>Install</h2></div>
-        <p class="text-[11.5px] text-[var(--dim)] leading-relaxed">
-          <b class="text-[var(--off)]">iPhone:</b> Share → Add to Home Screen.<br>
-          <b class="text-[var(--off)]">Android:</b> ⋮ menu → Add to Home screen.<br>
-          It launches full-screen with no browser bars, and your League ID stays saved on this device.
-        </p>
-        <button id="resetBtn" class="btn-ghost mt-3" style="color:var(--red); border-color:rgba(255,45,85,.35);">CLEAR SAVED DATA</button>
       </div>
 
       <div class="text-center py-2">
@@ -14356,10 +14258,14 @@ function buildEspnUrl(){
 
 function showHistoryBanner(text){
   const el = $('historyBanner');
+  if(!el) return;
   el.textContent = text;
   el.classList.remove('hidden');
 }
-function hideHistoryBanner(){ $('historyBanner').classList.add('hidden'); }
+function hideHistoryBanner(){
+  const el = $('historyBanner');
+  if(el) el.classList.add('hidden');
+}
 
 /* Shared by the fetch button, the paste box, and the .json upload: run the
    aggregator over the parsed seasons, store it, and report what landed. */
@@ -14446,7 +14352,7 @@ async function fetchLeagueData(options){
   const silent = !!opts.silent;
   const navigate = opts.navigate !== false;
   const league = String(opts.leagueId || $('leagueIdInput').value || '').trim();
-  const currentYear = uiActiveSeasonYear();
+  const currentYear = 2026;
   const liveUrl = buildEspnUrlForYear(league, currentYear, null);
 
   if(!league || !liveUrl){
@@ -14457,25 +14363,75 @@ async function fetchLeagueData(options){
   $('leagueIdInput').value = league;
   setFetchLoading(true);
   hideHistoryBanner();
-  $('fetchStatus').textContent = silent ? 'Restoring current season…' : 'Fetching current season…';
-  $('historyStatus').textContent = LeagueData.hasHistory()
-    ? $('historyStatus').textContent
-    : 'Historical archive is optional — upload one JSON export to unlock the full Record Book.';
+  $('fetchStatus').textContent = silent ? 'Restoring live 2026 season…' : 'Fetching live 2026 season…';
 
   try{
-    const raw = await fetchLeagueDataViaProxies(liveUrl);
-    const liveData = Array.isArray(raw) ? raw[raw.length - 1] : raw;
-    if(!liveData || !Array.isArray(liveData.teams) || !liveData.teams.length){
-      throw new Error('NO_LIVE_LEAGUE_DATA');
+    const proxyUrl = '/api/espn?url=' + encodeURIComponent(liveUrl);
+    const headers = { 'Accept':'application/json' };
+    try{
+      if(typeof espnCredHeaders === 'function') Object.assign(headers, espnCredHeaders() || {});
+    }catch(e){}
+
+    const response = await fetch(proxyUrl, {
+      method:'GET',
+      headers,
+      cache:'no-store',
+    });
+    const text = await response.text();
+    if(!response.ok){
+      const detail = String(text || '').replace(/\s+/g, ' ').slice(0, 180);
+      throw new Error(`HTTP ${response.status}${detail ? ': ' + detail : ''}`);
     }
+
+    let parsed;
+    try{
+      parsed = JSON.parse(text);
+    }catch(err){
+      throw new Error('INVALID_ESPN_JSON');
+    }
+
+    const unwrap = (value)=>{
+      let v = value;
+      for(let i=0; i<4; i++){
+        if(typeof v === 'string'){
+          try{ v = JSON.parse(v); continue; }catch(e){ break; }
+        }
+        if(v && typeof v === 'object' && Object.prototype.hasOwnProperty.call(v, 'contents')){
+          v = v.contents;
+          continue;
+        }
+        if(v && typeof v === 'object' && !Array.isArray(v.teams) && v.data && typeof v.data === 'object'){
+          v = v.data;
+          continue;
+        }
+        break;
+      }
+      return v;
+    };
+
+    const root = unwrap(parsed);
+    const candidates = [];
+    const addCandidate = (value)=>{
+      const v = unwrap(value);
+      if(v && typeof v === 'object'){
+        candidates.push(v);
+        if(v.league && typeof v.league === 'object') candidates.push(unwrap(v.league));
+      }
+    };
+    if(Array.isArray(root)) root.forEach(addCandidate); else addCandidate(root);
+
+    const liveData = candidates.find(v=>
+      Array.isArray(v.teams) && v.teams.length && Number(v.seasonId || v.season || currentYear) === currentYear
+    ) || candidates.find(v=> Array.isArray(v.teams) && v.teams.length);
+
+    if(!liveData) throw new Error('NO_LIVE_LEAGUE_DATA');
 
     const liveInfo = applyLiveLeaguePayload(league, liveData, currentYear);
     setConn('live');
 
-    // Keep an uploaded archive intact, but never fetch historical ESPN routes
-    // from this instant League-ID path.
+    // Preserve a manually supplied archive, but keep live 2026 authoritative.
     const uploadedArchive = Array.isArray(window._franchiseYearsData)
-      ? window._franchiseYearsData.slice()
+      ? window._franchiseYearsData.filter(row=> Number(row && row.year) !== currentYear)
       : [];
     let historySeed = uploadedArchive;
     if(!historySeed.length){
@@ -14491,33 +14447,32 @@ async function fetchLeagueData(options){
       renderWeekScrubbers();
     }
 
-    $('fetchStatus').textContent = `✓ Current season connected — ${liveInfo.activeSeason} · ${liveData.teams.length} teams`;
-    if(!uploadedArchive.length){
-      $('historyStatus').textContent = 'Current season is ready. Historical seasons remain optional — upload one JSON export to unlock the full Record Book.';
+    $('fetchStatus').textContent = `✓ 2026 connected · ${liveData.teams.length} teams · Week ${liveInfo.activeWeek}`;
+    if(!uploadedArchive.length && $('historyStatus')){
+      $('historyStatus').textContent = 'Current season is ready. Upload an archive JSON only if you want historical Record Book seasons.';
     }
 
     try{ localStorage.setItem(SAVED_LEAGUE_ID_KEY, league); }catch(e){}
     savePrefs();
-    refreshHistoryUrlLink();
     refreshOpenAIStatus();
 
     if(navigate) setScreen('home');
 
-    // Explicit renderer warm-up requested by the two-path setup flow.
     safeRun('desk', renderDesk, ()=> renderScreenFallback('home'));
     safeRun('matchups', renderMatchups, ()=> renderScreenFallback('matchups'));
     safeRun('recordbook', renderRecordBook, ()=> renderScreenFallback('recordbook'));
     safeRun('news', renderNews, ()=> renderScreenFallback('news'));
 
-    if(!silent) toast(`Current season connected · ${liveInfo.activeSeason}`);
+    if(!silent) toast(`2026 league connected · Week ${liveInfo.activeWeek}`);
     return true;
   }catch(err){
-    console.error(err);
+    console.error('[ESPN live fetch]', err);
     setConn('error');
-    const auth = /\bHTTP 40[13]\b/.test(String(err && (err.message || err)));
+    const message = String(err && (err.message || err) || '');
+    const auth = /\bHTTP 40[13]\b/.test(message);
     $('fetchStatus').textContent = auth
-      ? 'ESPN denied the current-season request (401/403). Confirm the league is public or configure ESPN authentication.'
-      : 'The current season could not be loaded. Check the League ID and try again.';
+      ? 'ESPN denied the 2026 request (401/403). Confirm the server-side ESPN relay credentials and try again.'
+      : 'The live 2026 season could not be loaded. Check the League ID and try again.';
     return false;
   }finally{
     setFetchLoading(false);
@@ -14525,18 +14480,13 @@ async function fetchLeagueData(options){
 }
 $('fetchBtn').addEventListener('click', ()=> fetchLeagueData());
 
-/* ---- API URL display ---- */
-$('showUrlBtn').addEventListener('click', ()=>{
-  const url = buildEspnUrl();
-  const box = $('apiUrlBox');
-  $('apiUrlDisplay').textContent = url || 'Enter a League ID to build the URL.';
-  box.classList.toggle('hidden');
-});
+
 
 /* Keeps the history API link pointed at the current League ID. */
 function refreshHistoryUrlLink(){
   const url = buildLeagueHistoryUrl($('leagueIdInput').value.trim());
   const a = $('historyUrlLink');
+  if(!a) return;
   if(url){
     a.href = url;
     a.textContent = url;
@@ -14768,44 +14718,7 @@ if($('espnSwidInput')){
   });
 }
 
-$('resetBtn').addEventListener('click', ()=>{
-  try{
-    localStorage.removeItem(STORE_KEY);
-    localStorage.removeItem(SAVED_LEAGUE_ID_KEY);
-    localStorage.removeItem(ACTIVE_TEAM_KEY);
-    localStorage.removeItem(PROFILE_ROLE_KEY);
-    localStorage.removeItem(LEGACY_PROFILE_ROLE_KEY);
-    localStorage.removeItem('fsn_active_season');
-    localStorage.removeItem('fsn_active_week');
-    localStorage.removeItem(OPENAI_KEY_STORE);
-    localStorage.removeItem('fsn.espn.s2.v1');
-    localStorage.removeItem('fsn.espn.swid.v1');
-    for(let i=localStorage.length-1;i>=0;i--){
-      const k = localStorage.key(i);
-      if(k && (k.indexOf('fsn_ai_') === 0 || k.indexOf('fsn_ai_fail_') === 0)) localStorage.removeItem(k);
-    }
-  }catch(e){}
-  ui.sourceMode = 'none';
-  ui.weekCacheKey = ''; ui.weekDataCache = {}; ui.weekFetchSeq += 1; ui.weekLoading = null; ui.currentWeek = null;
-  ui.seasonFetchSeq += 1; ui.seasonLoading = null;
-  LeagueData.setEspnData(null);
-  LeagueData.setLeagueHistory(null);
-  window._franchiseYearsData = null;
-  ui.week = null; ui.rivalA = ''; ui.rivalB = '';
-  $('leagueIdInput').value = ''; $('seasonYear').value = String(uiActiveSeasonYear()); $('weekNum').value = '';
-  if($('espnS2Input')) $('espnS2Input').value = '';
-  if($('espnSwidInput')) $('espnSwidInput').value = '';
-  refreshOpenAIStatus();
-  refreshEspnAuthStatus();
-  $('fetchStatus').textContent = '';
-  $('historyStatus').textContent = '';
-  $('jsonStatus').textContent = '';
-  hideHistoryBanner();
-  setConn('none');
-  refreshHistoryUrlLink();
-  renderAll();
-  toast('Cleared.');
-});
+
 
 /* ============================================================
    NEWS DESK — PRESENTATION
