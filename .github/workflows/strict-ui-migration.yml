@@ -1,0 +1,175 @@
+name: Strict UI configuration migration
+
+on:
+  push:
+    branches:
+      - strict-ui-config
+    paths:
+      - .github/workflows/strict-ui-migration.yml
+
+permissions:
+  contents: write
+
+jobs:
+  migrate-and-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: strict-ui-config
+          fetch-depth: 0
+
+      - name: Apply strict UI/config cleanup
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('index.html')
+          html = path.read_text()
+          original = html
+
+          # Purge legacy AI-key DOM shims entirely. Backend env vars are the only key source.
+          html = re.sub(r'\s*<input id="openaiKey"[^>]*>\s*', '\n', html)
+          html = re.sub(r'\s*<button id="openaiReveal"[^>]*>.*?</button>\s*', '\n', html, flags=re.S)
+          html = re.sub(r'\s*<input id="elevenKey"[^>]*>\s*', '\n', html)
+          html = re.sub(r'\s*<button id="elevenReveal"[^>]*>.*?</button>\s*', '\n', html, flags=re.S)
+
+          # Remove editable speaker/voice IDs from Setup; the client uses fixed defaults and backend TTS.
+          html = re.sub(
+              r'\s*<div class="grid grid-cols-2 gap-3 mt-3">\s*<div>\s*<label class="label" for="elevenVoiceHost">.*?</div>\s*<div>\s*<label class="label" for="elevenVoiceAnalyst">.*?</div>\s*</div>',
+              '\n          <p class="text-[10.5px] text-[var(--dim)] leading-relaxed mt-3">Anchor and analyst voices are locked to the application defaults; no speaker IDs or API credentials are editable in the browser.</p>',
+              html,
+              flags=re.S,
+          )
+
+          # Replace the stale browser-key warning with the actual secure backend contract.
+          html = re.sub(
+              r'<p class="text-\[10\.5px\] text-\[var\(--dim\)\] leading-relaxed mt-2">\s*Stored only in <span class="font-mono">localStorage</span>.*?</p>',
+              '<p class="text-[10.5px] text-[var(--dim)] leading-relaxed mt-2">OpenAI credentials are configured only on the server through <span class="font-mono">OPENAI_API_KEY</span>. The browser never stores or receives the secret.</p>',
+              html,
+              flags=re.S,
+          )
+
+          # Remove the contradictory legacy auto-history card. History is now explicitly optional/upload-only.
+          html = re.sub(
+              r'\s*<!-- ALL-TIME HISTORY[^>]*-->.*?(?=\s*<!-- HISTORICAL ARCHIVE / RECORD BOOK -->)',
+              '\n\n      ',
+              html,
+              flags=re.S,
+          )
+
+          # Mobile-friendly native picker remains visible beneath the dropzone; paste is always available.
+          html = html.replace(
+              '<div class="font-display text-[15px] tracking-wide">DROP .JSON</div>\n          <div class="text-[11px] text-[var(--dim)] mt-1.5">or tap to browse files</div>',
+              '<div class="font-display text-[15px] tracking-wide">HISTORICAL JSON</div>\n          <div class="text-[11px] text-[var(--dim)] mt-1.5">Tap to choose a file · drag & drop on desktop</div>'
+          )
+          html = re.sub(
+              r'<input id="fileInput" type="file"[^>]*>',
+              '<input id="fileInput" class="field mt-3" type="file" accept=".json,application/json,text/plain" aria-label="Choose historical JSON archive" style="font-size:12px; padding:10px 12px;">',
+              html,
+          )
+          html = html.replace(
+              'ESPN locks historical endpoints behind authentication. To unlock past seasons, rivalries and all-time records, upload one JSON export containing the league\'s historical seasons. The file is read locally in your browser and is never sent to OpenAI or ElevenLabs.',
+              'Historical seasons are optional. ESPN historical access can require authentication, so the most reliable path is a one-time JSON export for the league. On mobile, use the native file picker below or paste JSON instead. If no archive is loaded, the current-season app continues normally. The file is read locally and is never sent to OpenAI or ElevenLabs.'
+          )
+
+          # Remove all DOM listeners/state writes for deleted OpenAI key controls.
+          html = re.sub(r"\n?\$\('openaiKey'\)\.addEventListener\('input', \(\)=>\{.*?\n\}\);", '', html, flags=re.S)
+          html = re.sub(r"\n?\$\('openaiReveal'\)\.addEventListener\('click', \(\)=>\{.*?\n\}\);", '', html, flags=re.S)
+          html = re.sub(r"\s*try\{ localStorage\.removeItem\(OPENAI_KEY_STORE\); \$\('openaiKey'\)\.value = 'backend'; \}catch\(e\)\{ \$\('openaiKey'\)\.value = 'backend'; \}\s*", '\n  try{ localStorage.removeItem(OPENAI_KEY_STORE); }catch(e){}\n', html)
+          html = html.replace("  $('openaiKey').value = 'backend';\n", '')
+
+          # Remove Setup listeners and reads for deleted ElevenLabs key/speaker controls.
+          html = re.sub(r"\n?\s*\$\('elevenKey'\)\.addEventListener\('input',.*?\n\s*\}\);", '', html, flags=re.S)
+          html = re.sub(r"\n?\s*\$\('elevenReveal'\)\.addEventListener\('click',.*?\n\s*\}\);", '', html, flags=re.S)
+          html = re.sub(r"\n?\s*\$\('elevenVoiceHost'\)\.addEventListener\('input',.*?\n\s*\}\);", '', html, flags=re.S)
+          html = re.sub(r"\n?\s*\$\('elevenVoiceAnalyst'\)\.addEventListener\('input',.*?\n\s*\}\);", '', html, flags=re.S)
+          html = re.sub(r"\n?\s*\$\('elevenKey'\)\.value\s*=.*?;", '', html)
+          html = re.sub(r"\n?\s*\$\('elevenVoiceHost'\)\.value\s*=.*?;", '', html)
+          html = re.sub(r"\n?\s*\$\('elevenVoiceAnalyst'\)\.value\s*=.*?;", '', html)
+
+          # Audio preferences may keep mode/SFX/bed, but never persist secrets or speaker overrides.
+          html = re.sub(r"\n\s*key:\s*'',", '', html)
+          html = re.sub(r"\n\s*voiceHost:\s*'',", '', html)
+          html = re.sub(r"\n\s*voiceAnalyst:\s*'',", '', html)
+          html = re.sub(r"\n\s*prefs\.key\s*=.*?;", '', html)
+          html = re.sub(r"\n\s*prefs\.voiceHost\s*=.*?;", '', html)
+          html = re.sub(r"\n\s*prefs\.voiceAnalyst\s*=.*?;", '', html)
+          html = html.replace("  const v = speaker === 'analyst' ? prefs.voiceAnalyst : prefs.voiceHost;\n  return (v && v.trim()) || DEFAULT_VOICES[speaker] || DEFAULT_VOICES.host;", "  return DEFAULT_VOICES[speaker] || DEFAULT_VOICES.host;")
+          html = re.sub(r"function elevenReady\(\)\{[^}]*\}", "function elevenReady(){ return prefs.mode !== 'cc' && prefs.mode !== 'device'; }", html)
+          html = re.sub(r"function hasKey\(\)\{[^}]*\}", "function hasKey(){ return true; }", html)
+          html = re.sub(r"\n\s*const key = \(prefs\.key \|\| ''\)\.trim\(\);\n\s*if\(!key\) return Promise\.reject\(new Error\('No ElevenLabs key'\)\);", '', html)
+          html = html.replace("Object.assign(prefs, { mode:'auto', sfx:true, bed:true, key:'', voiceHost:'', voiceAnalyst:'' });", "Object.assign(prefs, { mode:'auto', sfx:true, bed:true });")
+
+          # Make archive file handling explicitly non-blocking and mobile-safe.
+          html = html.replace(
+              "function handleHistoryFile(file){\n  if(!file) return;",
+              "function handleHistoryFile(file){\n  if(!file){ $('jsonStatus').textContent = 'No file selected. Current-season features remain available.'; return; }\n  if(Number(file.size || 0) > 25 * 1024 * 1024){ $('jsonStatus').textContent = 'That archive is larger than 25 MB. Paste a smaller JSON export instead; current-season features are unaffected.'; return; }"
+          )
+          html = html.replace(
+              "  reader.onerror = ()=>{ $('jsonStatus').textContent = `Could not read ${file.name}. Try re-saving the file.`; };\n  reader.readAsText(file);",
+              "  reader.onerror = ()=>{ $('jsonStatus').textContent = `Could not read ${file.name}. You can paste the JSON instead; current-season features are unaffected.`; };\n  try{ reader.readAsText(file); }catch(err){ $('jsonStatus').textContent = 'This browser could not open that file. Paste the JSON instead; current-season features are unaffected.'; }"
+          )
+
+          # The visible native file input owns mobile taps; keep the dropzone as an additional desktop/touch target.
+          html = html.replace("dz.addEventListener('click', ()=> $('fileInput').click());", "dz.addEventListener('click', ()=>{ try{ $('fileInput').click(); }catch(e){ $('jsonStatus').textContent = 'Use the file picker below or paste JSON.'; } });")
+
+          if html == original:
+              raise SystemExit('migration made no changes')
+          path.write_text(html)
+          PY
+
+      - name: Validate backend and inline JavaScript
+        run: |
+          node --check api/ai-news.js
+          node --check api/tts.js
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          html = Path('index.html').read_text()
+          blocks = re.findall(r'<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>', html, flags=re.S|re.I)
+          if not blocks:
+              raise SystemExit('no inline scripts found')
+          for i, block in enumerate(blocks):
+              Path(f'/tmp/fsn-inline-{i}.js').write_text(block)
+          PY
+          for f in /tmp/fsn-inline-*.js; do node --check "$f"; done
+
+      - name: Enforce strict deployment invariants
+        run: |
+          ! grep -Eqi 'chatbot|chat bot|ai assistant|assistant panel' index.html
+          ! grep -qi 'vault' index.html
+          ! grep -q 'id="openaiKey"' index.html
+          ! grep -q 'id="openaiReveal"' index.html
+          ! grep -q 'id="elevenKey"' index.html
+          ! grep -q 'id="elevenReveal"' index.html
+          ! grep -q 'id="elevenVoiceHost"' index.html
+          ! grep -q 'id="elevenVoiceAnalyst"' index.html
+          ! grep -q "$('openaiKey')" index.html
+          ! grep -q "$('elevenKey')" index.html
+          ! grep -q "$('elevenVoiceHost')" index.html
+          ! grep -q "$('elevenVoiceAnalyst')" index.html
+          ! grep -q 'api.openai.com/v1/chat/completions' index.html
+          ! grep -q 'api.elevenlabs.io/v1/text-to-speech' index.html
+          grep -q 'Backend AI Connected' index.html
+          grep -q "fetch('/api/ai-news'" index.html
+          grep -q "fetch('/api/tts'" index.html
+          grep -q 'function renderRecordBook' index.html
+          grep -q 'function renderDesk' index.html
+          grep -q 'Historical seasons are optional' index.html
+          grep -q 'current-season features are unaffected' index.html
+
+      - name: Commit migrated application
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git commit -m "Enforce backend-only AI configuration and mobile archive flow"
+          git push origin HEAD:strict-ui-config
+
+      - name: Remove migration workflow
+        run: |
+          git rm .github/workflows/strict-ui-migration.yml
+          git commit -m "Complete strict UI migration"
+          git push origin HEAD:strict-ui-config
