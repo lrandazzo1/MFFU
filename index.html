@@ -14469,6 +14469,15 @@ async function fetchLeagueData(options){
     : 'Fetching live season + consolidated league history…';
   $('historyStatus').textContent = 'Loading league history…';
 
+  /* A 401/403 from ESPN means the league is private — the proxy reads ESPN
+     anonymously, so a private league can never hydrate. Track it across both
+     branches so the failure message can name the real cause instead of a
+     generic "could not be loaded". A 404 (season not renewed) is NOT auth. */
+  let sawAuthError = false;
+  const noteAuthError = (err)=>{
+    if(err && /\bHTTP 40[13]\b/.test(String(err.message || err))) sawAuthError = true;
+  };
+
   /* DUAL-ROUTE INGESTION — both branches run together and each degrades
      gracefully. The live branch resolves to null (never throws) so a 404 for a
      season the league has not renewed yet cannot sink the whole load; the
@@ -14480,11 +14489,13 @@ async function fetchLeagueData(options){
       return (single && Array.isArray(single.teams) && single.teams.length) ? single : null;
     })
     .catch(err=>{
-      console.warn('[FSN] Live season request failed (likely not yet renewed for ' + currentYear + '); using latest historical season as active.', err);
+      noteAuthError(err);
+      console.warn('[FSN] Live season request failed (likely not yet renewed for ' + currentYear + ', or a private league); using latest historical season as active.', err);
       return null;
     });
 
   const historyTask = fetchLeagueHistoryArchive(league).catch(err=>{
+    noteAuthError(err);
     console.warn('[FSN] League history archive fetch failed entirely.', err);
     return { yearsData:[], skipped:[], route:'none', error:err };
   });
@@ -14578,7 +14589,11 @@ async function fetchLeagueData(options){
   }catch(err){
     console.error(err);
     setConn('error');
-    $('fetchStatus').textContent = 'The league could not be loaded through the ESPN data route. Check the League ID or use the JSON fallback below.';
+    if(sawAuthError){
+      $('fetchStatus').textContent = 'ESPN denied access (401/403) — this league is PRIVATE. Set the league visibility to public in ESPN (League → Settings → Basic Settings), or use the JSON fallback below.';
+    } else {
+      $('fetchStatus').textContent = 'The league could not be loaded through the ESPN data route. Check the League ID or use the JSON fallback below.';
+    }
     if(!LeagueData.hasHistory()) $('historyStatus').textContent = 'League history hydration did not complete.';
     return false;
   }finally{
