@@ -1,0 +1,46 @@
+name: Apply Record Book migration
+
+on:
+  push:
+    branches:
+      - record-book-secure-ai
+    paths:
+      - .github/workflows/apply-record-book-migration.yml
+      - scripts/migrate_record_book.py
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: record-book-secure-ai
+          fetch-depth: 0
+
+      - name: Apply targeted index.html migration
+        run: python scripts/migrate_record_book.py
+
+      - name: Validate JavaScript proxy references and naming
+        run: |
+          ! grep -q "https://api.openai.com/v1/chat/completions" index.html
+          ! grep -q "https://api.elevenlabs.io/v1/text-to-speech" index.html
+          ! grep -q "renderVault" index.html
+          grep -q "renderRecordBook" index.html
+          grep -q "fetch('/api/ai-news'" index.html
+          grep -q "fetch('/api/tts'" index.html
+          grep -q "Want to unlock historical seasons &amp; the Record Book?" index.html
+
+      - name: Remove one-time migration files
+        run: git rm .github/workflows/apply-record-book-migration.yml scripts/migrate_record_book.py
+
+      - name: Commit migrated application
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git commit -m "Implement Record Book setup and secure AI proxies"
+          git push origin HEAD:record-book-secure-ai
