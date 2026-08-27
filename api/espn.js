@@ -61,20 +61,29 @@ module.exports = async function handler(req, res) {
     return res.status(400).json({ error: 'Unsupported ESPN host' });
   }
 
-  // Optional ESPN auth for PRIVATE leagues. The front-end forwards the member's
-  // espn_s2 + SWID cookies (from their own browser) as request headers; replay
-  // them to ESPN as a Cookie header so the anonymous relay can read as the
-  // member. Absent headers => anonymous read, which is all a public league needs.
-  const espnS2 = req.headers['x-espn-s2'];
-  const espnSwidRaw = req.headers['x-espn-swid'];
+  // ESPN auth. ESPN's read API returns AUTH_LEAGUE_NOT_VISIBLE to fully
+  // anonymous requests even for leagues flagged "viewable to public", so the
+  // relay must carry an ESPN identity. Two sources, in precedence order:
+  //   1. Per-request headers (x-espn-s2 / x-espn-swid) — a self-hoster or a
+  //      member supplying their own cookies from the browser.
+  //   2. Server-side env vars ESPN_S2 / ESPN_SWID — the app owner's one-time
+  //      credentials, used for EVERY visitor so end users submit nothing. This
+  //      is what makes a deployed, downloadable app "just work" with zero
+  //      per-user friction.
+  const headerS2 = req.headers['x-espn-s2'];
+  const headerSwid = req.headers['x-espn-swid'];
+  const espnS2 = (typeof headerS2 === 'string' && headerS2.trim())
+    ? headerS2.trim()
+    : String(process.env.ESPN_S2 || '').trim();
+  let espnSwid = (typeof headerSwid === 'string' && headerSwid.trim())
+    ? headerSwid.trim()
+    : String(process.env.ESPN_SWID || '').trim();
+
   const cookieParts = [];
-  if (typeof espnS2 === 'string' && espnS2.trim()) {
-    cookieParts.push('espn_s2=' + espnS2.trim());
-  }
-  if (typeof espnSwidRaw === 'string' && espnSwidRaw.trim()) {
-    let swid = espnSwidRaw.trim();
-    if (swid[0] !== '{') swid = '{' + swid.replace(/^\{|\}$/g, '') + '}';
-    cookieParts.push('SWID=' + swid);
+  if (espnS2) cookieParts.push('espn_s2=' + espnS2);
+  if (espnSwid) {
+    if (espnSwid[0] !== '{') espnSwid = '{' + espnSwid.replace(/^\{|\}$/g, '') + '}';
+    cookieParts.push('SWID=' + espnSwid);
   }
 
   const upstreamHeaders = {
