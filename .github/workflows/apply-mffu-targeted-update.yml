@@ -23,6 +23,18 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Make regex replacements literal-safe
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('scripts/apply_mffu_targeted_update.py')
+          text = p.read_text(encoding='utf-8')
+          old = 'updated, count = re.subn(pattern, replacement, text, count=1, flags=flags)'
+          new = 'updated, count = re.subn(pattern, lambda _match: replacement, text, count=1, flags=flags)'
+          if old not in text:
+            raise SystemExit('Expected updater line not found')
+          p.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
       - name: Apply targeted patch
         run: python scripts/apply_mffu_targeted_update.py
       - name: Validate generated files
@@ -34,11 +46,12 @@ jobs:
           assert 'TUESDAY DEBRIEF' in text
           assert 'PRIMETIME PREVIEW' in text
           assert 'GAMEDAY COUNTDOWN' in text
-          assert "serverlessEspnUrl" in text
-          assert "studioHistoricalView" in text
+          assert 'serverlessEspnUrl' in text
+          assert 'studioHistoricalView' in text
           assert Path('api/espn.js').exists()
           print('Generated patch markers validated')
           PY
+          node --check api/espn.js
       - name: Commit generated update
         run: |
           git config user.name "github-actions[bot]"
