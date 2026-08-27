@@ -2121,6 +2121,28 @@ html[data-studio-historical="true"] #studio{
           <div id="apiUrlBox" class="hidden">
             <p class="text-[10px] text-[var(--dim)] leading-relaxed break-all font-mono bg-[#0b0f16] border border-[var(--line)] rounded-lg p-2.5" id="apiUrlDisplay"></p>
           </div>
+
+          <details id="espnAuthDetails" class="mt-1">
+            <summary class="label" style="cursor:pointer;">Private league? Add ESPN cookies (optional)</summary>
+            <div class="space-y-2 mt-2">
+              <p class="text-[10.5px] text-[var(--dim)] leading-relaxed">
+                Only needed if your league is <span class="text-[var(--off)]">private</span>. While logged in at
+                <span class="font-mono">fantasy.espn.com</span>, open DevTools → Application → Cookies and copy the
+                <span class="font-mono">espn_s2</span> and <span class="font-mono">SWID</span> values.
+                Stored only in this browser's <span class="font-mono">localStorage</span> and sent solely to the
+                same-origin <span class="font-mono">/api/espn</span> relay so it can read your league as you.
+              </p>
+              <div>
+                <label class="label" for="espnS2Input">espn_s2</label>
+                <input id="espnS2Input" class="field" type="password" autocomplete="off" spellcheck="false" placeholder="AEB…long value">
+              </div>
+              <div>
+                <label class="label" for="espnSwidInput">SWID</label>
+                <input id="espnSwidInput" class="field" type="password" autocomplete="off" spellcheck="false" placeholder="{XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}">
+              </div>
+              <p id="espnAuthStatus" class="text-[11px] text-[var(--dim)] leading-relaxed"></p>
+            </div>
+          </details>
         </div>
       </div>
 
@@ -2814,6 +2836,27 @@ function validEspnPayload(rawData){
 /* One fetch seam for every ESPN read. In Vercel/deployed environments the
    same-origin function is authoritative. Local previews may fall back to
    the legacy browser proxy chain when /api is not being served. */
+/* Optional ESPN auth for PRIVATE leagues. Read from localStorage and forwarded
+   only to the same-origin /api/espn relay (never to public CORS proxies, which
+   would leak them). ESPN reads a private league with the espn_s2 + SWID cookies
+   the member's browser holds; the relay replays them so it can read as the member. */
+function getEspnCreds(){
+  let s2 = '', swid = '';
+  try{ s2 = (localStorage.getItem('fsn.espn.s2.v1') || '').trim(); }catch(e){}
+  try{ swid = (localStorage.getItem('fsn.espn.swid.v1') || '').trim(); }catch(e){}
+  // ESPN's SWID cookie is brace-wrapped; tolerate a paste with or without braces.
+  if(swid && swid[0] !== '{') swid = '{' + swid.replace(/^\{|\}$/g, '') + '}';
+  return { s2, swid };
+}
+
+function espnCredHeaders(){
+  const { s2, swid } = getEspnCreds();
+  const headers = { Accept:'application/json,text/plain,*/*' };
+  if(s2)   headers['x-espn-s2']   = s2;
+  if(swid) headers['x-espn-swid'] = swid;
+  return headers;
+}
+
 async function fetchLeagueDataViaProxies(espnUrl){
   let lastErr = null;
   const localPreview = isStaticLocalPreview();
@@ -2821,7 +2864,7 @@ async function fetchLeagueDataViaProxies(espnUrl){
   if(typeof window !== 'undefined' && window.location && window.location.protocol !== 'file:'){
     const apiUrl = serverlessEspnUrl(espnUrl);
     try{
-      const res = await fetch(apiUrl, { headers:{ Accept:'application/json,text/plain,*/*' } });
+      const res = await fetch(apiUrl, { headers: espnCredHeaders() });
       if(!res.ok) throw new Error('HTTP ' + res.status + ' from ' + apiUrl);
       const rawData = parseEspnProxyPayload(await res.text());
       if(validEspnPayload(rawData)) return rawData;
@@ -14757,7 +14800,25 @@ function loadPrefs(){
   $('seasonYear').value = (saved && saved.season) || String(uiActiveSeasonYear());
   $('weekNum').value = (saved && saved.week) || '';
   try{ $('openaiKey').value = localStorage.getItem(OPENAI_KEY_STORE) || ''; }catch(e){ $('openaiKey').value = ''; }
+  try{ if($('espnS2Input'))   $('espnS2Input').value   = localStorage.getItem('fsn.espn.s2.v1')   || ''; }catch(e){}
+  try{ if($('espnSwidInput')) $('espnSwidInput').value = localStorage.getItem('fsn.espn.swid.v1') || ''; }catch(e){}
   refreshOpenAIStatus();
+  refreshEspnAuthStatus();
+}
+
+/* Reflect whether private-league cookies are saved, without ever echoing the
+   secret values back into the page. */
+function refreshEspnAuthStatus(){
+  const el = $('espnAuthStatus');
+  if(!el) return;
+  const { s2, swid } = getEspnCreds();
+  if(s2 && swid){
+    el.innerHTML = '<span style="color:var(--green)">PRIVATE-LEAGUE AUTH SAVED</span> · Fetches read your league using these cookies.';
+  } else if(s2 || swid){
+    el.innerHTML = '<span style="color:var(--gold)">INCOMPLETE</span> · Both espn_s2 and SWID are required for a private league.';
+  } else {
+    el.innerHTML = 'Not set — anonymous reads (public leagues only).';
+  }
 }
 function uiActiveSeasonYear(){
   const now = new Date();
@@ -14812,6 +14873,27 @@ $('leagueIdInput').addEventListener('input', ()=>{
   refreshHistoryUrlLink();
 });
 
+/* Private-league ESPN cookies — persisted locally, never sent anywhere except
+   the same-origin /api/espn relay via espnCredHeaders(). */
+if($('espnS2Input')){
+  $('espnS2Input').addEventListener('input', ()=>{
+    try{
+      const v = $('espnS2Input').value.trim();
+      if(v) localStorage.setItem('fsn.espn.s2.v1', v); else localStorage.removeItem('fsn.espn.s2.v1');
+    }catch(e){}
+    refreshEspnAuthStatus();
+  });
+}
+if($('espnSwidInput')){
+  $('espnSwidInput').addEventListener('input', ()=>{
+    try{
+      const v = $('espnSwidInput').value.trim();
+      if(v) localStorage.setItem('fsn.espn.swid.v1', v); else localStorage.removeItem('fsn.espn.swid.v1');
+    }catch(e){}
+    refreshEspnAuthStatus();
+  });
+}
+
 $('resetBtn').addEventListener('click', ()=>{
   try{
     localStorage.removeItem(STORE_KEY);
@@ -14822,6 +14904,8 @@ $('resetBtn').addEventListener('click', ()=>{
     localStorage.removeItem('fsn_active_season');
     localStorage.removeItem('fsn_active_week');
     localStorage.removeItem(OPENAI_KEY_STORE);
+    localStorage.removeItem('fsn.espn.s2.v1');
+    localStorage.removeItem('fsn.espn.swid.v1');
     for(let i=localStorage.length-1;i>=0;i--){
       const k = localStorage.key(i);
       if(k && (k.indexOf('fsn_ai_') === 0 || k.indexOf('fsn_ai_fail_') === 0)) localStorage.removeItem(k);
@@ -14836,7 +14920,10 @@ $('resetBtn').addEventListener('click', ()=>{
   ui.week = null; ui.rivalA = ''; ui.rivalB = '';
   $('leagueIdInput').value = ''; $('seasonYear').value = String(uiActiveSeasonYear()); $('weekNum').value = '';
   $('openaiKey').value = '';
+  if($('espnS2Input')) $('espnS2Input').value = '';
+  if($('espnSwidInput')) $('espnSwidInput').value = '';
   refreshOpenAIStatus();
+  refreshEspnAuthStatus();
   $('fetchStatus').textContent = '';
   $('historyStatus').textContent = '';
   $('jsonStatus').textContent = '';
