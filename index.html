@@ -593,6 +593,11 @@ body{
 .tag-green{ background:var(--green); color:#04180d; }
 .tag-white{ background:#eef2f8;      color:#0a0d13; }
 .tag-dim  { background:#222a38;      color:var(--off); }
+.tag-community{
+  color:var(--green); background:rgba(57,255,140,.09);
+  border:1px solid rgba(57,255,140,.62);
+  box-shadow:inset 0 0 14px rgba(57,255,140,.08),0 0 12px rgba(57,255,140,.16);
+}
 .tag .dot{
   width:5px; height:5px; border-radius:50%; background:currentColor;
   animation:pulseDot 1.4s ease-in-out infinite;
@@ -824,6 +829,95 @@ body{
 }
 .field-select:focus{ border-color:var(--cyan); box-shadow:0 0 0 3px rgba(0,224,255,.14); }
 
+/* ---------- COMMUNITY STORY COMPOSER ---------- */
+.write-story-btn{
+  flex:none; min-height:36px; padding:8px 13px; border-radius:9px;
+  display:inline-flex; align-items:center; justify-content:center; gap:7px;
+  background:linear-gradient(105deg,var(--red),#ff7139); color:#fff;
+  border:1px solid rgba(255,255,255,.28); box-shadow:0 7px 24px -9px rgba(255,45,85,.95);
+  font-family:'Anton',Impact,sans-serif; font-size:11px; letter-spacing:.09em;
+  white-space:nowrap; position:relative; z-index:46;
+}
+.write-story-btn:active{ transform:scale(.97); }
+.write-story-btn:focus-visible{ outline:2px solid #fff; outline-offset:2px; }
+
+#storyComposer{
+  position:fixed; inset:0; z-index:180; display:none; align-items:center; justify-content:center;
+  padding:18px; background:rgba(3,5,9,.84); backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px);
+}
+#storyComposer[data-open="true"]{ display:flex; }
+.story-compose-shell{
+  width:min(720px,100%); max-height:min(920px,calc(100dvh - 36px));
+  display:flex; flex-direction:column; overflow:hidden; border-radius:20px;
+  border:1px solid rgba(0,224,255,.34);
+  background:radial-gradient(95% 65% at 0 0,rgba(0,224,255,.10),transparent 60%),linear-gradient(155deg,#151b26,#090d14 72%);
+  box-shadow:0 28px 90px -26px #000,0 0 34px rgba(0,224,255,.10);
+}
+.story-compose-bar{
+  flex:none; min-height:58px; padding:10px 12px 10px 17px; display:flex; align-items:center; gap:12px;
+  border-bottom:1px solid var(--line); background:rgba(8,11,17,.86);
+}
+.story-compose-title{ font-family:'Anton',Impact,sans-serif; font-size:20px; letter-spacing:.055em; }
+#storyForm{ min-height:0; display:flex; flex:1; flex-direction:column; }
+.story-compose-body{ min-height:0; flex:1; overflow-y:auto; padding:17px; }
+.story-form-grid{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+.story-field-wide{ grid-column:1 / -1; }
+.story-field-head{ display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.story-char-count{ color:var(--dim); font-family:'JetBrains Mono',monospace; font-size:9.5px; }
+.story-category-list{ display:flex; flex-wrap:wrap; gap:7px; }
+.story-category-pill{
+  padding:8px 11px; border-radius:999px; border:1px solid var(--line-2);
+  background:#0b1018; color:var(--off); font-size:10px; font-weight:700;
+  letter-spacing:.11em; text-transform:uppercase; transition:.15s ease;
+}
+.story-category-pill[data-active="true"]{
+  color:#061018; background:var(--green); border-color:var(--green);
+  box-shadow:0 0 15px rgba(57,255,140,.23);
+}
+.story-author-select{ position:relative; }
+.story-author-button{
+  width:100%; min-height:58px; padding:9px 42px 9px 10px; display:flex; align-items:center; gap:10px;
+  text-align:left; border:1px solid var(--line-2); border-radius:12px; background:#0b0f16; color:#fff;
+  position:relative;
+}
+.story-author-button::after{
+  content:'⌄'; position:absolute; right:14px; top:50%; transform:translateY(-55%);
+  color:var(--dim); font-size:19px;
+}
+.story-author-button[aria-expanded="true"]{ border-color:var(--cyan); box-shadow:0 0 0 3px rgba(0,224,255,.14); }
+.story-author-menu{
+  position:absolute; z-index:12; top:calc(100% + 6px); left:0; right:0; max-height:270px; overflow-y:auto;
+  padding:6px; border-radius:13px; border:1px solid rgba(0,224,255,.35); background:#080c12;
+  box-shadow:0 22px 48px -14px #000;
+}
+.story-author-menu[hidden]{ display:none; }
+.story-author-option{
+  width:100%; padding:8px; display:flex; align-items:center; gap:10px; text-align:left;
+  border-radius:9px; color:#fff;
+}
+.story-author-option:hover,.story-author-option:focus-visible{ background:#141c28; outline:none; }
+.story-author-option[aria-selected="true"]{ background:rgba(0,224,255,.10); }
+.story-author-name{ display:block; font-size:13px; font-weight:600; }
+.story-author-team{ display:block; color:var(--dim); font-size:10.5px; margin-top:2px; }
+.story-compose-body textarea.field{ resize:vertical; font-family:'Oswald',sans-serif; line-height:1.55; }
+.story-validation{ min-height:17px; color:var(--dim); font-size:10.5px; line-height:1.4; }
+.story-compose-actions{
+  flex:none; display:grid; grid-template-columns:minmax(110px,.55fr) minmax(170px,1fr); gap:10px;
+  padding:12px 17px calc(12px + env(safe-area-inset-bottom)); border-top:1px solid var(--line);
+  background:rgba(8,11,17,.95);
+}
+.story-compose-actions .btn-primary,.story-compose-actions .btn-ghost{ min-height:46px; padding:12px; }
+.story-delete-btn{ color:var(--red); border-color:rgba(255,45,85,.35); background:rgba(255,45,85,.07); }
+
+@media (max-width:620px){
+  #storyComposer{ padding:0; align-items:stretch; }
+  .story-compose-shell{ width:100%; max-height:100dvh; min-height:100dvh; border-radius:0; border-left:0; border-right:0; }
+  .story-form-grid{ grid-template-columns:1fr; }
+  .story-field-wide{ grid-column:auto; }
+  .story-compose-body{ padding:15px; }
+  .story-compose-actions{ padding-left:15px; padding-right:15px; }
+}
+
 @media (prefers-reduced-motion:reduce){
   #reader[data-open="true"] #readerBody{ animation:none; }
   .tag .dot{ animation:none; }
@@ -836,7 +930,7 @@ body{
   position:sticky; top:calc(var(--ticker-h) + env(safe-area-inset-top));
   z-index:45; margin:0 -16px; padding:9px 16px 10px;
   background:linear-gradient(180deg,var(--ink) 68%,rgba(8,10,14,0));
-  pointer-events:auto;
+  pointer-events:auto; display:flex; align-items:center; gap:9px;
 }
 #newsLeadWrap{
   position:relative;
@@ -867,7 +961,7 @@ body{
 #leadStoryCard:active{ transform:scale(.99); }
 #leadStoryCard:focus-visible,
 .news-lead-card:focus-visible{ outline:2px solid var(--cyan); outline-offset:2px; }
-.topic-scroll{ display:flex; gap:7px; overflow-x:auto; }
+.topic-scroll{ display:flex; flex:1; min-width:0; gap:7px; overflow-x:auto; }
 .topic-pill{
   flex:none; display:inline-flex; align-items:center; gap:6px;
   padding:8px 13px; border-radius:999px;
@@ -1959,6 +2053,9 @@ body{
     <div class="px-4">
       <div class="topic-bar">
         <div class="topic-scroll no-bar" id="topicBar"></div>
+        <button type="button" class="write-story-btn" id="writeStoryBtn" aria-haspopup="dialog" aria-controls="storyComposer">
+          <span aria-hidden="true">✍</span> WRITE STORY
+        </button>
       </div>
     </div>
 
@@ -1975,46 +2072,6 @@ body{
       <div class="tl-wrap" id="timelineFeed"></div>
     </div>
 
-    <!-- CUSTOM STORY CREATOR -->
-    <div class="px-4 mt-5 mb-2">
-      <div class="card p-4" id="customStoryCreator">
-        <div class="section-head"><span class="bar" style="background:var(--green)"></span><h2>Break Your Own Story</h2></div>
-        <p class="text-[11.5px] text-[var(--dim)] leading-relaxed mb-3">
-          Commissioner override. Type the news, pick a tag, and the desk writes it up in house style.
-        </p>
-
-        <label class="label" for="customPrompt">The story</label>
-        <textarea id="customPrompt" class="field" rows="3" placeholder="e.g. Team XYZ traded CMC for peanuts" style="font-family:&#39;Oswald&#39;,sans-serif; font-size:14px; line-height:1.5;"></textarea>
-
-        <div class="mt-3">
-          <div class="label">Tag</div>
-          <div class="flex gap-2 overflow-x-auto no-bar pb-1" id="customTags"></div>
-        </div>
-
-        <div class="mt-3">
-          <label class="label" for="customTeam">Attach a team <span class="normal-case tracking-normal">(optional)</span></label>
-          <select id="customTeam" class="field-select"></select>
-        </div>
-
-        <div class="mt-3">
-          <label class="label" for="customQuote">Postgame quote <span class="normal-case tracking-normal">(optional)</span></label>
-          <input id="customQuote" class="field" style="font-family:&#39;Oswald&#39;,sans-serif; font-size:14px;" placeholder="“I&#39;d do it again.”">
-        </div>
-
-        <button id="customGenerate" class="btn-primary mt-4" style="background:linear-gradient(100deg,var(--green),#17b45f); box-shadow:0 6px 22px -8px rgba(57,255,140,.55); color:#04180d;">
-          FILE TO THE WIRE
-        </button>
-
-        <div id="customList" class="mt-3 space-y-2"></div>
-        <p class="text-[10.5px] text-[var(--dim)] leading-relaxed mt-3">
-          Your stories are saved on this device only — nothing is uploaded.
-        </p>
-      </div>
-      <div id="customAccessNotice" class="card p-4 hidden">
-        <div class="section-head"><span class="bar" style="background:var(--gold)"></span><h2>Break Your Own Story</h2></div>
-        <span class="pill pill-gold">COMMISSIONER ACCESS REQUIRED</span>
-      </div>
-    </div>
     </div>
   </section>
 
@@ -2268,6 +2325,88 @@ body{
     </button>
   </div>
   <div id="readerBody"></div>
+</div>
+
+<!-- ============================================================
+     COMMUNITY STORY COMPOSER — manager-authored league publishing
+============================================================ -->
+<div id="storyComposer" data-open="false" role="dialog" aria-modal="true" aria-labelledby="storyComposerTitle">
+  <div class="story-compose-shell">
+    <div class="story-compose-bar">
+      <div class="min-w-0 flex-1">
+        <div class="kicker text-[var(--green)]">Community Wire · Week <span id="storyComposerWeek">—</span></div>
+        <h2 class="story-compose-title" id="storyComposerTitle">WRITE STORY</h2>
+      </div>
+      <button type="button" class="icon-btn" id="storyComposerClose" aria-label="Close story editor">
+        <svg viewBox="0 0 24 24"><path d="M6 6l12 12"></path><path d="M18 6L6 18"></path></svg>
+      </button>
+    </div>
+
+    <form id="storyForm" novalidate>
+      <div class="story-compose-body no-bar">
+        <div class="story-form-grid">
+          <div class="story-field-wide">
+            <label class="label" id="storyAuthorLabel">Author <span class="text-[var(--red)]">*</span></label>
+            <div class="story-author-select">
+              <button type="button" class="story-author-button" id="storyAuthorButton" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="storyAuthorLabel storyAuthorText">
+                <span class="mono-badge" id="storyAuthorMark" style="width:38px;height:38px;color:var(--cyan)">—</span>
+                <span class="min-w-0 flex-1" id="storyAuthorText">
+                  <span class="story-author-name">Select a league manager</span>
+                  <span class="story-author-team">Active league roster</span>
+                </span>
+              </button>
+              <div class="story-author-menu no-bar" id="storyAuthorMenu" role="listbox" aria-labelledby="storyAuthorLabel" hidden></div>
+              <input type="hidden" id="storyAuthor" name="author" value="">
+            </div>
+          </div>
+
+          <div class="story-field-wide">
+            <div class="label">Story category <span class="text-[var(--red)]">*</span></div>
+            <div class="story-category-list" id="storyCategories" role="radiogroup" aria-label="Story category"></div>
+          </div>
+
+          <div class="story-field-wide">
+            <div class="story-field-head">
+              <label class="label" for="storyHeadline">Headline <span class="text-[var(--red)]">*</span></label>
+              <span class="story-char-count" id="storyHeadlineCount">0 / 120</span>
+            </div>
+            <input id="storyHeadline" class="field" maxlength="120" autocomplete="off" placeholder="Make the group chat stop scrolling" required>
+          </div>
+
+          <div class="story-field-wide">
+            <div class="story-field-head">
+              <label class="label" for="storyDeck">Subheadline / Deck <span class="normal-case tracking-normal">(optional)</span></label>
+              <span class="story-char-count" id="storyDeckCount">0 / 180</span>
+            </div>
+            <input id="storyDeck" class="field" maxlength="180" autocomplete="off" placeholder="One line of extra context">
+          </div>
+
+          <div>
+            <label class="label" for="storyTarget">Target subject / matchup <span class="normal-case tracking-normal">(optional)</span></label>
+            <select id="storyTarget" class="field-select">
+              <option value="">No tag</option>
+            </select>
+          </div>
+
+          <div class="story-field-wide">
+            <div class="story-field-head">
+              <label class="label" for="storyBody">Article body <span class="text-[var(--red)]">*</span></label>
+              <span class="story-char-count" id="storyBodyCount">0 / 5000</span>
+            </div>
+            <textarea id="storyBody" class="field" rows="9" maxlength="5000" placeholder="Write the story here. Blank lines create new paragraphs." required></textarea>
+          </div>
+        </div>
+      </div>
+
+      <div class="story-compose-actions">
+        <button type="button" class="btn-ghost" id="storyCancel">CANCEL</button>
+        <div>
+          <div class="story-validation" id="storyValidation" aria-live="polite">Choose an author and category, then add a headline and body.</div>
+          <button type="submit" class="btn-primary" id="storyPublish" disabled>PUBLISH TO NEWS DESK</button>
+        </div>
+      </div>
+    </form>
+  </div>
 </div>
 
 <!-- ============================================================
@@ -6858,6 +6997,14 @@ function article(o){
     custom: !!o.custom,
     week: o.week != null ? o.week : null,
     season: o.season != null ? o.season : null,
+    leagueId: o.leagueId || null,
+    category: o.category || null,
+    communityLabel: o.communityLabel || null,
+    authorName: o.authorName || null,
+    authorTeam: o.authorTeam || null,
+    authorTeamId: o.authorTeamId != null ? o.authorTeamId : null,
+    targetType: o.targetType || null,
+    targetLabel: o.targetLabel || null,
     facts: o.facts || null,             // structured grounding for deterministic + AI desks
     matrixCategory: o.matrixCategory || null,
     engine: o.engine || 'deterministic',
@@ -7483,111 +7630,87 @@ function genPreview(ctx){
 }
 
 /* ============================================================================
-   CUSTOM STORIES — commissioner override
-   A typed prompt becomes a full article with the same anatomy as the
-   generated ones, so a trade rumour reads like the rest of the wire.
-   Stored on the device only.
+   COMMUNITY STORIES — league-manager publishing
+   Articles live in a league-specific localStorage bucket, then carry their
+   season and week so the time machine never leaks copy across views.
 ============================================================================ */
-const CUSTOM_KEY = 'fsn.news.custom.v1';
+const COMMUNITY_KEY_PREFIX = 'fsn.news.community.v2:';
 
+function communityStorageKey(){
+  return COMMUNITY_KEY_PREFIX + encodeURIComponent(String(selectedLeagueId() || 'league'));
+}
 function loadCustom(){
   try{
-    const raw = localStorage.getItem(CUSTOM_KEY);
+    const raw = localStorage.getItem(communityStorageKey());
     const list = raw ? JSON.parse(raw) : [];
     return Array.isArray(list) ? list : [];
   }catch(e){ return []; }
 }
 function saveCustom(list){
-  try{ localStorage.setItem(CUSTOM_KEY, JSON.stringify(list.slice(0, 40))); }catch(e){}
+  try{ localStorage.setItem(communityStorageKey(), JSON.stringify(list.slice(0, 80))); }catch(e){}
 }
 function customMatchesScope(a, week){
   return !!a &&
     String(a.week) === String(week) &&
-    String(a.season) === String(viewedSeasonYear());
+    String(a.season) === String(viewedSeasonYear()) &&
+    String(a.leagueId || selectedLeagueId()) === String(selectedLeagueId());
 }
 function scopedCustom(week){
   return loadCustom().filter(a=> customMatchesScope(a, week));
 }
 
-const CUSTOM_TAGS = [
-  { tag:'BREAKING',      tone:'red'   },
-  { tag:'TRADE FALLOUT', tone:'cyan'  },
-  { tag:'FRAUD ALERT',   tone:'red'   },
-  { tag:'INSTANT CLASSIC', tone:'gold'},
-  { tag:'RUMOR MILL',    tone:'white' },
-  { tag:'COMMISSIONER',  tone:'green' },
+const COMMUNITY_CATEGORIES = [
+  { tag:'TRASH TALK',        tone:'red',   label:'LEAGUE OP-ED' },
+  { tag:'BREAKING NEWS',     tone:'red',   label:'COMMUNITY EXCLUSIVE' },
+  { tag:'TRADE RUMOR',       tone:'cyan',  label:'COMMUNITY EXCLUSIVE' },
+  { tag:'COMMISSIONER MEMO', tone:'green', label:'LEAGUE OP-ED' },
+  { tag:'HOT TAKE',          tone:'gold',  label:'LEAGUE OP-ED' },
+  { tag:'PRESS RELEASE',     tone:'white', label:'COMMUNITY EXCLUSIVE' },
 ];
 
-/* Turns "Team XYZ traded CMC for peanuts" into a headline and three
-   paragraphs that read like the rest of the wire. */
-function composeCustom(input){
-  const promptRaw = String(input.prompt || '').trim();
-  if(!promptRaw) return null;
+function composeCommunity(input){
+  const headlineRaw = String(input.headline || '').trim();
+  const bodyRaw = String(input.body || '').trim();
+  const author = input.author || null;
+  const category = COMMUNITY_CATEGORIES.find(c=> c.tag === input.category);
+  if(!headlineRaw || !bodyRaw || !author || !category) return null;
 
-  const tagDef = CUSTOM_TAGS.find(t=> t.tag === input.tag) || CUSTOM_TAGS[0];
   const week = Math.max(1, parseInt(input.week, 10) || 1);
   const season = viewedSeasonYear();
-  const seed = 'custom' + promptRaw + Date.now();
-
-  // First sentence becomes the headline; anything after it becomes the lede detail.
-  // Split on sentence enders without a lookbehind — older iOS Safari treats
-  // lookbehind as a parse error, which would take the whole script down.
-  const sentences = (promptRaw.match(/[^.!?]+[.!?]*/g) || [promptRaw])
-    .map(x=> x.trim()).filter(Boolean);
-  const lead = sentences[0].replace(/[.!?]+$/, '');
-  const rest = sentences.slice(1).join(' ').trim();
-
-  const headline = upper(lead).slice(0, 130);
-  const team = input.team || null;
-  const subject = team ? team.name : lead;
-
-  const ctxLine = (()=> {
-    if(!LeagueData.hasLive()) return '';
-    const ctx = weekContext(week);
-    if(!ctx.anyScored) return '';
-    return ` The league averaged <b>${n1(ctx.avg)}</b> points in Week ${week}, with a high of <b>${n1(ctx.high)}</b> and a low of <b>${n1(ctx.low)}</b>.`;
-  })();
-
-  const paragraphs = [
-    `${datelineTag()} <b>${esc(lead)}</b>. ` +
-    `The desk confirmed the development ${pick(['within the hour','late Tuesday','moments before the waiver run','ahead of Sunday\'s kickoff'], seed)}, ` +
-    `and the reaction around the league was ${pick(['immediate','loud','deeply unserious','unprintable'], seed + 'r')}.` +
-    (rest ? ` ${esc(rest)}` : ''),
-
-    `${team ? `<b>${esc(team.name)}</b> (${esc(FSNIntel.getRecordAsOfWeek(team.id, week))}) sits at the centre of it.` : `<b>${esc(subject)}</b> sits at the centre of it.`} ` +
-    `${pick([
-      'Rival managers spent the evening running the numbers and arriving, repeatedly, at the same conclusion.',
-      'Two other managers had inquired. Neither got a reply worth repeating.',
-      'The group chat processed it the way this group chat processes everything: badly, and at length.',
-      'Whether it holds up in December is another question entirely.',
-    ], seed + 'p2')}` + ctxLine,
-
-    `${pick([
-      'The commissioner\'s office had no comment, which in this league counts as a comment.',
-      'The desk will follow this one. It has the shape of a story that is not finished.',
-      'Somebody won this. The standings will say who by about Week ' + Math.min(18, (week + 3)) + '.',
-      'File it under moves that look either brilliant or unforgivable, with nothing in between.',
-    ], seed + 'p3')}`,
-  ];
+  const leagueId = selectedLeagueId();
+  const createdAt = Date.now();
+  const paragraphs = bodyRaw.split(/\n\s*\n/).map(block=>
+    block.split(/\n/).map(line=> esc(line)).join('<br>')
+  ).filter(Boolean);
+  const target = input.target || null;
+  const authorName = author.owner || author.name || 'League Manager';
 
   return article({
-    id: 'custom-' + Date.now() + '-' + (hash(promptRaw) % 9973),
+    id: 'community-' + createdAt + '-' + (hash(headlineRaw + author.id) % 9973),
     kind: 'custom',
     custom: true,
     week,
     season,
-    tag: tagDef.tag,
-    tone: tagDef.tone,
-    priority: 500,           // commissioner copy always leads the wire
-    byline: input.byline || 'FSN Commissioner\'s Desk',
-    ageMin: 1,
-    headline,
-    dek: rest ? esc(rest).slice(0, 180) : `Filed to the wire by the commissioner's desk · Week ${week}.`,
-    crest: team ? { name: team.name, logo: team.logo } : null,
+    leagueId,
+    tag: category.tag,
+    category: category.tag,
+    communityLabel: category.label,
+    tone: category.tone,
+    priority: 1000,
+    byline: authorName,
+    authorName,
+    authorTeam: author.name,
+    authorTeamId: author.id,
+    headline: esc(headlineRaw.slice(0, 120)),
+    dek: esc(String(input.deck || '').trim().slice(0, 180)),
+    crest: { name: author.name, logo: author.logo || '' },
     paragraphs,
-    quote: input.quote ? { text: String(input.quote), who: team ? esc(managerLabel(team)) : 'Source close to the deal' } : null,
-    numbers: buildCustomNumbers(week, team),
-    createdAt: Date.now(),
+    quote: null,
+    numbers: null,
+    targetType: target ? target.type : null,
+    targetLabel: target ? target.label : null,
+    createdAt,
+    dateline: `${leagueName()} · WEEK ${week}`,
   });
 }
 
@@ -7641,13 +7764,13 @@ const SLOTS = {
 
 const TOPICS = [
   { id:'all',      label:'All',            icon:''   },
+  { id:'community',label:'OP-ED / Community',icon:'✍' },
   { id:'breaking', label:'Breaking',       icon:'⚡' },
   { id:'waivers',  label:'Waivers',        icon:'💰' },
   { id:'studio',   label:'Studio Show',    icon:'🎙️' },
   { id:'power',    label:'Power Rankings', icon:'📊' },
   { id:'matchups', label:'Matchups',       icon:'🏈' },
   { id:'draft',    label:'Draft',          icon:'📋' },
-  { id:'mine',     label:'Mine',           icon:'👑' },
 ];
 
 const DAY_NAMES = ['SUNDAY','MONDAY','TUESDAY','WEDNESDAY','THURSDAY','FRIDAY','SATURDAY'];
@@ -9088,12 +9211,12 @@ const LEGACY_SLOT = {
 const LEGACY_TOPIC = {
   bench:'breaking', heartbreak:'breaking', shootout:'breaking', fraud:'breaking',
   coaching:'matchups', recap:'matchups',
-  milestone:'power', preview:'matchups', custom:'mine',
+  milestone:'power', preview:'matchups', custom:'community',
 };
 const LEGACY_META = {
   bench:'BENCH DISASTER', heartbreak:'FINAL', shootout:'FINAL', fraud:'FINAL',
   coaching:'MANAGER OF THE WEEK', recap:'FINAL',
-  milestone:'RECORD BOOK', preview:'PREVIEW', custom:'FILED BY YOU',
+  milestone:'RECORD BOOK', preview:'PREVIEW', custom:'COMMUNITY EXCLUSIVE',
 };
 
 function adopt(a, seedIdx){
@@ -9101,9 +9224,9 @@ function adopt(a, seedIdx){
   const slot = LEGACY_SLOT[a.kind] || 'gameday';
   const offset = (hash(a.id) % 200) + seedIdx * 7;
   a.slot = slot;
-  a.topic = a.custom ? 'mine' : (LEGACY_TOPIC[a.kind] || 'breaking');
+  a.topic = a.custom ? 'community' : (LEGACY_TOPIC[a.kind] || 'breaking');
   a.at = a.createdAt ? a.createdAt : slotTime(slot, offset);
-  a.metaTag = a.custom ? 'FILED BY YOU' : (LEGACY_META[a.kind] || 'FSN');
+  a.metaTag = a.custom ? (a.communityLabel || 'LEAGUE OP-ED') : (LEGACY_META[a.kind] || 'FSN');
   a.meta = stamp(a.at) + ' · ' + a.metaTag;
   a.timeline = true;
   return a;
@@ -9386,6 +9509,11 @@ function getTimelineStream(week){
     }
   }
 
+  /* Community copy is intentionally the freshest desk layer. Multiple manager
+     submissions retain newest-first order while every automated story keeps
+     its existing relative position below them. */
+  list.sort((a,b)=> (Number(!!b.custom) - Number(!!a.custom)) || (b.at - a.at));
+
   list.forEach(a=>{ restamp(a); applySeasonTone(a, ctx); });
   // Past seasons stop here: no key lookup, no queue, no network, $0.
   applyCachedAI(list, ctx);
@@ -9480,8 +9608,29 @@ function toPlainText(a){
   return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
+/* A compact paste made for the league group chat rather than a full article
+   dump. The reader still exposes the full native share action separately. */
+function toGroupChat(a){
+  const strip = (html)=> String(html || '')
+    .replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/[ \t]+/g, ' ').trim();
+  const firstParagraph = strip((a.paragraphs || [])[0] || '');
+  const summary = firstParagraph.length > 420 ? firstParagraph.slice(0, 417).trimEnd() + '…' : firstParagraph;
+  const lines = [
+    `📣 ${strip(a.communityLabel || 'LEAGUE OP-ED')} · ${strip(a.category || a.tag)}`,
+    strip(a.headline),
+  ];
+  if(a.dek) lines.push(strip(a.dek));
+  lines.push('', `By ${strip(a.byline)} · ${strip(a.authorTeam || '')}`.replace(/ · $/, ''));
+  if(a.targetLabel) lines.push(`Tagged: ${strip(a.targetLabel)}`);
+  if(summary) lines.push('', summary);
+  lines.push('', `— FSN News Desk · ${a.season} Week ${a.week}`);
+  return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
 return {
-  generate, all, weekContext, relTime, age, toPlainText,
+  generate, all, weekContext, relTime, age, toPlainText, toGroupChat,
   /* Manager of the Week — exported so the Studio Show and any future desk can
      read the same Coaching Efficiency board the timeline writes from. */
   genManagerOfTheWeek,
@@ -9495,8 +9644,8 @@ return {
   marginCategory, isThrillerMargin, isNailBiterMargin, isOneScoreMargin,
   isOneScoreOrCloser, isCompetitiveMargin, isBlowoutMargin,
   TOPICS, SLOTS,
-  CUSTOM_TAGS,
-  composeCustom,
+  COMMUNITY_CATEGORIES,
+  composeCommunity,
   getCustom(week){ return scopedCustom(week); },
   addCustom(a){ const list = loadCustom(); list.unshift(a); saveCustom(list); return list; },
   removeCustom(id){ const list = loadCustom().filter(x=> x.id !== id); saveCustom(list); return list; },
@@ -11937,7 +12086,8 @@ const ui = {
   screen: 'home',
   vaultTab: 'franchises',
   topic: 'all',
-  customTag: 'BREAKING',
+  storyCategory: '',
+  storyAuthorId: '',
   profileRole: 'member',
   newsCache: null,
   homeStoryIds: [],
@@ -13938,9 +14088,19 @@ function newsList(){
 function articleById(id){ return ui.newsCache ? ui.newsCache[id] : null; }
 
 function tagPill(a, extra, articleId){
+  if(a.custom){
+    const hook = articleId ? ` data-article="${esc(articleId)}"` : '';
+    return `<span class="tag tag-community ${extra || ''}"${hook}>✦ ${esc(a.communityLabel || 'LEAGUE OP-ED')}</span>`;
+  }
   const dot = (a.live || a.tag === 'BREAKING') ? '<span class="dot"></span>' : '';
   const hook = articleId ? ` data-article="${esc(articleId)}"` : '';
   return `<span class="tag tag-${esc(a.tone)} ${extra || ''}"${hook}>${dot}${esc(a.tag)}</span>`;
+}
+
+function communityCategoryPill(a, extra, articleId){
+  if(!a.custom) return '';
+  const hook = articleId ? ` data-article="${esc(articleId)}"` : '';
+  return `<span class="tag tag-${esc(a.tone)} ${extra || ''}"${hook}>${esc(a.category || a.tag)}</span>`;
 }
 
 function bylineLine(a){
@@ -13956,7 +14116,7 @@ function railCard(a, idx){
     <div class="p-4 relative">
       <div class="flex items-center gap-2 mb-2.5">
         ${tagPill(a)}
-        ${a.custom ? '<span class="tag tag-dim">FILED BY YOU</span>' : ''}
+        ${communityCategoryPill(a)}
       </div>
       <h3 class="headline headline-rail">${a.headline}</h3>
       <p class="dek mt-2" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${a.dek}</p>
@@ -13983,7 +14143,7 @@ function leadCard(a){
     <div class="p-4" style="background:radial-gradient(130% 100% at 0% 0%, ${c}14, transparent 60%)">
       <div class="flex items-center gap-2 mb-3">
         ${tagPill(a, 'lead-tag-pill', id)}
-        ${a.custom ? `<span class="tag tag-dim lead-tag-pill" data-article="${id}">FILED BY YOU</span>` : ''}
+        ${communityCategoryPill(a, 'lead-tag-pill', id)}
         <span class="kicker text-[var(--dim)] ml-auto">Lead</span>
       </div>
       <h2 class="headline" style="font-size:25px">${a.headline}</h2>
@@ -14013,7 +14173,7 @@ function feedRow(a){
     <div class="min-w-0 flex-1">
       <div class="flex items-center gap-1.5 mb-1.5">
         ${tagPill(a)}
-        ${a.custom ? '<span class="tag tag-dim">YOURS</span>' : ''}
+        ${communityCategoryPill(a)}
       </div>
       <h3 class="headline headline-sm">${a.headline}</h3>
       <div class="byline mt-1.5 truncate">${bylineLine(a)}</div>
@@ -14171,7 +14331,8 @@ function articleHtml(a){
     <div class="px-4 pt-5">
       <div class="flex items-center gap-2 mb-3.5">
         ${tagPill(a)}
-        ${a.custom ? '<span class="tag tag-dim">FILED BY YOU</span>' : ''}
+        ${communityCategoryPill(a)}
+        ${a.custom && a.targetLabel ? `<span class="pill pill-cyan">TAGGED · ${esc(a.targetLabel)}</span>` : ''}
       </div>
       <h1 class="headline">${a.headline}</h1>
       ${a.dek ? `<p class="dek mt-3">${a.dek}</p>` : ''}
@@ -14179,8 +14340,8 @@ function articleHtml(a){
       <div class="flex items-center gap-3 mt-4 pb-4 border-b border-[var(--line)]">
         ${a.crest ? crest(a.crest.name, a.crest.logo, 34) : ''}
         <div class="min-w-0">
-          <div class="byline" style="color:#e9edf4">${esc(a.byline)}</div>
-          <div class="byline mt-0.5">${esc(NewsDesk.relTime(NewsDesk.age(a)))} · ${esc(a.dateline)}</div>
+          <div class="byline" style="color:#e9edf4">${a.custom ? 'BY ' : ''}${esc(a.byline)}${a.custom && a.authorTeam ? ` · ${esc(a.authorTeam)}` : ''}</div>
+          <div class="byline mt-0.5">${a.custom && a.createdAt ? esc(new Date(a.createdAt).toLocaleString([], {dateStyle:'medium', timeStyle:'short'})) : esc(NewsDesk.relTime(NewsDesk.age(a)))} · ${esc(a.dateline)}</div>
         </div>
       </div>
     </div>
@@ -14197,12 +14358,17 @@ function articleHtml(a){
 
     <div class="px-4 pt-1">
       <div class="grid grid-cols-2 gap-2.5">
-        <button class="btn-ghost" data-reader-copy>COPY STORY</button>
-        <button class="btn-ghost" data-reader-share>SHARE</button>
+        ${a.custom
+          ? `<button class="btn-ghost" data-reader-copy>📋 COPY FOR GROUP CHAT</button>
+             <button class="btn-ghost story-delete-btn" data-reader-delete>🗑 DELETE ARTICLE</button>`
+          : `<button class="btn-ghost" data-reader-copy>COPY STORY</button>
+             <button class="btn-ghost" data-reader-share>SHARE</button>`}
       </div>
       <p class="text-[10.5px] text-[#4a5464] leading-relaxed mt-4 pt-4 border-t border-[var(--line)]">
-        Auto-generated by the FSN News Desk from this week's ESPN box scores.
-        Quotes are satirical and were never actually said out loud.
+        ${a.custom
+          ? 'Community article submitted by a league manager and saved on this device for this league only.'
+          : `Auto-generated by the FSN News Desk from this week's ESPN box scores.
+             Quotes are satirical and were never actually said out loud.`}
       </p>
       <div class="text-center py-5">
         <div class="kicker text-[#2b3546]">FSN · Fantasy Sports Network</div>
@@ -14255,7 +14421,7 @@ function openArticleModal(idx){
 async function shareArticle(mode){
   const a = articleById(ui.readerId);
   if(!a) return;
-  const text = NewsDesk.toPlainText(a);
+  const text = a.custom && mode === 'copy' ? NewsDesk.toGroupChat(a) : NewsDesk.toPlainText(a);
   if(mode === 'share' && navigator.share){
     try{ await navigator.share({ title: a.headline.replace(/<[^>]+>/g,''), text }); return; }
     catch(err){ if(err && err.name === 'AbortError') return; }
@@ -14296,6 +14462,7 @@ function renderHomeStories(){
   const leadWeek = effectiveWeek();
   if(isPlayoffWeek(leadWeek)){
     const rank = (a)=>{
+      if(a.custom) return -1;
       const idx = PLAYOFF_LEAD_KINDS.indexOf(a.kind);
       return idx === -1 ? PLAYOFF_LEAD_KINDS.length : idx;
     };
@@ -14317,7 +14484,7 @@ function renderHomeStories(){
 ============================================================ */
 const TOPIC_TONE = {
   breaking:'var(--red)', waivers:'var(--green)', studio:'var(--cyan)',
-  power:'var(--cyan)', matchups:'var(--gold)', draft:'#a78bfa', mine:'var(--gold)',
+  power:'var(--cyan)', matchups:'var(--gold)', draft:'#a78bfa', community:'var(--green)',
 };
 
 function dayKey(at){
@@ -14355,7 +14522,7 @@ function timelineCard(a){
         <div class="tl-head" style="margin-top:9px">
           ${crestHtml}
           <div class="min-w-0 flex-1">
-            <div class="flex items-center gap-1.5 mb-1.5">${tagPill(a)}${a.custom ? '<span class="tag tag-dim">YOURS</span>' : ''}</div>
+            <div class="flex items-center gap-1.5 mb-1.5">${tagPill(a)}${communityCategoryPill(a)}</div>
             <h3 class="tl-title">${a.headline}</h3>
           </div>
         </div>
@@ -14376,9 +14543,8 @@ function timelineCard(a){
 }
 
 function renderTopicBar(list){
-  const counts = { all: list.length, mine:0 };
+  const counts = { all: list.length };
   list.forEach(a=>{
-    if(a.custom) counts.mine += 1;
     if(a.topic) counts[a.topic] = (counts[a.topic] || 0) + 1;
   });
   $('topicBar').innerHTML = NewsDesk.TOPICS.map(t=>{
@@ -14389,29 +14555,14 @@ function renderTopicBar(list){
   }).join('');
 }
 
-function renderCommissionerAccess(){
-  const allowed = isCommissioner();
-  $('customStoryCreator').classList.toggle('hidden', !allowed);
-  $('customAccessNotice').classList.toggle('hidden', allowed);
-}
-
 function renderNews(){
   const week = effectiveWeek();
   $('newsWeekPill').textContent = 'WEEK ' + week;
 
-  renderCommissionerAccess();
-  renderCustomTags();
-  renderTeamPicker();
-  renderCustomList();
-
   const all = newsList();
   renderTopicBar(all);
 
-  const list = ui.topic === 'all'
-    ? all
-    : ui.topic === 'mine'
-      ? all.filter(a=> a.custom === true)
-      : all.filter(a=> a.topic === ui.topic);
+  const list = ui.topic === 'all' ? all : all.filter(a=> a.topic === ui.topic);
   $('newsCount').textContent = all.length ? all.length + ' STOR' + (all.length === 1 ? 'Y' : 'IES') : '—';
   $('timelineLive').textContent = list.some(a=> a.live) ? '● LIVE' : '● UPDATING';
   $('timelineLive').style.color = list.some(a=> a.live) ? 'var(--red)' : 'var(--dim)';
@@ -14423,8 +14574,8 @@ function renderNews(){
   }
 
   if(!list.length){
-    const msg = ui.topic === 'mine'
-      ? (isCommissioner() ? 'Nothing filed yet. Break your own story below.' : 'No commissioner-filed stories exist for this season and week.')
+    const msg = ui.topic === 'community'
+      ? 'No manager-authored stories have been published for this season and week yet.'
       : (ui.topic === 'draft'
           ? 'No draft board in this payload. Re-fetch with the draft views once your league has drafted.'
           : 'Nothing on this desk yet for week ' + week + '. Stories unlock as the week unfolds.');
@@ -14469,75 +14620,149 @@ setInterval(()=>{
 }, 45000);
 
 /* ============================================================
-   CUSTOM STORY CREATOR
+   COMMUNITY STORY COMPOSER
 ============================================================ */
-function renderCustomTags(){
-  const el = $('customTags');
-  if(el.dataset.built === '1'){
-    el.querySelectorAll('.chip').forEach(c=> c.dataset.active = String(c.dataset.tag === ui.customTag));
-    return;
-  }
-  el.innerHTML = NewsDesk.CUSTOM_TAGS.map(t=>
-    `<button class="chip" data-tag="${esc(t.tag)}" data-active="${t.tag === ui.customTag}">${esc(t.tag)}</button>`
+function storyTeams(){ return LeagueData.getTeams(); }
+
+function renderStoryCategories(){
+  $('storyCategories').innerHTML = NewsDesk.COMMUNITY_CATEGORIES.map(category=>
+    `<button type="button" class="story-category-pill" role="radio" aria-checked="${category.tag === ui.storyCategory}"
+      data-story-category="${esc(category.tag)}" data-active="${category.tag === ui.storyCategory}">${esc(category.tag)}</button>`
   ).join('');
-  el.dataset.built = '1';
 }
 
-function renderTeamPicker(){
-  const sel = $('customTeam');
-  const teams = LeagueData.getTeams();
-  const signature = teams.map(t=> t.id).join(',');
-  if(sel.dataset.sig === signature) return;
-  sel.dataset.sig = signature;
-  const current = sel.value;
-  sel.innerHTML = '<option value="">No team</option>' +
-    teams.map(t=> `<option value="${esc(String(t.id))}">${esc(t.name)}</option>`).join('');
-  if(current) sel.value = current;
+function renderStoryAuthors(){
+  const teams = storyTeams();
+  $('storyAuthorMenu').innerHTML = teams.length ? teams.map(team=>{
+    const manager = team.owner || team.name;
+    return `<button type="button" class="story-author-option" role="option" aria-selected="${String(team.id) === String(ui.storyAuthorId || '')}"
+      data-story-author="${esc(String(team.id))}">
+      ${crest(team.name, team.logo, 38)}
+      <span class="min-w-0"><span class="story-author-name">${esc(manager)}</span><span class="story-author-team">${esc(team.name)} · ${esc(team.abbrev || initialsFrom(team.name))}</span></span>
+    </button>`;
+  }).join('') : '<div class="p-3 text-[11px] text-[var(--dim)]">Connect an ESPN league to load its managers.</div>';
 }
 
-function renderCustomList(){
-  const mine = NewsDesk.getCustom(effectiveWeek());
-  $('customList').innerHTML = mine.length
-    ? `<div class="label" style="margin-top:14px">Your filed stories</div>` + mine.map(a=>
-        `<div class="flex items-center gap-2 bg-[#0b0f16] border border-[var(--line)] rounded-xl px-3 py-2.5">
-           <button class="min-w-0 flex-1 text-left" data-article="${esc(a.id)}">
-             <div class="text-[12px] font-semibold truncate">${a.headline}</div>
-             <div class="byline mt-0.5 truncate">${esc(a.tag)} · ${esc(NewsDesk.relTime(NewsDesk.age(a)))}</div>
-           </button>
-           <button class="icon-btn" style="width:32px;height:32px;color:var(--red)" data-del-story="${esc(a.id)}" aria-label="Delete story">
-             <svg viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M9 7V5h6v2"/><path d="M6 7l1 13h10l1-13"/></svg>
-           </button>
-         </div>`).join('')
-    : '';
-}
-
-function fileCustomStory(){
-  if(!isCommissioner()){
-    toast('Commissioner access required');
-    return;
+function renderStoryTargets(author){
+  const teams = storyTeams();
+  const matchups = LeagueData.getWeekMatchups(effectiveWeek());
+  let html = '<option value="">No tag</option>';
+  const opponents = teams.filter(team=> !author || String(team.id) !== String(author.id));
+  if(opponents.length){
+    html += '<optgroup label="Opposing managers">' + opponents.map(team=>
+      `<option value="manager:${esc(String(team.id))}" data-type="manager" data-label="${esc((team.owner || team.name) + ' · ' + team.name)}">${esc(team.owner || team.name)} — ${esc(team.name)}</option>`
+    ).join('') + '</optgroup>';
   }
-  const prompt = $('customPrompt').value.trim();
-  if(!prompt){ toast('Type the story first'); return; }
+  if(matchups.length){
+    html += '<optgroup label="Week ' + esc(String(effectiveWeek())) + ' matchups">' + matchups.map(game=>{
+      const label = `${game.awayTeam.name} at ${game.homeTeam.name}`;
+      return `<option value="matchup:${esc(String(game.awayTeam.id))}:${esc(String(game.homeTeam.id))}" data-type="matchup" data-label="${esc(label)}">${esc(label)}</option>`;
+    }).join('') + '</optgroup>';
+  }
+  $('storyTarget').innerHTML = html;
+}
 
-  const teamId = $('customTeam').value;
-  const team = teamId ? LeagueData.getTeams().find(t=> String(t.id) === String(teamId)) : null;
+function selectStoryAuthor(teamId){
+  const team = storyTeams().find(t=> String(t.id) === String(teamId));
+  ui.storyAuthorId = team ? String(team.id) : '';
+  $('storyAuthor').value = ui.storyAuthorId;
+  if(team){
+    $('storyAuthorButton').innerHTML = `${crest(team.name, team.logo, 38)}<span class="min-w-0 flex-1"><span class="story-author-name">${esc(team.owner || team.name)}</span><span class="story-author-team">${esc(team.name)} · ${esc(team.abbrev || initialsFrom(team.name))}</span></span>`;
+  }else{
+    $('storyAuthorButton').innerHTML = '<span class="mono-badge" style="width:38px;height:38px;color:var(--cyan)">—</span><span class="min-w-0 flex-1"><span class="story-author-name">Select a league manager</span><span class="story-author-team">Active league roster</span></span>';
+  }
+  $('storyAuthorButton').setAttribute('aria-expanded', 'false');
+  $('storyAuthorMenu').hidden = true;
+  renderStoryAuthors();
+  renderStoryTargets(team || null);
+  updateStoryValidation();
+}
 
-  const story = NewsDesk.composeCustom({
-    prompt,
-    tag: ui.customTag,
-    team,
+function resetStoryForm(){
+  $('storyForm').reset();
+  ui.storyCategory = '';
+  ui.storyAuthorId = '';
+  renderStoryCategories();
+  renderStoryAuthors();
+  selectStoryAuthor('');
+  updateStoryValidation();
+}
+
+function updateStoryValidation(){
+  const headline = $('storyHeadline').value;
+  const deck = $('storyDeck').value;
+  const body = $('storyBody').value;
+  $('storyHeadlineCount').textContent = headline.length + ' / 120';
+  $('storyDeckCount').textContent = deck.length + ' / 180';
+  $('storyBodyCount').textContent = body.length + ' / 5000';
+
+  const missing = [];
+  if(!$('storyAuthor').value) missing.push('author');
+  if(!ui.storyCategory) missing.push('category');
+  if(!headline.trim()) missing.push('headline');
+  if(!body.trim()) missing.push('body');
+  $('storyPublish').disabled = missing.length > 0;
+  $('storyValidation').textContent = missing.length
+    ? 'Required: ' + missing.join(', ') + '.'
+    : 'Ready to publish to this league, season, and week.';
+  return missing.length === 0;
+}
+
+function openStoryComposer(){
+  $('storyComposerWeek').textContent = String(effectiveWeek());
+  resetStoryForm();
+  $('storyComposer').dataset.open = 'true';
+  document.body.style.overflow = 'hidden';
+  setTimeout(()=> $('storyAuthorButton').focus(), 0);
+}
+
+function closeStoryComposer(){
+  $('storyComposer').dataset.open = 'false';
+  $('storyAuthorMenu').hidden = true;
+  $('storyAuthorButton').setAttribute('aria-expanded', 'false');
+  document.body.style.overflow = '';
+  setTimeout(()=> $('writeStoryBtn').focus(), 0);
+}
+
+function publishCommunityStory(e){
+  e.preventDefault();
+  if(!updateStoryValidation()) return;
+  const author = storyTeams().find(t=> String(t.id) === String($('storyAuthor').value));
+  const targetOption = $('storyTarget').selectedOptions[0];
+  const target = targetOption && targetOption.value ? {
+    type: targetOption.dataset.type || 'manager',
+    label: targetOption.dataset.label || targetOption.textContent,
+  } : null;
+  const story = NewsDesk.composeCommunity({
+    author,
+    category: ui.storyCategory,
+    headline: $('storyHeadline').value,
+    deck: $('storyDeck').value,
+    body: $('storyBody').value,
+    target,
     week: effectiveWeek(),
-    quote: $('customQuote').value.trim(),
   });
-  if(!story){ toast('Could not build that one'); return; }
+  if(!story){ toast('Complete every required story field'); return; }
 
   NewsDesk.addCustom(story);
-  $('customPrompt').value = '';
-  $('customQuote').value = '';
+  closeStoryComposer();
+  ui.topic = 'all';
   renderNews();
+  renderHomeStories();
   renderTicker();
   openReader(story.id);
-  toast('Filed to the wire');
+  toast('Community story published');
+}
+
+function deleteCommunityArticle(){
+  const story = articleById(ui.readerId);
+  if(!story || !story.custom) return;
+  NewsDesk.removeCustom(story.id);
+  closeReader();
+  if(ui.screen === 'news') renderNews();
+  renderHomeStories();
+  renderTicker();
+  toast('Article deleted from this device');
 }
 
 /* ---- timeline wiring ---- */
@@ -14595,14 +14820,33 @@ document.addEventListener('click', (e)=>{
   startStudioShow(btn);
 }, true);
 
-$('customTags').addEventListener('click', (e)=>{
-  const chip = e.target.closest('[data-tag]');
-  if(!chip) return;
-  ui.customTag = chip.dataset.tag;
-  renderCustomTags();
+$('writeStoryBtn').addEventListener('click', openStoryComposer);
+$('storyComposerClose').addEventListener('click', closeStoryComposer);
+$('storyCancel').addEventListener('click', closeStoryComposer);
+$('storyComposer').addEventListener('click', (e)=>{ if(e.target === $('storyComposer')) closeStoryComposer(); });
+$('storyForm').addEventListener('submit', publishCommunityStory);
+$('storyForm').addEventListener('input', updateStoryValidation);
+$('storyCategories').addEventListener('click', (e)=>{
+  const button = e.target.closest('[data-story-category]');
+  if(!button) return;
+  ui.storyCategory = button.dataset.storyCategory;
+  renderStoryCategories();
+  updateStoryValidation();
 });
-
-$('customGenerate').addEventListener('click', fileCustomStory);
+$('storyAuthorButton').addEventListener('click', ()=>{
+  const open = $('storyAuthorButton').getAttribute('aria-expanded') !== 'true';
+  $('storyAuthorButton').setAttribute('aria-expanded', String(open));
+  $('storyAuthorMenu').hidden = !open;
+});
+$('storyAuthorMenu').addEventListener('click', (e)=>{
+  const button = e.target.closest('[data-story-author]');
+  if(button) selectStoryAuthor(button.dataset.storyAuthor);
+});
+document.addEventListener('click', (e)=>{
+  if($('storyAuthorMenu').hidden || e.target.closest('.story-author-select')) return;
+  $('storyAuthorMenu').hidden = true;
+  $('storyAuthorButton').setAttribute('aria-expanded', 'false');
+});
 
 /* Team-profile chooser. ESPN membership determines commissioner access automatically.
    Guest is persisted as a deliberate profile choice so the modal does not reappear. */
@@ -14746,6 +14990,13 @@ $('franchiseScreenshotBtn').addEventListener('click', toggleFranchiseScreenshot)
 $('readerBody').addEventListener('click', (e)=>{
   if(e.target.closest('[data-reader-copy]'))  shareArticle('copy');
   if(e.target.closest('[data-reader-share]')) shareArticle('share');
+  if(e.target.closest('[data-reader-delete]')) deleteCommunityArticle();
+});
+document.addEventListener('keydown', (e)=>{
+  if(e.key === 'Escape' && $('storyComposer').dataset.open === 'true'){
+    closeStoryComposer();
+    if(typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+  }
 });
 document.addEventListener('keydown', (e)=>{
   if(e.key === 'Escape' && FSNStudio.isOpen()) FSNStudio.close();
