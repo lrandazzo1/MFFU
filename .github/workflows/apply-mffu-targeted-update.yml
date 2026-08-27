@@ -23,7 +23,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Make regex replacements literal-safe
+      - name: Make updater compatible with the current single-file app
         run: |
           python - <<'PY'
           from pathlib import Path
@@ -31,9 +31,13 @@ jobs:
           text = p.read_text(encoding='utf-8')
           old = 'updated, count = re.subn(pattern, replacement, text, count=1, flags=flags)'
           new = 'updated, count = re.subn(pattern, lambda _match: replacement, text, count=1, flags=flags)'
-          if old not in text:
-            raise SystemExit('Expected updater line not found')
-          p.write_text(text.replace(old, new, 1), encoding='utf-8')
+          if old in text:
+            text = text.replace(old, new, 1)
+          old_marker = "    'function renderPlayoffBracket',\n"
+          new_marker = "    'playoffTierType',\n"
+          if old_marker in text:
+            text = text.replace(old_marker, new_marker, 1)
+          p.write_text(text, encoding='utf-8')
           PY
       - name: Apply targeted patch
         run: python scripts/apply_mffu_targeted_update.py
@@ -48,8 +52,12 @@ jobs:
           assert 'GAMEDAY COUNTDOWN' in text
           assert 'serverlessEspnUrl' in text
           assert 'studioHistoricalView' in text
+          assert 'playoffTierType' in text
+          assert 'id="writeStoryBtn"' in text
+          assert 'function renderVault' in text
+          assert 'story-rail' in text
           assert Path('api/espn.js').exists()
-          print('Generated patch markers validated')
+          print('Generated patch and preservation markers validated')
           PY
           node --check api/espn.js
       - name: Commit generated update
