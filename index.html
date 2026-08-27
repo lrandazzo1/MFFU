@@ -2114,35 +2114,14 @@ html[data-studio-historical="true"] #studio{
           <span id="weekNum" hidden="" aria-hidden="true"></span>
           <button id="fetchBtn" class="btn-primary">
             <span id="fetchSpinner" class="spinner hidden"></span>
-            <span id="fetchLabel">FETCH LEAGUE DATA</span>
+            <span id="fetchLabel">LOAD CURRENT SEASON</span>
           </button>
-          <p id="fetchStatus" class="text-[11.5px] text-[var(--dim)] leading-relaxed">✓ Connected — 2026 Live + 0 Historical Seasons Loaded — Archive: 2025 failed (NO_SEASONS)</p>
+          <p class="text-[10.5px] text-[var(--dim)] leading-relaxed">Just your League ID — loads this season's matchups, scores, and news. No login needed for a public league.</p>
+          <p id="fetchStatus" class="text-[11.5px] text-[var(--dim)] leading-relaxed"></p>
           <button id="showUrlBtn" class="btn-ghost">SHOW API URL</button>
           <div id="apiUrlBox" class="hidden">
             <p class="text-[10px] text-[var(--dim)] leading-relaxed break-all font-mono bg-[#0b0f16] border border-[var(--line)] rounded-lg p-2.5" id="apiUrlDisplay"></p>
           </div>
-
-          <details id="espnAuthDetails" class="mt-1">
-            <summary class="label" style="cursor:pointer;">Private league? Add ESPN cookies (optional)</summary>
-            <div class="space-y-2 mt-2">
-              <p class="text-[10.5px] text-[var(--dim)] leading-relaxed">
-                Only needed if your league is <span class="text-[var(--off)]">private</span>. While logged in at
-                <span class="font-mono">fantasy.espn.com</span>, open DevTools → Application → Cookies and copy the
-                <span class="font-mono">espn_s2</span> and <span class="font-mono">SWID</span> values.
-                Stored only in this browser's <span class="font-mono">localStorage</span> and sent solely to the
-                same-origin <span class="font-mono">/api/espn</span> relay so it can read your league as you.
-              </p>
-              <div>
-                <label class="label" for="espnS2Input">espn_s2</label>
-                <input id="espnS2Input" class="field" type="password" autocomplete="off" spellcheck="false" placeholder="AEB…long value">
-              </div>
-              <div>
-                <label class="label" for="espnSwidInput">SWID</label>
-                <input id="espnSwidInput" class="field" type="password" autocomplete="off" spellcheck="false" placeholder="{XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}">
-              </div>
-              <p id="espnAuthStatus" class="text-[11px] text-[var(--dim)] leading-relaxed"></p>
-            </div>
-          </details>
         </div>
       </div>
 
@@ -2165,15 +2144,32 @@ html[data-studio-historical="true"] #studio{
         <p id="openaiStatus" class="text-[11.5px] text-[var(--dim)] leading-relaxed mt-2"><span style="color:var(--gold)">FALLBACK READY</span> · No key saved. Current-season news uses the deterministic no-replacement engine.</p>
       </div>
 
-      <!-- ALL-TIME HISTORY — fetched automatically with the live league -->
+      <!-- ALL-TIME HISTORY — opt-in; past seasons require the member's ESPN login -->
       <div class="card p-4">
-        <div class="section-head"><span class="bar" style="background:var(--gold)"></span><h2>All-Time History</h2></div>
+        <div class="section-head"><span class="bar" style="background:var(--gold)"></span><h2>All-Time History <span class="text-[var(--dim)] text-[13px] font-normal">· optional</span></h2></div>
         <p class="text-[11.5px] text-[var(--dim)] leading-relaxed">
-          The archive loads automatically with <span class="text-[var(--off)] font-semibold">FETCH LEAGUE DATA</span> using lightweight sequential requests for 2025–2018, avoiding oversized archive payloads and proxy rate limits.
+          Want the <span class="text-[var(--off)] font-semibold">Vault</span> — franchise résumés, rivalries and all-time records? That reads your <span class="text-[var(--off)]">past</span> seasons, and ESPN only serves those to a logged-in league member. Paste your two ESPN cookies once (this browser only), then load the archive.
         </p>
-        <div id="historyBanner" class="mt-3 text-[12px] leading-relaxed text-[var(--green)] bg-[rgba(57,255,140,.07)] border border-[rgba(57,255,140,.28)] rounded-lg p-2.5">✓ Loaded 8 seasons (2019–2026) and 687 total matchups.</div>
-        <p id="historyStatus" class="text-[11.5px] text-[var(--dim)] leading-relaxed mt-2">Archive: 2025 failed (NO_SEASONS)</p>
-        <a id="historyUrlLink" class="block mt-3 text-[10px] font-mono text-[var(--cyan)] break-all underline decoration-dotted" target="_blank" rel="noopener" href="https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/leagueHistory/57155288?view=mTeam&amp;view=mRoster&amp;view=mMatchup&amp;view=mMatchupScore&amp;view=mSettings" style="color: var(--cyan); text-decoration: underline dotted;">https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/leagueHistory/57155288?view=mTeam&amp;view=mRoster&amp;view=mMatchup&amp;view=mMatchupScore&amp;view=mSettings</a>
+
+        <div class="space-y-2 mt-3">
+          <div>
+            <label class="label" for="espnS2Input">espn_s2 cookie</label>
+            <input id="espnS2Input" class="field" type="password" autocomplete="off" spellcheck="false" placeholder="AEB…long value">
+          </div>
+          <div>
+            <label class="label" for="espnSwidInput">SWID cookie</label>
+            <input id="espnSwidInput" class="field" type="password" autocomplete="off" spellcheck="false" placeholder="{XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}">
+          </div>
+          <p class="text-[10px] text-[var(--dim)] leading-relaxed">
+            Get them while logged in at <span class="font-mono">fantasy.espn.com</span> → DevTools (F12) → Application → Cookies → copy <span class="font-mono">espn_s2</span> and <span class="font-mono">SWID</span>. Stored only in this browser's <span class="font-mono">localStorage</span>; sent solely to this app's own <span class="font-mono">/api/espn</span> relay.
+          </p>
+          <p id="espnAuthStatus" class="text-[11px] text-[var(--dim)] leading-relaxed"></p>
+          <button id="loadHistoryBtn" class="btn-ghost">LOAD HISTORICAL DATA</button>
+        </div>
+
+        <div id="historyBanner" class="mt-3 text-[12px] leading-relaxed text-[var(--green)] bg-[rgba(57,255,140,.07)] border border-[rgba(57,255,140,.28)] rounded-lg p-2.5 hidden"></div>
+        <p id="historyStatus" class="text-[11.5px] text-[var(--dim)] leading-relaxed mt-2"></p>
+        <a id="historyUrlLink" class="block mt-3 text-[10px] font-mono text-[var(--cyan)] break-all underline decoration-dotted" target="_blank" rel="noopener" href="#" style="color: var(--cyan); text-decoration: underline dotted;"></a>
       </div>
 
       <!-- JSON FALLBACK -->
@@ -14396,7 +14392,7 @@ function setConn(mode){
 function setFetchLoading(isLoading){
   $('fetchBtn').disabled = isLoading;
   $('fetchSpinner').classList.toggle('hidden', !isLoading);
-  $('fetchLabel').textContent = isLoading ? 'CONNECTING…' : 'FETCH LEAGUE DATA';
+  $('fetchLabel').textContent = isLoading ? 'CONNECTING…' : 'LOAD CURRENT SEASON';
 }
 function buildEspnUrl(){
   const league = $('leagueIdInput').value.trim();
@@ -14496,6 +14492,10 @@ async function fetchLeagueData(options){
   const silent = !!opts.silent;
   const navigate = opts.navigate !== false;
   const league = String(opts.leagueId || $('leagueIdInput').value || '').trim();
+  // Current season needs only the League ID (public leagues read anonymously).
+  // The all-time archive is opt-in because ESPN requires the member's login
+  // (espn_s2 + SWID) to read past seasons — so it is skipped unless asked for.
+  const includeHistory = opts.includeHistory === true;
   const currentYear = uiActiveSeasonYear();
   const liveUrl = buildEspnUrlForYear(league, currentYear, null);
 
@@ -14508,9 +14508,9 @@ async function fetchLeagueData(options){
   setFetchLoading(true);
   hideHistoryBanner();
   $('fetchStatus').textContent = silent
-    ? 'Restoring live league + full league history…'
-    : 'Fetching live season + consolidated league history…';
-  $('historyStatus').textContent = 'Loading league history…';
+    ? (includeHistory ? 'Restoring live league + full league history…' : 'Restoring live league…')
+    : (includeHistory ? 'Fetching live season + all-time league history…' : 'Fetching current season…');
+  if(includeHistory) $('historyStatus').textContent = 'Loading league history…';
 
   /* A 401/403 from ESPN means the league is private — the proxy reads ESPN
      anonymously, so a private league can never hydrate. Track it across both
@@ -14537,11 +14537,13 @@ async function fetchLeagueData(options){
       return null;
     });
 
-  const historyTask = fetchLeagueHistoryArchive(league).catch(err=>{
-    noteAuthError(err);
-    console.warn('[FSN] League history archive fetch failed entirely.', err);
-    return { yearsData:[], skipped:[], route:'none', error:err };
-  });
+  const historyTask = includeHistory
+    ? fetchLeagueHistoryArchive(league).catch(err=>{
+        noteAuthError(err);
+        console.warn('[FSN] League history archive fetch failed entirely.', err);
+        return { yearsData:[], skipped:[], route:'none', error:err };
+      })
+    : Promise.resolve({ yearsData:[], skipped:[], route:'skipped' });
 
   try{
     const [liveData, archive] = await Promise.all([liveTask, historyTask]);
@@ -14585,10 +14587,13 @@ async function fetchLeagueData(options){
       ? `${loadedYears[0]}–${loadedYears[seasonCount - 1]}`
       : `${loadedYears[0]}`;
 
-    $('fetchStatus').textContent =
-      `✓ Connected — Loaded ${seasonCount} Season${seasonCount === 1 ? '' : 's'} (${rangeLabel}) · ${matchupCount.toLocaleString()} Total Matchups`;
+    $('fetchStatus').textContent = includeHistory
+      ? `✓ Connected — Loaded ${seasonCount} Season${seasonCount === 1 ? '' : 's'} (${rangeLabel}) · ${matchupCount.toLocaleString()} Total Matchups`
+      : `✓ Connected — Current season loaded (${loadedYears[seasonCount - 1]}). Load all-time history below to unlock the Vault.`;
     if(!activeFromLive){
       $('historyStatus').textContent = `Live ${currentYear} season not published yet — showing ${loadedYears[seasonCount - 1]} as the active season.`;
+    } else if(!includeHistory){
+      $('historyStatus').textContent = 'Current season only. Use “Load Historical Data” below for the all-time Vault (needs your ESPN login).';
     }
 
     try{ localStorage.setItem(SAVED_LEAGUE_ID_KEY, league); }catch(e){}
@@ -14643,7 +14648,18 @@ async function fetchLeagueData(options){
     setFetchLoading(false);
   }
 }
-$('fetchBtn').addEventListener('click', ()=> fetchLeagueData());
+$('fetchBtn').addEventListener('click', ()=> fetchLeagueData({ includeHistory:false }));
+if($('loadHistoryBtn')){
+  $('loadHistoryBtn').addEventListener('click', ()=>{
+    const { s2, swid } = getEspnCreds();
+    if(!s2 || !swid){
+      $('historyStatus').textContent = 'Add both your espn_s2 and SWID cookies above first — ESPN needs your login to read past seasons.';
+      refreshEspnAuthStatus();
+      return;
+    }
+    fetchLeagueData({ includeHistory:true });
+  });
+}
 
 /* ---- API URL display ---- */
 $('showUrlBtn').addEventListener('click', ()=>{
@@ -16045,7 +16061,11 @@ function bootApp(){
   if(savedLeagueId){
     // Fire-and-forget inside this page lifecycle: fetchLeagueData itself awaits
     // both concurrent network operations and repaints when hydration completes.
-    fetchLeagueData({ leagueId:savedLeagueId, silent:true, navigate:false })
+    // Reload the all-time archive on boot only when the member's ESPN cookies
+    // are saved (otherwise past seasons 401); current season always restores.
+    const bootCreds = getEspnCreds();
+    const restoreHistory = !!(bootCreds.s2 && bootCreds.swid);
+    fetchLeagueData({ leagueId:savedLeagueId, silent:true, navigate:false, includeHistory:restoreHistory })
       .catch(err=> console.warn('[FSN] Silent league rehydration failed', err));
   }
 }
