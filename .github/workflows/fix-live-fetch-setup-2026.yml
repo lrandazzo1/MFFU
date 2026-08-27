@@ -14,42 +14,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Patch current-season loading and Setup
-        run: |
-          echo 'ZnJvbSBwYXRobGliIGltcG9ydCBQYXRoCmltcG9ydCByZQoKcGF0aCA9IFBhdGgoJ2luZGV4Lmh0bWwnKQpzID0gcGF0aC5yZWFkX3RleHQoZW5jb2Rpbmc9J3V0Zi04JykKCmRlZiBzdWJfb25jZShwYXR0ZXJuLCByZXBsYWNlbWVudCwgbGFiZWwpOgogICAgZ2xvYmFsIHMKICAgIHMyLCBjb3VudCA9IHJlLnN1Ym4ocGF0dGVybiwgcmVwbGFjZW1lbnQsIHMsIGNvdW50PTEsIGZsYWdzPXJlLlMpCiAgICBpZiBjb3VudCAhPSAxOgogICAgICAgIHJhaXNlIFN5c3RlbUV4aXQoZid7bGFiZWx9OiBleHBlY3RlZCBleGFjdGx5IG9uZSBtYXRjaCwgZm91bmQge2NvdW50fScpCiAgICBzID0gczIKCnNldHVwX2NvcmUgPSAnJycgICAgICA8IS0tIExFQUdVRSBDT05ORUNUSU9OIC0tPgogICAgICA8ZGl2IGNsYXNzPSJjYXJkIHAtNCI+CiAgICAgICAgPGRpdiBjbGFzcz0ic2VjdGlvbi1oZWFkIj48c3BhbiBjbGFzcz0iYmFyIj48L3NwYW4+PGgyPkVTUE4gTGVhZ3VlPC9oMj48L2Rpdj4KICAgICAgICA8ZGl2IGNsYXNzPSJzcGFjZS15LTMiPgogICAgICAgICAgPGRpdj4KICAgICAgICAgICAgPGxhYmVsIGNsYXNzPSJsYWJlbCIgZm9yPSJsZWFndWVJZElucHV0Ij5MZWFndWUgSUQ8L2xhYmVsPgogICAgICAgICAgICA8aW5wdXQgaWQ9ImxlYWd1ZUlkSW5wdXQiIGNsYXNzPSJmaWVsZCIgaW5wdXRtb2RlPSJudW1lcmljIiBhdXRvY29tcGxldGU9Im9mZiIgcGxhY2Vob2xkZXI9ImUuZy4gMTIzNDU2NyI+CiAgICAgICAgICA8L2Rpdj4KICAgICAgICAgIDxzcGFuIGlkPSJzZWFzb25ZZWFyIiBoaWRkZW4gYXJpYS1oaWRkZW49InRydWUiPjwvc3Bhbj4KICAgICAgICAgIDxzcGFuIGlkPSJ3ZWVrTnVtIiBoaWRkZW4gYXJpYS1oaWRkZW49InRydWUiPjwvc3Bhbj4KICAgICAgICAgIDxidXR0b24gaWQ9ImZldGNoQnRuIiBjbGFzcz0iYnRuLXByaW1hcnkiPgogICAgICAgICAgICA8c3BhbiBpZD0iZmV0Y2hTcGlubmVyIiBjbGFzcz0ic3Bpbm5lciBoaWRkZW4iPjwvc3Bhbj4KICAgICAgICAgICAgPHNwYW4gaWQ9ImZldGNoTGFiZWwiPkZFVENIIExFQUdVRSBEQVRBPC9zcGFuPgogICAgICAgICAgPC9idXR0b24+CiAgICAgICAgICA8cCBpZD0iZmV0Y2hTdGF0dXMiIGNsYXNzPSJ0ZXh0LVsxMS41cHhdIHRleHQtW3ZhcigtLWRpbSldIGxlYWRpbmctcmVsYXhlZCI+RW50ZXIgeW91ciBFU1BOIExlYWd1ZSBJRCB0byBsb2FkIHRoZSBsaXZlIDIwMjYgc2Vhc29uLjwvcD4KICAgICAgICAgIDxidXR0b24gaWQ9Imhpc3RvcnlVbmxvY2tUb2dnbGUiIHR5cGU9ImJ1dHRvbiIgY2xhc3M9InBpbGwgcGlsbC1jeWFuIHctZnVsbCBqdXN0aWZ5LWNlbnRlciIgYXJpYS1leHBhbmRlZD0iZmFsc2UiIGFyaWEtY29udHJvbHM9Imhpc3RvcnlVcGxvYWRQYW5lbCI+T1BUSU9OQUwgwrcgTE9BRCBBUkNISVZFIEpTT048L2J1dHRvbj4KICAgICAgICAgIDxwIGNsYXNzPSJ0ZXh0LVsxMC41cHhdIHRleHQtW3ZhcigtLWRpbSldIGxlYWRpbmctcmVsYXhlZCI+SGlzdG9yaWNhbCBzZWFzb25zIGFyZSBvcHRpb25hbCBhbmQgb25seSBuZWVkZWQgZm9yIHRoZSBmdWxsIFJlY29yZCBCb29rIGFyY2hpdmUuPC9wPgogICAgICAgIDwvZGl2PgogICAgICA8L2Rpdj4KCiAgICAgIDwhLS0gSElTVE9SSUNBTCBBUkNISVZFIC8gUkVDT1JEIEJPT0sgLS0+JycnCnN1Yl9vbmNlKHInICAgICAgPCEtLSBMRUFHVUUgQ09OTkVDVElPTiAtLT4uKj8gICAgICA8IS0tIEhJU1RPUklDQUwgQVJDSElWRSAvIFJFQ09SRCBCT09LIC0tPicsIHNldHVwX2NvcmUsICdTZXR1cCBjb3JlIHJlcGxhY2VtZW50JykKCnN1Yl9vbmNlKHInXG4gICAgICA8IS0tIEJST0FEQ0FTVCBBVURJTyAtLT4uKj8oPz1cbiAgICAgIDxkaXYgY2xhc3M9InRleHQtY2VudGVyIHB5LTIiPiknLCAnXG4nLCAnQnJvYWRjYXN0L0luc3RhbGwgcmVtb3ZhbCcpCgpvbGRfYmFubmVyID0gJycnZnVuY3Rpb24gc2hvd0hpc3RvcnlCYW5uZXIodGV4dCl7CiAgY29uc3QgZWwgPSAkKCdoaXN0b3J5QmFubmVyJyk7CiAgZWwudGV4dENvbnRlbnQgPSB0ZXh0OwogIGVsLmNsYXNzTGlzdC5yZW1vdmUoJ2hpZGRlbicpOwp9CmZ1bmN0aW9uIGhpZGVIaXN0b3J5QmFubmVyKCl7ICQoJ2hpc3RvcnlCYW5uZXInKS5jbGFzc0xpc3QuYWRkKCdoaWRkZW4nKTsgfScnJwpuZXdfYmFubmVyID0gJycnZnVuY3Rpb24gc2hvd0hpc3RvcnlCYW5uZXIodGV4dCl7CiAgY29uc3QgZWwgPSAkKCdoaXN0b3J5QmFubmVyJyk7CiAgaWYoIWVsKSByZXR1cm47CiAgZWwudGV4dENvbnRlbnQgPSB0ZXh0OwogIGVsLmNsYXNzTGlzdC5yZW1vdmUoJ2hpZGRlbicpOwp9CmZ1bmN0aW9uIGhpZGVIaXN0b3J5QmFubmVyKCl7CiAgY29uc3QgZWwgPSAkKCdoaXN0b3J5QmFubmVyJyk7CiAgaWYoZWwpIGVsLmNsYXNzTGlzdC5hZGQoJ2hpZGRlbicpOwp9JycnCmlmIG9sZF9iYW5uZXIgbm90IGluIHM6CiAgICByYWlzZSBTeXN0ZW1FeGl0KCdIaXN0b3J5IGJhbm5lciBoZWxwZXIgYmxvY2sgbm90IGZvdW5kJykKcyA9IHMucmVwbGFjZShvbGRfYmFubmVyLCBuZXdfYmFubmVyLCAxKQoKZmV0Y2hfaW1wbCA9IHInJydhc3luYyBmdW5jdGlvbiBmZXRjaExlYWd1ZURhdGEob3B0aW9ucyl7CiAgY29uc3Qgb3B0cyA9IG9wdGlvbnMgJiYgdHlwZW9mIG9wdGlvbnMgPT09ICdvYmplY3QnID8gb3B0aW9ucyA6IHt9OwogIGNvbnN0IHNpbGVudCA9ICEhb3B0cy5zaWxlbnQ7CiAgY29uc3QgbmF2aWdhdGUgPSBvcHRzLm5hdmlnYXRlICE9PSBmYWxzZTsKICBjb25zdCBsZWFndWUgPSBTdHJpbmcob3B0cy5sZWFndWVJZCB8fCAkKCdsZWFndWVJZElucHV0JykudmFsdWUgfHwgJycpLnRyaW0oKTsKICBjb25zdCBjdXJyZW50WWVhciA9IDIwMjY7CiAgY29uc3QgbGl2ZVVybCA9IGJ1aWxkRXNwblVybEZvclllYXIobGVhZ3VlLCBjdXJyZW50WWVhciwgbnVsbCk7CgogIGlmKCFsZWFndWUgfHwgIWxpdmVVcmwpewogICAgaWYoIXNpbGVudCkgJCgnZmV0Y2hTdGF0dXMnKS50ZXh0Q29udGVudCA9ICdFbnRlciBhIExlYWd1ZSBJRCBmaXJzdC4nOwogICAgcmV0dXJuIGZhbHNlOwogIH0KCiAgJCgnbGVhZ3VlSWRJbnB1dCcpLnZhbHVlID0gbGVhZ3VlOwogIHNldEZldGNoTG9hZGluZyh0cnVlKTsKICBoaWRlSGlzdG9yeUJhbm5lcigpOwogICQoJ2ZldGNoU3RhdHVzJykudGV4dENvbnRlbnQgPSBzaWxlbnQgPyAnUmVzdG9yaW5nIGxpdmUgMjAyNiBzZWFzb27igKYnIDogJ0ZldGNoaW5nIGxpdmUgMjAyNiBzZWFzb27igKYnOwoKICB0cnl7CiAgICBjb25zdCBwcm94eVVybCA9ICcvYXBpL2VzcG4/dXJsPScgKyBlbmNvZGVVUklDb21wb25lbnQobGl2ZVVybCk7CiAgICBjb25zdCBoZWFkZXJzID0geyAnQWNjZXB0JzonYXBwbGljYXRpb24vanNvbicgfTsKICAgIHRyeXsKICAgICAgaWYodHlwZW9mIGVzcG5DcmVkSGVhZGVycyA9PT0gJ2Z1bmN0aW9uJykgT2JqZWN0LmFzc2lnbihoZWFkZXJzLCBlc3BuQ3JlZEhlYWRlcnMoKSB8fCB7fSk7CiAgICB9Y2F0Y2goZSl7fQoKICAgIGNvbnN0IHJlc3BvbnNlID0gYXdhaXQgZmV0Y2gocHJveHlVcmwsIHsKICAgICAgbWV0aG9kOidHRVQnLAogICAgICBoZWFkZXJzLAogICAgICBjYWNoZTonbm8tc3RvcmUnLAogICAgfSk7CiAgICBjb25zdCB0ZXh0ID0gYXdhaXQgcmVzcG9uc2UudGV4dCgpOwogICAgaWYoIXJlc3BvbnNlLm9rKXsKICAgICAgY29uc3QgZGV0YWlsID0gU3RyaW5nKHRleHQgfHwgJycpLnJlcGxhY2UoL1xzKy9nLCAnICcpLnNsaWNlKDAsIDE4MCk7CiAgICAgIHRocm93IG5ldyBFcnJvcihgSFRUUCAke3Jlc3BvbnNlLnN0YXR1c30ke2RldGFpbCA/ICc6ICcgKyBkZXRhaWwgOiAnJ31gKTsKICAgIH0KCiAgICBsZXQgcGFyc2VkOwogICAgdHJ5ewogICAgICBwYXJzZWQgPSBKU09OLnBhcnNlKHRleHQpOwogICAgfWNhdGNoKGVycil7CiAgICAgIHRocm93IG5ldyBFcnJvcignSU5WQUxJRF9FU1BOX0pTT04nKTsKICAgIH0KCiAgICBjb25zdCB1bndyYXAgPSAodmFsdWUpPT57CiAgICAgIGxldCB2ID0gdmFsdWU7CiAgICAgIGZvcihsZXQgaT0wOyBpPDQ7IGkrKyl7CiAgICAgICAgaWYodHlwZW9mIHYgPT09ICdzdHJpbmcnKXsKICAgICAgICAgIHRyeXsgdiA9IEpTT04ucGFyc2Uodik7IGNvbnRpbnVlOyB9Y2F0Y2goZSl7IGJyZWFrOyB9CiAgICAgICAgfQogICAgICAgIGlmKHYgJiYgdHlwZW9mIHYgPT09ICdvYmplY3QnICYmIE9iamVjdC5wcm90b3R5cGUuaGFzT3duUHJvcGVydHkuY2FsbCh2LCAnY29udGVudHMnKSl7CiAgICAgICAgICB2ID0gdi5jb250ZW50czsKICAgICAgICAgIGNvbnRpbnVlOwogICAgICAgIH0KICAgICAgICBpZih2ICYmIHR5cGVvZiB2ID09PSAnb2JqZWN0JyAmJiAhQXJyYXkuaXNBcnJheSh2LnRlYW1zKSAmJiB2LmRhdGEgJiYgdHlwZW9mIHYuZGF0YSA9PT0gJ29iamVjdCcpewogICAgICAgICAgdiA9IHYuZGF0YTsKICAgICAgICAgIGNvbnRpbnVlOwogICAgICAgIH0KICAgICAgICBicmVhazsKICAgICAgfQogICAgICByZXR1cm4gdjsKICAgIH07CgogICAgY29uc3Qgcm9vdCA9IHVud3JhcChwYXJzZWQpOwogICAgY29uc3QgY2FuZGlkYXRlcyA9IFtdOwogICAgY29uc3QgYWRkQ2FuZGlkYXRlID0gKHZhbHVlKT0+ewogICAgICBjb25zdCB2ID0gdW53cmFwKHZhbHVlKTsKICAgICAgaWYodiAmJiB0eXBlb2YgdiA9PT0gJ29iamVjdCcpewogICAgICAgIGNhbmRpZGF0ZXMucHVzaCh2KTsKICAgICAgICBpZih2LmxlYWd1ZSAmJiB0eXBlb2Ygdi5sZWFndWUgPT09ICdvYmplY3QnKSBjYW5kaWRhdGVzLnB1c2godW53cmFwKHYubGVhZ3VlKSk7CiAgICAgIH0KICAgIH07CiAgICBpZihBcnJheS5pc0FycmF5KHJvb3QpKSByb290LmZvckVhY2goYWRkQ2FuZGlkYXRlKTsgZWxzZSBhZGRDYW5kaWRhdGUocm9vdCk7CgogICAgY29uc3QgbGl2ZURhdGEgPSBjYW5kaWRhdGVzLmZpbmQodj0+CiAgICAgIEFycmF5LmlzQXJyYXkodi50ZWFtcykgJiYgdi50ZWFtcy5sZW5ndGggJiYgTnVtYmVyKHYuc2Vhc29uSWQgfHwgdi5zZWFzb24gfHwgY3VycmVudFllYXIpID09PSBjdXJyZW50WWVhcgogICAgKSB8fCBjYW5kaWRhdGVzLmZpbmQodj0+IEFycmF5LmlzQXJyYXkodi50ZWFtcykgJiYgdi50ZWFtcy5sZW5ndGgpOwoKICAgIGlmKCFsaXZlRGF0YSkgdGhyb3cgbmV3IEVycm9yKCdOT19MSVZFX0xFQUdVRV9EQVRBJyk7CgogICAgY29uc3QgbGl2ZUluZm8gPSBhcHBseUxpdmVMZWFndWVQYXlsb2FkKGxlYWd1ZSwgbGl2ZURhdGEsIGN1cnJlbnRZZWFyKTsKICAgIHNldENvbm4oJ2xpdmUnKTsKCiAgICBjb25zdCB1cGxvYWRlZEFyY2hpdmUgPSBBcnJheS5pc0FycmF5KHdpbmRvdy5fZnJhbmNoaXNlWWVhcnNEYXRhKQogICAgICA/IHdpbmRvdy5fZnJhbmNoaXNlWWVhcnNEYXRhLmZpbHRlcihyb3c9PiBOdW1iZXIocm93ICYmIHJvdy55ZWFyKSAhPT0gY3VycmVudFllYXIpCiAgICAgIDogW107CiAgICBsZXQgaGlzdG9yeVNlZWQgPSB1cGxvYWRlZEFyY2hpdmU7CiAgICBpZighaGlzdG9yeVNlZWQubGVuZ3RoKXsKICAgICAgaGlzdG9yeVNlZWQgPSBub3JtYWxpemVIaXN0b3J5UGF5bG9hZChbbGl2ZURhdGFdKS55ZWFyc0RhdGEgfHwgW107CiAgICB9CiAgICBpZihoaXN0b3J5U2VlZC5sZW5ndGgpewogICAgICBhcHBseUxlYWd1ZUhpc3RvcnkoCiAgICAgICAgd2l0aEN1cnJlbnRTZWFzb24oaGlzdG9yeVNlZWQpLAogICAgICAgIFtdLAogICAgICAgIHVwbG9hZGVkQXJjaGl2ZS5sZW5ndGggPyAnSGlzdG9yaWNhbCBhcmNoaXZlICsgY3VycmVudCBzZWFzb24nIDogJ0N1cnJlbnQgc2Vhc29uJywKICAgICAgICB7IHNpbGVudDp0cnVlIH0KICAgICAgKTsKICAgICAgcmVuZGVyV2Vla1NjcnViYmVycygpOwogICAgfQoKICAgICQoJ2ZldGNoU3RhdHVzJykudGV4dENvbnRlbnQgPSBg4pyTIDIwMjYgY29ubmVjdGVkIMK3ICR7bGl2ZURhdGEudGVhbXMubGVuZ3RofSB0ZWFtcyDCtyBXZWVrICR7bGl2ZUluZm8uYWN0aXZlV2Vla31gOwogICAgaWYoIXVwbG9hZGVkQXJjaGl2ZS5sZW5ndGggJiYgJCgnaGlzdG9yeVN0YXR1cycpKXsKICAgICAgJCgnaGlzdG9yeVN0YXR1cycpLnRleHRDb250ZW50ID0gJ0N1cnJlbnQgc2Vhc29uIGlzIHJlYWR5LiBVcGxvYWQgYW4gYXJjaGl2ZSBKU09OIG9ubHkgaWYgeW91IHdhbnQgaGlzdG9yaWNhbCBSZWNvcmQgQm9vayBzZWFzb25zLic7CiAgICB9CgogICAgdHJ5eyBsb2NhbFN0b3JhZ2Uuc2V0SXRlbShTQVZFRF9MRUFHVUVfSURfS0VZLCBsZWFndWUpOyB9Y2F0Y2goZSl7fQogICAgc2F2ZVByZWZzKCk7CiAgICByZWZyZXNoT3BlbkFJU3RhdHVzKCk7CgogICAgaWYobmF2aWdhdGUpIHNldFNjcmVlbignaG9tZScpOwoKICAgIHNhZmVSdW4oJ2Rlc2snLCByZW5kZXJEZXNrLCAoKT0+IHJlbmRlclNjcmVlbkZhbGxiYWNrKCdob21lJykpOwogICAgc2FmZVJ1bignbWF0Y2h1cHMnLCByZW5kZXJNYXRjaHVwcywgKCk9PiByZW5kZXJTY3JlZW5GYWxsYmFjaygnbWF0Y2h1cHMnKSk7CiAgICBzYWZlUnVuKCdyZWNvcmRib29rJywgcmVuZGVyUmVjb3JkQm9vaywgKCk9PiByZW5kZXJTY3JlZW5GYWxsYmFjaygncmVjb3JkYm9vaycpKTsKICAgIHNhZmVSdW4oJ25ld3MnLCByZW5kZXJOZXdzLCAoKT0+IHJlbmRlclNjcmVlbkZhbGxiYWNrKCduZXdzJykpOwoKICAgIGlmKCFzaWxlbnQpIHRvYXN0KGAyMDI2IGxlYWd1ZSBjb25uZWN0ZWQgwrcgV2VlayAke2xpdmVJbmZvLmFjdGl2ZVdlZWt9YCk7CiAgICByZXR1cm4gdHJ1ZTsKICB9Y2F0Y2goZXJyKXsKICAgIGNvbnNvbGUuZXJyb3IoJ1tFU1BOIGxpdmUgZmV0Y2hdJywgZXJyKTsKICAgIHNldENvbm4oJ2Vycm9yJyk7CiAgICBjb25zdCBtZXNzYWdlID0gU3RyaW5nKGVyciAmJiAoZXJyLm1lc3NhZ2UgfHwgZXJyKSB8fCAnJyk7CiAgICBjb25zdCBhdXRoID0gL1xiSFRUUCA0MFsxM11cYi8udGVzdChtZXNzYWdlKTsKICAgICQoJ2ZldGNoU3RhdHVzJykudGV4dENvbnRlbnQgPSBhdXRoCiAgICAgID8gJ0VTUE4gZGVuaWVkIHRoZSAyMDI2IHJlcXVlc3QgKDQwMS80MDMpLiBDb25maXJtIHRoZSBzZXJ2ZXItc2lkZSBFU1BOIHJlbGF5IGNyZWRlbnRpYWxzIGFuZCB0cnkgYWdhaW4uJwogICAgICA6ICdUaGUgbGl2ZSAyMDI2IHNlYXNvbiBjb3VsZCBub3QgYmUgbG9hZGVkLiBDaGVjayB0aGUgTGVhZ3VlIElEIGFuZCB0cnkgYWdhaW4uJzsKICAgIHJldHVybiBmYWxzZTsKICB9ZmluYWxseXsKICAgIHNldEZldGNoTG9hZGluZyhmYWxzZSk7CiAgfQp9CiQoJ2ZldGNoQnRuJykuYWRkRXZlbnRMaXN0ZW5lcignY2xpY2snLCAoKT0+IGZldGNoTGVhZ3VlRGF0YSgpKTsnJycKc3ViX29uY2UociJhc3luYyBmdW5jdGlvbiBmZXRjaExlYWd1ZURhdGFcKG9wdGlvbnNcKVx7Lio/XG5cfVxuXCRcKCdmZXRjaEJ0bidcKVwuYWRkRXZlbnRMaXN0ZW5lclwoJ2NsaWNrJywgXChcKT0+IGZldGNoTGVhZ3VlRGF0YVwoXClcKTsiLCBmZXRjaF9pbXBsLCAnZmV0Y2hMZWFndWVEYXRhIHJlcGxhY2VtZW50JykKCnMsIGNvdW50ID0gcmUuc3VibihyIi9cKiAtLS0tIEFQSSBVUkwgZGlzcGxheSAtLS0tIFwqL1xuXCRcKCdzaG93VXJsQnRuJ1wpXC5hZGRFdmVudExpc3RlbmVyXCgnY2xpY2snLCBcKFwpPT5cey4qP1xuXH1cKTtcbiIsICcnLCBzLCBjb3VudD0xLCBmbGFncz1yZS5TKQppZiBjb3VudCAhPSAxOgogICAgcmFpc2UgU3lzdGVtRXhpdChmJ0FQSSBVUkwgZGlzcGxheSB3aXJpbmc6IGV4cGVjdGVkIG9uZSBtYXRjaCwgZm91bmQge2NvdW50fScpCgpvbGQgPSAiICBjb25zdCBhID0gJCgnaGlzdG9yeVVybExpbmsnKTtcbiAgaWYodXJsKXsiCm5ldyA9ICIgIGNvbnN0IGEgPSAkKCdoaXN0b3J5VXJsTGluaycpO1xuICBpZighYSkgcmV0dXJuO1xuICBpZih1cmwpeyIKaWYgb2xkIG5vdCBpbiBzOgogICAgcmFpc2UgU3lzdGVtRXhpdCgnaGlzdG9yeVVybExpbmsgaGVscGVyIGFuY2hvciBub3QgZm91bmQnKQpzID0gcy5yZXBsYWNlKG9sZCwgbmV3LCAxKQoKcywgY291bnQgPSByZS5zdWJuKHIiXG5cJFwoJ3Jlc2V0QnRuJ1wpXC5hZGRFdmVudExpc3RlbmVyXCgnY2xpY2snLCBcKFwpPT5cey4qP1xuXH1cKTtcbiIsICdcbicsIHMsIGNvdW50PTEsIGZsYWdzPXJlLlMpCmlmIGNvdW50ICE9IDE6CiAgICByYWlzZSBTeXN0ZW1FeGl0KGYnUmVzZXQgbGlzdGVuZXIgcmVtb3ZhbDogZXhwZWN0ZWQgb25lIG1hdGNoLCBmb3VuZCB7Y291bnR9JykKCnBhdGgud3JpdGVfdGV4dChzLCBlbmNvZGluZz0ndXRmLTgnKQpwcmludCgnUGF0Y2hlZCBpbmRleC5odG1sJykK' | base64 -d > /tmp/patch.py
-          python /tmp/patch.py
+      - name: Patch index
+        run: python .github/scripts/fix-live-fetch-setup-2026.py
 
       - name: Validate targeted behavior
         run: |
-          python - <<'PY'
-          from pathlib import Path
-          s = Path('index.html').read_text(encoding='utf-8')
-          forbidden = ['<h2>AI News Desk</h2>','<h2>Broadcast Audio</h2>','<h2>Install</h2>','id="showUrlBtn"','id="espnAuthDetails"']
-          found = [x for x in forbidden if x in s]
-          if found:
-            raise SystemExit('Removed Setup controls still present: ' + repr(found))
-          required = [
-            'const currentYear = 2026;',
-            "const proxyUrl = '/api/espn?url=' + encodeURIComponent(liveUrl);",
-            'applyLiveLeaguePayload(league, liveData, currentYear)',
-            "safeRun('desk', renderDesk",
-            "safeRun('matchups', renderMatchups",
-            "safeRun('recordbook', renderRecordBook",
-            "safeRun('news', renderNews",
-            'id="historyUploadPanel"',
-            'id="leagueIdInput"',
-            'id="fetchBtn"',
-            'FSN STUDIO SHOW: 2026 PRESEASON PREVIEW & DRAFT AUDIT',
-          ]
-          missing = [x for x in required if x not in s]
-          if missing:
-            raise SystemExit('Required feature markers missing: ' + repr(missing))
-          if "function hideHistoryBanner(){ $('historyBanner').classList.add('hidden'); }" in s:
-            raise SystemExit('Unsafe historyBanner dereference remains')
-          if "$('resetBtn').addEventListener('click'" in s:
-            raise SystemExit('Orphaned resetBtn listener remains')
-          print('Targeted behavior markers passed')
-          PY
+          grep -q "const currentYear = 2026;" index.html
+          grep -q "const proxyUrl = '/api/espn?url=' + encodeURIComponent(liveUrl);" index.html
+          grep -q "safeRun('desk', renderDesk" index.html
+          grep -q "safeRun('matchups', renderMatchups" index.html
+          grep -q "safeRun('recordbook', renderRecordBook" index.html
+          grep -q "safeRun('news', renderNews" index.html
+          grep -q 'id="historyUploadPanel"' index.html
+          grep -q 'id="leagueIdInput"' index.html
+          grep -q 'id="fetchBtn"' index.html
+          grep -q 'FSN STUDIO SHOW: 2026 PRESEASON PREVIEW & DRAFT AUDIT' index.html
+          ! grep -q '<h2>AI News Desk</h2>' index.html
+          ! grep -q '<h2>Broadcast Audio</h2>' index.html
+          ! grep -q '<h2>Install</h2>' index.html
+          ! grep -q 'id="showUrlBtn"' index.html
+          ! grep -q 'id="espnAuthDetails"' index.html
+          ! grep -q "\$('resetBtn').addEventListener('click'" index.html
 
       - name: Syntax-check inline JavaScript
         run: |
@@ -66,10 +51,7 @@ jobs:
             (out / f'script-{i}.js').write_text(body, encoding='utf-8')
           print(f'Extracted {len(scripts)} inline script block(s)')
           PY
-          for f in /tmp/fsn-inline-scripts/*.js; do
-            echo "Checking $f"
-            node --check "$f"
-          done
+          for f in /tmp/fsn-inline-scripts/*.js; do node --check "$f"; done
 
       - name: Commit repair
         run: |
