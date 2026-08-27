@@ -2774,18 +2774,37 @@ function serverlessEspnUrl(espnUrl){
 function parseEspnProxyPayload(text){
   let data = JSON.parse(String(text || '').replace(/^\uFEFF/, ''));
 
-  for(let depth=0; depth<2 && typeof data === 'string'; depth++){
+  for(let depth=0; depth<3 && typeof data === 'string'; depth++){
     data = JSON.parse(data);
   }
 
   if(data && !Array.isArray(data) && typeof data.contents === 'string'){
     data = JSON.parse(data.contents.replace(/^\uFEFF/, ''));
-    for(let depth=0; depth<2 && typeof data === 'string'; depth++){
+    for(let depth=0; depth<3 && typeof data === 'string'; depth++){
       data = JSON.parse(data);
     }
   }
 
   return data;
+}
+
+/* Peel wrapped proxy envelopes and stringified JSON off a payload before the
+   normalizer walks it. AllOrigins-style { contents:"..." } wrappers and
+   doubly-encoded strings both appear in the wild; parse up to three depths so
+   an envelope-inside-an-envelope still resolves without ever looping forever. */
+function unwrapPayloadEnvelope(value, depth){
+  depth = depth || 0;
+  if(depth >= 3) return value;
+  if(typeof value === 'string'){
+    const trimmed = value.replace(/^\uFEFF/, '').trim();
+    if(!trimmed || (trimmed[0] !== '[' && trimmed[0] !== '{' && trimmed[0] !== '"')) return value;
+    try{ return unwrapPayloadEnvelope(JSON.parse(trimmed), depth + 1); }
+    catch(e){ return value; }
+  }
+  if(value && typeof value === 'object' && !Array.isArray(value) && typeof value.contents === 'string'){
+    return unwrapPayloadEnvelope(value.contents, depth + 1);
+  }
+  return value;
 }
 
 function validEspnPayload(rawData){
@@ -2857,82 +2876,99 @@ function historicalArchiveYears(){
    multi-season array, a single season object, or an object with a
    nested array, and drops seasons with no usable team data. */
 function normalizeHistoryPayload(raw){
-  /* Keep the season year attached to the object it came from. ESPN normally
-     exposes seasonId/season directly, while some saved/manual history payloads
-     are keyed by year and omit those fields on the inner league object. */
-  const seasons = [];
-  const queue = (value, parentKey)=>{
-    if(Array.isArray(value)){
-      value.forEach(item=> queue(item, parentKey));
-      return;
-    }
-    if(!value || typeof value !== 'object') return;
+  /* Shape-agnostic ingest. ESPN endpoints, manual pastes, and proxy envelopes
+     all return league data in different container structures — a top-level
+     leagueHistory array, a single modern season object, a wrapped
+     { contents:"..." } proxy body, a stringified JSON blob, a year-keyed map
+     ({ "2022": {...}, "2023": {...} }), or a nested { leagueHistory:[...] } /
+     { seasons:[...] } array. Rather than special-case each, recursively walk
+     the payload and collect every object that carries a usable teams array. */
+  const root = unwrapPayloadEnvelope(raw, 0);
 
-    const directYear = parseInt(value.seasonId || value.season, 10);
-    if(Number.isFinite(directYear) && directYear > 0){
-      seasons.push({ leagueData:value, parentKey });
-      return;
+  const withTeams = [];   // { leagueData, parentKey } — teams.length > 0
+  const emptyTeams = [];  // season-shaped nodes whose teams array is empty
+  const seen = new Set();
+
+  /* Only descend into containers that legitimately hold seasons (arrays, known
+     wrapper keys, and 4-digit year keys). A collected season's own teams /
+     schedule / members are never re-scanned, so nested team objects can never
+     masquerade as seasons. */
+  const CONTAINER_KEYS = ['leagueHistory', 'seasons', 'history', 'data', 'leagues', 'value', 'contents'];
+
+  const visit = (value, parentKey, depth)=>{
+    if(value == null || depth > 8) return;
+    if(typeof value === 'string'){ visit(unwrapPayloadEnvelope(value, 0), parentKey, depth + 1); return; }
+    if(Array.isArray(value)){ value.forEach(item=> visit(item, parentKey, depth + 1)); return; }
+    if(typeof value !== 'object') return;
+    if(seen.has(value)) return;
+    seen.add(value);
+
+    if(typeof value.contents === 'string'){ visit(unwrapPayloadEnvelope(value, 0), parentKey, depth + 1); return; }
+
+    if(Array.isArray(value.teams)){
+      if(value.teams.length > 0) withTeams.push({ leagueData: value, parentKey });
+      else emptyTeams.push({ leagueData: value, parentKey });
+      return; // a season node — do not walk its internals looking for more
     }
 
-    /* Parent-keyed archives are common in commissioner exports, e.g.
-       { "2020": { teams:[...] }, "2021": { teams:[...] } }. */
-    const keyed = Object.entries(value).filter(([key, item])=>{
-      const keyYear = parseInt(key, 10);
-      return /^\d{4}$/.test(String(key)) && Number.isFinite(keyYear) &&
-        item && typeof item === 'object';
+    CONTAINER_KEYS.forEach(key=>{
+      if(value[key] != null && typeof value[key] === 'object') visit(value[key], parentKey, depth + 1);
     });
-    if(keyed.length){
-      keyed.forEach(([key, item])=> queue(item, key));
-      return;
-    }
+    /* Year-keyed commissioner exports: { "2020": { teams:[...] }, ... }. */
+    Object.keys(value).forEach(key=>{
+      if(/^\d{4}$/.test(key) && value[key] && typeof value[key] === 'object'){
+        visit(value[key], key, depth + 1);
+      }
+    });
+  };
+  visit(root, null, 0);
 
-    seasons.push({ leagueData:value, parentKey });
+  /* Resolve the season year in strict precedence order:
+       1. Number(obj.seasonId || obj.season)
+       2. a 4-digit parent key
+       3. the current year — ONLY when the year is otherwise unresolved AND the
+          object still looks like an active/in-progress season (never for a
+          historical row, which is how rows get mislabeled).
+     currentMatchupPeriod / scoringPeriodId are WEEK numbers, so they are used
+     only as evidence a payload is active, never as the year itself. */
+  const currentYear = new Date().getFullYear();
+  const resolveYear = (leagueData, parentKey)=>{
+    const direct = Number(leagueData.seasonId || leagueData.season);
+    if(Number.isFinite(direct) && direct >= 1900 && direct <= currentYear + 2) return direct;
+    const parent = Number(parentKey);
+    if(/^\d{4}$/.test(String(parentKey)) && Number.isFinite(parent) && parent >= 1900) return parent;
+    const status = leagueData.status || {};
+    const looksActive = status.isActive === true
+      || status.currentMatchupPeriod != null
+      || status.latestScoringPeriod != null
+      || leagueData.scoringPeriodId != null;
+    if(looksActive) return currentYear;
+    return null;
   };
 
-  if(Array.isArray(raw)) raw.forEach(item=> queue(item, null));
-  else if(raw && Array.isArray(raw.leagueHistory)) raw.leagueHistory.forEach(item=> queue(item, null));
-  else if(raw && Array.isArray(raw.seasons)) raw.seasons.forEach(item=> queue(item, null));
-  else if(raw && raw.leagueHistory && typeof raw.leagueHistory === 'object') queue(raw.leagueHistory, null);
-  else if(raw && raw.seasons && typeof raw.seasons === 'object') queue(raw.seasons, null);
-  else queue(raw, null);
-
-  const yearsData = [];
-  const skipped = [];
-  seasons.forEach(({leagueData, parentKey})=>{
-    if(!leagueData || typeof leagueData !== 'object') return;
-
-    /* seasonId/season is always the first and authoritative parse. Never fall
-       back to the browser's current year: that is how historical rows get
-       mislabeled. If ESPN omitted it, a numeric parent key is the only safe
-       year fallback. currentMatchupPeriod is inspected only as evidence that
-       this is a season payload; it is a WEEK number and must never become the
-       season year. */
-    const parsedSeasonYear = parseInt(leagueData.seasonId || leagueData.season, 10);
-    const parsedParentYear = parseInt(parentKey, 10);
-    const currentMatchupPeriod = parseInt(
-      leagueData.status && leagueData.status.currentMatchupPeriod, 10);
-
-    let year = Number.isFinite(parsedSeasonYear) && parsedSeasonYear > 0
-      ? parsedSeasonYear
-      : null;
-    if(!year && Number.isFinite(parsedParentYear) && parsedParentYear >= 1900)
-      year = parsedParentYear;
-
+  /* De-duplicate by year — a later (newer) payload for a year overwrites an
+     earlier one. A Map preserves last-write-wins while insertion order tracks
+     the traversal order. */
+  const byYear = new Map();
+  withTeams.forEach(({ leagueData, parentKey })=>{
+    const year = resolveYear(leagueData, parentKey);
     if(!year){
-      /* A matchup period confirms the object looks like league data, but it
-         cannot identify the season. Skip instead of silently stamping today. */
-      if(Number.isFinite(currentMatchupPeriod) && currentMatchupPeriod > 0)
-        console.warn('[FSN] History payload missing seasonId/season; refusing to infer a year from matchup period ' + currentMatchupPeriod + '.');
+      console.warn('[FSN] History payload node has teams but no resolvable season year; skipping.');
       return;
     }
-
-    if(leagueData.teams && leagueData.teams.length) yearsData.push({ year, leagueData });
-    else skipped.push(year);
+    byYear.set(year, { year, leagueData });
   });
 
-  /* Strict numeric chronology is required by every championship / predecessor
-     lookup downstream. */
-  yearsData.sort((a,b)=> Number(a.year) - Number(b.year));
+  const skippedSet = new Set();
+  emptyTeams.forEach(({ leagueData, parentKey })=>{
+    const year = resolveYear(leagueData, parentKey);
+    if(year && !byYear.has(year)) skippedSet.add(year);
+  });
+
+  /* Strict numeric chronology (ascending) is required by every championship /
+     predecessor lookup downstream. */
+  const yearsData = Array.from(byYear.values()).sort((a, b)=> a.year - b.year);
+  const skipped = Array.from(skippedSet).sort((a, b)=> a - b);
   return { yearsData, skipped };
 }
 
@@ -2989,6 +3025,34 @@ async function fetchAllTimeHistory(leagueId) {
   return { yearsData, skipped };
 }
 
+/* ============================================================
+   CONSOLIDATED LEAGUE-HISTORY ARCHIVE FETCH
+   Primary archive route: one request to the unscoped
+   leagueHistory/{id} endpoint returns every completed season in a
+   single array, which the shape-agnostic normalizer flattens into
+   [{ year, leagueData }]. If that route fails or comes back empty
+   (a proxy timeout on the large payload, a rate limit), fall back
+   to the lightweight per-year sequential hydrator so archive
+   coverage still lands.
+============================================================ */
+async function fetchLeagueHistoryArchive(leagueId){
+  const historyUrl = buildLeagueHistoryUrl(leagueId);
+  if(historyUrl){
+    try{
+      const raw = await fetchLeagueDataViaProxies(historyUrl);
+      const { yearsData, skipped } = normalizeHistoryPayload(raw);
+      if(yearsData.length){
+        return { yearsData, skipped, route:'consolidated' };
+      }
+      console.warn('[FSN] Consolidated leagueHistory route returned no usable seasons; falling back to sequential hydration.');
+    }catch(err){
+      console.warn('[FSN] Consolidated leagueHistory route failed; falling back to sequential hydration.', err);
+    }
+  }
+  const seq = await fetchAllTimeHistory(leagueId);
+  return { yearsData: seq.yearsData || [], skipped: seq.skipped || [], route:'sequential' };
+}
+
 /* Every counted game lives in exactly one h2h bucket, so summing the
    meetings gives the true total matchups behind the stats. */
 function countMatchups(stats){
@@ -3002,8 +3066,12 @@ function withCurrentSeason(yearsData){
   const live = LeagueData.espnData;
   if(!live || !live.teams || !live.teams.length) return yearsData;
   const liveYear = parseInt(live.seasonId || live.season, 10);
-  if(!liveYear || yearsData.some(y=> y.year === liveYear)) return yearsData;
-  return yearsData.concat([{ year: liveYear, leagueData: live }]).sort((a,b)=> a.year - b.year);
+  if(!liveYear) return yearsData;
+  /* Newer payload wins: the live/active object replaces any same-year archive
+     entry rather than being dropped, so an in-progress season always reflects
+     the freshest scores. */
+  const filtered = yearsData.filter(y=> y.year !== liveYear);
+  return filtered.concat([{ year: liveYear, leagueData: live }]).sort((a,b)=> a.year - b.year);
 }
 
 /* ============================================================
@@ -14374,7 +14442,8 @@ function applyFetchedHistoryPayload(historyResult, options){
   // fetchAllTimeHistory already computed/stored the archive immediately after
   // the sequential requests completed. Reuse that exact cache here for UI status,
   // banners, Vault metadata, and the season time-machine.
-  const summary = applyLeagueHistory(yearsData, skipped, 'Fetched automatically from ESPN', options);
+  const merged = withCurrentSeason(yearsData);
+  const summary = applyLeagueHistory(merged, skipped, 'Fetched automatically from ESPN', options);
   renderWeekScrubbers();
   return summary;
 }
@@ -14396,54 +14465,76 @@ async function fetchLeagueData(options){
   setFetchLoading(true);
   hideHistoryBanner();
   $('fetchStatus').textContent = silent
-    ? 'Restoring live league + eight historical seasons…'
-    : 'Fetching live season + 2025–2018 archive sequentially…';
-  $('historyStatus').textContent = 'Loading historical seasons sequentially…';
+    ? 'Restoring live league + full league history…'
+    : 'Fetching live season + consolidated league history…';
+  $('historyStatus').textContent = 'Loading league history…';
 
-  let liveInfo = null;
-  let archiveInfo = null;
+  /* DUAL-ROUTE INGESTION — both branches run together and each degrades
+     gracefully. The live branch resolves to null (never throws) so a 404 for a
+     season the league has not renewed yet cannot sink the whole load; the
+     archive branch tries the consolidated leagueHistory route first and falls
+     back to sequential per-year hydration. */
+  const liveTask = fetchLeagueDataViaProxies(liveUrl)
+    .then(raw=>{
+      const single = Array.isArray(raw) ? raw[raw.length - 1] : raw;
+      return (single && Array.isArray(single.teams) && single.teams.length) ? single : null;
+    })
+    .catch(err=>{
+      console.warn('[FSN] Live season request failed (likely not yet renewed for ' + currentYear + '); using latest historical season as active.', err);
+      return null;
+    });
 
-  // Start the live and archive branches together. Inside the archive branch,
-  // historical seasons are fetched one-by-one with a short proxy-friendly delay.
-  const liveTask = fetchLeagueDataViaProxies(liveUrl).then(leagueData=>{
-    liveInfo = applyLiveLeaguePayload(league, leagueData, currentYear);
-    setConn('live');
-    $('fetchStatus').textContent = `✓ Connected — ${liveInfo.activeSeason} Live + Historical Archive Loading…`;
-    renderAll();
-    if(navigate) setScreen('home');
-    return leagueData;
-  });
-
-  const historyTask = fetchAllTimeHistory(league).then(historyResult=>{
-    archiveInfo = applyFetchedHistoryPayload(historyResult, { silent });
-    return historyResult;
+  const historyTask = fetchLeagueHistoryArchive(league).catch(err=>{
+    console.warn('[FSN] League history archive fetch failed entirely.', err);
+    return { yearsData:[], skipped:[], route:'none', error:err };
   });
 
   try{
-    const [liveResult, historyResult] = await Promise.allSettled([liveTask, historyTask]);
+    const [liveData, archive] = await Promise.all([liveTask, historyTask]);
+    const archiveYears = archive && Array.isArray(archive.yearsData) ? archive.yearsData : [];
 
-    if(liveResult.status !== 'fulfilled'){
-      throw liveResult.reason || new Error('LIVE_FETCH_FAILED');
+    /* Resolve the active season. Prefer the live current-year payload; when it
+       is unavailable (404 / not renewed) fall back to the most recent
+       historical season so the app still opens on a real, populated state. */
+    let activeLeagueData = liveData;
+    let activeFromLive = !!liveData;
+    if(!activeLeagueData && archiveYears.length){
+      activeLeagueData = archiveYears[archiveYears.length - 1].leagueData;
     }
 
-    const historicalCount = historyResult.status === 'fulfilled' && archiveInfo
-      ? archiveInfo.seasons
-      : 0;
+    if(!activeLeagueData){
+      throw new Error('NO_LEAGUE_DATA');
+    }
 
-    if(historicalCount > 0){
-      const loadedYears = archiveInfo && Array.isArray(archiveInfo.years)
-        ? archiveInfo.years.slice().sort((a,b)=> b-a)
-        : [];
-      $('fetchStatus').textContent = `✓ Connected — ${liveInfo.activeSeason} Live + ${historicalCount} Historical Seasons Loaded (${loadedYears.join(', ')})`;
-    } else {
-      const historyErr = historyResult.status === 'rejected' ? historyResult.reason : null;
-      const err2025 = historyErr && historyErr.failureByYear && historyErr.failureByYear[2025]
-        ? historyErr.failureByYear[2025]
-        : (historyErr && historyErr.firstFailure ? historyErr.firstFailure : (historyErr && historyErr.message ? historyErr.message : 'Proxy Error'));
-      const archiveFailure = `Archive: 2025 failed (${err2025})`;
-      $('fetchStatus').textContent = `✓ Connected — ${liveInfo.activeSeason} Live + 0 Historical Seasons Loaded — ${archiveFailure}`;
-      $('historyStatus').textContent = archiveFailure;
-      console.warn('[FSN] Automatic sequential history hydration failed', historyErr);
+    const liveInfo = applyLiveLeaguePayload(league, activeLeagueData, activeFromLive ? currentYear : null);
+    setConn(activeFromLive ? 'live' : 'history');
+
+    let summary = null;
+    if(archiveYears.length){
+      // fetchLeagueHistoryArchive already flattened + de-duped the seasons;
+      // applyFetchedHistoryPayload folds in the active season, computes the
+      // all-time stats, and stores the raw list on window._franchiseYearsData.
+      summary = applyFetchedHistoryPayload({ yearsData: archiveYears, skipped: archive.skipped || [] }, { silent });
+    } else if(activeLeagueData && Array.isArray(activeLeagueData.teams) && activeLeagueData.teams.length){
+      // No archive landed — still aggregate the single active season so the
+      // Vault, Timeline, and Record Book have something to render.
+      summary = processMultiYearHistory([activeLeagueData], 'Fetched automatically from ESPN');
+      renderWeekScrubbers();
+    }
+
+    const loadedYears = summary && Array.isArray(summary.years) && summary.years.length
+      ? summary.years.slice().sort((a,b)=> a - b)
+      : [liveInfo.activeSeason];
+    const seasonCount = loadedYears.length;
+    const matchupCount = summary && typeof summary.matchups === 'number' ? summary.matchups : 0;
+    const rangeLabel = seasonCount > 1
+      ? `${loadedYears[0]}–${loadedYears[seasonCount - 1]}`
+      : `${loadedYears[0]}`;
+
+    $('fetchStatus').textContent =
+      `✓ Connected — Loaded ${seasonCount} Season${seasonCount === 1 ? '' : 's'} (${rangeLabel}) · ${matchupCount.toLocaleString()} Total Matchups`;
+    if(!activeFromLive){
+      $('historyStatus').textContent = `Live ${currentYear} season not published yet — showing ${loadedYears[seasonCount - 1]} as the active season.`;
     }
 
     try{ localStorage.setItem(SAVED_LEAGUE_ID_KEY, league); }catch(e){}
@@ -14452,14 +14543,14 @@ async function fetchLeagueData(options){
     refreshOpenAIStatus();
     renderAll();
 
-    if(navigate && ui.screen !== 'home') setScreen('home');
-    if(!silent) toast(`League connected · ${liveInfo.activeSeason} Live + ${historicalCount} historical`);
+    if(navigate) setScreen('home');
+    if(!silent) toast(`League connected · ${seasonCount} season${seasonCount === 1 ? '' : 's'} · ${matchupCount.toLocaleString()} matchups`);
     return true;
   }catch(err){
     console.error(err);
     setConn('error');
-    $('fetchStatus').textContent = 'The live league request could not be completed through the ESPN data route. Check the League ID or use the JSON fallback below.';
-    if(!LeagueData.hasHistory()) $('historyStatus').textContent = 'Archive hydration did not complete.';
+    $('fetchStatus').textContent = 'The league could not be loaded through the ESPN data route. Check the League ID or use the JSON fallback below.';
+    if(!LeagueData.hasHistory()) $('historyStatus').textContent = 'League history hydration did not complete.';
     return false;
   }finally{
     setFetchLoading(false);
