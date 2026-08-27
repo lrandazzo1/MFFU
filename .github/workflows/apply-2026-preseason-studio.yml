@@ -17,7 +17,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Repair updater source literal
+      - name: Repair updater source literals
         run: |
           python - <<'PY'
           from pathlib import Path
@@ -25,11 +25,41 @@ jobs:
           s = p.read_text()
           s = s.replace("\"  let segments = [];\\n\\n  if(phase === 'draft' || phase === 'preseason'){\n\",", "\"  let segments = [];\\n\\n  if(phase === 'draft' || phase === 'preseason'){\\n\",")
           s = s.replace("\"  let segments = [];\\n\\n  if(studio2026PreseasonSpecial(requestedWeek)){\\n    segments = build2026PreseasonSpecial(1);\\n  } else if(phase === 'draft' || phase === 'preseason'){\n\",", "\"  let segments = [];\\n\\n  if(studio2026PreseasonSpecial(requestedWeek)){\\n    segments = build2026PreseasonSpecial(1);\\n  } else if(phase === 'draft' || phase === 'preseason'){\\n\",")
+          marker = "'Desk launcher preseason label',"
+          pos = s.find(marker)
+          if pos >= 0:
+            start = s.rfind('\nliteral_once(', 0, pos)
+            end = s.find('\n)\n', pos)
+            if start < 0 or end < 0:
+              raise SystemExit('Could not isolate legacy launcher patch block')
+            s = s[:start] + '\n' + s[end + 3:]
           p.write_text(s)
           PY
           python -m py_compile scripts/apply_2026_preseason_studio.py
       - name: Apply targeted updater
         run: python scripts/apply_2026_preseason_studio.py
+      - name: Patch current Desk launcher label
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('index.html')
+          s = p.read_text()
+          old = """    const sub = launcher.querySelector('.min-w-0 span');
+    if(sub && !historical && window.FSNStudio && typeof FSNStudio.formatInfo === 'function'){
+      const info = FSNStudio.formatInfo(effectiveWeek());
+      if(info && info.subtitle) sub.textContent = info.subtitle;
+    }"""
+          new = """    const labelWrap = launcher.querySelector('.min-w-0');
+    const sub = launcher.querySelector('.min-w-0 span');
+    if(!historical && window.FSNStudio && typeof FSNStudio.formatInfo === 'function'){
+      const info = FSNStudio.formatInfo(effectiveWeek());
+      if(labelWrap && labelWrap.firstChild) labelWrap.firstChild.nodeValue = (info && info.id === 'preseason-2026') ? '2026 PRESEASON SPECIAL ' : 'FSN Studio Show ';
+      if(sub && info && info.subtitle) sub.textContent = info.subtitle;
+    }"""
+          if old not in s:
+            raise SystemExit('Current Desk launcher block not found')
+          p.write_text(s.replace(old, new, 1))
+          PY
       - name: Validate preserved features and new behavior
         run: |
           python - <<'PY'
@@ -39,11 +69,13 @@ jobs:
             'FSN STUDIO SHOW: 2026 PRESEASON PREVIEW & DRAFT AUDIT',
             '2026 PRESEASON SPECIAL',
             "NewsDesk.TOPICS.filter(t=> t.id !== 'studio')",
+            'function getNewsFeedForWeek(season, week)',
             'function build2026PreseasonSpecial(week)',
             "title:'All-Time Franchise Honor Roll'",
             "title:'2026 Draft Report Card'",
             "title:'Week 1 Tale of the Tape'",
             "title:'Preseason FSN Power Index (1–12)'",
+            "info.id === 'preseason-2026'",
             'function renderVault',
             'playoffTierType',
             'id="writeStoryBtn"',
