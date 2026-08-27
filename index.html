@@ -9860,15 +9860,13 @@ window.FSNAudio = (function(){
 
 const PREF_KEY = 'fsn.audio.v1';
 const ELEVEN_MODEL = 'eleven_flash_v2_5';
-/* ElevenLabs' stock library voices — a male read for the anchor, a female
-   read for the analyst. Both are overridable in Setup. */
+/* ElevenLabs stock voices are fixed application defaults. Speaker IDs are not editable in Setup. */
 const DEFAULT_VOICES = { host:'pNInz6obpgDQGcFmaJgB', analyst:'21m00Tcm4TlvDq8ikWAM' };
 
 const prefs = {
   mode: 'auto',          // 'auto' | 'device' | 'cc'
   sfx: true,
   bed: true,
-  key: 'backend',
 };
 
 function loadPrefs(){
@@ -9881,19 +9879,18 @@ function loadPrefs(){
   }
   try{
     const persisted = Object.assign({}, prefs);
-    delete persisted.key;
     localStorage.setItem(PREF_KEY, JSON.stringify(persisted));
   }catch(e){}
   return prefs;
 }
 function savePrefs(patch){
   Object.assign(prefs, patch || {});
-  try{ const persisted = Object.assign({}, prefs); delete persisted.key; localStorage.setItem(PREF_KEY, JSON.stringify(persisted)); }catch(e){}
+  try{ localStorage.setItem(PREF_KEY, JSON.stringify(prefs)); }catch(e){}
   return prefs;
 }
 function clearPrefs(){
   try{ localStorage.removeItem(PREF_KEY); }catch(e){}
-  Object.assign(prefs, { mode:'auto', sfx:true, bed:true, key:'backend', voiceHost:'', voiceAnalyst:'' });
+  Object.assign(prefs, { mode:'auto', sfx:true, bed:true });
   clipCache.clear();
 }
 loadPrefs();
@@ -12658,19 +12655,6 @@ function wireSetupAudio(){
   flip('audSfx', 'sfx');
   flip('audBed', 'bed');
 
-  const keyed = (id, key)=>{
-    const el = $(id);
-    if(!el) return;
-    el.addEventListener('input', ()=>{
-      a.savePrefs(Object.defineProperty({}, key, { value: el.value.trim(), enumerable:true }));
-      elevenDown = false; elevenFails = 0;
-      syncAudioPip();
-    });
-  };
-  keyed('elevenKey', 'key');
-  keyed('elevenVoiceHost', 'voiceHost');
-  keyed('elevenVoiceAnalyst', 'voiceAnalyst');
-
   $('elevenTest').addEventListener('click', ()=>{
     if(!a.hasKey()){
       $('elevenStatus').textContent = 'Backend ElevenLabs is not available.';
@@ -12685,7 +12669,7 @@ function wireSetupAudio(){
     a.testVoices().then((secs)=>{
       $('elevenStatus').innerHTML = '<span style="color:var(--green)">Both voices returned — ' +
         (secs ? secs.toFixed(1) + 's of audio playing now.' : 'playing now.') +
-        '</span> The Studio Show will use them while the key is saved.';
+        '</span> The Studio Show will use the secure backend voice service.';
       elevenDown = false; elevenFails = 0;
     }).catch((err)=>{
       $('elevenStatus').innerHTML = '<span style="color:var(--red)">' +
@@ -12699,7 +12683,7 @@ function wireSetupAudio(){
     });
   });
 
-  /* Clearing saved data should take the key with it. */
+  /* Reset audio preferences without touching server-side credentials. */
   const reset = $('resetBtn');
   if(reset) reset.addEventListener('click', ()=>{
     a.clearPrefs();
