@@ -21,23 +21,24 @@ jobs:
           p = Path('index.html')
           s = p.read_text(encoding='utf-8')
           bad = "\n\\1\n\nconst STUDIO_FIRST_SEASON = 2026;"
-          topics = """
-const TOPICS = [
-  { id:'all',      label:'All',            icon:''   },
-  { id:'community',label:'OP-ED / Community',icon:'✍' },
-  { id:'breaking', label:'Breaking',       icon:'⚡' },
-  { id:'waivers',  label:'Waivers',        icon:'💰' },
-  { id:'studio',   label:'Studio Show',    icon:'🎙️' },
-  { id:'power',    label:'Power Rankings', icon:'📊' },
-  { id:'matchups', label:'Matchups',       icon:'🏈' },
-  { id:'draft',    label:'Draft',          icon:'📋' },
-];
-
-const STUDIO_FIRST_SEASON = 2026;"""
-          if bad not in s:
-            raise SystemExit('Broken \\1 token not found exactly once')
-          if s.count('\\1') != 1:
-            raise SystemExit(f'Expected exactly one literal \\1 token, found {s.count(chr(92)+"1")}')
+          topic_lines = [
+              "const TOPICS = [",
+              "  { id:'all',      label:'All',            icon:''   },",
+              "  { id:'community',label:'OP-ED / Community',icon:'✍' },",
+              "  { id:'breaking', label:'Breaking',       icon:'⚡' },",
+              "  { id:'waivers',  label:'Waivers',        icon:'💰' },",
+              "  { id:'studio',   label:'Studio Show',    icon:'🎙️' },",
+              "  { id:'power',    label:'Power Rankings', icon:'📊' },",
+              "  { id:'matchups', label:'Matchups',       icon:'🏈' },",
+              "  { id:'draft',    label:'Draft',          icon:'📋' },",
+              "];",
+              "",
+              "const STUDIO_FIRST_SEASON = 2026;",
+          ]
+          topics = "\n".join(topic_lines)
+          count = s.count('\\1')
+          if bad not in s or count != 1:
+              raise SystemExit(f'Expected one broken \\1 token, found {count}')
           s = s.replace(bad, '\n' + topics, 1)
           p.write_text(s, encoding='utf-8')
           print('Restored TOPICS array and removed literal \\1 parse error')
@@ -51,11 +52,11 @@ const STUDIO_FIRST_SEASON = 2026;"""
           html = Path('index.html').read_text(encoding='utf-8')
           scripts = re.findall(r'<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)</script>', html, flags=re.I)
           if not scripts:
-            raise SystemExit('No inline scripts found')
+              raise SystemExit('No inline scripts found')
           out = Path('/tmp/fsn-inline-scripts')
           out.mkdir(exist_ok=True)
           for i, body in enumerate(scripts, 1):
-            (out / f'script-{i}.js').write_text(body, encoding='utf-8')
+              (out / f'script-{i}.js').write_text(body, encoding='utf-8')
           print(f'Extracted {len(scripts)} inline script block(s)')
           PY
           for f in /tmp/fsn-inline-scripts/*.js; do
@@ -69,23 +70,23 @@ const STUDIO_FIRST_SEASON = 2026;"""
           from pathlib import Path
           s = Path('index.html').read_text(encoding='utf-8')
           required = [
-            "const TOPICS = [",
-            "data-goto=\"setup\"",
-            "function setScreen(",
-            "addEventListener('click'",
-            "FSN STUDIO SHOW: 2026 PRESEASON PREVIEW & DRAFT AUDIT",
-            "NewsDesk.TOPICS.filter(t=> t.id !== 'studio')",
-            'function renderVault',
-            'playoffTierType',
-            'id="writeStoryBtn"',
-            'story-rail',
-            'composeCommunity',
+              "const TOPICS = [",
+              "data-goto=\"setup\"",
+              "function setScreen(",
+              "addEventListener('click'",
+              "FSN STUDIO SHOW: 2026 PRESEASON PREVIEW & DRAFT AUDIT",
+              "NewsDesk.TOPICS.filter(t=> t.id !== 'studio')",
+              'function renderVault',
+              'playoffTierType',
+              'id="writeStoryBtn"',
+              'story-rail',
+              'composeCommunity',
           ]
           missing = [m for m in required if m not in s]
           if missing:
-            raise SystemExit('Missing required markers: ' + repr(missing))
+              raise SystemExit('Missing required markers: ' + repr(missing))
           if '\\1' in s:
-            raise SystemExit('Literal \\1 remains in index.html')
+              raise SystemExit('Literal \\1 remains in index.html')
           print('Click-routing and preservation markers passed')
           PY
 
