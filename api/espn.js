@@ -140,7 +140,24 @@ module.exports = async function handler(req, res) {
         .toLowerCase()
         .match(/not authorized|not visible|private|forbidden|denied/);
     if (looksLikeAuthError && upstream.status >= 200 && upstream.status < 400) {
-      return res.status(401).json(payload);
+      return res.status(401).json({
+        error: cookieParts.length
+          ? 'ESPN rejected the private-league cookies. The espn_s2 / SWID values are likely invalid or expired — re-copy them from your logged-in ESPN browser and try again.'
+          : 'This ESPN league is private. Supply espn_s2 and SWID cookies (x-espn-s2 / x-espn-swid headers, or ESPN_S2 / ESPN_SWID env vars) so the relay can read it.',
+        espn: payload,
+      });
+    }
+
+    // A hard 401/403 from ESPN carries no useful JSON of its own; attach an
+    // actionable hint so the frontend (or any consumer) can guide the user to
+    // check their private-league cookies rather than see a bare status code.
+    if (upstream.status === 401 || upstream.status === 403) {
+      return res.status(upstream.status).json({
+        error: cookieParts.length
+          ? 'ESPN rejected the private-league cookies (HTTP ' + upstream.status + '). The espn_s2 / SWID values are likely invalid or expired — re-copy them from your logged-in ESPN browser and try again.'
+          : 'ESPN denied the request (HTTP ' + upstream.status + '). This league is private — supply espn_s2 and SWID cookies so the relay can read it.',
+        espn: payload,
+      });
     }
 
     return res.status(upstream.status).json(payload);
