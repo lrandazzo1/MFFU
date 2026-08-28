@@ -12016,6 +12016,15 @@ async function syncLeagueToCloud(options){
 
     const payload = await response.json().catch(()=> ({}));
     if(!response.ok){
+      // Log the EXACT server/database error so a save failure is never silent.
+      // The /api/league route now returns the real Supabase error (message,
+      // code, details, hint) in payload.db_error — surface all of it to the
+      // console and carry the human-readable message into the caught branch.
+      console.error('[League Storage] save failed (HTTP ' + response.status + ')', {
+        error: payload && payload.error,
+        db_error: payload && payload.db_error,
+        payload,
+      });
       const automaticMessage = response.status === 413
         ? 'Maximum archive optimization completed. The optimized local copy is saved and cloud sync will retry on the next save.'
         : (payload.error || ('League save failed (HTTP ' + response.status + ').'));
@@ -12025,21 +12034,29 @@ async function syncLeagueToCloud(options){
     const record = payload.record || {};
     cacheLeagueRecord(record);
     window._fsnCloudHasCookies = !!record.has_cookies;
+    // A partial success: history saved but cookie encryption was skipped. Log
+    // and note it, but the save itself succeeded — local usage is never halted.
+    if(payload.warning){
+      console.warn('[League Storage] save warning', payload.warning);
+    }
     const reduction = optimization.originalBytes > 0
       ? Math.max(0, Math.round((1 - optimization.optimizedBytes / optimization.originalBytes) * 100))
       : 0;
-    setCloudStatus('ready', 'League data saved · ' + sourceArchive.length + ' season' +
+    setCloudStatus(payload.warning ? 'idle' : 'ready', 'League data saved · ' + sourceArchive.length + ' season' +
       (sourceArchive.length===1?'':'s') + ' · ' + formatCloudBytes(optimization.optimizedBytes) +
       (reduction ? ' · ' + reduction + '% smaller' : '') +
-      ' · encrypted private-league access is ready.');
+      (payload.warning ? ' · ' + payload.warning : ' · encrypted private-league access is ready.'));
     refreshEspnAuthStatus();
-    if(!opts.silent) toast('Optimized league archive saved to Supabase');
+    if(!opts.silent) toast(payload.warning ? 'League history saved (cookies skipped)' : 'Optimized league archive saved to Supabase');
     return record;
   }catch(err){
-    console.warn('[League Storage] save failed; optimized local fallback retained', err);
-    setCloudStatus('idle', 'Archive optimization complete · cloud sync paused temporarily · optimized local copy retained. ' +
+    // Never halt local usage: the optimized archive is already cached locally.
+    // Surface the exact failure reason (now including the real DB error text)
+    // in both the console and the on-screen status instead of failing silently.
+    console.error('[League Storage] save failed; optimized local fallback retained', err);
+    setCloudStatus('error', 'Cloud sync failed · optimized local copy retained (app still fully usable). ' +
       String(err && err.message || err || 'The save will retry next time.'));
-    if(!opts.silent) toast('Optimized locally · cloud sync will retry');
+    if(!opts.silent) toast('Cloud sync failed · saved locally · see status for the reason');
     return false;
   }finally{
     ui.cloudSyncing = false;

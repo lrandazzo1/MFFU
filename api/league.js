@@ -325,26 +325,67 @@ async function handler(req, res) {
   const verification = await verifyLeagueMember(leagueId, seasonYear, cookies);
   if (!verification.ok) return res.status(verification.status || 403).json({ error: verification.error });
 
+  // Encrypt the cookies, but never let an encryption problem halt the save.
+  // The key handler already falls back to a derived key, so this should not
+  // throw; if it somehow does, we persist the history without the cookie
+  // envelope rather than failing the whole request, and report it in the
+  // response so it is diagnosable instead of silent.
+  let encryptedCookies = null;
+  let cookieWarning = null;
+  try {
+    encryptedCookies = encryptCookies(cookies);
+  } catch (cookieError) {
+    console.error('[api/league] cookie encryption failed; saving history without cookies', cookieError);
+    cookieWarning = 'League history was saved, but private-league cookies could not be encrypted and were not stored: ' +
+      String(cookieError && cookieError.message || cookieError);
+  }
+
   try {
     const row = {
       league_id: leagueId,
       season_year: seasonYear,
       history_json: historyJson,
-      cookies: encryptCookies(cookies),
       updated_at: new Date().toISOString(),
     };
+    // Only write the cookies column when encryption succeeded, so a failed
+    // envelope never overwrites previously stored valid cookies with null.
+    if (encryptedCookies) row.cookies = encryptedCookies;
+
     const result = await client
       .from('leagues')
       .upsert(row, { onConflict: 'league_id,season_year' })
       .select('league_id,season_year,history_json,cookies,updated_at')
       .single();
     if (result.error) throw result.error;
-    return res.status(200).json({ record: publicRecord(result.data) });
+
+    const responseBody = { record: publicRecord(result.data) };
+    if (cookieWarning) responseBody.warning = cookieWarning;
+    return res.status(200).json(responseBody);
   } catch (error) {
-    console.error('[api/league] upsert failed', error);
-    const configError = error && error.code === 'COOKIE_KEY_INVALID';
-    return res.status(configError ? 503 : 502).json({
-      error: configError ? error.message : 'League storage save failed.',
+    // Surface the EXACT database error (message / code / details / hint) so the
+    // real cause — an RLS policy, a missing column, a constraint violation, a
+    // connection failure — is visible in the response and server logs instead
+    // of a generic "save failed". Supabase/PostgREST errors carry these fields.
+    console.error('[api/league] upsert failed', {
+      message: error && error.message,
+      code: error && error.code,
+      details: error && error.details,
+      hint: error && error.hint,
+    });
+    const parts = [
+      error && error.message ? String(error.message) : 'Unknown database error',
+      error && error.details ? 'Details: ' + String(error.details) : '',
+      error && error.hint ? 'Hint: ' + String(error.hint) : '',
+      error && error.code ? 'Code: ' + String(error.code) : '',
+    ].filter(Boolean);
+    return res.status(502).json({
+      error: 'League storage save failed — ' + parts.join(' · '),
+      db_error: {
+        message: (error && error.message) || null,
+        code: (error && error.code) || null,
+        details: (error && error.details) || null,
+        hint: (error && error.hint) || null,
+      },
     });
   }
 }
