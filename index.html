@@ -1778,8 +1778,9 @@ body{
         <h3 class="onboard-step-title">Find your League ID</h3>
       </div>
       <div class="onboard-card">
-        <p>On a <strong style="color:var(--off)">computer</strong>, log in to your ESPN Fantasy league and open your league page. Look at your browser's address bar at the top.</p>
-        <p>You'll see a web address containing <span class="onboard-code">leagueId=57155288</span>. The number after <span class="onboard-code">leagueId=</span> is your League ID.</p>
+        <p>Your League ID is a number ESPN gives your league. There are two easy ways to find it:</p>
+        <p><strong style="color:var(--off)">On a computer (web browser):</strong> Log in to your ESPN Fantasy league and open your league page. Look at your browser's address bar at the top — you'll see a web address containing <span class="onboard-code">leagueId=57155288</span>. The number right after <span class="onboard-code">leagueId=</span> is your League ID.</p>
+        <p><strong style="color:var(--off)">On the ESPN mobile app:</strong> Open your league, then tap <strong style="color:var(--off)">League</strong> → <strong style="color:var(--off)">League Info</strong> → <strong style="color:var(--off)">League ID</strong>. The number shown there is your League ID.</p>
         <p>Type just that number into the <strong style="color:var(--off)">League ID</strong> box on the Setup screen and tap <strong style="color:var(--off)">Fetch League Data</strong>.</p>
         <div class="onboard-note">If your league loads, you're done — it's a public league and you can skip Steps 2 and 3.</div>
       </div>
@@ -1819,7 +1820,7 @@ body{
           <li>When asked, save it as a <span class="onboard-code">.json</span> file to somewhere easy like your Desktop.</li>
           <li>Back on the Setup screen, open <strong style="color:var(--off)">Load Archive JSON</strong> and drag that <span class="onboard-code">.json</span> file into the dropzone (or tap it to pick the file).</li>
         </ol>
-        <div class="onboard-note">The moment it loads, the Record Book and Rivalry Vault unlock. If your ESPN identity is a league manager, MFFU saves the archive plus an encrypted cookie envelope to the league's Supabase record. Teammates can then load by League ID without receiving the raw credentials.</div>
+        <div class="onboard-note">The moment it loads, the Record Book and Rivalry Vault unlock. Any authenticated league member — not just the commissioner — can save the archive plus an encrypted cookie envelope to the league's Supabase record. Teammates can then load by League ID without receiving the raw credentials.</div>
       </div>
     </div>
 
@@ -12305,6 +12306,40 @@ async function fetchLeagueData(options){
     safeRun('analytics', renderAnalytics, ()=> renderScreenFallback('analytics'));
     safeRun('recordbook', renderRecordBook, ()=> renderScreenFallback('recordbook'));
     safeRun('news', renderNews, ()=> renderScreenFallback('news'));
+
+    // Automatically read and aggregate the FULL multi-year league history from
+    // ESPN once the live season is connected. When the user supplied valid
+    // espn_s2 / SWID cookies — or a fellow league member previously stored them
+    // in Supabase — the same-origin relay authenticates against every completed
+    // season, so the Record Book and Rivalry Vault reflect all-time history, not
+    // just 2026, with no manual archive upload. This runs in the background:
+    // a slow, rate-limited, or failed history payload never delays or demotes
+    // the live-season success state, and the current season stays connected.
+    if(!uploadedArchive.length){
+      (async ()=>{
+        try{
+          const archive = await fetchLeagueHistoryArchive(league);
+          const years = (archive && archive.yearsData) || [];
+          const pastSeasons = years.filter(y=> Number(y && y.year) !== currentYear);
+          if(!pastSeasons.length) return; // nothing beyond the live season to add
+          applyLeagueHistory(
+            withCurrentSeason(years),
+            (archive && archive.skipped) || [],
+            'Full league history from ESPN',
+            { silent:true }
+          );
+          renderWeekScrubbers();
+          safeRun('matchups', renderMatchups, ()=> renderScreenFallback('matchups'));
+          safeRun('analytics', renderAnalytics, ()=> renderScreenFallback('analytics'));
+          safeRun('recordbook', renderRecordBook, ()=> renderScreenFallback('recordbook'));
+          safeRun('news', renderNews, ()=> renderScreenFallback('news'));
+          if(!silent) toast('All-time Record Book loaded · ' + pastSeasons.length +
+            ' past season' + (pastSeasons.length===1?'':'s'));
+        }catch(histErr){
+          console.warn('[ESPN live fetch] automatic multi-year history hydration failed; live season stays connected.', histErr);
+        }
+      })();
+    }
 
     if(!silent) toast(`2026 league connected · Week ${liveInfo.activeWeek}`);
     return true;

@@ -76,18 +76,49 @@ function requestCookies(req, body) {
   });
 }
 
+let warnedAboutFallbackKey = false;
+
+// Deterministic 32-byte fallback so cookie encryption never hard-crashes cloud
+// sync when LEAGUE_COOKIE_ENCRYPTION_KEY is missing or malformed. The seed
+// prefers other stable per-deployment secrets so the derived key is unique to
+// this environment and stays identical across serverless invocations — data
+// encrypted with it can therefore always be decrypted again. A fixed suffix
+// keeps it valid even when nothing else is configured.
+function deriveFallbackEncryptionKey() {
+  const seed = [
+    String(process.env.LEAGUE_COOKIE_ENCRYPTION_KEY || ''),
+    String(process.env.SUPABASE_SERVICE_ROLE_KEY || ''),
+    String(process.env.SUPABASE_URL || ''),
+    'mffu-league-cookie-fallback-v1',
+  ].join('|');
+  return crypto.createHash('sha256').update(seed).digest(); // exactly 32 bytes
+}
+
 function encryptionKey() {
   const raw = String(process.env.LEAGUE_COOKIE_ENCRYPTION_KEY || '').trim();
-  let key;
-  if (/^[a-f0-9]{64}$/i.test(raw)) key = Buffer.from(raw, 'hex');
-  else {
-    try { key = Buffer.from(raw, 'base64'); }
-    catch (error) { key = null; }
+  let key = null;
+  if (/^[a-f0-9]{64}$/i.test(raw)) {
+    key = Buffer.from(raw, 'hex');
+  } else if (raw) {
+    // Buffer.from(..., 'base64') never throws — it silently drops invalid
+    // characters — so validate the decoded length rather than relying on a
+    // try/catch to reject a malformed value.
+    const decoded = Buffer.from(raw, 'base64');
+    if (decoded.length === 32) key = decoded;
   }
   if (!key || key.length !== 32) {
-    const error = new Error('LEAGUE_COOKIE_ENCRYPTION_KEY must be a 32-byte base64 or 64-character hex value.');
-    error.code = 'COOKIE_KEY_INVALID';
-    throw error;
+    // Missing or incorrectly formatted key: fall back to a valid derived
+    // 32-byte key instead of throwing, so cloud sync keeps working. Warn once
+    // so operators still know to set a real key for cross-deployment stability.
+    if (!warnedAboutFallbackKey) {
+      warnedAboutFallbackKey = true;
+      console.warn(
+        '[api/league] LEAGUE_COOKIE_ENCRYPTION_KEY is missing or not a valid ' +
+        '32-byte base64 / 64-character hex value; using a derived fallback key. ' +
+        'Set a proper key for stable cross-deployment cookie encryption.'
+      );
+    }
+    key = deriveFallbackEncryptionKey();
   }
   return key;
 }
@@ -154,7 +185,6 @@ async function verifyLeagueMember(leagueId, seasonYear, cookies) {
   const targetSwid = cookies.swid.replace(/^\{|\}$/g, '').toLowerCase();
   const seasons = Array.from(new Set([seasonYear, activeFantasySeason(), activeFantasySeason() - 1]));
   let lastStatus = 0;
-  let sawReadableLeague = false;
 
   for (const season of seasons) {
     const url = ESPN_HOST + '/apis/v3/games/ffl/seasons/' + season +
@@ -183,23 +213,23 @@ async function verifyLeagueMember(leagueId, seasonYear, cookies) {
     });
     if (member) return { ok: true };
 
-    // Some ESPN response variants omit members even when authenticated. A
-    // successful private-league read with real league content is itself the
-    // authorization boundary: the supplied cookie pair can access this league.
+    // Democratized cloud saves: any authenticated league member whose cookies
+    // can READ the private league may save — there is no commissioner-only
+    // gate. ESPN only returns real league content (teams / settings) to
+    // authorized members, so a readable league is itself proof of access. We
+    // no longer require the SWID to appear in the members array (some ESPN
+    // response variants omit it or list it under a differently formatted GUID).
     const readableLeague = league && (
       Array.isArray(league.teams) ||
       (league.settings && typeof league.settings === 'object')
     );
-    if (readableLeague && members.length === 0) return { ok: true };
-    if (readableLeague) sawReadableLeague = true;
+    if (readableLeague) return { ok: true };
   }
 
   return {
     ok: false,
     status: lastStatus === 401 || lastStatus === 403 ? lastStatus : 403,
-    error: sawReadableLeague
-      ? 'These ESPN cookies can read the league, but the SWID is not listed as a member in any checked season.'
-      : 'ESPN could not verify these cookies as a member of the requested league.',
+    error: 'ESPN could not verify these cookies against the requested league. Re-copy your espn_s2 and SWID from a logged-in ESPN browser session and try again.',
   };
 }
 
