@@ -51,20 +51,23 @@ html,body{
   background:var(--ink);
   color:#fff;
   font-family:'Oswald',system-ui,-apple-system,sans-serif;
-  overscroll-behavior-y:none;
+  overscroll-behavior-y:auto;
   /* Small-viewport guard: nothing is ever wide enough to swipe the whole
      page sideways. In-page carousels (story rail, topic chips, week scrubber)
      keep their own contained overflow-x; this only clips a stray blowout. */
   max-width:100%;
   overflow-x:hidden;
 }
+html{ min-height:100%; overflow-y:scroll; }
 body{
   margin:0;
   min-height:100vh;
   min-height:100dvh;
+  overflow-y:auto;
   -webkit-font-smoothing:antialiased;
   text-rendering:optimizeLegibility;
 }
+html.overlay-open, body.overlay-open{ overflow:hidden !important; }
 
 .font-display{ font-family:'Anton',Impact,sans-serif; letter-spacing:.01em; }
 .font-mono{ font-family:'JetBrains Mono',ui-monospace,monospace; }
@@ -83,8 +86,11 @@ body{
    the scroll lives only in the middle so the chrome never moves.
 ============================================================ */
 #appShell{
+  min-height:100vh;
+  min-height:100dvh;
   padding-top:calc(var(--ticker-h) + env(safe-area-inset-top) + 1px);
   padding-bottom:calc(var(--nav-h) + env(safe-area-inset-bottom) + 8px);
+  overflow-y:visible;
 }
 
 /* ============================================================
@@ -95,7 +101,7 @@ body{
    Every screen, the franchise dossier, the reader and the recordbook stack now
    sit inside the same centred max-w-6xl column.
 ============================================================ */
-.screen-shell{ width:100%; max-width:72rem; margin-left:auto; margin-right:auto; }
+.screen-shell{ width:100%; max-width:72rem; margin-left:auto; margin-right:auto; overflow-y:auto; }
 /* The blocks inside a screen already ship the app's own 16px gutter. The
    shell owns the gutter now, so theirs is zeroed here in one place instead
    of being doubled on every child. #homeContent is the one screen block that
@@ -210,7 +216,12 @@ body{
 /* ---------- SCREENS ---------- */
 .screen{ display:none; animation:screenIn .22s ease both; }
 .screen > header{ position:relative; z-index:2; }
-.screen[data-active="true"]{ display:block; }
+.screen[data-active="true"]{
+  display:block;
+  min-height:calc(100dvh - var(--ticker-h) - var(--nav-h) - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  overflow-y:auto;
+  overscroll-behavior-y:auto;
+}
 @keyframes screenIn{ from{opacity:0; transform:translateY(7px);} to{opacity:1; transform:none;} }
 
 /* ---------- CARDS ---------- */
@@ -1627,6 +1638,7 @@ body{
           </div>
         </div>
       </header>
+      <div id="analyticsWeekScrubber" class="px-4 pb-3"></div>
       <div class="stats-mode-toggle" id="statsModeToggle" role="tablist" aria-label="Season statistics view">
         <button type="button" data-stats-mode="standings" data-active="true" role="tab" aria-selected="true">Standings</button>
         <button type="button" data-stats-mode="advanced" data-active="false" role="tab" aria-selected="false">Advanced Analytics</button>
@@ -4180,6 +4192,38 @@ function getRecordAsOfWeek(teamId, week){
   });
 }
 
+/* Current-season form through the selected week. This deliberately reads the
+   active season schedule instead of the all-time archive, so a Week 4 table
+   cannot inherit a streak earned later in the year (or in another season). */
+function getStreakAsOfWeek(teamId, week){
+  const targetWeek = Math.max(1, parseInt(week, 10) || 1);
+  return memo('streakAsOf:' + teamId + ':' + targetWeek, ()=>{
+    const schedule = (LeagueData.espnData && LeagueData.espnData.schedule) || [];
+    const results = [];
+    schedule.forEach(game=>{
+      if(!game || !game.home || !game.away) return;
+      const matchupWeek = Number(game.matchupPeriodId || 0);
+      if(!matchupWeek || matchupWeek > targetWeek) return;
+      const isHome = String(game.home.teamId) === String(teamId);
+      const isAway = String(game.away.teamId) === String(teamId);
+      if(!isHome && !isAway) return;
+      const homeScore = Number(game.home.totalPoints || 0);
+      const awayScore = Number(game.away.totalPoints || 0);
+      if(homeScore <= 0 && awayScore <= 0) return;
+      const result = homeScore === awayScore
+        ? 'T'
+        : ((isHome ? homeScore > awayScore : awayScore > homeScore) ? 'W' : 'L');
+      results.push({ week:matchupWeek, result });
+    });
+    results.sort((a,b)=> a.week-b.week);
+    if(!results.length || results[results.length-1].result === 'T') return null;
+    const result = results[results.length-1].result;
+    let length = 0;
+    for(let i=results.length-1; i>=0 && results[i].result === result; i--) length++;
+    return { result, length };
+  });
+}
+
 function standingsThrough(week){
   return memo('standings:' + week, ()=>{
     const teams = LeagueData.getTeams();
@@ -4439,6 +4483,18 @@ function seasonTable(entry){
   const playoffTeamCount = (ld.settings && ld.settings.scheduleSettings &&
     ld.settings.scheduleSettings.playoffTeamCount) || 6;
   const bracket = (ld.schedule || []).filter(g=> g.playoffTierType === 'WINNERS_BRACKET');
+  const titleGame = bracket.filter(g=> g && g.home && g.away &&
+      (Number(g.home.totalPoints || 0) > 0 || Number(g.away.totalPoints || 0) > 0))
+    .sort((a,b)=> Number(a.matchupPeriodId || 0) - Number(b.matchupPeriodId || 0)).pop() || null;
+  let bracketChampionId = null, bracketRunnerUpId = null;
+  if(titleGame){
+    const homeScore = Number(titleGame.home.totalPoints || 0);
+    const awayScore = Number(titleGame.away.totalPoints || 0);
+    if(homeScore !== awayScore){
+      bracketChampionId = homeScore > awayScore ? titleGame.home.teamId : titleGame.away.teamId;
+      bracketRunnerUpId = homeScore > awayScore ? titleGame.away.teamId : titleGame.home.teamId;
+    }
+  }
 
   const rows = ld.teams.map(t=>{
     const ownerId = t.primaryOwner || (t.owners && t.owners[0]) || ('team-' + t.id + '-' + entry.year);
@@ -4458,17 +4514,22 @@ function seasonTable(entry){
       pf: Number(rec.pointsFor || 0),
       pa: Number(rec.pointsAgainst || 0),
       ppg: (wins + losses + ties) ? Number(rec.pointsFor || 0) / (wins + losses + ties) : 0,
-      finalRank: typeof t.rankCalculatedFinal === 'number' ? t.rankCalculatedFinal : 0,
+      finalRank: typeof t.rankCalculatedFinal === 'number' && t.rankCalculatedFinal > 0
+        ? t.rankCalculatedFinal
+        : (String(t.id) === String(bracketChampionId) ? 1 : (String(t.id) === String(bracketRunnerUpId) ? 2 : 0)),
       playoffSeed: seed,
       madePlayoffs: (seed > 0 && seed <= playoffTeamCount) || inBracket,
     };
   });
 
   const ranked = rows.filter(r=> r.finalRank > 0);
-  const complete = ranked.length >= Math.max(2, Math.ceil(rows.length * 0.5));
+  const complete = ranked.length >= Math.max(2, Math.ceil(rows.length * 0.5)) || bracketChampionId != null;
   let standings;
   if(complete){
-    standings = ranked.slice().sort((a,b)=> a.finalRank - b.finalRank);
+    standings = rows.slice().sort((a,b)=>
+      ((a.finalRank || Number.MAX_SAFE_INTEGER) - (b.finalRank || Number.MAX_SAFE_INTEGER)) ||
+      (b.wins - a.wins) || (b.pf - a.pf));
+    standings.forEach((r,i)=>{ if(!r.finalRank) r.finalRank = i + 1; });
   } else {
     /* No final ranks (an in-flight season, or a payload without them):
        order by record, which is enough to keep the fallback honest. */
@@ -4521,7 +4582,13 @@ function preseasonReport(){
       .sort((a,b)=> Number(a.year) - Number(b.year));
     const completedSeasons = seasons.filter(s=> s.complete)
       .sort((a,b)=> Number(a.year) - Number(b.year));
-    const lastSeason = completedSeasons[completedSeasons.length - 1];
+    /* Lightweight historical payloads occasionally omit rankCalculatedFinal.
+       Every predecessor year is already behind the viewed season, so the
+       latest played predecessor is a safe transition fallback when final-rank
+       metadata is absent. The bracket winner, when present, is ranked first by
+       seasonTable() above. */
+    const reportSeasons = completedSeasons.length ? completedSeasons : seasons;
+    const lastSeason = reportSeasons[reportSeasons.length - 1];
     if(!lastSeason || lastSeason.standings.length < 2) return null;
 
     const actualLastYear = Number(lastSeason.year);
@@ -4530,7 +4597,7 @@ function preseasonReport(){
     /* Build a history snapshot that stops at the predecessor season. This keeps
        career totals and rivalry records from leaking future time-machine data
        into an older preseason report. */
-    const completedYears = new Set(completedSeasons.map(s=> Number(s.year)));
+    const completedYears = new Set(reportSeasons.map(s=> Number(s.year)));
     const completedRawHistory = predecessorHistory.filter(entry=> completedYears.has(Number(entry.year)));
     const hist = computeLeagueHistoryStats(completedRawHistory);
 
@@ -4549,7 +4616,7 @@ function preseasonReport(){
       }
       return p;
     };
-    completedSeasons.forEach(s=> s.standings.forEach(r=>{
+    reportSeasons.forEach(s=> s.standings.forEach(r=>{
       const p = ensure(r);
       if(r.manager) p.manager = r.manager;
       p.seasons++;
@@ -4714,9 +4781,9 @@ function preseasonReport(){
 
     /* ---- has anyone in this league ever gone back-to-back? ---- */
     let repeats = 0, chances = 0;
-    for(let i = 1; i < completedSeasons.length; i++){
-      const prevChamp = completedSeasons[i-1].standings[0];
-      const champ = completedSeasons[i].standings[0];
+    for(let i = 1; i < reportSeasons.length; i++){
+      const prevChamp = reportSeasons[i-1].standings[0];
+      const champ = reportSeasons[i].standings[0];
       if(!prevChamp || !champ) continue;
       chances++;
       if(prevChamp.ownerId === champ.ownerId) repeats++;
@@ -4782,8 +4849,8 @@ function preseasonReport(){
 
     return {
       lastSeason, actualLastYear, upcomingYear,
-      seasons, completed:completedSeasons, profiles,
-      seasonCount: completedSeasons.length,
+      seasons, completed:reportSeasons, profiles,
+      seasonCount: reportSeasons.length,
       champion, sacko, heartbreak, droughtLeader,
       repeat: { repeats, chances, pct: repeatPct },
       repeatOdds,
@@ -5070,7 +5137,7 @@ return {
   players, player, playerName,
   transactions, faabReport, rageDrops,
   draft, draftGrades, gradeFor,
-  standingsThrough, getRecordAsOfWeek, powerRankings, winProbability,
+  standingsThrough, getRecordAsOfWeek, getStreakAsOfWeek, powerRankings, winProbability,
   injuries, stashCandidates,
   startersFor, startingQB,
   seasonPhase, teamOf, preseasonReport, playoffPicture,
@@ -6609,7 +6676,7 @@ const BODY_CLOSES = [
   'The week ends with less uncertainty and considerably more pressure.', 'The final cannot predict the season, but it can expose its current shape.',
   'What follows is a test of whether the roster learned the right lesson.', 'The next refresh starts a new score, not a clean slate.',
   'This is now precedent for every claim either manager makes.', 'The league received an answer and immediately scheduled the follow-up question.',
-  'The lasting consequence is a standard both rosters now have to meet.', 'The calendar advances while the matchup keeps its permanent coordinates.',
+  'The lasting consequence is a standard both rosters now have to meet.', 'The calendar advances while the matchup keeps its permanent consequences.',
   'No transaction can undo the result; the next one can only answer it.', 'The final word belongs to the next lineup, but the first draft is already filed.',
   'This outcome will age according to what each team does with it.', 'The playoff math will eventually quantify what the room already felt.',
   'The story pauses here, with the evidence intact and the pressure redistributed.', 'The season continues under a scoreboard that now knows more.'
@@ -6665,10 +6732,9 @@ function deterministicNarrativeBody(ctx, articleType, facts, detailParagraphs){
   const theme = BODY_CATEGORY_WORDS[articleType] || BODY_CATEGORY_WORDS.default;
   const score = Number(f.winnerScore) > 0 ? ` The final was <b>${n1(f.winnerScore)}–${n1(f.loserScore)}</b>.` : '';
   const margin = Number(f.margin) > 0 ? ` The <b>${n1(f.margin)}-point</b> margin measures the separation.` : '';
-  const uniqueLead = `In the ${viewedSeasonYear()} Week ${Number(ctx && ctx.week || effectiveWeek() || 0)} ${String(articleType || 'league').replace(/[-_]/g,' ')} file, `;
   const details = Array.isArray(detailParagraphs) ? detailParagraphs.filter(Boolean) : [];
   return [
-    `${datelineTag()} ${uniqueLead}${BODY_OPENINGS[sig[0]]} <b>${winName}</b> set the terms against <b>${loseName}</b>.${score}`,
+    `${datelineTag()} ${BODY_OPENINGS[sig[0]]} <b>${winName}</b> set the terms against <b>${loseName}</b>.${score}`,
     `${BODY_DEVELOPMENTS[sig[1]]} For this ${esc(theme)} story, the available league data is the source of truth.${margin} ${details[0] || ''}`,
     `${details.slice(1).join(' ')} ${BODY_CLOSES[sig[2]]}`.trim(),
   ];
@@ -6844,7 +6910,7 @@ const CADENCE_BANKS = {
     ],
     close:[
       'When these teams meet again, the record will begin with this chapter.',
-      'The season will move on, while the archive keeps the exact coordinates.',
+      'The season will move on, while the archive keeps the exact result.',
       'Future standings will compress the game; league memory will expand it.',
       'The next roster era inherits this result whether it wants it or not.',
       'Years from now, the score will still explain the rivalry in one line.',
@@ -7279,8 +7345,7 @@ function assembleDeterministicStory(ctx, category, ordinal, facts, overrides){
       ...(archetypes.length
         ? [{label:'Narrative archetype', value:esc(archetypes[0].label), note:esc(archetypes[0].reason)}]
         : []),
-    ], note:'Deterministic archive ordinal ' + (facts.lore ? facts.lore.sequence + 1 : '—') +
-      ' · ' + cadence.persona.label + ' · no remote generation.'},
+    ]},
     facts, matrixCategory:category, engine:'deterministic-matrix',
   });
 }
@@ -9741,7 +9806,38 @@ function tlPreseason(ctx){
   if(!inWindow) return [];
 
   const rep = FSNIntel.preseasonReport();
-  if(!rep || !rep.champion || !rep.sacko) return [];
+  if(!rep || !rep.champion || !rep.sacko){
+    /* The transition lead is structural, not optional. If an imported archive
+       lacks enough final-table metadata to name the prior champion safely,
+       keep the State of the League banner on air with an explicit archive
+       status instead of returning null or inventing a title holder. */
+    const upcomingYear = Number(viewedSeasonYear() || new Date().getFullYear());
+    const priorYear = upcomingYear - 1;
+    const teams = LeagueData.getTeams();
+    return [tl({
+      id:'tl-sotl-transition-' + upcomingYear,
+      kind:'sotl', topic:'breaking',
+      at:liveTime(20 + (hash('sotl-transition-' + upcomingYear) % 90)),
+      metaTag:'STATE OF THE LEAGUE',
+      tag:'STATE OF THE LEAGUE', tone:'gold', priority:300,
+      byline:'FSN Senior League Insider',
+      dateline:`${leagueDateline()} · ${priorYear} FINAL / ${upcomingYear} PRESEASON`,
+      crest:teams[0] ? { name:teams[0].name, logo:teams[0].logo } : null,
+      headline:`STATE OF THE LEAGUE: ${upcomingYear} OPENS WITH EVERY ROSTER BACK UNDER REVIEW`,
+      dek:`The ${priorYear} title transition is on the clock. Week 1 begins the next league-wide audit.`,
+      paragraphs:[
+        `${datelineTag()} The calendar has turned to <b>${upcomingYear}</b>, and the league enters Week 1 with every projection still unproven.`,
+        `The preceding season remains the proper starting point for a title defense. Its final champion will populate this report automatically as soon as the ${priorYear} final table or winners-bracket result is present in the loaded archive.`,
+        `Until then, the opening slate supplies the only honest assignment: set the lineups, establish a scoring baseline, and let the standings begin from zero.`,
+      ],
+      quote:{ text:'A new season starts with no borrowed wins and no protected reputations.', who:'FSN SENIOR LEAGUE INSIDER' },
+      numbers:{ title:'Transition Check', rows:[
+        { label:'Upcoming season', value:String(upcomingYear), note:'Week 1 reset' },
+        { label:'Prior final', value:String(priorYear), note:'Champion data loads from the preceding-year archive' },
+        { label:'Teams connected', value:String(teams.length), note:'Current league payload' },
+      ] },
+    })];
+  }
 
   const champ = rep.champion, sacko = rep.sacko, year = Number(rep.lastSeason.year);
   const seasonQualifier = `${year} FINAL / ${rep.upcomingYear} PRESEASON`;
@@ -9992,7 +10088,7 @@ function getTimelineStream(week){
      matchup Tale of the Tape, and start/sit injury warnings only. No clinch
      math or postgame generator is even invoked until the live week has points. */
   const runners = pregameOnly
-    ? [tlPlayoffBracket, tlPrimer, tlInjury, tlDraft]
+    ? [tlPlayoffBracket, tlPreseason, tlPrimer, tlInjury, tlDraft]
     : [tlPlayoffBracket, tlPreseason, tlPlayoffPicture, tlGameDay, tlRecap, tlWaivers, tlPrimer, tlInjury, tlDraft];
   runners.forEach(gen=>{
     try{ events = events.concat(gen(ctx) || []); }
@@ -10045,6 +10141,17 @@ function getTimelineStream(week){
      submissions retain newest-first order while every automated story keeps
      its existing relative position below them. */
   list.sort((a,b)=> (Number(!!b.custom) - Number(!!a.custom)) || (b.at - a.at));
+
+  /* In preseason and Week 1 the transition banner is the desk lead. Generate
+     it even with zero scores, then hoist it after all timestamp/community
+     sorting so the lifecycle cannot demote it to a hidden feed row. */
+  if(!ctx.playoffWeek && (phase === 'preseason' || phase === 'draft' || Number(ctx.week) === 1)){
+    const stateIndex = list.findIndex(a=> a && a.kind === 'sotl');
+    if(stateIndex > 0){
+      const stateStory = list.splice(stateIndex, 1)[0];
+      list.unshift(stateStory);
+    }
+  }
 
   list.forEach(a=>{ restamp(a); applySeasonTone(a, ctx); });
   streamCache = { key, list };
@@ -10199,8 +10306,8 @@ return {
 window.SeasonAnalytics = (function(){
 'use strict';
 
-let memo = null;
-LeagueData.subscribe(()=>{ memo = null; });
+let memo = new Map();
+LeagueData.subscribe(()=>{ memo.clear(); });
 
 const skillPositions = new Set(['QB','RB','WR','TE']);
 const number = (value)=> Number.isFinite(Number(value)) ? Number(value) : 0;
@@ -10225,12 +10332,12 @@ function blankRow(team){
   };
 }
 
-function computePlayerPointIndex(schedule){
+function computePlayerPointIndex(schedule, throughWeek){
   const index = Object.create(null);
   const seen = new Set();
   (schedule || []).forEach(game=>{
     const week = number(game && game.matchupPeriodId);
-    if(!week) return;
+    if(!week || week > throughWeek) return;
     ['home','away'].forEach(key=>{
       const side = game && game[key];
       const teamId = side && side.teamId;
@@ -10253,23 +10360,25 @@ function computePlayerPointIndex(schedule){
   return index;
 }
 
-function waiverGems(schedule){
+function waiverGems(schedule, throughWeek){
   let transactions = [];
   try{ transactions = FSNIntel.transactions() || []; }catch(e){ transactions = []; }
   if(!transactions.length) return [];
-  const pointIndex = computePlayerPointIndex(schedule);
+  const pointIndex = computePlayerPointIndex(schedule, throughWeek);
   const gems = [];
 
   transactions.forEach(tx=>{
     if(!tx || !tx.executed || !Array.isArray(tx.adds) || !tx.adds.length) return;
     if(tx.type !== 'WAIVER' && tx.type !== 'FREEAGENT') return;
+    const transactionWeek = number(tx.week);
+    if(!transactionWeek || transactionWeek > throughWeek) return;
     tx.adds.forEach(add=>{
       const meta = add.meta || (add.playerId != null ? FSNIntel.player(add.playerId) : null) || {};
       const pos = String(meta.pos || '').toUpperCase();
       if(!skillPositions.has(pos)) return; // K and D/ST are intentionally excluded.
       const rows = pointIndex[String(tx.teamId) + ':' + String(add.playerId)] || [];
-      const fromWeek = Math.max(0, number(tx.week));
-      const points = rows.reduce((sum,row)=> sum + (row.week >= fromWeek ? number(row.points) : 0), 0);
+      const fromWeek = transactionWeek;
+      const points = rows.reduce((sum,row)=> sum + (row.week >= fromWeek && row.week <= throughWeek ? number(row.points) : 0), 0);
       if(points <= 0) return;
       const bid = Math.max(0, number(tx.bid));
       const costFloor = Math.max(1, bid);
@@ -10291,9 +10400,11 @@ function waiverGems(schedule){
   return gems.slice(0, 12);
 }
 
-function compute(){
-  if(memo) return memo;
+function compute(selectedWeek){
   const data = LeagueData.espnData || {};
+  const throughWeek = Math.max(1, number(selectedWeek) || number(data.scoringPeriodId) || 1);
+  const memoKey = String(number(data.seasonId || data.season) || 'season') + ':' + throughWeek;
+  if(memo.has(memoKey)) return memo.get(memoKey);
   const teams = LeagueData.getTeams();
   const schedule = Array.isArray(data.schedule) ? data.schedule : [];
   const byTeam = new Map(teams.map(team=> [String(team.id), blankRow(team)]));
@@ -10303,7 +10414,7 @@ function compute(){
     const week = number(game && game.matchupPeriodId);
     const home = game && game.home;
     const away = game && game.away;
-    if(!week || !home || !away) return;
+    if(!week || week > throughWeek || !home || !away) return;
     const homeScore = number(home.totalPoints);
     const awayScore = number(away.totalPoints);
     if(homeScore <= 0 && awayScore <= 0) return; // explicitly unplayed
@@ -10389,19 +10500,24 @@ function compute(){
     });
   });
 
-  memo = {
+  const result = {
     season:number(data.seasonId || data.season) || new Date().getFullYear(),
+    throughWeek,
     rows,
     weeks:Array.from(weeks.keys()).sort((a,b)=>a-b),
     opponentBaseline,
-    waiverGems:waiverGems(schedule),
+    waiverGems:waiverGems(schedule, throughWeek),
     coverage:{
       scoredWeeks:weeks.size,
       lineupTeams:rows.filter(row=> row.lineupSamples > 0).length,
-      waiverClaims:(()=>{ try{ return (FSNIntel.transactions() || []).filter(tx=>tx && tx.executed && tx.adds && tx.adds.length).length; }catch(e){ return 0; } })(),
+      waiverClaims:(()=>{ try{ return (FSNIntel.transactions() || []).filter(tx=>{
+        const week = number(tx && tx.week);
+        return tx && tx.executed && tx.adds && tx.adds.length && week > 0 && week <= throughWeek;
+      }).length; }catch(e){ return 0; } })(),
     },
   };
-  return memo;
+  memo.set(memoKey, result);
+  return result;
 }
 
 return { compute };
@@ -10517,6 +10633,21 @@ function toast(msg){
   el.classList.add('show');
   clearTimeout(toast._t);
   toast._t = setTimeout(()=> el.classList.remove('show'), 2600);
+}
+
+/* One owner for page scroll locking. Overlay close paths used to clear or
+   retain body overflow independently, so an interrupted modal lifecycle could
+   strand every primary screen behind overflow:hidden. Recompute from actual
+   DOM state after every transition instead of trusting paired assignments. */
+function syncBodyScrollLock(){
+  const overlayIds = ['reader','franchiseModal','onboardModal','storyComposer','profilePicker'];
+  const locked = overlayIds.some(id=>{
+    const node = $(id);
+    return node && node.dataset && node.dataset.open === 'true';
+  });
+  document.documentElement.classList.toggle('overlay-open', locked);
+  document.body.classList.toggle('overlay-open', locked);
+  document.body.style.removeProperty('overflow');
 }
 
 function emptyState(title, sub, gotoTab){
@@ -10656,6 +10787,7 @@ function renderWeekScrubbers(){
   renderWeekScrubber('homeWeekScrubber');
   renderWeekScrubber('newsWeekScrubber');
   renderWeekScrubber('matchupWeekScrubber');
+  renderWeekScrubber('analyticsWeekScrubber');
 }
 
 function seasonCacheEntry(year){
@@ -10861,7 +10993,7 @@ function closeProfilePicker(){
   const picker = $('profilePicker');
   if(!picker) return;
   picker.dataset.open = 'false';
-  if($('reader').dataset.open !== 'true') document.body.style.overflow = '';
+  syncBodyScrollLock();
 }
 
 function renderProfilePicker(){
@@ -10883,7 +11015,7 @@ function maybePromptTeamProfile(){
   ui.profileRole = storedProfileRole() || 'member';
   renderProfilePicker();
   $('profilePicker').dataset.open = 'true';
-  document.body.style.overflow = 'hidden';
+  syncBodyScrollLock();
 }
 
 function profileRoleForTeam(teamId){
@@ -11312,7 +11444,7 @@ function matchupCard(g){
 
 function matchupSide(team, score, leading, status, projected, week){
   const record = FSNIntel.getRecordAsOfWeek(team.id, week);
-  const streak = team.ownerId ? currentStreak(team.ownerId) : null;
+  const streak = FSNIntel.getStreakAsOfWeek(team.id, week);
   let streakChip = '';
   if(streak && streak.length >= 2){
     const won = streak.result === 'W';
@@ -11398,7 +11530,7 @@ function renderSeasonStandings(){
     <div class="standings-card"><div class="analytics-table-wrap no-bar"><table class="standings-table">
       <thead><tr><th>Team</th><th>Record</th><th>W</th><th>L</th><th>T</th><th>PF</th><th>PA</th><th>DIFF</th><th>Streak</th></tr></thead>
       <tbody>${rows.map((row,index)=>{
-        const streak = row.team.ownerId ? currentStreak(row.team.ownerId) : null;
+        const streak = FSNIntel.getStreakAsOfWeek(row.team.id, week);
         const streakLabel = streak && streak.length ? streak.result + streak.length : '—';
         return `<tr>
           <td><span class="standings-team"><span class="analytics-rank">${index+1}</span>${crest(row.team.name,row.team.logo,24)}<span class="analytics-team-name">${esc(row.team.name)}</span></span></td>
@@ -11438,7 +11570,7 @@ function renderAnalytics(){
   }
 
   let model;
-  try{ model = SeasonAnalytics.compute(); }
+  try{ model = SeasonAnalytics.compute(effectiveWeek()); }
   catch(err){
     console.error('[Analytics] model computation failed', err);
     body.innerHTML = emptyState('MODEL STANDBY', 'The analytics engine could not read this ESPN payload. Re-fetch the league to retry.', 'setup');
@@ -11449,12 +11581,13 @@ function renderAnalytics(){
   const scored = rows.filter(row=> row.games > 0 || row.scores.length > 0);
   $('analyticsSeasonPill').textContent = model.season + ' SEASON';
   $('analyticsUpdated').textContent = model.coverage.scoredWeeks
-    ? `${model.coverage.scoredWeeks} SCORED WEEK${model.coverage.scoredWeeks===1?'':'S'}`
+    ? `${model.coverage.scoredWeeks} SCORED WEEK${model.coverage.scoredWeeks===1?'':'S'} · THROUGH WEEK ${model.throughWeek}`
     : 'PRESEASON · MODELS READY';
 
   const status = `<div class="analytics-status">
     <span class="analytics-status-chip"><b>${rows.length}</b> Teams</span>
     <span class="analytics-status-chip"><b>${model.coverage.scoredWeeks}</b> Scored Weeks</span>
+    <span class="analytics-status-chip"><b>Week ${model.throughWeek}</b> Through</span>
     <span class="analytics-status-chip"><b>${model.coverage.lineupTeams}</b> Lineup Feeds</span>
     <span class="analytics-status-chip"><b>${model.coverage.waiverClaims}</b> Executed Adds</span>
   </div>`;
@@ -11954,7 +12087,7 @@ function openFranchiseModal(ownerId){
   $('franchiseScreenshotBtn').textContent = 'Screenshot Resume';
   $('franchiseModal').dataset.open = 'true';
   $('franchiseModalBody').scrollTop = 0;
-  document.body.style.overflow = 'hidden';
+  syncBodyScrollLock();
   wireFranchiseTrendPoints($('franchiseModalBody'));
   setTimeout(()=> $('franchiseModalClose').focus(), 0);
 }
@@ -11964,7 +12097,7 @@ function closeFranchiseModal(){
   $('franchiseModal').dataset.open = 'false';
   $('franchiseModal').dataset.screenshot = 'false';
   ui.franchiseModalId = null;
-  document.body.style.overflow = '';
+  syncBodyScrollLock();
 }
 
 function toggleFranchiseScreenshot(){
@@ -13719,7 +13852,7 @@ function openOnboard(step){
   const modal = $('onboardModal');
   if(!modal) return;
   modal.dataset.open = 'true';
-  document.body.style.overflow = 'hidden';
+  syncBodyScrollLock();
   const body = modal.querySelector('.onboard-body');
   if(body) body.scrollTop = 0;
   // Deep-link to a specific step when a "how do I…?" link was used.
@@ -13740,7 +13873,7 @@ function closeOnboard(){
   const modal = $('onboardModal');
   if(!modal) return;
   modal.dataset.open = 'false';
-  document.body.style.overflow = '';
+  syncBodyScrollLock();
 }
 if($('onboardOpenBtn')) $('onboardOpenBtn').addEventListener('click', ()=> openOnboard());
 if($('onboardClose'))   $('onboardClose').addEventListener('click', closeOnboard);
@@ -14086,12 +14219,12 @@ function openReader(id){
      previous article's position carries over. */
   $('reader').dataset.open = 'true';
   $('readerBody').scrollTop = 0;
-  document.body.style.overflow = 'hidden';
+  syncBodyScrollLock();
 }
 function closeReader(){
   $('reader').dataset.open = 'false';
   ui.readerId = null;
-  document.body.style.overflow = '';
+  syncBodyScrollLock();
 }
 
 function openArticleModal(idx){
@@ -14435,7 +14568,7 @@ function openStoryComposer(){
   $('storyComposerWeek').textContent = String(effectiveWeek());
   resetStoryForm();
   $('storyComposer').dataset.open = 'true';
-  document.body.style.overflow = 'hidden';
+  syncBodyScrollLock();
   setTimeout(()=> $('storyAuthorButton').focus(), 0);
 }
 
@@ -14443,7 +14576,7 @@ function closeStoryComposer(){
   $('storyComposer').dataset.open = 'false';
   $('storyAuthorMenu').hidden = true;
   $('storyAuthorButton').setAttribute('aria-expanded', 'false');
-  document.body.style.overflow = '';
+  syncBodyScrollLock();
   setTimeout(()=> $('writeStoryBtn').focus(), 0);
 }
 
