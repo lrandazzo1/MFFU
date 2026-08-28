@@ -233,6 +233,67 @@ async function verifyLeagueMember(leagueId, seasonYear, cookies) {
   };
 }
 
+const RETURNING_COLUMNS = 'league_id,season_year,history_json,cookies,updated_at';
+
+// Persist a league row without depending on a specific unique/exclusion
+// constraint existing on the table. We first try a native upsert (atomic, and
+// correct when the (league_id, season_year) primary key from schema.sql is
+// present). If the database has no matching constraint — Postgres error 42P10,
+// "there is no unique or exclusion constraint matching the ON CONFLICT
+// specification" — we fall back to an explicit existence check followed by an
+// UPDATE or INSERT. This keeps saves working on tables that were created
+// without the composite key.
+async function saveLeagueRow(client, row) {
+  const upsert = await client
+    .from('leagues')
+    .upsert(row, { onConflict: 'league_id,season_year' })
+    .select(RETURNING_COLUMNS)
+    .single();
+
+  if (!upsert.error) return upsert.data;
+
+  const missingConstraint =
+    upsert.error.code === '42P10' ||
+    /no unique or exclusion constraint matching the on conflict/i.test(String(upsert.error.message || ''));
+  if (!missingConstraint) throw upsert.error;
+
+  console.warn('[api/league] ON CONFLICT unsupported (42P10); falling back to check-then-insert/update.');
+
+  // Does a row for this league_id + season_year already exist?
+  const existing = await client
+    .from('leagues')
+    .select('league_id,season_year')
+    .eq('league_id', row.league_id)
+    .eq('season_year', row.season_year)
+    .maybeSingle();
+  if (existing.error) throw existing.error;
+
+  if (existing.data) {
+    // Update in place, never touching the primary-key columns.
+    const patch = {};
+    Object.keys(row).forEach(function (key) {
+      if (key !== 'league_id' && key !== 'season_year') patch[key] = row[key];
+    });
+    const updated = await client
+      .from('leagues')
+      .update(patch)
+      .eq('league_id', row.league_id)
+      .eq('season_year', row.season_year)
+      .select(RETURNING_COLUMNS)
+      .single();
+    if (updated.error) throw updated.error;
+    return updated.data;
+  }
+
+  const inserted = await client
+    .from('leagues')
+    .insert(row)
+    .select(RETURNING_COLUMNS)
+    .single();
+  if (inserted.error) throw inserted.error;
+  return inserted.data;
+}
+
 async function findLeagueRow(client, leagueId, seasonYear, includeCookies) {
   const columns = includeCookies
     ? 'league_id,season_year,history_json,cookies,updated_at'
@@ -351,14 +412,9 @@ async function handler(req, res) {
     // envelope never overwrites previously stored valid cookies with null.
     if (encryptedCookies) row.cookies = encryptedCookies;
 
-    const result = await client
-      .from('leagues')
-      .upsert(row, { onConflict: 'league_id,season_year' })
-      .select('league_id,season_year,history_json,cookies,updated_at')
-      .single();
-    if (result.error) throw result.error;
+    const saved = await saveLeagueRow(client, row);
 
-    const responseBody = { record: publicRecord(result.data) };
+    const responseBody = { record: publicRecord(saved) };
     if (cookieWarning) responseBody.warning = cookieWarning;
     return res.status(200).json(responseBody);
   } catch (error) {
@@ -366,7 +422,7 @@ async function handler(req, res) {
     // real cause — an RLS policy, a missing column, a constraint violation, a
     // connection failure — is visible in the response and server logs instead
     // of a generic "save failed". Supabase/PostgREST errors carry these fields.
-    console.error('[api/league] upsert failed', {
+    console.error('[api/league] save failed', {
       message: error && error.message,
       code: error && error.code,
       details: error && error.details,
