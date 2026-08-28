@@ -1,0 +1,98 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+  --bg: #050913;
+  --panel: #0a111f;
+  --panel-2: #0d1625;
+  --text: #f8fbff;
+  --muted: #8c9aad;
+  --cyan: #00e5ff;
+  --cyan-soft: #8cf5ff;
+  --gold: #ffc53d;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+  background: var(--bg);
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  overflow-x: hidden;
+  background:
+    radial-gradient(circle at 50% 0%, rgba(0, 229, 255, 0.09), transparent 30rem),
+    radial-gradient(circle at 85% 25%, rgba(255, 197, 61, 0.06), transparent 28rem),
+    var(--bg);
+  color: var(--text);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+::selection {
+  background: rgba(0, 229, 255, 0.25);
+  color: white;
+}
+
+@layer components {
+  .shell {
+    @apply mx-auto w-full max-w-7xl px-5 sm:px-8 lg:px-10;
+  }
+
+  .eyebrow {
+    @apply inline-flex items-center gap-2 rounded-full border border-cyan-300/20 bg-cyan-300/[0.06] px-3 py-1 text-[11px] font-bold uppercase tracking-[0.2em] text-cyan-200;
+  }
+
+  .panel {
+    @apply border border-white/10 bg-[#09111d]/85 backdrop-blur-xl;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+  }
+
+  .neon-card {
+    @apply panel relative overflow-hidden rounded-3xl;
+  }
+
+  .neon-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    border-radius: inherit;
+    background: linear-gradient(135deg, rgba(0, 229, 255, 0.12), transparent 28%, transparent 72%, rgba(255, 197, 61, 0.06));
+    opacity: 0.65;
+  }
+
+  .primary-button {
+    @apply inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-cyan-200/70 bg-cyan-300 px-5 py-3 text-sm font-black uppercase tracking-[0.08em] text-[#031119] transition duration-200 hover:-translate-y-0.5 hover:bg-cyan-200 hover:shadow-cyan focus:outline-none focus:ring-2 focus:ring-cyan-200/70 focus:ring-offset-2 focus:ring-offset-[#050913];
+  }
+
+  .secondary-button {
+    @apply inline-flex min-h-12 items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/[0.045] px-5 py-3 text-sm font-black uppercase tracking-[0.08em] text-white transition duration-200 hover:-translate-y-0.5 hover:border-white/30 hover:bg-white/[0.075] focus:outline-none focus:ring-2 focus:ring-white/30 focus:ring-offset-2 focus:ring-offset-[#050913];
+  }
+}
+
+.phone-shot {
+  position: relative;
+  overflow: hidden;
+  border-radius: 1.55rem;
+  border: 1px solid rgba(142, 239, 255, 0.2);
+  background: #02060d;
+  box-shadow:
+    0 28px 70px rgba(0, 0, 0, 0.48),
+    0 0 34px rgba(0, 229, 255, 0.07);
+}
+
+.phone-shot::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(115deg, rgba(255, 255, 255, 0.08), transparent 18%, transparent 75%, rgba(0, 229, 255, 0.04));
+  mix-blend-mode: screen;
+}
