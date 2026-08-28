@@ -1,6 +1,14 @@
 import Image from 'next/image';
 import { FeatureCarousel } from '@/components/FeatureCarousel';
 
+const APP_BASE_URL = (process.env.NEXT_PUBLIC_FSN_APP_URL || 'https://mffu.vercel.app').replace(/\/+$/, '');
+
+type Provider = 'espn' | 'sleeper';
+
+function appSetupUrl(provider: Provider) {
+  return `${APP_BASE_URL}/?screen=setup&provider=${provider}&from=landing`;
+}
+
 function ArrowIcon() {
   return (
     <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4" aria-hidden="true">
@@ -45,7 +53,7 @@ const steps = [
   {
     number: '01',
     title: 'Choose your league source',
-    body: 'Connect ESPN or Sleeper. FSN starts with the league you already run — no rebuild, spreadsheet cleanup, or manual record entry.',
+    body: 'Connect ESPN or Sleeper and jump straight into the FSN setup flow. Start with the league you already run — no rebuild, spreadsheet cleanup, or manual record entry.',
   },
   {
     number: '02',
@@ -65,6 +73,9 @@ const steps = [
 ];
 
 export default function Home() {
+  const espnSetupUrl = appSetupUrl('espn');
+  const sleeperSetupUrl = appSetupUrl('sleeper');
+
   return (
     <main>
       <header className="shell flex h-20 items-center justify-between border-b border-white/[0.06]">
@@ -99,12 +110,17 @@ export default function Home() {
             </p>
 
             <div className="mt-9 flex flex-col gap-3 sm:flex-row">
-              <a href="#import-espn" className="primary-button">
+              <a href={espnSetupUrl} className="primary-button">
                 Connect ESPN <ArrowIcon />
               </a>
-              <a href="#import-sleeper" className="secondary-button">
+              <a href={sleeperSetupUrl} className="secondary-button">
                 Connect Sleeper <ArrowIcon />
               </a>
+            </div>
+
+            <div className="mt-4 flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.14em] text-white/55">
+              <span className="rounded-full border border-emerald-300/30 bg-emerald-300/[0.08] px-2.5 py-1 text-emerald-200">100% Free</span>
+              <span>FSN is completely free to use.</span>
             </div>
 
             <div className="mt-8 flex flex-wrap gap-x-5 gap-y-3 border-t border-white/[0.07] pt-6">
@@ -224,10 +240,11 @@ export default function Home() {
                 <p className="mt-4 max-w-2xl text-sm leading-6 text-[#95a3b5] sm:text-base">
                   Every future week sits on top of the same historical foundation — so rivalries, droughts, records, playoff scars, and franchise legacies never disappear between seasons.
                 </p>
+                <div className="mt-4 text-[11px] font-black uppercase tracking-[0.14em] text-emerald-200">Completely free to use.</div>
               </div>
               <div className="flex w-full shrink-0 flex-col gap-3 sm:w-auto sm:flex-row lg:flex-col xl:flex-row">
-                <a href="#import-espn" className="primary-button">Connect ESPN <ArrowIcon /></a>
-                <a href="#import-sleeper" className="secondary-button">Connect Sleeper <ArrowIcon /></a>
+                <a href={espnSetupUrl} className="primary-button">Connect ESPN <ArrowIcon /></a>
+                <a href={sleeperSetupUrl} className="secondary-button">Connect Sleeper <ArrowIcon /></a>
               </div>
             </div>
           </div>
