@@ -10600,6 +10600,92 @@ function transitionStateFallback(ctx){
   });
 }
 
+
+/* Last-resort desk story built outside the template allocator so a malformed
+   archive or one failed generator cannot leave a connected league empty. */
+function guaranteedTimelineFallback(week){
+  const safeWeek=Math.max(1,parseInt(week,10)||1);
+  const season=Number(viewedSeasonYear() || new Date().getFullYear());
+  let teams=[];
+  try{ teams=LeagueData.getTeams(); }catch(_){ teams=[]; }
+  teams=Array.isArray(teams) ? teams.filter(Boolean) : [];
+  let rep=null;
+  try{ rep=FSNIntel.preseasonReport(); }catch(_){ rep=null; }
+  const transition=safeWeek===1 || (()=>{ try{ const p=FSNIntel.seasonPhase(safeWeek); return p==='preseason'||p==='draft'; }catch(_){ return false; } })();
+  const at=liveTime(12);
+
+  if(transition){
+    const champ=rep && rep.champion;
+    const sacko=rep && rep.sacko;
+    const prior=Number(rep && rep.lastSeason && rep.lastSeason.year || season-1);
+    const champName=champ && (champ.displayName || champ.teamName || champ.name);
+    const sackoName=sacko && (sacko.displayName || sacko.teamName || sacko.name);
+    const ppg=champ ? Number(champ.ppg || 0) : 0;
+    const path=champ && Array.isArray(champ.playoffPath) ? champ.playoffPath : [];
+    const rows=[
+      {label:'Prior champion',value:champName ? esc(champName) : 'Archive pending',note:String(prior)+' final'},
+      {label:'Champion PPG',value:ppg ? n1(ppg)+' PPG' : 'Unavailable',note:'Regular-season scoring rate'},
+      {label:'Expected wins',value:champ && Number.isFinite(Number(champ.expectedWins)) ? n1(champ.expectedWins) : 'Unavailable',note:'Weekly score versus league average'},
+      {label:'Luck delta',value:champ && Number.isFinite(Number(champ.luckDelta)) ? (Number(champ.luckDelta)>=0?'+':'')+n1(champ.luckDelta) : 'Unavailable',note:'Actual wins minus expected wins'}
+    ];
+    path.forEach(function(game){
+      rows.push({label:game.round || 'Playoff round',value:'Defeated '+esc(game.opponent || 'Opponent')+' '+n1(game.champScore)+'–'+n1(game.oppScore),note:String(prior)+' winners bracket'});
+    });
+    if(!path.length) rows.push({label:'Playoff path',value:'Unavailable',note:'Winners-bracket games are not present in this archive'});
+    rows.push({label:'Upcoming outlook',value:String(season)+' title race',note:String(teams.length)+' connected teams'});
+
+    const story=article({
+      id:'tl-sotl-emergency-'+season,
+      kind:'sotl',tag:'STATE OF THE LEAGUE',tone:'gold',priority:300,
+      byline:'FSN Senior League Insider',
+      dateline:leagueDateline()+' · '+prior+' FINAL / '+season+' PRESEASON',
+      crest:champ ? {name:champName || 'Defending champion',logo:champ.logo || ''} : (teams[0] ? {name:teams[0].name,logo:teams[0].logo} : null),
+      headline:'STATE OF THE LEAGUE: '+(champName ? upper(champName)+' ENTERS '+season+' WITH THE TARGET' : season+' OPENS WITH THE TITLE RACE RESET'),
+      dek:champName ? esc(champName)+' carries the '+prior+' title into a new league-wide audit.' : 'The prior final remains the baseline while the connected archive finishes resolving its champion.',
+      paragraphs:[
+        datelineTag()+' The league transition is on air. '+(champName ? '<b>'+esc(champName)+'</b> enters as the defending champion after a verified '+prior+' final.' : 'The prior champion slot remains explicit until the '+prior+' final table or winners bracket resolves it.'),
+        champName ? 'The macro profile reads <b>'+esc(champName)+'</b> at <b>'+(ppg?n1(ppg)+' PPG':'PPG unavailable')+'</b>, <b>'+(champ && Number.isFinite(Number(champ.expectedWins))?n1(champ.expectedWins):'expected wins unavailable')+'</b>, and a <b>'+(champ && Number.isFinite(Number(champ.luckDelta))?((Number(champ.luckDelta)>=0?'+':'')+n1(champ.luckDelta)):'luck delta unavailable')+'</b>.' : 'Champion PPG, expected wins, luck delta and the round-by-round title path stay visible as unavailable rather than being fabricated.',
+        (path.length ? 'The verified title path contains <b>'+path.length+'</b> elimination result'+(path.length===1?'':'s')+'. ' : '')+(sackoName ? '<b>'+esc(sackoName)+'</b> opens '+season+' on the redemption clock. ' : '')+'Week 1 now decides which parts of the prior season survive the reset.'
+      ],
+      quote:{text:'The records reset. The evidence does not.',who:'FSN SENIOR LEAGUE INSIDER'},
+      numbers:{title:'By the Numbers',rows:rows}
+    });
+    story.timeline=true; story.slot='recap'; story.topic='breaking'; story.at=at;
+    story.metaTag='STATE OF THE LEAGUE'; story.meta=stamp(at)+' · STATE OF THE LEAGUE';
+    return story;
+  }
+
+  let ctx=null;
+  try{ ctx=weekContext(safeWeek); }catch(_){ ctx=null; }
+  const scored=ctx && Array.isArray(ctx.scored) ? ctx.scored.filter(Boolean) : [];
+  const featured=scored.find(function(game){ return game && game.winner && game.loser; }) || null;
+  const winner=featured && featured.winner;
+  const loser=featured && featured.loser;
+  const story=article({
+    id:'tl-weekly-emergency-'+season+'-'+safeWeek,
+    kind:'recap',tag:featured?'MATCHUP RECAP':'WEEK AHEAD',tone:'cyan',priority:80,
+    byline:'FSN Numbers Desk',dateline:leagueDateline()+' · WEEK '+safeWeek,
+    crest:winner ? {name:winner.name,logo:winner.logo} : (teams[0] ? {name:teams[0].name,logo:teams[0].logo} : null),
+    headline:featured ? upper(winner.name)+' FILES THE WEEK '+safeWeek+' RESULT' : 'WEEK '+safeWeek+' BOARD IS READY',
+    dek:featured ? esc(winner.name)+' defeated '+esc(loser.name)+' '+n1(featured.winnerScore)+'–'+n1(featured.loserScore)+'.' : 'The schedule is connected and waiting for verified scoring.',
+    paragraphs:featured ? [
+      datelineTag()+' <b>'+esc(winner.name)+'</b> defeated <b>'+esc(loser.name)+'</b> <b>'+n1(featured.winnerScore)+'–'+n1(featured.loserScore)+'</b>.',
+      'The <b>'+n1(featured.margin)+'</b>-point margin is preserved directly from the loaded matchup record.',
+      'The next slate now carries the result as part of the season evidence.'
+    ] : [
+      datelineTag()+' Week <b>'+safeWeek+'</b> is connected with no completed scoring yet.',
+      'No recap language is generated from 0.0 placeholders.',
+      'Verified stories populate as soon as the scoreboard moves.'
+    ],
+    numbers:{title:'By the Numbers',rows:[
+      {label:'Season',value:String(season)},{label:'Week',value:String(safeWeek)},{label:'Connected teams',value:String(teams.length)}
+    ]}
+  });
+  story.timeline=true; story.slot=featured?'recap':'primer'; story.topic=featured?'power':'matchups'; story.at=at;
+  story.metaTag=featured?'RECAP':'MATCHUPS'; story.meta=stamp(at)+' · '+story.metaTag;
+  return story;
+}
+
 function getTimelineStream(week){
   const custom = scopedCustom(week);
   if(!LeagueData.hasLive()){
@@ -10632,10 +10718,12 @@ function getTimelineStream(week){
   });
 
   if(pregameOnly){
-    events = events.concat(genPreview(ctx).map((a,i)=> adopt(a, i)));
+    try{ events = events.concat((genPreview(ctx) || []).map((a,i)=> adopt(a, i))); }
+    catch(err){ console.error('[Timeline] preview fallback failed', err); }
   } else {
     // The classic wire, folded in with timestamps once the week is underway.
-    events = events.concat(generate(week).map((a,i)=> adopt(a, i)));
+    try{ events = events.concat((generate(week) || []).map((a,i)=> adopt(a, i))); }
+    catch(err){ console.error('[Timeline] weekly fallback failed', err); }
   }
   // Community copy is scoped to this exact season/week and can exist even
   // before the first live score posts.
@@ -10822,7 +10910,7 @@ return {
      read the same Coaching Efficiency board the timeline writes from. */
   genManagerOfTheWeek,
   lineupEfficiencyOf, fillOptimalLineup, STANDARD_LINEUP_TEMPLATE,
-  getTimelineStream, getNewsFeedForWeek, tickerHeadlines, restamp, stamp,
+  getTimelineStream, getNewsFeedForWeek, guaranteedTimelineFallback, tickerHeadlines, restamp, stamp,
   getShuffledDeck, seasonToneBucket, viewedSeasonYear, activeSeasonYear,
   buildHistoricalLore, narrativePersona, narrativeArchetype, cadenceFor,
   /* Margin routing — exported so every surface tags a game the same way. */
@@ -12192,15 +12280,17 @@ function renderAnalytics(){
   }
 
   if(ui.statsMode === 'standings'){
-    const rawTeams = LeagueData.getTeams();
-    const teams = Array.isArray(rawTeams) ? rawTeams.filter(Boolean) : [];
-    if(seasonPill) seasonPill.textContent = String(viewedSeasonYear() || '—') + ' SEASON';
-    if(updatedLabel) updatedLabel.textContent = 'WEEK ' + String(effectiveWeek() || 1) + ' STANDINGS';
     try{
-      body.innerHTML = teams.length ? renderSeasonStandings() : emptyState('NO STANDINGS', 'Fetch a league to populate Season Stats.', 'setup');
+      const standingsYear = (typeof NewsDesk !== 'undefined' && typeof NewsDesk.viewedSeasonYear === 'function')
+        ? NewsDesk.viewedSeasonYear()
+        : (LeagueData.espnData && (LeagueData.espnData.seasonId || LeagueData.espnData.season)) || uiActiveSeasonYear();
+      const standingsWeek = Math.max(1, parseInt(effectiveWeek(),10) || 1);
+      if(seasonPill) seasonPill.textContent = String(standingsYear || '—') + ' SEASON';
+      if(updatedLabel) updatedLabel.textContent = 'WEEK ' + standingsWeek + ' STANDINGS';
+      body.innerHTML = renderSeasonStandings();
     }catch(err){
-      console.warn('[Standings] component render failed', err);
-      body.innerHTML = `<div class="analytics-empty">Standings could not be displayed for this week. Switch to Advanced Analytics or reload the league data.</div>`;
+      console.error('[Standings] component render failed', err);
+      body.innerHTML = '<div class="analytics-empty">Standings are connected, but this ESPN season does not expose a valid table for the selected week.</div>';
     }
     return;
   }
@@ -14537,9 +14627,21 @@ const toneVar = (t)=> TONE_VAR[t] || TONE_VAR.red;
 /* Every rendered story is kept by id so the reader, the rail and the
    feed can all open the same object without regenerating it. */
 function newsList(){
-  const list = NewsDesk.getTimelineStream(effectiveWeek());
+  let list=[];
+  try{
+    const generated=NewsDesk.getTimelineStream(effectiveWeek());
+    list=Array.isArray(generated) ? generated.filter(Boolean) : [];
+  }catch(err){
+    console.error('[NewsDesk] primary timeline failed',err);
+  }
+  if(!list.length && LeagueData.hasLive() && NewsDesk && typeof NewsDesk.guaranteedTimelineFallback === 'function'){
+    try{
+      const fallback=NewsDesk.guaranteedTimelineFallback(effectiveWeek());
+      if(fallback) list=[fallback];
+    }catch(err){ console.error('[NewsDesk] guaranteed fallback failed',err); }
+  }
   ui.newsCache = {};
-  list.forEach(a=> ui.newsCache[a.id] = a);
+  list.forEach(a=>{ if(a && a.id) ui.newsCache[a.id] = a; });
   return list;
 }
 function articleById(id){ return ui.newsCache ? ui.newsCache[id] : null; }
