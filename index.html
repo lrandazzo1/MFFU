@@ -167,6 +167,26 @@ body{
   .tab-btn svg{ width:18px; height:18px; }
 }
 
+/* ---------- PLATFORM (ESPN / SLEEPER) TOGGLE ---------- */
+.provider-toggle{
+  display:grid; grid-template-columns:1fr 1fr; gap:6px;
+  padding:4px; border:1px solid var(--line); border-radius:11px; background:#0b0f16;
+}
+.provider-tab{
+  appearance:none; border:1px solid transparent; border-radius:8px;
+  padding:9px 10px; min-height:40px;
+  font-family:'JetBrains Mono',ui-monospace,monospace; font-size:12px; font-weight:800;
+  letter-spacing:.06em; text-transform:uppercase; color:var(--dim);
+  background:transparent; transition:background .16s ease,color .16s ease,border-color .16s ease;
+}
+.provider-tab:hover{ color:var(--off); }
+.provider-tab.is-active{
+  color:#071018; background:var(--cyan); border-color:var(--cyan);
+  box-shadow:0 0 14px rgba(0,224,255,.22);
+}
+.provider-tab:active{ transform:scale(.97); }
+.provider-tab:focus-visible{ outline:2px solid var(--cyan); outline-offset:2px; }
+
 /* ---------- SCREENS ---------- */
 .screen{ display:none; animation:screenIn .22s ease both; }
 .screen > header{ position:relative; z-index:2; }
@@ -1589,8 +1609,15 @@ body{
 
       <!-- LEAGUE CONNECTION -->
       <div class="card p-4">
-        <div class="section-head"><span class="bar"></span><h2>ESPN League</h2></div>
+        <div class="section-head"><span class="bar"></span><h2 id="leagueSourceHeading">Connect League</h2></div>
         <div class="space-y-3">
+          <div>
+            <label class="label" style="margin-bottom:6px">Fantasy Platform</label>
+            <div class="provider-toggle" role="tablist" aria-label="Fantasy platform">
+              <button type="button" id="providerEspn" class="provider-tab is-active" role="tab" aria-selected="true" data-provider="espn">ESPN</button>
+              <button type="button" id="providerSleeper" class="provider-tab" role="tab" aria-selected="false" data-provider="sleeper">Sleeper</button>
+            </div>
+          </div>
           <div>
             <div class="flex items-center justify-between gap-2">
               <label class="label" for="leagueIdInput" style="margin-bottom:0">League ID</label>
@@ -1611,7 +1638,7 @@ body{
       </div>
 
       <!-- PRIVATE LEAGUE COOKIES -->
-      <div class="card p-4">
+      <div class="card p-4" id="privateLeagueCard">
         <div class="section-head"><span class="bar" style="background:var(--gold)"></span><h2>Private League Access</h2></div>
         <p class="text-[11.5px] text-[var(--dim)] leading-relaxed mb-3">
           Only needed if your league is set to <strong style="color:var(--off)">private</strong> on ESPN. Paste the two cookie values from your own logged-in browser and every fetch will read your league as you. The values are kept in this browser as a fallback. When any league member saves, the same-origin backend verifies that the cookies can read this league, encrypts them with AES-256-GCM, and stores only the encrypted envelope in Supabase.
@@ -3163,6 +3190,425 @@ function featuredPlayoffGames(games, week){
   const nonConsolation = list.filter(g=> !isConsolationGame(g));
   return nonConsolation.length ? nonConsolation : list;
 }
+</script>
+
+<script>
+/* ============================================================================
+   FANTASY SPORTS NETWORK — SLEEPER ADAPTER
+   Sleeper is the other major fantasy host, and unlike ESPN its public v1 API
+   is read-only and CORS-enabled, so the browser can call it directly with no
+   cookies and no credentials. This adapter is the ONLY Sleeper-aware code in
+   the app: it pulls league details, users, rosters and weekly matchups from
+   Sleeper's HTTP endpoints and maps that JSON into the exact ESPN-shaped
+   season object every downstream screen already understands
+   (teams / members / schedule / settings / status). Because the output shape
+   is identical, standings, matchups, analytics, the Record Book and the News
+   Desk all light up from Sleeper with zero changes of their own.
+
+   Endpoints used (all GET, all public):
+     /v1/state/nfl                              current season + week
+     /v1/league/{id}                            name, season, roster slots, playoff week
+     /v1/league/{id}/users                      display names + team names
+     /v1/league/{id}/rosters                    records + points-for/against
+     /v1/league/{id}/matchups/{week}            per-roster weekly box scores
+     /v1/players/nfl                            id -> name/position (cached)
+   Multi-season history walks league.previous_league_id backwards.
+============================================================================ */
+window.SleeperAdapter = (function(){
+'use strict';
+
+/* Direct to Sleeper by default (public + CORS). If a direct request fails at
+   the network level — a content filter or ad blocker dropping api.sleeper.app,
+   never a real HTTP status — the same request is retried through the
+   same-origin /api/sleeper relay, mirroring the ESPN transport fallback. */
+const SLEEPER_BASE = 'https://api.sleeper.app/v1';
+
+async function sleeperGet(path){
+  const direct = SLEEPER_BASE + path;
+  try{
+    const res = await fetch(direct, { headers:{ Accept:'application/json' }, cache:'no-store' });
+    if(res.ok) return await res.json();
+    // A real HTTP status (404/5xx) is authoritative — do not mask it behind the relay.
+    throw new Error('SLEEPER_HTTP_' + res.status);
+  }catch(err){
+    if(/SLEEPER_HTTP_\d/.test(String(err && err.message))) throw err;
+    // Transport failure (blocked host, DNS, offline). Try the same-origin relay.
+    const res = await fetch('/api/sleeper?url=' + encodeURIComponent(direct), {
+      headers:{ Accept:'application/json' }, cache:'no-store',
+    });
+    if(!res.ok) throw new Error('SLEEPER_RELAY_HTTP_' + res.status);
+    return await res.json();
+  }
+}
+
+/* ---- position + lineup-slot translation to ESPN's integer codes ----
+   The News Desk's optimal-lineup math and POS_BY_ID both speak ESPN's
+   defaultPositionId / lineupSlotId integers, so every Sleeper string is
+   mapped onto that vocabulary here and nowhere else. */
+const POS_TO_ESPN = { QB:1, RB:2, WR:3, TE:4, K:5, DEF:16, DST:16 };
+const SLOT_TO_ESPN = {
+  QB:0, RB:2, WR:4, TE:6,
+  FLEX:23, WRRB_FLEX:23, WRRB:23, REC_FLEX:23, IDP_FLEX:23,
+  SUPER_FLEX:7, SUPERFLEX:7,
+  K:17, DEF:16, DST:16,
+  BN:20, IR:21, TAXI:21,
+};
+function posToEspn(pos){ return POS_TO_ESPN[String(pos || '').toUpperCase()] || 0; }
+function slotToEspn(slot){
+  const key = String(slot || '').toUpperCase();
+  return Object.prototype.hasOwnProperty.call(SLOT_TO_ESPN, key) ? SLOT_TO_ESPN[key] : 23;
+}
+
+/* ---- player index (id -> { name, pos }) ----
+   /v1/players/nfl is a multi-megabyte, effectively immutable blob. It is
+   fetched at most once per session and trimmed to just the two fields the
+   editorial engine needs, then that small trimmed map is persisted so a
+   reload skips the big download. Player names are ONLY needed for News Desk
+   colour ("X led the winners with N"); standings, matchups and records work
+   without it, so a failed or slow player fetch never blocks a league load. */
+const PLAYER_CACHE_KEY = 'fsn_sleeper_players_v1';
+let playerIndexPromise = null;
+
+function readCachedPlayers(){
+  try{
+    const raw = localStorage.getItem(PLAYER_CACHE_KEY);
+    if(!raw) return null;
+    const parsed = JSON.parse(raw);
+    if(!parsed || !parsed.map || (Date.now() - (parsed.ts || 0)) > 7 * 864e5) return null;
+    return parsed.map;
+  }catch(e){ return null; }
+}
+function writeCachedPlayers(map){
+  try{ localStorage.setItem(PLAYER_CACHE_KEY, JSON.stringify({ ts:Date.now(), map })); }catch(e){}
+}
+
+function loadPlayerIndex(){
+  if(playerIndexPromise) return playerIndexPromise;
+  const cached = readCachedPlayers();
+  if(cached){ playerIndexPromise = Promise.resolve(cached); return playerIndexPromise; }
+  playerIndexPromise = sleeperGet('/players/nfl').then(raw=>{
+    const map = {};
+    if(raw && typeof raw === 'object'){
+      Object.keys(raw).forEach(id=>{
+        const p = raw[id] || {};
+        const name = p.full_name
+          || [p.first_name, p.last_name].filter(Boolean).join(' ').trim()
+          || (p.position === 'DEF' ? (p.team ? p.team + ' D/ST' : 'D/ST') : '')
+          || String(id);
+        map[id] = { name, pos:(p.position || (Array.isArray(p.fantasy_positions) ? p.fantasy_positions[0] : '') || '') };
+      });
+    }
+    writeCachedPlayers(map);
+    return map;
+  }).catch(err=>{
+    // Non-fatal: hand back an empty index and let the desk's missing-player
+    // fallback copy take over. Reset the promise so a later screen can retry.
+    console.warn('[Sleeper] player index unavailable; names will be generic.', err);
+    playerIndexPromise = null;
+    return {};
+  });
+  return playerIndexPromise;
+}
+
+/* Defensive player ids on Sleeper are the NFL team abbreviation (e.g. "SF");
+   resolve those even when the big index is absent. */
+function resolvePlayer(playerIndex, id){
+  const key = String(id == null ? '' : id);
+  const hit = playerIndex && playerIndex[key];
+  if(hit) return hit;
+  if(/^[A-Z]{2,4}$/.test(key)) return { name: key + ' D/ST', pos:'DEF' };
+  return { name:'Player ' + key, pos:'' };
+}
+
+/* ---- season assembly ---- */
+
+function leagueDisplayName(league){
+  return (league && league.name) ? String(league.name) : 'Sleeper League';
+}
+
+/* One user's display label + the two ESPN name halves. Sleeper stores an
+   optional custom team name under metadata.team_name; otherwise the display
+   name stands in for both the manager and the franchise. */
+function memberFromUser(u){
+  const display = (u && (u.display_name || (u.metadata && u.metadata.team_name))) || 'Manager';
+  const parts = String(display).trim().split(/\s+/);
+  return {
+    id: String(u.user_id),
+    displayName: display,
+    firstName: parts[0] || display,
+    lastName: parts.slice(1).join(' ') || '',
+  };
+}
+
+/* Rank every roster by record then points-for so the playoff picture and
+   bracket cards have a seed to read, exactly like ESPN's team.playoffSeed. */
+function standingsSeeds(rosters){
+  const ranked = rosters.slice().map(r=>{
+    const s = r.settings || {};
+    const fpts = Number(s.fpts || 0) + Number(s.fpts_decimal || 0) / 100;
+    return { rosterId: r.roster_id, wins:Number(s.wins||0), ties:Number(s.ties||0), fpts };
+  }).sort((a,b)=> (b.wins - a.wins) || (b.ties - a.ties) || (b.fpts - a.fpts));
+  const seedByRoster = {};
+  ranked.forEach((r,i)=>{ seedByRoster[r.rosterId] = i + 1; });
+  return seedByRoster;
+}
+
+/* The ordered list of ESPN slot ids for the league's real starting lineup —
+   Sleeper's roster_positions minus the bench/IR/taxi slots. starters[i] in a
+   weekly matchup occupies startingSlots[i]. */
+function startingSlots(league){
+  const positions = (league && Array.isArray(league.roster_positions)) ? league.roster_positions : [];
+  return positions
+    .filter(p=> ['BN','IR','TAXI'].indexOf(String(p).toUpperCase()) === -1)
+    .map(slotToEspn);
+}
+
+/* Build one team's ESPN-shaped roster entries for a week from its Sleeper
+   matchup record: every starter in its real slot, then the bench. */
+function entriesForSide(sideMatchup, slots, playerIndex){
+  if(!sideMatchup) return null;
+  const entries = [];
+  const startersById = {};
+  const starters = Array.isArray(sideMatchup.starters) ? sideMatchup.starters : [];
+  const starterPts = Array.isArray(sideMatchup.starters_points) ? sideMatchup.starters_points : [];
+  const allPts = (sideMatchup.players_points && typeof sideMatchup.players_points === 'object') ? sideMatchup.players_points : {};
+
+  starters.forEach((pid, i)=>{
+    if(pid == null || pid === '0') return;   // an empty starting slot
+    startersById[String(pid)] = true;
+    const meta = resolvePlayer(playerIndex, pid);
+    const pts = typeof starterPts[i] === 'number' ? starterPts[i]
+      : (typeof allPts[String(pid)] === 'number' ? allPts[String(pid)] : 0);
+    entries.push({
+      lineupSlotId: slots[i] != null ? slots[i] : 23,
+      appliedStatTotal: pts,
+      playerPoolEntry:{ player:{ fullName:meta.name, defaultPositionId:posToEspn(meta.pos) } },
+    });
+  });
+
+  const bench = Array.isArray(sideMatchup.players) ? sideMatchup.players : [];
+  bench.forEach(pid=>{
+    if(pid == null || pid === '0' || startersById[String(pid)]) return;
+    const meta = resolvePlayer(playerIndex, pid);
+    const pts = typeof allPts[String(pid)] === 'number' ? allPts[String(pid)] : 0;
+    entries.push({
+      lineupSlotId: 20,   // BN
+      appliedStatTotal: pts,
+      playerPoolEntry:{ player:{ fullName:meta.name, defaultPositionId:posToEspn(meta.pos) } },
+    });
+  });
+
+  return entries.length ? { entries } : null;
+}
+
+function sideTotal(sideMatchup){
+  if(!sideMatchup) return 0;
+  if(typeof sideMatchup.points === 'number') return sideMatchup.points;
+  if(typeof sideMatchup.custom_points === 'number') return sideMatchup.custom_points;
+  const pts = Array.isArray(sideMatchup.starters_points) ? sideMatchup.starters_points : [];
+  return pts.reduce((s,v)=> s + (Number(v) || 0), 0);
+}
+
+/* Group one week's flat matchup array (one row per roster) into head-to-head
+   games and emit ESPN-shaped schedule entries. */
+function scheduleForWeek(weekMatchups, week, isPlayoff, slots, playerIndex){
+  if(!Array.isArray(weekMatchups) || !weekMatchups.length) return [];
+  const byMatchup = {};
+  weekMatchups.forEach(m=>{
+    const key = m && m.matchup_id != null ? String(m.matchup_id) : 'solo-' + (m && m.roster_id);
+    (byMatchup[key] = byMatchup[key] || []).push(m);
+  });
+  const games = [];
+  Object.keys(byMatchup).forEach(key=>{
+    const pair = byMatchup[key];
+    const a = pair[0], b = pair[1] || null;   // byes have a single side
+    const aPts = sideTotal(a), bPts = b ? sideTotal(b) : 0;
+    const played = (aPts > 0) || (bPts > 0);
+    let winner = 'UNDECIDED';
+    if(played && b){
+      winner = aPts > bPts ? 'HOME' : (bPts > aPts ? 'AWAY' : 'TIE');
+    }
+    games.push({
+      matchupPeriodId: week,
+      playoffTierType: isPlayoff ? 'WINNERS_BRACKET' : 'NONE',
+      winner,
+      home:{
+        teamId: a.roster_id,
+        totalPoints: aPts,
+        rosterForCurrentScoringPeriod: entriesForSide(a, slots, playerIndex),
+      },
+      away: b ? {
+        teamId: b.roster_id,
+        totalPoints: bPts,
+        rosterForCurrentScoringPeriod: entriesForSide(b, slots, playerIndex),
+      } : null,
+    });
+  });
+  return games;
+}
+
+/* Assemble the full ESPN-shaped season object for one Sleeper league id.
+   `activeWeek` bounds how many weeks are pulled for the live season; a
+   completed season pulls through the end of its playoff window. */
+async function buildSeason(leagueId, playerIndex, opts){
+  const options = opts || {};
+  const league = await sleeperGet('/league/' + encodeURIComponent(leagueId));
+  if(!league || !league.roster_positions) throw new Error('SLEEPER_NO_LEAGUE');
+
+  const [users, rosters] = await Promise.all([
+    sleeperGet('/league/' + encodeURIComponent(leagueId) + '/users'),
+    sleeperGet('/league/' + encodeURIComponent(leagueId) + '/rosters'),
+  ]);
+  const userList = Array.isArray(users) ? users : [];
+  const rosterList = Array.isArray(rosters) ? rosters : [];
+
+  const year = parseInt(league.season, 10) || options.fallbackYear || new Date().getFullYear();
+  const playoffStart = parseInt(league.settings && league.settings.playoff_week_start, 10) || 15;
+  const seedByRoster = standingsSeeds(rosterList);
+  const slots = startingSlots(league);
+  const userById = {};
+  userList.forEach(u=>{ if(u && u.user_id != null) userById[String(u.user_id)] = u; });
+
+  const members = userList.map(memberFromUser);
+
+  const teams = rosterList.map(r=>{
+    const s = r.settings || {};
+    const ownerId = r.owner_id != null ? String(r.owner_id) : ('roster-' + r.roster_id);
+    const user = userById[ownerId] || {};
+    const teamName = (user.metadata && user.metadata.team_name)
+      || user.display_name
+      || ('Team ' + r.roster_id);
+    const seed = seedByRoster[r.roster_id] || null;
+    const inPlayoffPhase = String(league.status) === 'complete' || (options.activeWeek || 0) >= playoffStart;
+    return {
+      id: r.roster_id,
+      location: teamName,
+      nickname: '',
+      name: teamName,
+      abbrev: String(teamName).replace(/[^A-Za-z]/g,'').slice(0,4).toUpperCase() || 'TM',
+      logo: (user.metadata && user.metadata.avatar) || (user.avatar ? 'https://sleepercdn.com/avatars/thumbs/' + user.avatar : ''),
+      primaryOwner: ownerId,
+      owners: [ownerId],
+      record:{ overall:{ wins:Number(s.wins||0), losses:Number(s.losses||0), ties:Number(s.ties||0) } },
+      playoffSeed: inPlayoffPhase ? seed : null,
+      rankCalculatedFinal: String(league.status) === 'complete' ? seed : null,
+    };
+  });
+
+  // Decide the week span to pull. The live season stops at the current week;
+  // a completed one runs through the end of its playoff window (cap 18).
+  const lastWeek = options.activeWeek
+    ? Math.max(1, options.activeWeek)
+    : Math.min(18, playoffStart + 3);
+
+  const weekNumbers = [];
+  for(let w = 1; w <= lastWeek; w++) weekNumbers.push(w);
+  const weekResults = await Promise.all(weekNumbers.map(w=>
+    sleeperGet('/league/' + encodeURIComponent(leagueId) + '/matchups/' + w)
+      .catch(()=> null)
+  ));
+
+  let schedule = [];
+  weekResults.forEach((wm, idx)=>{
+    const week = weekNumbers[idx];
+    const isPlayoff = week >= playoffStart;
+    schedule = schedule.concat(scheduleForWeek(wm, week, isPlayoff, slots, playerIndex));
+  });
+
+  return {
+    seasonId: year,
+    scoringPeriodId: options.activeWeek || undefined,
+    status:{
+      isActive: String(league.status) !== 'complete',
+      currentMatchupPeriod: options.activeWeek || undefined,
+      latestScoringPeriod: options.activeWeek || undefined,
+    },
+    settings:{ name: leagueDisplayName(league) },
+    members,
+    teams,
+    schedule,
+    // Kept for the history walker; harmless to downstream ESPN consumers.
+    _sleeper:{ leagueId:String(leagueId), previousLeagueId: league.previous_league_id || null, playoffStart },
+  };
+}
+
+/* ---- public API ---- */
+
+/* Load the live/current season for a Sleeper league id. Returns the same
+   { leagueData, year, week } contract the ESPN path feeds applyLiveLeaguePayload. */
+async function fetchLive(leagueId){
+  const playerIndex = await loadPlayerIndex();
+  let state = null;
+  try{ state = await sleeperGet('/state/nfl'); }catch(e){ /* non-fatal */ }
+
+  // Peek at the league season to decide whether NFL state's week applies.
+  const peek = await sleeperGet('/league/' + encodeURIComponent(leagueId));
+  if(!peek || !peek.roster_positions) throw new Error('SLEEPER_NO_LEAGUE');
+  const leagueSeason = parseInt(peek.season, 10) || 0;
+  const stateSeason = state ? parseInt(state.season, 10) : 0;
+  const isCurrentSeason = !stateSeason || leagueSeason >= stateSeason;
+  const stateWeek = state ? (parseInt(state.week, 10) || parseInt(state.display_week, 10) || 0) : 0;
+  const activeWeek = isCurrentSeason
+    ? Math.max(1, stateWeek || 1)
+    : Math.min(18, (parseInt(peek.settings && peek.settings.playoff_week_start, 10) || 15) + 3);
+
+  const leagueData = await buildSeason(leagueId, playerIndex, { activeWeek, fallbackYear:leagueSeason });
+  const week = deriveActiveWeekFromSchedule(leagueData) || activeWeek;
+  return { leagueData, year: leagueData.seasonId, week };
+}
+
+/* Last week that actually has a played game — so a league loaded mid-week
+   opens on the most recent completed scoreboard, not an all-zero upcoming one. */
+function deriveActiveWeekFromSchedule(leagueData){
+  const sched = (leagueData && leagueData.schedule) || [];
+  let maxPlayed = 0;
+  sched.forEach(g=>{
+    const home = g.home ? Number(g.home.totalPoints || 0) : 0;
+    const away = g.away ? Number(g.away.totalPoints || 0) : 0;
+    if((home > 0 || away > 0) && Number(g.matchupPeriodId) > maxPlayed) maxPlayed = Number(g.matchupPeriodId);
+  });
+  return maxPlayed || null;
+}
+
+/* Walk previous_league_id backwards to assemble every completed season, in the
+   { yearsData:[{year, leagueData}], skipped:[] } shape applyLeagueHistory wants.
+   The live season is included; older seasons are appended as they resolve. */
+async function fetchHistory(leagueId, maxSeasons){
+  const playerIndex = await loadPlayerIndex();
+  const cap = Math.max(1, maxSeasons || 12);
+  const yearsData = [];
+  const seenLeagues = new Set();
+  let cursor = String(leagueId);
+
+  for(let i = 0; i < cap && cursor; i++){
+    if(seenLeagues.has(cursor)) break;
+    seenLeagues.add(cursor);
+    let leagueData;
+    try{
+      leagueData = await buildSeason(cursor, playerIndex, {});
+    }catch(err){
+      console.warn('[Sleeper] history season failed for league', cursor, err);
+      break;
+    }
+    const year = Number(leagueData.seasonId);
+    if(year && !yearsData.some(y=> y.year === year)) yearsData.push({ year, leagueData });
+    cursor = leagueData._sleeper && leagueData._sleeper.previousLeagueId
+      ? String(leagueData._sleeper.previousLeagueId)
+      : null;
+  }
+
+  yearsData.sort((a,b)=> a.year - b.year);
+  return { yearsData, skipped:[] };
+}
+
+/* A Sleeper league id is an 18–19 digit snowflake; ESPN ids are far shorter.
+   Used only as a hint for the auto-detect convenience, never as a hard gate. */
+function looksLikeSleeperId(value){
+  return /^\d{16,20}$/.test(String(value || '').trim());
+}
+
+return { fetchLive, fetchHistory, buildSeason, loadPlayerIndex, looksLikeSleeperId };
+})();
 </script>
 
 <script>
@@ -4928,8 +5374,19 @@ function weekContext(week){
   const futureLiveWeek = !!(active2026 && liveWeek > 0 && Number(week) > liveWeek);
   const active2026PregameGuard = !!(active2026 && (futureLiveWeek || weekTotal <= 0 || allScores.length === 0));
 
+  /* The week's participating team ids, sorted into one stable string. This is
+     the `team_ids` term of the editorial variance seed: identical for every
+     article rendered from this week (so the shared-deck / distinct-ordinal
+     intra-week uniqueness guarantee is untouched), but different the moment the
+     slate of teams differs — decorrelating two co-hosted leagues that would
+     otherwise collide on league id + season + week alone. */
+  const teamSlateKey = games
+    .map(g=> [g.homeTeam && g.homeTeam.id, g.awayTeam && g.awayTeam.id].join('v'))
+    .sort()
+    .join('|');
+
   return {
-    week, games, sides, scored, posted,
+    week, games, sides, scored, posted, teamSlateKey,
     anyScored: weekTotal > 0 && posted.length > 0,
     unplayedWeek: allScores.length === 0,
     futureLiveWeek, active2026PregameGuard, currentLeagueWeek:liveWeek,
@@ -5869,8 +6326,16 @@ function seededUnit(seed){
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
 }
+/* The editorial variance seed: a single hash folding together league id,
+   season year, week number and the week's team slate. Deck shuffles derive
+   from it, so every article is anchored to WHERE and WHEN it happened and WHO
+   played. It stays constant for all articles in one week (preserving the
+   per-week shared-deck design that guarantees zero intra-week repetition via
+   distinct ordinals), while season year guarantees a different shuffle — and
+   therefore different copy — for the same week number across seasons. */
 function editorialWeekSeed(ctx){
-  return hash(selectedLeagueId() + '_' + viewedSeasonYear() + '_week_' + ctx.week);
+  const slate = (ctx && ctx.teamSlateKey) ? ('_' + ctx.teamSlateKey) : '';
+  return hash(selectedLeagueId() + '_' + viewedSeasonYear() + '_week_' + ctx.week + slate);
 }
 function getShuffledDeck(categoryKey, ctx){
   const source = EDITORIAL_DECKS[categoryKey] || [];
@@ -9725,6 +10190,7 @@ const ui = {
   franchiseModalId: null,
   week: null,
   currentWeek: null,
+  provider: 'espn',      // 'espn' | 'sleeper' — which fantasy host to read
   sourceMode: 'none',
   weekCacheKey: '',
   weekDataCache: {},
@@ -12165,8 +12631,121 @@ function applyFetchedHistoryPayload(historyResult, options){
   return summary;
 }
 
+/* ============================================================
+   SLEEPER LOAD PATH
+   Reads the live season through SleeperAdapter (which returns the same
+   ESPN-shaped payload applyLiveLeaguePayload consumes), connects it, then
+   hydrates the full multi-season Record Book in the background by walking
+   previous_league_id. Mirrors the ESPN success/failure contract so every
+   downstream screen and status banner behaves identically.
+============================================================ */
+async function fetchSleeperLeagueData(opts){
+  const options = opts || {};
+  const silent = !!options.silent;
+  const navigate = options.navigate !== false;
+  const league = String(options.leagueId || $('leagueIdInput').value || '').trim();
+
+  if(!league){
+    if(!silent) $('fetchStatus').textContent = 'Enter a Sleeper League ID first.';
+    return false;
+  }
+  $('leagueIdInput').value = league;
+  setFetchLoading(true);
+  hideHistoryBanner();
+  $('fetchStatus').style.color = 'var(--dim)';
+  $('fetchStatus').textContent = silent ? 'Restoring Sleeper season…' : 'Fetching Sleeper league…';
+
+  let liveConnected = false;
+  try{
+    const live = await window.SleeperAdapter.fetchLive(league);
+    if(!live || !live.leagueData || !live.leagueData.teams || !live.leagueData.teams.length){
+      throw new Error('SLEEPER_NO_LEAGUE_DATA');
+    }
+
+    const liveInfo = applyLiveLeaguePayload(league, live.leagueData, live.year);
+    setConn('live');
+    liveConnected = true;
+
+    // Seed the Record Book with the live season immediately so the app is
+    // usable before the full history walk finishes.
+    try{
+      applyLeagueHistory(withCurrentSeason([{ year:Number(live.year), leagueData:live.leagueData }]),
+        [], 'Current season (Sleeper)', { silent:true });
+      renderWeekScrubbers();
+    }catch(seedErr){
+      console.warn('[Sleeper] live archive seeding failed; season stays connected.', seedErr);
+    }
+
+    $('fetchStatus').style.color = 'var(--green)';
+    $('fetchStatus').textContent =
+      `✓ Sleeper Season Connected · ${live.year} · ${live.leagueData.teams.length} teams · Week ${liveInfo.activeWeek}`;
+
+    try{ localStorage.setItem(SAVED_LEAGUE_ID_KEY, league); }catch(e){}
+    savePrefs();
+    if(navigate) setScreen('home');
+
+    safeRun('desk', renderDesk, ()=> renderScreenFallback('home'));
+    safeRun('matchups', renderMatchups, ()=> renderScreenFallback('matchups'));
+    safeRun('analytics', renderAnalytics, ()=> renderScreenFallback('analytics'));
+    safeRun('recordbook', renderRecordBook, ()=> renderScreenFallback('recordbook'));
+    safeRun('news', renderNews, ()=> renderScreenFallback('news'));
+
+    // Background: walk previous_league_id for the full multi-year Record Book.
+    (async ()=>{
+      try{
+        const archive = await window.SleeperAdapter.fetchHistory(league, 12);
+        const years = (archive && archive.yearsData) || [];
+        const pastSeasons = years.filter(y=> Number(y && y.year) !== Number(live.year));
+        if(!pastSeasons.length) return;
+        applyLeagueHistory(withCurrentSeason(years), [], 'Full league history from Sleeper', { silent:true });
+        renderWeekScrubbers();
+        safeRun('matchups', renderMatchups, ()=> renderScreenFallback('matchups'));
+        safeRun('analytics', renderAnalytics, ()=> renderScreenFallback('analytics'));
+        safeRun('recordbook', renderRecordBook, ()=> renderScreenFallback('recordbook'));
+        safeRun('news', renderNews, ()=> renderScreenFallback('news'));
+        if(!silent) toast('All-time Record Book loaded · ' + pastSeasons.length +
+          ' past season' + (pastSeasons.length===1?'':'s'));
+      }catch(histErr){
+        console.warn('[Sleeper] multi-year history hydration failed; live season stays connected.', histErr);
+      }
+    })();
+
+    if(!silent) toast(`Sleeper league connected · Week ${liveInfo.activeWeek}`);
+    return true;
+  }catch(err){
+    console.error('[Sleeper fetch]', err);
+    if(liveConnected){
+      console.warn('[Sleeper fetch] post-connection step failed but season is connected; keeping success state.', err);
+      return true;
+    }
+    setConn('error');
+    const message = String(err && (err.message || err) || '');
+    $('fetchStatus').style.color = 'var(--red)';
+    let msg;
+    if(/SLEEPER_HTTP_404|SLEEPER_NO_LEAGUE\b/.test(message)){
+      msg = 'Sleeper has no league with that ID. Open your league on Sleeper — the League ID is the long number in the URL (sleeper.com/leagues/<ID>/…) — and paste it here.';
+    } else if(/SLEEPER_NO_LEAGUE_DATA/.test(message)){
+      msg = 'Connected to Sleeper, but this league returned no teams yet. If the draft has not happened, try again once rosters are set.';
+    } else if(/SLEEPER_HTTP_5\d\d|SLEEPER_RELAY/.test(message)){
+      msg = 'Sleeper’s API responded with a server error (' + message + '). This is usually transient — try again in a moment.';
+    } else if(/Failed to fetch|NetworkError|Load failed/i.test(message)){
+      msg = 'Could not reach Sleeper (network error). A browser extension or content filter may be blocking api.sleeper.app — disable it and retry.';
+    } else {
+      msg = 'The Sleeper league could not be loaded (' + (message || 'unknown error') + '). Check the League ID and try again.';
+    }
+    $('fetchStatus').textContent = msg;
+    return false;
+  }finally{
+    setFetchLoading(false);
+  }
+}
+
 async function fetchLeagueData(options){
   const opts = options && typeof options === 'object' ? options : {};
+  // Route to the Sleeper adapter when that platform is selected. The ESPN path
+  // below is left entirely untouched.
+  if(ui.provider === 'sleeper') return fetchSleeperLeagueData(opts);
+
   const silent = !!opts.silent;
   const navigate = opts.navigate !== false;
   const league = String(opts.leagueId || $('leagueIdInput').value || '').trim();
@@ -12407,6 +12986,42 @@ async function fetchLeagueData(options){
     setFetchLoading(false);
   }
 }
+/* ============================================================
+   PLATFORM SELECTION — ESPN vs Sleeper
+   The provider decides which adapter fetchLeagueData routes through and which
+   setup affordances are relevant (private-league cookies are ESPN-only).
+============================================================ */
+function setProvider(provider){
+  const next = provider === 'sleeper' ? 'sleeper' : 'espn';
+  ui.provider = next;
+  const espnTab = $('providerEspn'), sleeperTab = $('providerSleeper');
+  [['espn', espnTab], ['sleeper', sleeperTab]].forEach(([key, tab])=>{
+    if(!tab) return;
+    const on = key === next;
+    tab.classList.toggle('is-active', on);
+    tab.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
+
+  const input = $('leagueIdInput');
+  if(input){
+    input.placeholder = next === 'sleeper' ? 'e.g. 992228620063932416' : 'e.g. 57155288';
+  }
+  const heading = $('leagueSourceHeading');
+  if(heading) heading.textContent = next === 'sleeper' ? 'Connect League' : 'Connect League';
+  // Private-league cookies only apply to ESPN; Sleeper reads are always public.
+  const privateCard = $('privateLeagueCard');
+  if(privateCard) privateCard.style.display = next === 'sleeper' ? 'none' : '';
+  const status = $('fetchStatus');
+  if(status && ui.sourceMode !== 'live'){
+    status.style.color = 'var(--dim)';
+    status.textContent = next === 'sleeper'
+      ? 'Enter your Sleeper League ID to load the live season (public, no cookies needed).'
+      : 'Enter your ESPN League ID to load the live 2026 season.';
+  }
+}
+if($('providerEspn')) $('providerEspn').addEventListener('click', ()=>{ setProvider('espn'); savePrefs(); });
+if($('providerSleeper')) $('providerSleeper').addEventListener('click', ()=>{ setProvider('sleeper'); savePrefs(); });
+
 $('fetchBtn').addEventListener('click', ()=> fetchLeagueData());
 
 
@@ -12585,6 +13200,7 @@ function savePrefs(){
       leagueId: $('leagueIdInput').value.trim(),
       season:   $('seasonYear').value.trim(),
       week:     $('weekNum').value.trim(),
+      provider: ui.provider,
     }));
   }catch(e){ /* private mode — prefs just won't persist */ }
 }
@@ -12604,6 +13220,7 @@ function loadPrefs(){
   $('leagueIdInput').value = savedLeagueId || (saved && saved.leagueId) || '';
   $('seasonYear').value = (saved && saved.season) || String(uiActiveSeasonYear());
   $('weekNum').value = (saved && saved.week) || '';
+  if(saved && (saved.provider === 'sleeper' || saved.provider === 'espn')) setProvider(saved.provider);
 try{ if($('espnS2Input'))   $('espnS2Input').value   = localStorage.getItem('fsn.espn.s2.v1')   || ''; }catch(e){}
   try{ if($('espnSwidInput')) $('espnSwidInput').value = localStorage.getItem('fsn.espn.swid.v1') || ''; }catch(e){}
   refreshEspnAuthStatus();
