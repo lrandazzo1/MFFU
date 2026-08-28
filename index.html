@@ -14422,26 +14422,51 @@ async function fetchLeagueData(options){
   let liveConnected = false;
 
   try{
-    const proxyUrl = '/api/espn?url=' + encodeURIComponent(liveUrl);
     const headers = { 'Accept':'application/json' };
     try{
       if(typeof espnCredHeaders === 'function') Object.assign(headers, espnCredHeaders() || {});
     }catch(e){}
 
-    const response = await fetch(proxyUrl, {
-      method:'GET',
-      headers,
-      cache:'no-store',
-    });
-    const text = await response.text();
-    if(!response.ok){
-      const detail = String(text || '').replace(/\s+/g, ' ').slice(0, 180);
-      throw new Error(`HTTP ${response.status}${detail ? ': ' + detail : ''}`);
+    /* Primary transport is the same-origin Vercel relay. If that request fails
+       at the NETWORK level ("Failed to fetch" — the /api/espn function is
+       unreachable: not deployed, blocked by an extension, or dropped at the
+       edge), fall back to the public CORS-proxy chain so a public league can
+       still load. A real HTTP error from ESPN (401/404/5xx) is NOT retried
+       through a proxy — those carry a specific diagnostic and a proxy would
+       only mask it. */
+    let text = null;
+    try{
+      const response = await fetch('/api/espn?url=' + encodeURIComponent(liveUrl), {
+        method:'GET', headers, cache:'no-store',
+      });
+      text = await response.text();
+      if(!response.ok){
+        const detail = String(text || '').replace(/\s+/g, ' ').slice(0, 180);
+        throw new Error(`HTTP ${response.status}${detail ? ': ' + detail : ''}`);
+      }
+    }catch(err){
+      // A thrown "HTTP NNN" is a genuine upstream status — surface it. Anything
+      // else is a transport failure; try the CORS fallbacks before giving up.
+      if(/\bHTTP \d{3}\b/.test(String(err && err.message))) throw err;
+      console.warn('[ESPN live fetch] same-origin /api/espn unreachable; trying CORS fallbacks.', err);
+      text = null;
+      for(const wrapWithProxy of CORS_PROXIES){
+        try{
+          const res = await fetch(wrapWithProxy(liveUrl), { cache:'no-store' });
+          if(!res.ok) continue;
+          const body = await res.text();
+          if(body){ text = body; break; }
+        }catch(e){ /* try the next proxy */ }
+      }
+      if(!text) throw new Error('RELAY_UNREACHABLE');
     }
 
     let parsed;
     try{
-      parsed = JSON.parse(text);
+      // CORS proxies may wrap the payload ({contents:"..."} or a JSON string);
+      // parseEspnProxyPayload peels those envelopes, and the same-origin relay
+      // returns clean JSON that passes straight through it.
+      parsed = parseEspnProxyPayload(text);
     }catch(err){
       throw new Error('INVALID_ESPN_JSON');
     }
@@ -14547,6 +14572,8 @@ async function fetchLeagueData(options){
       msg = 'Connected to ESPN, but the 2026 season returned no teams yet. If the league is private add ESPN credentials; if 2026 rosters are not set, try again once the season opens.';
     } else if(/INVALID_ESPN_JSON/.test(message)){
       msg = 'The /api/espn relay returned an unexpected (non-JSON) response — the serverless function may not be deployed. Verify the Vercel deployment includes the api/ routes.';
+    } else if(/RELAY_UNREACHABLE|Failed to fetch|NetworkError|Load failed/i.test(message)){
+      msg = 'Could not reach the /api/espn relay or any fallback (network error). The serverless function may not be deployed on Vercel, or a browser extension is blocking the request — confirm the api/ routes shipped and retry.';
     } else if(/\bHTTP 5\d\d\b/.test(message) || /upstream/.test(message)){
       msg = 'The ESPN relay failed upstream (' + (message || 'server error') + '). This is usually a transient ESPN outage — try again in a moment.';
     } else {
