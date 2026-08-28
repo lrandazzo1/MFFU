@@ -4198,7 +4198,8 @@ function getRecordAsOfWeek(teamId, week){
 function getStreakAsOfWeek(teamId, week){
   const targetWeek = Math.max(1, parseInt(week, 10) || 1);
   return memo('streakAsOf:' + teamId + ':' + targetWeek, ()=>{
-    const schedule = (LeagueData.espnData && LeagueData.espnData.schedule) || [];
+    const rawSchedule = LeagueData.espnData && LeagueData.espnData.schedule;
+    const schedule = Array.isArray(rawSchedule) ? rawSchedule : [];
     const results = [];
     schedule.forEach(game=>{
       if(!game || !game.home || !game.away) return;
@@ -4226,10 +4227,13 @@ function getStreakAsOfWeek(teamId, week){
 
 function standingsThrough(week){
   return memo('standings:' + week, ()=>{
-    const teams = LeagueData.getTeams();
+    const rawTeams = LeagueData.getTeams();
+    const teams = (Array.isArray(rawTeams) ? rawTeams : [])
+      .filter(team=> team && typeof team === 'object' && team.id != null);
     if(!teams.length) return [];
-    const sched = (LeagueData.espnData && LeagueData.espnData.schedule) || [];
-    const rows = {};
+    const rawSchedule = LeagueData.espnData && LeagueData.espnData.schedule;
+    const sched = Array.isArray(rawSchedule) ? rawSchedule : [];
+    const rows = Object.create(null);
     teams.forEach(t=> rows[t.id] = {
       team: t, wins:0, losses:0, ties:0, pf:0, pa:0, games:0, scores:[],
     });
@@ -4260,7 +4264,8 @@ function standingsThrough(week){
       r.avg = r.games ? r.pf / r.games : 0;
       r.recordLabel = r.wins + '-' + r.losses + (r.ties ? '-' + r.ties : '');
       r.pfIndex = Math.max(0, Math.min(100, (r.pf / maxPf) * 100));
-      r.rosterEfficiency = lineupEfficiencyThrough(week, r.team.id);
+      try{ r.rosterEfficiency = lineupEfficiencyThrough(week, r.team.id); }
+      catch(err){ r.rosterEfficiency = null; }
       /* FSN Power Index: 60% scoring/lineup quality, 40% actual wins.
          When ESPN does not expose historical lineup detail, PF carries the
          full performance side rather than inventing a zero efficiency score. */
@@ -10066,6 +10071,34 @@ const PLAYOFF_SUPPRESSED_KINDS = {
 let streamCache = { key:null, list:null };
 LeagueData.subscribe(()=>{ streamCache = { key:null, list:null }; });
 
+function transitionStateFallback(ctx){
+  const season = Number(viewedSeasonYear() || new Date().getFullYear());
+  const prior = season - 1;
+  const rawTeams = LeagueData.getTeams();
+  const teams = Array.isArray(rawTeams) ? rawTeams.filter(Boolean) : [];
+  return tl({
+    id:'tl-sotl-guaranteed-' + season,
+    kind:'sotl', topic:'breaking', at:liveTime(20),
+    metaTag:'STATE OF THE LEAGUE', tag:'STATE OF THE LEAGUE', tone:'gold', priority:300,
+    byline:'FSN Senior League Insider',
+    dateline:`${leagueDateline()} · ${prior} FINAL / ${season} PRESEASON`,
+    crest:teams[0] ? { name:teams[0].name, logo:teams[0].logo } : null,
+    headline:`STATE OF THE LEAGUE: ${season} BEGINS WITH THE TITLE RACE RESET`,
+    dek:`The ${prior} final is the starting point. Week 1 decides what survives into the new season.`,
+    paragraphs:[
+      `${datelineTag()} The league has reached its transition point: last season is now evidence, and <b>${season}</b> begins with every roster back under review.`,
+      `The preceding champion remains the standard until the new schedule produces a replacement. When the ${prior} final table is available, this banner attaches the defending champion and exact title path automatically.`,
+      `No matchup recap can replace the transition story before Week 1 establishes the new standings.`,
+    ],
+    quote:{ text:'The season resets the records, not the expectations.', who:'FSN SENIOR LEAGUE INSIDER' },
+    numbers:{ title:'Season Transition', rows:[
+      { label:'Defending season', value:String(prior), note:'Final archive source' },
+      { label:'New season', value:String(season), note:'Standings reset' },
+      { label:'Connected teams', value:String(teams.length), note:'Current league payload' },
+    ] },
+  });
+}
+
 function getTimelineStream(week){
   const custom = scopedCustom(week);
   if(!LeagueData.hasLive()){
@@ -10081,6 +10114,8 @@ function getTimelineStream(week){
 
   const ctx = weekContext(week);
   const phase = FSNIntel.seasonPhase(week);
+  const transitionWindow = !ctx.playoffWeek &&
+    (phase === 'preseason' || phase === 'draft' || Number(ctx.week) === 1);
   const pregameOnly = ctx.active2026PregameGuard || ctx.allScores.length === 0 || ctx.weekTotal <= 0;
   let events = [];
 
@@ -10104,6 +10139,16 @@ function getTimelineStream(week){
   // Community copy is scoped to this exact season/week and can exist even
   // before the first live score posts.
   events = events.concat(custom.map((a,i)=> adopt(a, i)));
+
+  /* Never let sparse archive metadata erase the transition lead. The normal
+     generator gets one guarded retry; the final fallback is a complete State
+     of the League article rather than a recap or null card. */
+  if(transitionWindow && !events.some(a=> a && a.kind === 'sotl')){
+    let stateStories = [];
+    try{ stateStories = tlPreseason(ctx) || []; }catch(err){ stateStories = []; }
+    const stateStory = stateStories.find(a=> a && a.kind === 'sotl') || transitionStateFallback(ctx);
+    events.unshift(stateStory);
+  }
 
   /* Draft season pulls its coverage to the front — in August nobody wants a
      Week 1 preview above the report cards. */
@@ -10145,7 +10190,7 @@ function getTimelineStream(week){
   /* In preseason and Week 1 the transition banner is the desk lead. Generate
      it even with zero scores, then hoist it after all timestamp/community
      sorting so the lifecycle cannot demote it to a hidden feed row. */
-  if(!ctx.playoffWeek && (phase === 'preseason' || phase === 'draft' || Number(ctx.week) === 1)){
+  if(transitionWindow){
     const stateIndex = list.findIndex(a=> a && a.kind === 'sotl');
     if(stateIndex > 0){
       const stateStory = list.splice(stateIndex, 1)[0];
@@ -11519,26 +11564,59 @@ function syncStatsModeToggle(){
   });
 }
 function renderSeasonStandings(){
-  const week = effectiveWeek();
-  const rows = (FSNIntel.standingsThrough(week) || []).slice().sort((a,b)=>
-    (b.wins-a.wins) || (b.ties-a.ties) || (b.pf-a.pf));
-  if(!rows.length) return `<div class="analytics-empty">No completed matchups are available for the standings yet.</div>`;
+  const week = Math.max(1, parseInt(effectiveWeek(), 10) || 1);
+  let sourceRows = [];
+  try{
+    const computed = FSNIntel.standingsThrough(week);
+    sourceRows = Array.isArray(computed) ? computed : [];
+  }catch(err){
+    console.warn('[Standings] cumulative table could not be computed', err);
+    return `<div class="analytics-empty">Standings are temporarily unavailable for Week ${week}. The Advanced Analytics view remains available.</div>`;
+  }
+
+  const asNumber = value=> Number.isFinite(Number(value)) ? Number(value) : 0;
+  const rows = sourceRows.reduce((normalized,row)=>{
+    if(!row || typeof row !== 'object') return normalized;
+    const rawTeam = row.team && typeof row.team === 'object' ? row.team : {};
+    const teamId = rawTeam.id != null ? rawTeam.id : (row.teamId != null ? row.teamId : null);
+    if(teamId == null) return normalized;
+    const wins = asNumber(row.wins), losses = asNumber(row.losses), ties = asNumber(row.ties);
+    const pf = asNumber(row.pf), pa = asNumber(row.pa);
+    normalized.push({
+      team:{
+        id:teamId,
+        name:String(rawTeam.name || rawTeam.abbrev || ('Team ' + teamId)),
+        logo:rawTeam.logo || '',
+      },
+      wins, losses, ties, pf, pa,
+      recordLabel:String(row.recordLabel || (wins + '-' + losses + (ties ? '-' + ties : ''))),
+    });
+    return normalized;
+  }, []).sort((a,b)=> (b.wins-a.wins) || (b.ties-a.ties) || (b.pf-a.pf));
+
+  if(!rows.length) return `<div class="analytics-empty">No completed matchups are available through Week ${week}.</div>`;
+
+  const tableRows = rows.map((row,index)=>{
+    let streak = null;
+    try{ streak = FSNIntel.getStreakAsOfWeek(row.team.id, week); }
+    catch(err){ streak = null; }
+    const streakLabel = streak && streak.length ? streak.result + streak.length : '—';
+    const differential = row.pf - row.pa;
+    return `<tr>
+      <td><span class="standings-team"><span class="analytics-rank">${index+1}</span>${crest(row.team.name,row.team.logo,24)}<span class="analytics-team-name">${esc(row.team.name)}</span></span></td>
+      <td>${esc(row.recordLabel)}</td><td>${row.wins}</td><td>${row.losses}</td><td>${row.ties}</td>
+      <td>${n1(row.pf)}</td><td>${n1(row.pa)}</td><td class="${differential>=0?'analytics-good':'analytics-bad'}">${differential>=0?'+':''}${n1(differential)}</td>
+      <td class="${streak && streak.result==='W'?'analytics-good':streak && streak.result==='L'?'analytics-bad':'analytics-muted'}">${streakLabel}</td>
+    </tr>`;
+  }).join('');
+
   return `<div class="analytics-status">
       <span class="analytics-status-chip"><b>${rows.length}</b> Teams</span>
       <span class="analytics-status-chip"><b>Week ${week}</b> Through</span>
     </div>
     <div class="standings-card"><div class="analytics-table-wrap no-bar"><table class="standings-table">
       <thead><tr><th>Team</th><th>Record</th><th>W</th><th>L</th><th>T</th><th>PF</th><th>PA</th><th>DIFF</th><th>Streak</th></tr></thead>
-      <tbody>${rows.map((row,index)=>{
-        const streak = FSNIntel.getStreakAsOfWeek(row.team.id, week);
-        const streakLabel = streak && streak.length ? streak.result + streak.length : '—';
-        return `<tr>
-          <td><span class="standings-team"><span class="analytics-rank">${index+1}</span>${crest(row.team.name,row.team.logo,24)}<span class="analytics-team-name">${esc(row.team.name)}</span></span></td>
-          <td>${esc(row.recordLabel)}</td><td>${row.wins}</td><td>${row.losses}</td><td>${row.ties}</td>
-          <td>${n1(row.pf)}</td><td>${n1(row.pa)}</td><td class="${row.pf-row.pa>=0?'analytics-good':'analytics-bad'}">${row.pf-row.pa>=0?'+':''}${n1(row.pf-row.pa)}</td>
-          <td class="${streak && streak.result==='W'?'analytics-good':streak && streak.result==='L'?'analytics-bad':'analytics-muted'}">${streakLabel}</td>
-        </tr>`;
-      }).join('')}</tbody>
+      <tbody>${tableRows}</tbody>
     </table></div></div>`;
 }
 
@@ -11547,7 +11625,7 @@ if($('statsModeToggle')) $('statsModeToggle').addEventListener('click', e=>{
   if(!button) return;
   ui.statsMode = button.dataset.statsMode === 'advanced' ? 'advanced' : 'standings';
   savePrefs();
-  renderAnalytics();
+  safeRun('analytics-toggle', renderAnalytics, ()=> renderScreenFallback('analytics'));
 });
 
 function renderAnalytics(){
@@ -11562,10 +11640,16 @@ function renderAnalytics(){
   }
 
   if(ui.statsMode === 'standings'){
-    const teams = LeagueData.getTeams();
+    const rawTeams = LeagueData.getTeams();
+    const teams = Array.isArray(rawTeams) ? rawTeams.filter(Boolean) : [];
     $('analyticsSeasonPill').textContent = viewedSeasonYear() + ' SEASON';
     $('analyticsUpdated').textContent = `WEEK ${effectiveWeek()} STANDINGS`;
-    body.innerHTML = teams.length ? renderSeasonStandings() : emptyState('NO STANDINGS', 'Fetch a league to populate Season Stats.', 'setup');
+    try{
+      body.innerHTML = teams.length ? renderSeasonStandings() : emptyState('NO STANDINGS', 'Fetch a league to populate Season Stats.', 'setup');
+    }catch(err){
+      console.warn('[Standings] component render failed', err);
+      body.innerHTML = `<div class="analytics-empty">Standings could not be displayed for this week. Switch to Advanced Analytics or reload the league data.</div>`;
+    }
     return;
   }
 
@@ -14266,17 +14350,33 @@ async function shareArticle(mode){
    consolation ladder is never a lead. */
 const PLAYOFF_LEAD_KINDS = ['playoff-bracket', 'playoff-upset', 'playoff-picture'];
 
+function stateOfLeagueLead(list){
+  if(!Array.isArray(list)) return null;
+  return list.find(article=> article && (
+    article.kind === 'sotl' ||
+    article.metaTag === 'STATE OF THE LEAGUE' ||
+    article.tag === 'STATE OF THE LEAGUE'
+  )) || null;
+}
+
+function prioritizeStateOfLeague(list){
+  const safeList = Array.isArray(list) ? list.filter(Boolean).slice() : [];
+  const state = stateOfLeagueLead(safeList);
+  if(!state) return safeList;
+  return [state].concat(safeList.filter(article=> article.id !== state.id));
+}
+
 function renderHomeStories(){
   const wrap = $('homeTopStory');
   if(!LeagueData.hasLive()){ wrap.classList.add('hidden'); return; }
-  let list = newsList();
+  let list = prioritizeStateOfLeague(newsList());
 
   /* ---- LEAD STORY ----
      Once the schedule carries a WINNERS_BRACKET game, the bracket is the lead.
      Hoisting it here means the Desk never opens on a waiver note while a
      semifinal is live. */
   const leadWeek = effectiveWeek();
-  if(isPlayoffWeek(leadWeek)){
+  if(!stateOfLeagueLead(list) && isPlayoffWeek(leadWeek)){
     const rank = (a)=>{
       if(a.custom) return -1;
       const idx = PLAYOFF_LEAD_KINDS.indexOf(a.kind);
@@ -14400,6 +14500,7 @@ function renderNews(){
   try{ renderTopicBar(all); }
   catch(err){ console.warn('[NewsDesk] topic bar render failed', err); }
 
+  const stateLead = stateOfLeagueLead(all);
   const list = ui.topic === 'all' ? all : all.filter(a=> a && a.topic === ui.topic);
   $('newsCount').textContent = all.length ? all.length + ' STOR' + (all.length === 1 ? 'Y' : 'IES') : '—';
   const anyLive = list.some(a=> a && a.live);
@@ -14421,7 +14522,7 @@ function renderNews(){
 
   // Stories exist, but the active topic filter has none → keep the desk-specific
   // note so the manager knows why this particular column is empty.
-  if(!list.length){
+  if(!list.length && !stateLead){
     const msg = ui.topic === 'community'
       ? 'No manager-authored stories have been published for this season and week yet.'
       : (ui.topic === 'draft'
@@ -14436,9 +14537,11 @@ function renderNews(){
   // desk with the "Display Hiccup" error — fall back to the placeholder instead.
   try{
     $('newsFeedWrap').classList.remove('hidden');
-    $('newsLeadWrap').innerHTML = leadCard(list[0]);
+    const lead = stateLead || list[0];
+    if(!lead) throw new Error('NO_LEAD_STORY');
+    $('newsLeadWrap').innerHTML = leadCard(lead);
 
-    const rest = list.slice(1);
+    const rest = list.filter(article=> article && article.id !== lead.id);
     let html = '';
     let lastDay = null;
     rest.forEach(a=>{
