@@ -7914,10 +7914,11 @@ const RECAP_PROFILES = {
   blowout:     { kind:'shootout',   tag:'BLOWOUT',              tone:'gold',  priority:91, byline:'FSN Numbers Desk' },
 };
 
-/* Tier 3 competitive decisions are the bulk of a normal slate, so the desk
-   files at most this many of them. Nail-biters, one-score games and blowouts
-   are the news and are never capped. */
-const MAX_COMPETITIVE_RECAPS = 2;
+/* Mandatory matchup coverage: every decided game on the slate gets its own
+   recap. Nail-biters, one-score games and blowouts were always written up;
+   the mid-margin "competitive" band is no longer capped, so the desk files a
+   1-to-1 post-game Recap for every single matchup, no games skipped. */
+const MAX_COMPETITIVE_RECAPS = Infinity;
 
 function genCombinatorialRecaps(ctx){
   const decided = ctx.scored.filter(s=> s.winner && s.loser);
@@ -8265,12 +8266,15 @@ function deepReplaceEditorial(value, replacements){
   }
   return value;
 }
+/* Early-season bottom-dweller framing. This is explicitly NOT a Sacko watch —
+   before the Sacko threshold, last place is a roster on a redemption clock, and
+   the tag says so. No basement/toilet-bowl verdict language this early. */
 function earlySeasonPressureTag(record, week){
   const w = Math.max(1, parseInt(week, 10) || 1);
   const wins = Number(record && record.wins) || 0;
   const losses = Number(record && record.losses) || 0;
-  if(wins > 0) return losses >= 2 ? 'SLUMP ALERT' : 'EARLY ROTATION CHECK';
-  if(losses > 0) return (w === 2 && losses >= 2) ? '0-2 PANIC METER' : 'PANIC METER';
+  if(wins > 0) return losses >= 2 ? 'REDEMPTION CLOCK' : 'EARLY ROTATION CHECK';
+  if(losses > 0) return 'REDEMPTION CLOCK';
   return 'EARLY ROTATION CHECK';
 }
 function editorialRecord(a, ctx){
@@ -8990,6 +8994,133 @@ function genPreview(ctx){
   })];
 }
 
+/* ============================================================
+   PER-MATCHUP PRE-GAME PREVIEWS
+   One rich, full-prose Preview for EVERY game on a pregame board — not a
+   single slate-summary card. Records, win probability and all-time rivalry
+   history are woven into the copy instead of dumped into a table. Deterministic
+   per league/season/week/matchup so the board never reshuffles on refresh.
+============================================================ */
+const PREVIEW_HEADLINES = [
+  '{A} AT {B}: THE TAPE BEFORE THE KICKOFF',
+  '{A} VISITS {B} WITH SOMETHING TO SETTLE',
+  'PREVIEW: {A} AND {B} OPEN THE ARGUMENT',
+  '{B} HOSTS {A} — HERE IS WHAT IS ON THE LINE',
+  '{A}–{B}: THE MODEL PICKS A SIDE, THE FIELD PICKS A FIGHT',
+  'SCOUTING {A} AT {B} BEFORE A POINT IS SCORED',
+  '{A} DRAWS {B} IN A WEEK {WEEK} MATCHUP WITH TEETH',
+  'THE {A}–{B} FILE: PROJECTIONS, GRUDGES, AND NO EXCUSES',
+];
+function genMatchupPreviews(ctx){
+  if(ctx.anyScored || !Array.isArray(ctx.games) || !ctx.games.length) return [];
+  const priorWeek = Math.max(0, Number(ctx.week) - 1);
+  const out = [];
+  ctx.games.forEach((g, i)=>{
+    if(!g || !g.homeTeam || !g.awayTeam) return;
+    const A = g.awayTeam, B = g.homeTeam;
+    const seed = 'gprev' + ctx.week + ':' + A.id + ':' + B.id;
+    let probA = 50;
+    try{ probA = Number(FSNIntel.winProbability(priorWeek, A, B)); if(!Number.isFinite(probA)) probA = 50; }catch(_){ probA = 50; }
+    const recordA = esc(FSNIntel.getRecordAsOfWeek(A.id, ctx.week));
+    const recordB = esc(FSNIntel.getRecordAsOfWeek(B.id, ctx.week));
+    const fav = probA >= 50 ? A : B, dog = probA >= 50 ? B : A;
+    const edge = Math.round(Math.max(probA, 100 - probA));
+
+    let h2h = null;
+    try{
+      if(LeagueData.hasHistory() && A.ownerId && B.ownerId && typeof window.getH2H === 'function'){
+        h2h = window.getH2H(A.ownerId, B.ownerId);
+      }
+    }catch(_){ h2h = null; }
+    const rivalry = h2h && h2h.meetingCount
+      ? `These two are not strangers: the Record Book has them at <b>${h2h.winsFor}-${h2h.winsAgainst}${h2h.ties ? '-' + h2h.ties : ''}</b> across <b>${h2h.meetingCount}</b> meeting${h2h.meetingCount === 1 ? '' : 's'}` +
+        `${h2h.lastMeeting ? `, most recently a <b>${n1(h2h.lastMeeting.scoreFor)}–${n1(h2h.lastMeeting.scoreAgainst)}</b> verdict in ${h2h.lastMeeting.year}` : ''}. ` +
+        `${h2h.streakCount > 1 ? `Someone has won <b>${h2h.streakCount}</b> in a row, and the loser has heard about every one of them. ` : ''}` +
+        `History does not make this game safer. It makes it louder.`
+      : `There is no shared history on the ledger yet — this is a first meeting, and first meetings in this league have a way of starting grudges that outlive the rosters that began them.`;
+
+    const openLine = pick([
+      `The model hands <b>${esc(fav.name)}</b> a <b>${edge}%</b> edge, which in this league is worth exactly as much as the paper it is not printed on.`,
+      `<b>${esc(fav.name)}</b> walks in a <b>${edge}%</b> favorite, and every favorite in this league eventually finds out how little that means on a Sunday.`,
+      `Give <b>${esc(fav.name)}</b> the <b>${edge}%</b> edge if you want. <b>${esc(dog.name)}</b> has spent all week being told the number is a lie.`,
+    ], seed);
+
+    out.push(article({
+      id: 'preview-game-' + ctx.week + '-' + A.id + '-' + B.id,
+      kind: 'preview',
+      tag: ctx.playoffWeek ? 'PLAYOFF PREVIEW' : 'MATCHUP PREVIEW',
+      tone: 'cyan',
+      priority: 58,
+      byline: BYLINES[(i + hash(seed)) % BYLINES.length],
+      ageMin: 20 + (hash(seed) % 70),
+      crest: { name: B.name, logo: B.logo },
+      headline: fillEditorial(PREVIEW_HEADLINES[hash(seed) % PREVIEW_HEADLINES.length], {
+        A: upper(A.name), B: upper(B.name), WEEK: ctx.week,
+      }),
+      dek: `${esc(A.name)} (${recordA}) at ${esc(B.name)} (${recordB}) — the model leans ${esc(fav.name)}, the tape says pay attention.`,
+      paragraphs: [
+        `${datelineTag()} <b>${esc(A.name)}</b> (${recordA}) travels to face <b>${esc(B.name)}</b> (${recordB}) with the board still clean and everything still to prove. ${openLine}`,
+        rivalry,
+        pick([
+          `The lineup card is the whole ballgame now. Set it right and this is a statement; set it wrong and the bench becomes the story before the fourth quarter. Kickoff decides which one it is.`,
+          `Both rooms think they have the edge. Only one of them gets to be right, and the other spends the week explaining a projection that never showed up.`,
+          `Nothing is scored yet, which means nothing is settled — and in this league, the games with nothing on them yet are exactly the ones that end up meaning everything.`,
+        ], seed + ':close'),
+      ],
+      quote: null,
+      numbers: {
+        title: 'By the Numbers',
+        rows: [
+          { label: esc(fav.name) + ' win probability', value: edge + '%' },
+          { label: esc(A.name) + ' record', value: recordA },
+          { label: esc(B.name) + ' record', value: recordB },
+          ...(h2h && h2h.meetingCount
+            ? [{ label: 'All-time series', value: h2h.winsFor + '-' + h2h.winsAgainst + (h2h.ties ? '-' + h2h.ties : ''), note: h2h.meetingCount + ' career meeting' + (h2h.meetingCount === 1 ? '' : 's') }]
+            : [{ label: 'All-time series', value: 'First meeting', note: 'No shared history on the ledger yet.' }]),
+        ],
+        note: 'Pre-game preview. Win probability is a model lean, not a prediction.',
+      },
+    }));
+  });
+  return out;
+}
+
+/* Weekly Power Rankings that also runs on a pregame board (a future week that
+   has not kicked off), using the model through the last scored week so the
+   desk always publishes an official FSN Power Index — even in the preview
+   window. Shares the id with the postgame power article so a week can never
+   print two. */
+function genPreviewPower(ctx){
+  if(ctx.anyScored) return [];
+  let table = [];
+  try{ table = FSNIntel.powerRankings(ctx.week) || []; }catch(_){ table = []; }
+  if(!table.length) return [];
+  const top = table[0];
+  const bottom = table[table.length - 1];
+  const seed = 'prevpr' + ctx.week + top.team.id;
+  const rankRows = table.slice(0, Math.min(table.length, 12)).map(r=>({
+    label: `${r.rank}. ${esc(r.team.name)} <span style="color:#5d6879">(${esc(r.recordLabel)})</span>`,
+    value: (r.delta > 0 ? '▲' + r.delta : r.delta < 0 ? '▼' + Math.abs(r.delta) : '—'),
+    note: `${n1(r.pf)} PF · ${n1(r.avg)} per week${r.rosterEfficiency == null ? '' : ' · ' + n1(r.rosterEfficiency) + '% lineup efficiency'}`,
+  }));
+  return [tl({
+    id: 'tl-power-' + ctx.week,
+    kind: 'power', topic: 'power', slot: 'primer', offset: (hash(seed) % 90),
+    metaTag: 'FSN POWER INDEX', tag: 'FSN POWER INDEX', tone: 'cyan', priority: 78,
+    byline: 'FSN Numbers Desk', narrativeLocked: true,
+    crest: { name: top.team.name, logo: top.team.logo },
+    headline: `FSN POWER INDEX · WEEK ${ctx.week}: ${esc(upper(top.team.name))} SETS THE STANDARD`,
+    dek: `Model-Driven Power Rankings ahead of Week ${ctx.week}. The board rewards scoring strength and lineup efficiency, not just the win column.`,
+    paragraphs: [
+      `${datelineTag()} Before a single Week ${ctx.week} snap, the FSN Power Index already has an opinion — and it is not a gentle one. <b>${esc(top.team.name)}</b> (${esc(top.recordLabel)}, ${n1(top.pf)} PF) sits at No. 1, the team everyone else has to measure themselves against this week.`,
+      `The model weights scoring force and lineup efficiency over a shiny record on purpose: it is built to expose the lucky and reward the genuinely dangerous. That is why the board and the standings do not always agree — and why the gap between them is where this week's arguments start.`,
+      `At the other end, <b>${esc(bottom.team.name)}</b> anchors the board at No. ${table.length} with <b>${n1(bottom.pf)}</b> points on the season. The schedule does not care about reputation, and Week ${ctx.week} is another chance to climb or another week of proving the ranking right.`,
+    ],
+    numbers: { title: 'FSN Power Index · Week ' + ctx.week, rows: rankRows,
+      note: 'FSN Power Index weights 60% points-for & roster efficiency against 40% win record to expose lucky records and identify real contenders.' },
+  })];
+}
+
 /* ============================================================================
    COMMUNITY STORIES — league-manager publishing
    Articles live in a league-specific localStorage bucket, then carry their
@@ -9381,12 +9512,20 @@ function tlRecap(ctx){
         (ctx.week <= 3 ? ' PRESEASON CAPITAL is used only as an early tie-break signal when model scores are effectively even.' : '') },
   }));
 
-  /* ---- BOTTOM-BOARD WATCH (Sacko framing begins after Week 3) ---- */
+  /* ---- BOTTOM-BOARD WATCH ----
+     Strict temporal guardrail: the true "Sacko Watch" — the basement-tier
+     toilet-bowl framing that treats last place as a verdict — must NEVER fire
+     in Week 1 or the early-season slates. Before Week 8 (and before anyone is
+     mathematically buried), an early bottom-dweller is on a redemption clock,
+     not a Sacko watch. The hard Sacko framing only unlocks at Week 8 or once
+     elimination is confirmed. */
   const last = table[table.length - 1];
   const secondLast = table[table.length - 2] || null;
   if(last){
     const sseed = 'sacko' + ctx.week + last.team.id;
-    const early = ctx.week <= 3;
+    const SACKO_MIN_WEEK = 8;
+    const mathematicallyBuried = !!(last.eliminated || last.sackoLocked);
+    const early = ctx.week < SACKO_MIN_WEEK && !mathematicallyBuried;
     const pressureTag = earlySeasonPressureTag(last, ctx.week);
     out.push(tl({
       id: 'tl-sacko-' + ctx.week,
@@ -10818,7 +10957,7 @@ function getTimelineStream(week){
      matchup Tale of the Tape, and start/sit injury warnings only. No clinch
      math or postgame generator is even invoked until the live week has points. */
   const runners = pregameOnly
-    ? [tlPlayoffBracket, tlPreseason, tlPrimer, tlInjury, tlDraft]
+    ? [tlPlayoffBracket, tlPreseason, genPreviewPower, tlPrimer, tlInjury, tlDraft]
     : [tlPlayoffBracket, tlPreseason, tlPlayoffPicture, tlGameDay, tlRecap, tlWaivers, tlPrimer, tlInjury, tlDraft];
   runners.forEach(gen=>{
     try{ events = events.concat(gen(ctx) || []); }
@@ -10826,8 +10965,12 @@ function getTimelineStream(week){
   });
 
   if(pregameOnly){
+    /* Full pregame board: a slate-summary lead plus one 1-to-1 Preview for
+       every single matchup, all stamped into the timeline. */
     try{ events = events.concat((genPreview(ctx) || []).map((a,i)=> adopt(a, i))); }
     catch(err){ console.error('[Timeline] preview fallback failed', err); }
+    try{ events = events.concat((genMatchupPreviews(ctx) || []).map((a,i)=> adopt(a, i + 40))); }
+    catch(err){ console.error('[Timeline] matchup previews failed', err); }
   } else {
     // The classic wire, folded in with timestamps once the week is underway.
     try{ events = events.concat((generate(week) || []).map((a,i)=> adopt(a, i))); }
