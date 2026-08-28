@@ -9010,10 +9010,95 @@ const PREVIEW_HEADLINES = [
   'SCOUTING {A} AT {B} BEFORE A POINT IS SCORED',
   '{A} DRAWS {B} IN A WEEK {WEEK} MATCHUP WITH TEETH',
   'THE {A}–{B} FILE: PROJECTIONS, GRUDGES, AND NO EXCUSES',
+  '{B} DEFENDS THE HOME BOARD AS {A} COMES CALLING',
+  'WHAT {A} AT {B} DECIDES BEFORE ANYONE SCORES',
+  'THE {A}–{B} SCOUTING REPORT: FORM, HISTORY, AND STAKES',
+  '{A} TESTS {B} IN A WEEK {WEEK} SPOT THAT MATTERS',
+  'READING {A} AT {B}: THE NUMBERS THAT WILL NOT WAIT FOR SUNDAY',
 ];
+
+/* Pre-game scouting profile for one side, read entering the week (through the
+   prior week's results) so a preview never leaks the score it is previewing.
+   Everything is defensive: a missing power table or history archive degrades
+   to record-only framing rather than throwing. */
+function previewSideProfile(team, week){
+  const priorWeek = Math.max(0, Number(week) - 1);
+  const record = FSNIntel.getRecordAsOfWeek(team.id, week);
+  let streak = null;
+  try{ streak = FSNIntel.getStreakAsOfWeek(team.id, priorWeek); }catch(_){ streak = null; }
+  let row = null, total = null;
+  try{
+    const table = FSNIntel.powerRankings(priorWeek) || [];
+    row = table.find(r=> String(r.team.id) === String(team.id)) || null;
+    if(row) total = table.length;
+  }catch(_){ row = null; }
+  const streakLabel = streak && streak.length
+    ? (streak.result === 'W' ? `${streak.length} straight win${streak.length === 1 ? '' : 's'}`
+      : streak.result === 'L' ? `${streak.length} straight loss${streak.length === 1 ? '' : 'es'}`
+      : `${streak.length} without a decision`)
+    : null;
+  return {
+    team, record,
+    streak, streakLabel,
+    hot: !!(streak && streak.result === 'W' && streak.length >= 2),
+    cold: !!(streak && streak.result === 'L' && streak.length >= 2),
+    rank: row ? row.rank : null,
+    total: row ? total : null,
+    pf: row ? row.pf : null,
+    avg: row ? row.avg : null,
+    eff: row && row.rosterEfficiency != null ? row.rosterEfficiency : null,
+    badge: row ? row.indexBadge : '',
+    hasModel: !!row,
+  };
+}
+
+/* One rich, self-contained form paragraph for a side. Weaves the FSN Power
+   Index seed, points-for pace, current-season streak and lineup efficiency
+   into prose. `role` ('fav' | 'dog') tilts the framing so the two profiles in
+   the same preview never read as carbon copies of each other. */
+function previewFormParagraph(p, week, role, seed){
+  const nm = `<b>${esc(p.team.name)}</b>`;
+  if(!p.hasModel || p.avg == null){
+    // Week 1 / no prior data — record-and-intent framing only.
+    return role === 'fav'
+      ? pick([
+          `${nm} enters at <b>${esc(p.record)}</b> with the board still blank, which means the résumé everyone will quote by December has exactly zero lines written on it. What the room believes about this roster is still theory; Sunday is where theory goes to get audited.`,
+          `There is no tape on ${nm} yet — just <b>${esc(p.record)}</b> and a draft everyone in the league has an opinion about. The favorites in this spot are favorites on projection alone, and projection has never once tackled anybody.`,
+        ], seed + ':fav0')
+      : pick([
+          `${nm} counters at <b>${esc(p.record)}</b>, and the beauty of a clean board is that nobody has been proven anything yet. The underdog label here is borrowed from a spreadsheet, not earned on a field, and those are the easiest labels in the league to tear off.`,
+          `On the other side, ${nm} (<b>${esc(p.record)}</b>) walks in with nothing to defend and everything to take. Week ${week} is the kind of spot where the team nobody is talking about does the talking.`,
+        ], seed + ':dog0');
+  }
+  const rankClause = p.rank && p.total ? `No. ${p.rank} of ${p.total} in the FSN Power Index` : `on the FSN Power Index board`;
+  const paceClause = `<b>${n1(p.pf)}</b> points banked (<b>${n1(p.avg)}</b> a week)`;
+  const effClause = p.eff != null ? ` at <b>${n1(p.eff)}%</b> lineup efficiency` : '';
+  const badgeClause = p.badge ? ` The model has flagged them <b>[${esc(p.badge)}]</b>, the kind of tag that says the record undersells the roster.` : '';
+  const streakClause = p.streakLabel
+    ? (p.hot ? ` They arrive on <b>${p.streakLabel}</b>, and momentum in this format is real right up until the week it evaporates.`
+      : p.cold ? ` They arrive on <b>${p.streakLabel}</b>, and every one of those results is now sitting in the back of the room.`
+      : ` The current run reads <b>${p.streakLabel}</b>.`)
+    : '';
+  if(role === 'fav'){
+    return `${nm} carries the numbers into this one: ${rankClause}, ${paceClause}${effClause}.${streakClause}${badgeClause} ` +
+      pick([
+        `That is the profile of a team that is supposed to win this game — which, in a league that has buried a dozen "supposed to" favorites, is exactly the amount of comfort it sounds like.`,
+        `On paper this is theirs to lose. This league keeps a long, detailed list of teams that lost exactly the game they were supposed to win.`,
+        `The math likes them. The math does not set lineups, does not check injury reports at 11:58, and does not play defense.`,
+      ], seed + ':favtail');
+  }
+  return `${nm} answers with ${rankClause} and ${paceClause}${effClause}.${streakClause}${badgeClause} ` +
+    pick([
+      `The gap the model sees is real, but it is a gap measured in scoring average, not in certainty — and a single ceiling week from this roster erases it before halftime.`,
+      `Underdogs in this league do not read the projection and quit; they read it, print it out, and staple it to the wall. This is a roster with a ceiling nobody wants to be standing under.`,
+      `Call them the challenger if you like. Challengers who score their number turn a favorite's tidy afternoon into a full week of excuses.`,
+    ], seed + ':dogtail');
+}
+
 function genMatchupPreviews(ctx){
   if(ctx.anyScored || !Array.isArray(ctx.games) || !ctx.games.length) return [];
   const priorWeek = Math.max(0, Number(ctx.week) - 1);
+  const phase = seasonToneBucket(ctx.week);
   const out = [];
   ctx.games.forEach((g, i)=>{
     if(!g || !g.homeTeam || !g.awayTeam) return;
@@ -9025,6 +9110,10 @@ function genMatchupPreviews(ctx){
     const recordB = esc(FSNIntel.getRecordAsOfWeek(B.id, ctx.week));
     const fav = probA >= 50 ? A : B, dog = probA >= 50 ? B : A;
     const edge = Math.round(Math.max(probA, 100 - probA));
+    const coinFlip = edge <= 55;
+
+    const favP = previewSideProfile(fav, ctx.week);
+    const dogP = previewSideProfile(dog, ctx.week);
 
     let h2h = null;
     try{
@@ -9032,18 +9121,98 @@ function genMatchupPreviews(ctx){
         h2h = window.getH2H(A.ownerId, B.ownerId);
       }
     }catch(_){ h2h = null; }
-    const rivalry = h2h && h2h.meetingCount
-      ? `These two are not strangers: the Record Book has them at <b>${h2h.winsFor}-${h2h.winsAgainst}${h2h.ties ? '-' + h2h.ties : ''}</b> across <b>${h2h.meetingCount}</b> meeting${h2h.meetingCount === 1 ? '' : 's'}` +
-        `${h2h.lastMeeting ? `, most recently a <b>${n1(h2h.lastMeeting.scoreFor)}–${n1(h2h.lastMeeting.scoreAgainst)}</b> verdict in ${h2h.lastMeeting.year}` : ''}. ` +
-        `${h2h.streakCount > 1 ? `Someone has won <b>${h2h.streakCount}</b> in a row, and the loser has heard about every one of them. ` : ''}` +
-        `History does not make this game safer. It makes it louder.`
-      : `There is no shared history on the ledger yet — this is a first meeting, and first meetings in this league have a way of starting grudges that outlive the rosters that began them.`;
 
-    const openLine = pick([
-      `The model hands <b>${esc(fav.name)}</b> a <b>${edge}%</b> edge, which in this league is worth exactly as much as the paper it is not printed on.`,
-      `<b>${esc(fav.name)}</b> walks in a <b>${edge}%</b> favorite, and every favorite in this league eventually finds out how little that means on a Sunday.`,
-      `Give <b>${esc(fav.name)}</b> the <b>${edge}%</b> edge if you want. <b>${esc(dog.name)}</b> has spent all week being told the number is a lie.`,
-    ], seed);
+    /* ---- BEAT 1 · the lead ---- */
+    const edgeLine = coinFlip
+      ? pick([
+          `The model cannot separate them, landing <b>${esc(fav.name)}</b> at just <b>${edge}%</b> — which is the number it prints when it is quietly admitting it has no idea.`,
+          `At <b>${edge}%</b>, this is a coin flip the model is only pretending to have an opinion about. Both rooms know it, and both rooms like their odds.`,
+          `A <b>${edge}%</b> lean toward <b>${esc(fav.name)}</b> is the polite mathematical way of saying "pick 'em." The tape agrees.`,
+        ], seed + ':edge')
+      : pick([
+          `The model hands <b>${esc(fav.name)}</b> a <b>${edge}%</b> edge, which in this league is worth exactly as much as the paper it is not printed on.`,
+          `<b>${esc(fav.name)}</b> walks in a <b>${edge}%</b> favorite, and every favorite in this league eventually finds out how little that means on a Sunday.`,
+          `Give <b>${esc(fav.name)}</b> the <b>${edge}%</b> edge if you want. <b>${esc(dog.name)}</b> has spent all week being told the number is a lie.`,
+          `The board leans <b>${esc(fav.name)}</b> at <b>${edge}%</b>. It is a lean, not a verdict, and this desk has watched leans get buried by Sunday night more times than it cares to count.`,
+        ], seed + ':edge');
+    const lead = `${datelineTag()} <b>${esc(A.name)}</b> (${recordA}) travels to face <b>${esc(B.name)}</b> (${recordB}) with the Week ${ctx.week} board still clean and everything still to prove. ${edgeLine}`;
+
+    /* ---- BEATS 2 & 3 · form profiles ---- */
+    const favForm = previewFormParagraph(favP, ctx.week, 'fav', seed);
+    const dogForm = previewFormParagraph(dogP, ctx.week, 'dog', seed);
+
+    /* ---- BEAT 4 · history ---- */
+    const history = h2h && h2h.meetingCount
+      ? `These two are not strangers. The Record Book has them at <b>${h2h.winsFor}-${h2h.winsAgainst}${h2h.ties ? '-' + h2h.ties : ''}</b> across <b>${h2h.meetingCount}</b> meeting${h2h.meetingCount === 1 ? '' : 's'}` +
+        `${h2h.lastMeeting ? `, the freshest wound a <b>${n1(h2h.lastMeeting.scoreFor)}–${n1(h2h.lastMeeting.scoreAgainst)}</b> verdict back in ${h2h.lastMeeting.year}` : ''}. ` +
+        `${h2h.streakCount > 1 ? `Someone in this building has won <b>${h2h.streakCount}</b> straight in the series, and the other manager has heard about every single one of them. ` : ''}` +
+        pick([
+          `History does not make this game safer. It makes it louder.`,
+          `None of that carries onto the scoreboard on Sunday — but all of it lives in the group chat, and the group chat never forgets.`,
+          `Rivalries in this league are not built on respect. They are built on receipts, and this file is thick with them.`,
+        ], seed + ':hist')
+      : pick([
+          `There is no shared history on the ledger yet — this is a first meeting, and first meetings in this league have a way of starting grudges that outlive the rosters that began them.`,
+          `The Record Book has nothing to say about these two, which means whatever happens Sunday becomes page one. Every rivalry the league argues about now started exactly like this: two teams, no history, one result nobody let the other forget.`,
+        ], seed + ':hist0');
+
+    /* ---- BEAT 5 · tale of the tape / projection ---- */
+    let projection;
+    if(favP.avg != null && dogP.avg != null){
+      const gap = Math.abs(favP.avg - dogP.avg);
+      projection = `On pace alone the tape reads <b>${esc(favP.team.name)}</b> at <b>${n1(favP.avg)}</b> a week against <b>${esc(dogP.team.name)}</b> at <b>${n1(dogP.avg)}</b> — ` +
+        (gap < 4
+          ? `a <b>${n1(gap)}</b>-point difference that is inside the noise of a single tight end's afternoon. Games this close on paper are decided by who guessed right at the flex, not by who deserved it.`
+          : gap < 12
+            ? `a <b>${n1(gap)}</b>-point edge that is real but not safe. One boom game from the short side closes it, and this league produces boom games out of nowhere every single week.`
+            : `a <b>${n1(gap)}</b>-point gap that the underdog cannot cover by playing it straight. ${esc(dogP.team.name)} needs a ceiling week and a favorite who left points on the bench — improbable, but this desk has filed that exact upset before.`) +
+        pick([
+          ` The lineup card is where all of this actually gets settled.`,
+          ` None of it matters until the flex decision gets made and the injury report clears.`,
+          ` The projection is the floor of the argument, not the end of it.`,
+        ], seed + ':projtail');
+    } else {
+      projection = pick([
+        `With no scored pace to lean on, the tape here is all roster and gut. Both managers think they have the better team; only one of them gets to be right, and the other spends the week explaining a lineup that never showed up.`,
+        `There is no season-long pace to separate them yet, which turns this into a pure lineup exercise. The team that nails its start-sit calls wins the argument, and the loser files it under "we were close."`,
+      ], seed + ':proj0');
+    }
+
+    /* ---- BEAT 6 · stakes / close, tied to the season phase ---- */
+    const stakesPool = {
+      early: [
+        `It is early, and early wins are cheap right up until December, when the team that banked them is the one holding the tiebreaker. Nobody remembers a Week ${ctx.week} result — until it is the game that decided a playoff seed.`,
+        `A Week ${ctx.week} game does not clinch anything, but it does start telling the truth about who these rosters actually are. The board fills up fast, and the teams that treat September like it counts are the ones still playing in December.`,
+      ],
+      mid: [
+        `We are deep enough now that a loss here is not a scare, it is a standings problem, and the schedule does not slow down to let anyone catch their breath. Week ${ctx.week} is where the contenders quietly separate from the pretenders.`,
+        `This is the stretch where every game starts carrying seeding weight. A win keeps the math friendly; a loss hands the tiebreaker conversation to somebody else. Both managers know exactly where this leaves them.`,
+      ],
+      stretch: [
+        `With the bracket in view, there is no such thing as a low-stakes Week ${ctx.week} game anymore. This one moves seeds, and in a league this tight, a single seed is the difference between hosting January and watching it.`,
+        `The playoff picture is close enough to touch, and games like this are the ones that fill in the bracket. A loss here does not just sting — it reshuffles the entire chase.`,
+      ],
+      playoffs: [
+        `There is no next week to fix it. Whatever the scoreboard says when this one goes final is the season's verdict on at least one of these rosters, and this league does not do gentle goodbyes.`,
+        `Everything about the regular season was a rehearsal for a game like this. Win and the story continues; lose and it ends, on the record, for a full calendar year of reminders.`,
+      ],
+    };
+    const stakes = ctx.playoffWeek
+      ? pick(stakesPool.playoffs, seed + ':stake')
+      : pick(stakesPool[phase] || stakesPool.mid, seed + ':stake');
+
+    /* Structural variance: rotate whether the history beat sits between the two
+       form profiles or after them, so the previews on one board never share an
+       identical paragraph skeleton. */
+    const sig = hash(seed + ':struct') % 3;
+    let paragraphs;
+    if(sig === 0){
+      paragraphs = [lead, favForm, dogForm, history, projection, stakes];
+    } else if(sig === 1){
+      paragraphs = [lead, history, favForm, dogForm, projection, stakes];
+    } else {
+      paragraphs = [lead, favForm, history, dogForm, projection, stakes];
+    }
 
     out.push(article({
       id: 'preview-game-' + ctx.week + '-' + A.id + '-' + B.id,
@@ -9057,28 +9226,28 @@ function genMatchupPreviews(ctx){
       headline: fillEditorial(PREVIEW_HEADLINES[hash(seed) % PREVIEW_HEADLINES.length], {
         A: upper(A.name), B: upper(B.name), WEEK: ctx.week,
       }),
-      dek: `${esc(A.name)} (${recordA}) at ${esc(B.name)} (${recordB}) — the model leans ${esc(fav.name)}, the tape says pay attention.`,
-      paragraphs: [
-        `${datelineTag()} <b>${esc(A.name)}</b> (${recordA}) travels to face <b>${esc(B.name)}</b> (${recordB}) with the board still clean and everything still to prove. ${openLine}`,
-        rivalry,
-        pick([
-          `The lineup card is the whole ballgame now. Set it right and this is a statement; set it wrong and the bench becomes the story before the fourth quarter. Kickoff decides which one it is.`,
-          `Both rooms think they have the edge. Only one of them gets to be right, and the other spends the week explaining a projection that never showed up.`,
-          `Nothing is scored yet, which means nothing is settled — and in this league, the games with nothing on them yet are exactly the ones that end up meaning everything.`,
-        ], seed + ':close'),
-      ],
+      dek: coinFlip
+        ? `${esc(A.name)} (${recordA}) at ${esc(B.name)} (${recordB}) — the model calls it a coin flip, the tape says pay attention.`
+        : `${esc(A.name)} (${recordA}) at ${esc(B.name)} (${recordB}) — the model leans ${esc(fav.name)}, the tape says pay attention.`,
+      paragraphs,
       quote: null,
       numbers: {
-        title: 'By the Numbers',
+        title: 'Tale of the Tape',
         rows: [
-          { label: esc(fav.name) + ' win probability', value: edge + '%' },
-          { label: esc(A.name) + ' record', value: recordA },
-          { label: esc(B.name) + ' record', value: recordB },
+          { label: esc(fav.name) + ' win probability', value: edge + '%', note: coinFlip ? 'Effectively a coin flip.' : 'Model lean, not a prediction.' },
+          { label: esc(A.name) + ' record', value: recordA, note: favP.team === A ? (favP.streakLabel || '') : (dogP.streakLabel || '') },
+          { label: esc(B.name) + ' record', value: recordB, note: favP.team === B ? (favP.streakLabel || '') : (dogP.streakLabel || '') },
+          ...(favP.avg != null && dogP.avg != null
+            ? [{ label: 'Scoring pace', value: n1(favP.avg) + ' vs ' + n1(dogP.avg), note: 'Points per week entering Week ' + ctx.week + '.' }]
+            : []),
+          ...(favP.rank && favP.total
+            ? [{ label: 'FSN Power Index', value: 'No. ' + favP.rank + (dogP.rank ? ' vs No. ' + dogP.rank : ''), note: 'Model seed of ' + favP.total + ' teams.' }]
+            : []),
           ...(h2h && h2h.meetingCount
             ? [{ label: 'All-time series', value: h2h.winsFor + '-' + h2h.winsAgainst + (h2h.ties ? '-' + h2h.ties : ''), note: h2h.meetingCount + ' career meeting' + (h2h.meetingCount === 1 ? '' : 's') }]
             : [{ label: 'All-time series', value: 'First meeting', note: 'No shared history on the ledger yet.' }]),
         ],
-        note: 'Pre-game preview. Win probability is a model lean, not a prediction.',
+        note: 'Pre-game scouting report. Win probability is a model lean, not a prediction.',
       },
     }));
   });
@@ -9312,9 +9481,11 @@ function tl(o){
     const narrativeFacts = o.facts && typeof o.facts === 'object'
       ? o.facts
       : { winner:featured, loser:{name:'the league field'} };
-    a.headline = deterministicNarrativeHeadline(
-      { week:Number(o.week || effectiveWeek() || 0) }, articleType, narrativeFacts, a.headline
-    );
+    if(!o.headlineLocked){
+      a.headline = deterministicNarrativeHeadline(
+        { week:Number(o.week || effectiveWeek() || 0) }, articleType, narrativeFacts, a.headline
+      );
+    }
     if(Array.isArray(a.paragraphs) && a.paragraphs.length && !o.narrativeLocked){
       a.paragraphs = deterministicNarrativeBody(
         { week:Number(o.week || effectiveWeek() || 0) }, articleType, narrativeFacts, a.paragraphs
@@ -9907,6 +10078,127 @@ function tlPrimer(ctx){
     }));
   }
 
+  return out;
+}
+
+/* ============================================================
+   RIVALRY SPOTLIGHT
+   A dedicated feature on the deepest grudge on the current week's board. Reads
+   the all-time Record Book, so it only fires when the league history archive is
+   loaded AND two teams meeting this week already carry real shared history
+   (three-plus career meetings). One spotlight per week, drawn deterministically
+   so the board never reshuffles on refresh. Pregame it frames the renewal;
+   once scores post it frames the series against a live result.
+============================================================ */
+const RIVALRY_HEADLINES = [
+  'RIVALRY SPOTLIGHT: {A} AND {B} DO THIS AGAIN',
+  'THE GRUDGE FILE: {A} vs {B} REOPENS IN WEEK {WEEK}',
+  'BAD BLOOD, WEEK {WEEK}: {A} DRAWS {B} ONE MORE TIME',
+  'OLD SCORES: {A} AND {B} RENEW A SERIES WITH RECEIPTS',
+  'RIVALRY WINDOW: {A}–{B} PUTS {N} MEETINGS OF HISTORY ON THE SCREEN',
+];
+function tlRivalry(ctx){
+  const out = [];
+  if(!Array.isArray(ctx.games) || !ctx.games.length) return out;
+  let hasHistory = false;
+  try{ hasHistory = LeagueData.hasHistory(); }catch(_){ hasHistory = false; }
+  if(!hasHistory || typeof window.getH2H !== 'function') return out;
+
+  /* Score every game on the board by how much of a rivalry it actually is:
+     meetings carry it, a live head-to-head streak and a tight all-time margin
+     sharpen it. The deepest, meanest series wins the spotlight. */
+  let best = null;
+  ctx.games.forEach(g=>{
+    if(!g || !g.homeTeam || !g.awayTeam) return;
+    const A = g.awayTeam, B = g.homeTeam;
+    if(!A.ownerId || !B.ownerId) return;
+    let h2h = null;
+    try{ h2h = window.getH2H(A.ownerId, B.ownerId); }catch(_){ h2h = null; }
+    if(!h2h || h2h.meetingCount < 3) return;
+    const closeness = 1 / (1 + Math.abs(h2h.winsFor - h2h.winsAgainst));
+    const score = h2h.meetingCount * 3 + (h2h.streakCount > 1 ? h2h.streakCount * 2 : 0) + closeness * 4;
+    if(!best || score > best.score) best = { g, A, B, h2h, score };
+  });
+  if(!best) return out;
+
+  const { A, B, h2h } = best;
+  const seed = 'rivalry:' + viewedSeasonYear() + ':' + ctx.week + ':' + A.id + ':' + B.id;
+  const recordA = FSNIntel.getRecordAsOfWeek(A.id, ctx.week);
+  const recordB = FSNIntel.getRecordAsOfWeek(B.id, ctx.week);
+  const seriesLabel = `${h2h.winsFor}-${h2h.winsAgainst}${h2h.ties ? '-' + h2h.ties : ''}`;
+  const leader = h2h.winsFor === h2h.winsAgainst ? null : (h2h.winsFor > h2h.winsAgainst ? A : B);
+  const streakName = h2h.streakOwnerId
+    ? (String(h2h.streakOwnerId) === String(A.ownerId) ? A.name : String(h2h.streakOwnerId) === String(B.ownerId) ? B.name : null)
+    : null;
+  const marginLabel = Number.isFinite(h2h.diff) ? n1(Math.abs(h2h.diff)) : null;
+
+  const openParagraph = `${datelineTag()} Some games on the Week ${ctx.week} board are just games. This is not one of them. ` +
+    `<b>${esc(A.name)}</b> (${esc(recordA)}) and <b>${esc(B.name)}</b> (${esc(recordB)}) have done this <b>${h2h.meetingCount}</b> times already, ` +
+    `and the Record Book keeps the series at <b>${seriesLabel}</b>` +
+    `${leader ? ` in <b>${esc(leader.name)}</b>'s favor` : `, dead even, which is the most dangerous kind of rivalry there is`}. ` +
+    pick([
+      `Nobody in this building needs a reminder of what is at stake. They keep their own.`,
+      `The standings will forget this game by December. Neither of these managers ever will.`,
+      `This is the file the league office does not have to sell — it sells itself, every year, on schedule.`,
+    ], seed + ':open');
+
+  const historyParagraph = (()=>{
+    let s = '';
+    if(h2h.lastMeeting){
+      s += `The freshest entry is a <b>${n1(h2h.lastMeeting.scoreFor)}–${n1(h2h.lastMeeting.scoreAgainst)}</b> verdict back in ${h2h.lastMeeting.year} (Week ${h2h.lastMeeting.week}), ` +
+        `${h2h.lastMeeting.won ? `a night <b>${esc(A.name)}</b> still brings up unprompted` : `a result <b>${esc(B.name)}</b> has been dining out on ever since`}. `;
+    }
+    if(streakName && h2h.streakCount > 1){
+      s += `<b>${esc(streakName)}</b> owns the current run at <b>${h2h.streakCount}</b> straight in the series, and a streak like that stops being luck and starts being a personality trait. `;
+    } else {
+      s += `Neither side has been able to string this thing together — it trades hands, year after year, which is exactly why it never cools off. `;
+    }
+    if(marginLabel && Number(marginLabel) < 25){
+      s += `Across every meeting, the all-time scoring gap between them is a mere <b>${marginLabel}</b> points. This series is not decided by talent. It is decided by whoever wants it more on the day.`;
+    } else if(marginLabel){
+      s += `The all-time scoring ledger reads <b>${marginLabel}</b> points apart, and the team on the short end has spent every renewal trying to close it.`;
+    }
+    return s.trim();
+  })();
+
+  const stakesParagraph = ctx.anyScored
+    ? pick([
+        `The scores are already moving on this one, and a rivalry game with live points is the fastest way to turn a quiet week loud. Whatever the board says at the final horn goes straight into the ledger — and straight into next year's trash talk.`,
+        `With points on the board, the theory is over. One of these managers is about to add a line to the series that the other one will have to answer for until they meet again.`,
+      ], seed + ':stakelive')
+    : pick([
+        `No points are on it yet, which means the whole thing is still tension. Set the lineup, then watch the one game on the schedule where the final score is the least important thing that happens.`,
+        `Kickoff is coming, and with it another entry in a series that never needed the standings to matter. The lineup card is the only thing left to decide. The grudge takes care of itself.`,
+      ], seed + ':stake');
+
+  const rows = [
+    { label: 'All-time series', value: seriesLabel, note: leader ? esc(leader.name) + ' leads the ledger.' : 'Dead even.' },
+    { label: 'Career meetings', value: String(h2h.meetingCount) },
+    ...(streakName && h2h.streakCount > 1 ? [{ label: 'Current streak', value: h2h.streakCount + ' straight', note: esc(streakName) }] : []),
+    ...(h2h.lastMeeting ? [{ label: 'Last meeting', value: n1(h2h.lastMeeting.scoreFor) + '–' + n1(h2h.lastMeeting.scoreAgainst), note: h2h.lastMeeting.year + ' · Week ' + h2h.lastMeeting.week }] : []),
+    ...(marginLabel ? [{ label: 'All-time scoring gap', value: marginLabel + ' pts' }] : []),
+    { label: esc(A.name) + ' record', value: esc(recordA) },
+    { label: esc(B.name) + ' record', value: esc(recordB) },
+  ];
+
+  out.push(tl({
+    id: 'tl-rivalry-' + ctx.week + '-' + A.id + '-' + B.id,
+    kind: 'rivalry', topic: 'matchups', slot: ctx.anyScored ? 'recap' : 'primer',
+    offset: 30 + (hash(seed) % 90),
+    /* This card is hand-authored as a rivalry feature; keep the engine from
+       rewriting it into generic recap voice. */
+    narrativeLocked: true, headlineLocked: true,
+    metaTag: 'RIVALRY SPOTLIGHT', tag: 'RIVALRY SPOTLIGHT', tone: 'red', priority: 70,
+    byline: 'FSN Senior League Insider',
+    crest: { name: B.name, logo: B.logo },
+    headline: fillEditorial(RIVALRY_HEADLINES[hash(seed) % RIVALRY_HEADLINES.length], {
+      A: upper(A.name), B: upper(B.name), WEEK: ctx.week, N: h2h.meetingCount,
+    }),
+    dek: `${esc(A.name)} and ${esc(B.name)} have met ${h2h.meetingCount} times. The series sits ${seriesLabel}${leader ? ', ' + esc(leader.name) + ' in front' : ', dead even'}.`,
+    paragraphs: [openParagraph, historyParagraph, stakesParagraph].filter(Boolean),
+    quote: null,
+    numbers: { title: 'The Series', rows, note: 'All-time head-to-head from the loaded Record Book archive.' },
+  }));
   return out;
 }
 
@@ -10957,8 +11249,8 @@ function getTimelineStream(week){
      matchup Tale of the Tape, and start/sit injury warnings only. No clinch
      math or postgame generator is even invoked until the live week has points. */
   const runners = pregameOnly
-    ? [tlPlayoffBracket, tlPreseason, genPreviewPower, tlPrimer, tlInjury, tlDraft]
-    : [tlPlayoffBracket, tlPreseason, tlPlayoffPicture, tlGameDay, tlRecap, tlWaivers, tlPrimer, tlInjury, tlDraft];
+    ? [tlPlayoffBracket, tlPreseason, genPreviewPower, tlPrimer, tlRivalry, tlInjury, tlDraft]
+    : [tlPlayoffBracket, tlPreseason, tlPlayoffPicture, tlGameDay, tlRecap, tlWaivers, tlPrimer, tlRivalry, tlInjury, tlDraft];
   runners.forEach(gen=>{
     try{ events = events.concat(gen(ctx) || []); }
     catch(err){ console.error('[Timeline] generator failed', gen.name, err); }
@@ -11472,6 +11764,7 @@ const ui = {
   cloudLeagueId: '',
   cloudSyncing: false,
   rivalA: '', rivalB: '',
+  activeLeagueKey: '',   // provider:id of the league currently resident in the stores
 };
 
 const STORE_KEY = 'fsn.setup.v1';
@@ -11575,6 +11868,13 @@ function effectiveWeek(){
   const sp = d && (d.scoringPeriodId || (d.status && d.status.currentMatchupPeriod));
   return sp || 1;
 }
+/* This UI script is an IIFE, so its declarations are private to it. The News
+   Desk engine (a separate earlier IIFE) reaches for effectiveWeek() as a
+   last-resort week fallback inside its narrative headline/body builders; without
+   a global binding that reference throws a ReferenceError, silently killing the
+   pregame Power Index and Matchup-of-the-Week generators. Publish it so those
+   cross-scope fallbacks resolve to the real selected week. */
+try{ window.effectiveWeek = effectiveWeek; }catch(_){}
 
 /* ============================================================
    WEEK SCRUBBER / SEASON TIME-MACHINE
@@ -11590,8 +11890,45 @@ function deriveCurrentWeek(d){
   return null;
 }
 
+/* The official NFL regular-season week for a calendar date. Week 1 opens on the
+   Thursday after Labor Day (the first Monday of September); each new fantasy
+   week locks the Tuesday before its Thursday games and rolls every seven days
+   after. Returns 0 before the opener (the draft/preseason window) and clamps at
+   18. This is the calendar authority the live-week mapping leans on so a season
+   that has drafted but not kicked off cannot be pulled ahead by an ESPN
+   scoring-period or draft timestamp. */
+function nflRegularSeasonWeek(seasonYear, now){
+  const year = parseInt(seasonYear, 10);
+  if(!year) return 0;
+  const ref = now instanceof Date ? now : new Date();
+  const sept1 = new Date(year, 8, 1);
+  // First Monday of September = Labor Day.
+  const laborDay = new Date(year, 8, 1 + ((8 - sept1.getDay()) % 7));
+  // Week 1 Thursday kickoff = Labor Day + 3 days; the slate locks the Tuesday
+  // two days before it.
+  const firstRoll = new Date(laborDay.getFullYear(), laborDay.getMonth(), laborDay.getDate() + 1);
+  const days = Math.floor((ref - firstRoll) / 86400000);
+  if(days < 0) return 0; // preseason — the season has not opened yet
+  return Math.min(18, Math.floor(days / 7) + 1);
+}
+
 function currentLeagueWeek(){
-  return ui.currentWeek || deriveCurrentWeek(LeagueData.espnData) || effectiveWeek();
+  let wk = ui.currentWeek || deriveCurrentWeek(LeagueData.espnData) || effectiveWeek();
+  /* Live-season calendar guard: before the NFL season actually opens, a league
+     that has already drafted can report a scoring period of 1+ off a draft or
+     rollover timestamp. Strictly map that preseason window back to Week 1 so the
+     News Desk stays on the pregame board instead of skipping ahead of the real
+     schedule. Only the not-yet-started window is corrected; once games kick off,
+     ESPN's period is authoritative and left untouched. */
+  try{
+    const activeYear = (typeof NewsDesk !== 'undefined' && typeof NewsDesk.activeSeasonYear === 'function')
+      ? Number(NewsDesk.activeSeasonYear())
+      : Number(uiActiveSeasonYear());
+    if(ui.sourceMode === 'live' && activeYear === new Date().getFullYear()){
+      if(nflRegularSeasonWeek(activeYear) === 0 && wk > 1) wk = 1;
+    }
+  }catch(_){}
+  return wk;
 }
 
 function maxLeagueWeek(){
@@ -14016,6 +14353,49 @@ function processMultiYearHistory(rawData, sourceLabel){
   return applyLeagueHistory(withCurrentSeason(yearsData), skipped, sourceLabel || 'Loaded');
 }
 
+/* ---- multi-league state clearing ----
+   When Setup points at a different league (or a different provider) than the
+   one currently in memory, wipe every league-scoped local cache and store
+   BEFORE the new payload lands. Without this, the prior league's Record Book,
+   week-by-week box-score cache and multi-season archive bleed into the newly
+   selected league until each store happens to get overwritten. Resetting the
+   stores publishes on the LeagueData bus, which cascades into the News Desk,
+   analytics and standings memo caches (all of them clear on that subscription),
+   so the app re-initializes cleanly against the new league's Supabase payload
+   as it hydrates. Returns true when a switch was detected and cleared. */
+function clearLeagueStateForSwitch(nextLeagueId, nextProvider){
+  const next = String(nextLeagueId || '').trim();
+  if(!next) return false;
+  const nextKey = leagueCacheKey(nextProvider || ui.provider, next);
+  const prevKey = String(ui.activeLeagueKey || '').trim();
+  // First load, or a re-fetch of the exact same league/provider — nothing to wipe.
+  if(!prevKey || prevKey === nextKey) return false;
+
+  // Multi-season archive + everything derived from the Record Book.
+  window._franchiseYearsData = null;
+  try{ LeagueData.setLeagueHistory(null); }catch(e){}
+  try{ LeagueData.setEspnData(null); }catch(e){}
+  try{ if(LeagueData.meta){ LeagueData.meta.leagueId = ''; LeagueData.meta.season = ''; LeagueData.meta.week = ''; } }catch(e){}
+
+  // Week time-machine payloads and season/week scrubber state.
+  ui.weekDataCache = {};
+  ui.weekCacheKey = '';
+  ui.weekFetchSeq = (ui.weekFetchSeq || 0) + 1;
+  ui.seasonFetchSeq = (ui.seasonFetchSeq || 0) + 1;
+  ui.weekLoading = null;
+  ui.seasonLoading = null;
+  ui.currentWeek = null;
+  ui.week = null;
+
+  // A new league invalidates whatever rivalry pair the Vault had on screen and
+  // any half-finished cloud hydration aimed at the previous league.
+  ui.rivalA = ''; ui.rivalB = '';
+  ui.cloudHydrateSeq = (ui.cloudHydrateSeq || 0) + 1;
+
+  hideHistoryBanner();
+  return true;
+}
+
 /* ---- one-step live + all-time league hydration from League ID only ---- */
 function applyLiveLeaguePayload(league, leagueData, fallbackYear){
   if(!leagueData || !leagueData.teams || !leagueData.teams.length) throw new Error('NO_LIVE_LEAGUE_DATA');
@@ -14035,6 +14415,10 @@ function applyLiveLeaguePayload(league, leagueData, fallbackYear){
   LeagueData.setMeta('leagueId', league);
   LeagueData.setMeta('season', String(activeSeason));
   LeagueData.setMeta('week', String(activeWeek));
+
+  // Remember exactly which league/provider is now resident in the stores, so the
+  // next Setup load can tell a real league switch from a same-league refresh.
+  ui.activeLeagueKey = leagueCacheKey(ui.provider, league);
 
   try{
     localStorage.setItem('fsn_active_season', String(activeSeason));
@@ -14081,6 +14465,9 @@ async function fetchSleeperLeagueData(opts){
     return false;
   }
   $('leagueIdInput').value = league;
+  // Switching leagues (or providers)? Purge the previous league's cached state
+  // before the Sleeper payload lands.
+  clearLeagueStateForSwitch(league, 'sleeper');
   setFetchLoading(true);
   hideHistoryBanner();
   $('fetchStatus').style.color = 'var(--dim)';
@@ -14190,6 +14577,9 @@ async function fetchLeagueData(options){
   }
 
   $('leagueIdInput').value = league;
+  // Switching leagues? Purge the previous league's archive, box-score cache and
+  // Record Book before anything for the new one lands.
+  clearLeagueStateForSwitch(league, 'espn');
   // Cloud history/settings hydrate in parallel with the live ESPN request.
   // A missing/unconfigured cloud record never blocks the live connection.
   hydrateLeagueFromCloud(league, { silent:true });
