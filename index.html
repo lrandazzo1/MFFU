@@ -52,6 +52,11 @@ html,body{
   color:#fff;
   font-family:'Oswald',system-ui,-apple-system,sans-serif;
   overscroll-behavior-y:none;
+  /* Small-viewport guard: nothing is ever wide enough to swipe the whole
+     page sideways. In-page carousels (story rail, topic chips, week scrubber)
+     keep their own contained overflow-x; this only clips a stray blowout. */
+  max-width:100%;
+  overflow-x:hidden;
 }
 body{
   margin:0;
@@ -1351,6 +1356,103 @@ body{
   .analytics-grid{ grid-template-columns:repeat(2,minmax(0,1fr)); }
   .analytics-model.analytics-wide{ grid-column:1 / -1; }
   .analytics-gems{ grid-template-columns:repeat(3,minmax(0,1fr)); }
+}
+
+/* ============================================================
+   MOBILE TABLE → CARD STACKING
+   On phones the data tables (analytics models, franchise season
+   history, article "by the numbers") drop their fixed min-widths and
+   collapse each row into a self-contained vertical card. The <th>
+   labels move onto each cell via data-label + ::before, so no column
+   can force the viewport wide and nothing has to scroll sideways.
+   Above these breakpoints the original scrollable tables return.
+============================================================ */
+
+/* ---- Analytics models: Team header + 2×2 stat grid ---- */
+@media (max-width:640px){
+  .analytics-table-wrap{ overflow-x:hidden; border:0; border-radius:0; }
+  .analytics-table{ min-width:0; display:block; }
+  .analytics-table thead{ display:none; }
+  .analytics-table tbody{ display:flex; flex-direction:column; gap:8px; }
+  .analytics-table tr{
+    display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:2px 12px;
+    padding:10px 11px; border:1px solid var(--line); border-radius:11px; background:#0b1017;
+  }
+  .analytics-table tr:first-child{
+    border-color:color-mix(in srgb,var(--cyan) 32%,var(--line));
+    background:rgba(0,224,255,.05);
+  }
+  .analytics-table tr:first-child td{ background:transparent; }
+  .analytics-table td{
+    display:flex; align-items:center; justify-content:space-between; gap:8px;
+    padding:4px 0; border-top:0; text-align:right; white-space:nowrap;
+  }
+  .analytics-table td.analytics-team-cell{
+    grid-column:1 / -1; justify-content:flex-start;
+    padding:0 0 7px; margin-bottom:5px; border-bottom:1px solid var(--line);
+  }
+  .analytics-table td[data-label]::before{
+    content:attr(data-label); flex:none; color:var(--dim);
+    font-family:'JetBrains Mono',monospace; font-size:8px; font-weight:700;
+    letter-spacing:.09em; text-transform:uppercase; text-align:left;
+  }
+  .analytics-team{ min-width:0; width:100%; }
+  .analytics-team-name{ max-width:none; flex:1; min-width:0; }
+}
+
+/* ---- Article "by the numbers": simple labelled stack ---- */
+@media (max-width:640px){
+  .bn-table-wrap{ overflow-x:hidden; }
+  .bn-table{ min-width:0; display:block; }
+  .bn-table thead{ display:none; }
+  .bn-table tbody{ display:flex; flex-direction:column; gap:8px; padding:9px; }
+  .bn-table tr{
+    display:flex; flex-direction:column; gap:2px;
+    padding:10px 11px; border:1px solid var(--line); border-radius:11px; background:#0b1017;
+  }
+  .bn-table td{
+    display:flex; align-items:baseline; justify-content:space-between; gap:12px;
+    padding:3px 0; border-bottom:0; white-space:normal; text-align:right;
+  }
+  .bn-table td:nth-child(2){ max-width:none; overflow:visible; text-overflow:clip; }
+  .bn-table td[data-label]::before{
+    content:attr(data-label); flex:none; color:#657185; font-family:'Oswald',sans-serif;
+    font-size:8.5px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; text-align:left;
+  }
+  .bn-table tbody tr:last-child td{ border-bottom:0; }
+}
+
+/* ---- Franchise season history: Season header + labelled rows ----
+   (Wider table — 7 columns — so it stacks a little earlier.) */
+@media (max-width:760px){
+  .dossier-table-wrap{ overflow-x:hidden; }
+  .dossier-table{ min-width:0; display:block; }
+  .dossier-table thead{ display:none; }
+  .dossier-table tbody{ display:flex; flex-direction:column; gap:8px; padding:9px; }
+  .dossier-table tr{
+    display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:2px 12px;
+    padding:10px 11px; border:1px solid var(--line); border-radius:11px; background:#0b1017;
+  }
+  .dossier-table td{
+    display:flex; align-items:baseline; justify-content:space-between; gap:8px;
+    padding:4px 0; border-top:0; font-size:11px; white-space:normal; text-align:right;
+  }
+  .dossier-table td:first-child{
+    grid-column:1 / -1; justify-content:flex-start; font-size:14px;
+    padding:0 0 7px; margin-bottom:4px; border-bottom:1px solid var(--line);
+  }
+  .dossier-table td:first-child[data-label]::before{ display:none; }
+  .dossier-table td.dossier-cell-team,
+  .dossier-table td.dossier-cell-result{ grid-column:1 / -1; }
+  .dossier-cell-team-name{
+    min-width:0; flex:1; text-align:right;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  .dossier-cell-result{ align-items:flex-start; }
+  .dossier-table td[data-label]::before{
+    content:attr(data-label); flex:none; color:var(--dim); font-size:8px; font-weight:700;
+    letter-spacing:.1em; text-transform:uppercase; text-align:left;
+  }
 }
 
 /* League cloud-sync status lives in Setup but never exposes credentials. */
@@ -10629,7 +10731,7 @@ function analyticsTable(rows, headers, cells){
   if(!rows.length) return '<div class="analytics-empty">ESPN has not exposed enough completed data for this model yet.</div>';
   return `<div class="analytics-table-wrap no-bar"><table class="analytics-table">
     <thead><tr><th>Team</th>${headers.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead>
-    <tbody>${rows.map((row,index)=>`<tr><td>${analyticsTeamCell(row,index+1)}</td>${cells(row).join('')}</tr>`).join('')}</tbody>
+    <tbody>${rows.map((row,index)=>`<tr><td class="analytics-team-cell">${analyticsTeamCell(row,index+1)}</td>${cells(row).map((cell,ci)=> cell.replace(/^(\s*)<td/, `$1<td data-label="${esc(headers[ci] || '')}"`)).join('')}</tr>`).join('')}</tbody>
   </table></div>`;
 }
 
@@ -11122,9 +11224,9 @@ function openFranchiseModal(ownerId){
           <table class="dossier-table">
             <thead><tr><th>Season</th><th>Team Name</th><th>Record</th><th>PPG</th><th>PAPG</th><th>Seed</th><th>Playoff Result / Final Rank</th></tr></thead>
             <tbody>${seasonRows.map(row=> `<tr>
-              <td>${row.year}</td><td>${esc(row.teamName)}</td><td>${esc(row.record)}</td>
-              <td>${row.games?row.ppg.toFixed(1):'—'}</td><td>${row.games?row.papg.toFixed(1):'—'}</td>
-              <td>${row.seed?'#'+row.seed:'—'}</td><td>${esc(row.playoffResult)}</td>
+              <td data-label="Season">${row.year}</td><td data-label="Team Name" class="dossier-cell-team"><span class="dossier-cell-team-name">${esc(row.teamName)}</span></td><td data-label="Record">${esc(row.record)}</td>
+              <td data-label="PPG">${row.games?row.ppg.toFixed(1):'—'}</td><td data-label="PAPG">${row.games?row.papg.toFixed(1):'—'}</td>
+              <td data-label="Seed">${row.seed?'#'+row.seed:'—'}</td><td data-label="Playoff Result / Final Rank" class="dossier-cell-result">${esc(row.playoffResult)}</td>
             </tr>`).join('')}</tbody>
           </table>
         </div>
@@ -12989,7 +13091,7 @@ function articleHtml(a){
           </div>
           <div class="val" style="${r.value && String(r.value).charAt(0) === '+' ? 'color:' + c : ''}">${r.value}</div>
         </div>`).join('')}
-      ${a.numbers.table ? `<div class="bn-table-wrap no-bar"><table class="bn-table"><thead><tr>${(a.numbers.table.headers || []).map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${(a.numbers.table.rows || []).map(row=>`<tr>${row.map(cell=>`<td>${cell}</td>`).join('')}</tr>`).join('')}</tbody></table></div>` : ''}
+      ${a.numbers.table ? `<div class="bn-table-wrap no-bar"><table class="bn-table"><thead><tr>${(a.numbers.table.headers || []).map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${(a.numbers.table.rows || []).map(row=>`<tr>${row.map((cell,ci)=>`<td data-label="${esc(String((a.numbers.table.headers || [])[ci] || ''))}">${cell}</td>`).join('')}</tr>`).join('')}</tbody></table></div>` : ''}
       ${a.numbers.bracket ? playoffBracketHtml(a.numbers.bracket) : ''}
       ${a.numbers.liveBracket ? livePlayoffBracketHtml(a.numbers.liveBracket) : ''}
       ${a.numbers.note ? `<div class="bn-note">${a.numbers.note}</div>` : ''}
