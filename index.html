@@ -2126,7 +2126,7 @@ html[data-studio-historical="true"] #studio{
       <div id="historyUploadPanel" class="card p-4 hidden">
         <div class="section-head"><span class="bar" style="background:var(--cyan)"></span><h2>Historical Archive &amp; Record Book</h2></div>
         <p class="text-[11.5px] text-[var(--dim)] leading-relaxed mb-3">
-          Historical seasons are optional. ESPN historical access can require authentication, so the most reliable path is a one-time JSON export for the league. On mobile, use the native file picker below or paste JSON instead. If no archive is loaded, the current-season app continues normally. The file is read locally and is never sent to OpenAI or ElevenLabs.
+          Historical seasons are optional. ESPN historical access can require authentication, so the most reliable path is a one-time JSON export for the league. On mobile, use the native file picker below or paste JSON instead. If no archive is loaded, the current-season app continues normally. The file is read locally and is never sent to Claude or ElevenLabs.
         </p>
 
         <div id="dropzone" tabindex="0" role="button" aria-label="Upload historical league archive JSON">
@@ -9312,7 +9312,7 @@ function adopt(a, seedIdx){
    stories are then hydrated by direct browser fetch and cached exactly once.
 ============================================================ */
 const OPENAI_KEY_STORE = 'fsn.openai.key.v1';
-const AI_MODEL = 'gpt-4o-mini';
+const AI_MODEL = 'claude-haiku-4-5';
 const aiPending = new Set();
 const aiQueue = [];
 let aiActive = 0;
@@ -9418,7 +9418,7 @@ function applyCachedAI(list, ctx){
 }
 async function fetchAIStory(a, ctx){
   const key = getAIKey();
-  if(!key) throw new Error('Backend OpenAI unavailable');
+  if(!key) throw new Error('Backend AI unavailable');
   const facts = serializableFacts(factsForStory(a, ctx));
   const baseline = plainArticleText(a);
   const phase = seasonToneBucket(ctx.week);
@@ -9438,19 +9438,22 @@ async function fetchAIStory(a, ctx){
     method:'POST',
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify({
-      model:AI_MODEL, temperature:0.88,
-      response_format:{type:'json_object'},
-      messages:[{role:'system',content:system},{role:'user',content:user}],
+      model:AI_MODEL, temperature:0.88, max_tokens:1024,
+      system,
+      messages:[{role:'user',content:user}],
     }),
   });
   if(!res.ok){
-    const err = new Error('OpenAI HTTP ' + res.status);
+    const err = new Error('Claude HTTP ' + res.status);
     err.status = res.status;
     throw err;
   }
   const data = await res.json();
-  const content = data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
-  if(!content) throw new Error('OpenAI returned no story content');
+  /* Anthropic Messages API returns {content:[{type:'text',text:'...'}]}. */
+  const content = data && Array.isArray(data.content)
+    ? data.content.filter(b=> b && b.type === 'text').map(b=> b.text || '').join('').trim()
+    : '';
+  if(!content) throw new Error('Claude returned no story content');
   let parsed;
   try{ parsed = JSON.parse(content); }
   catch(e){
@@ -9458,7 +9461,7 @@ async function fetchAIStory(a, ctx){
     parsed = m ? JSON.parse(m[0]) : null;
   }
   const story = normalizeAIStory(parsed);
-  if(!story) throw new Error('OpenAI returned invalid story JSON');
+  if(!story) throw new Error('Claude returned invalid story JSON');
   return story;
 }
 function pumpAIQueue(){
@@ -9762,8 +9765,10 @@ window.FSNAudio = (function(){
 
 const PREF_KEY = 'fsn.audio.v1';
 const ELEVEN_MODEL = 'eleven_flash_v2_5';
-/* ElevenLabs stock voices are fixed application defaults. Speaker IDs are not editable in Setup. */
-const DEFAULT_VOICES = { host:'pNInz6obpgDQGcFmaJgB', analyst:'21m00Tcm4TlvDq8ikWAM' };
+/* Custom FSN announcer voices — Jim Tolliver (anchor) and Dee Rawls (analyst).
+   These mirror the hardcoded IDs in the secure /api/tts backend; the backend
+   is the source of truth and re-resolves the speaker role on its side. */
+const DEFAULT_VOICES = { host:'gzpdkRXvSsVFesfPP5i7', analyst:'T9EcMlwa9Tz1Qri0md9E' };
 
 const prefs = {
   mode: 'auto',          // 'auto' | 'device' | 'cc'
@@ -10111,9 +10116,10 @@ function cacheKey(vid, text){ return vid + '|' + text; }
 function fetchClip(text, speaker){
   const c = ensure();
   if(!c) return Promise.reject(new Error('No audio context'));
-  const key = (prefs.key || '').trim();
-  if(!key) return Promise.reject(new Error('Backend ElevenLabs unavailable'));
 
+  /* Credentials live in the secure /api/tts backend, never in the browser,
+     so there is no client-side key gate — a missing key surfaces as a
+     backend 503 which the caller already handles. */
   const vid = voiceId(speaker);
   const ck = cacheKey(vid, text);
   if(clipCache.has(ck)) return clipCache.get(ck);
@@ -10122,6 +10128,7 @@ function fetchClip(text, speaker){
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Accept': 'audio/mpeg' },
     body: JSON.stringify({
+      speaker: speaker === 'analyst' ? 'analyst' : 'anchor',
       voiceId: vid,
       text: String(text == null || String(text).trim() === '' ? 'The desk is standing by while the league feed updates.' : text),
       model_id: ELEVEN_MODEL,
@@ -13232,8 +13239,24 @@ function renderTicker(){
    HOME — THE DESK
 ============================================================ */
 function renderDesk(){
-  renderHome();
-  renderHomeStories();
+  /* The Desk is two independent surfaces. Guard each so a live-only league
+     with no historical/story data degrades to its own empty state instead of
+     blanking the whole screen with the "Display Hiccup" error. */
+  try{
+    renderHome();
+  }catch(err){
+    console.warn('[Desk] home render failed; showing no-data state.', err);
+    try{
+      const hc = $('homeContent'), hn = $('homeNoData');
+      if(hc) hc.classList.add('hidden');
+      if(hn) hn.classList.remove('hidden');
+    }catch(_){ /* last-ditch fallback must never throw */ }
+  }
+  try{
+    renderHomeStories();
+  }catch(err){
+    console.warn('[Desk] home stories render failed; skipping stories rail.', err);
+  }
 }
 
 function renderHome(){
@@ -13471,13 +13494,28 @@ function renderMatchups(){
     return;
   }
 
-  const games = LeagueData.getWeekMatchups(week);
+  /* Defensive: the weekly matchup array can be missing or malformed for a
+     live-only league on a week the feed has not populated. Any failure must
+     degrade to a clean empty card, never the "Display Hiccup" screen. */
+  let games;
+  try{
+    games = LeagueData.getWeekMatchups(week) || [];
+  }catch(err){
+    console.warn('[Matchups] weekly board unavailable; showing empty state.', err);
+    $('matchupList').innerHTML = emptyState('BYE', `No games found for week ${week}.`, null);
+    return;
+  }
   if(!games.length){
     $('matchupList').innerHTML = emptyState('BYE', `No games found for week ${week}.`, null);
     return;
   }
 
-  $('matchupList').innerHTML = games.map(g=> matchupCard(g)).join('');
+  try{
+    $('matchupList').innerHTML = games.map(g=> matchupCard(g)).join('');
+  }catch(err){
+    console.warn('[Matchups] card render failed; showing empty state.', err);
+    $('matchupList').innerHTML = emptyState('BYE', `This week’s board hit a snag while rendering. Re-fetch the league from Setup.`, 'setup');
+  }
 }
 
 function matchupCard(g){
@@ -13543,11 +13581,23 @@ function matchupSide(team, score, leading, status, projected, week){
    THE RECORD BOOK
 ============================================================ */
 function renderRecordBook(){
-  const hasHist = LeagueData.hasHistory();
+  /* A live-only league carries no historical records, so treat a missing or
+     empty history structure as "sealed" and render the invitation to load an
+     archive — never let a missing managers/matchups array throw through to
+     the "Display Hiccup" screen. */
+  let hasHist = false;
+  try{ hasHist = LeagueData.hasHistory(); }
+  catch(err){ console.warn('[RecordBook] history probe failed; treating as sealed.', err); hasHist = false; }
 
-  $('recordBookMeta').textContent = hasHist
-    ? `${LeagueData.seasonCount()} seasons · ${Object.keys(LeagueData.leagueHistory.managers).length} managers · ${LeagueData.matchupCount().toLocaleString()} matchups`
-    : 'No history loaded';
+  try{
+    $('recordBookMeta').textContent = hasHist
+      ? `${LeagueData.seasonCount()} seasons · ${Object.keys((LeagueData.leagueHistory && LeagueData.leagueHistory.managers) || {}).length} managers · ${LeagueData.matchupCount().toLocaleString()} matchups`
+      : 'No history loaded';
+  }catch(err){
+    console.warn('[RecordBook] meta summary failed; falling back to sealed state.', err);
+    if($('recordBookMeta')) $('recordBookMeta').textContent = 'No history loaded';
+    hasHist = false;
+  }
 
   if(!hasHist){
     $('recordBookBody').innerHTML = emptyState('THE RECORD BOOK IS SEALED', 'Load your all-time league history from Setup to unlock franchise resumes, rivalries and records.', 'setup');
@@ -14693,7 +14743,7 @@ function refreshOpenAIStatus(){
     const relation = viewed < active ? 'historical' : 'not the active season';
     el.innerHTML = `<span style="color:var(--green)">DETERMINISTIC MODE</span> · ${viewed} is ${relation}; active season is ${active}, so AI requests are bypassed completely.`;
   } else {
-    el.innerHTML = `<span style="color:var(--green)">BACKEND AI CONNECTED</span> · OpenAI requests are proxied through /api/ai-news; no API key is stored in this browser.`;
+    el.innerHTML = `<span style="color:var(--green)">BACKEND AI CONNECTED</span> · Claude requests are proxied through /api/ai-news; no API key is stored in this browser.`;
   }
 }
 
