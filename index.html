@@ -5507,7 +5507,8 @@ function rosterOf(side){
 /* One pass over the week that every generator reads from, so the
    box score is parsed once no matter how many stories run. */
 function weekContext(week){
-  const games = LeagueData.getWeekMatchups(week);
+  const rawGames = LeagueData.getWeekMatchups(week);
+  const games = Array.isArray(rawGames) ? rawGames.filter(Boolean) : [];
   const sides = [];
 
   games.forEach(g=>{
@@ -5643,7 +5644,7 @@ function weekContext(week){
     lowSide:  byScore[byScore.length - 1] || null,
     high: allScores.length ? Math.max(...allScores) : 0,
     low:  allScores.length ? Math.min(...allScores) : 0,
-    teamCount: LeagueData.getTeams().length,
+    teamCount: (LeagueData.getTeams() || []).length,
   };
 }
 
@@ -10651,14 +10652,16 @@ function transitionStateFallback(ctx){
     byline:'FSN Senior League Insider',
     dateline:`${leagueDateline()} · ${prior} FINAL / ${season} PRESEASON`,
     crest:teams[0] ? { name:teams[0].name, logo:teams[0].logo } : null,
-    headline:`STATE OF THE LEAGUE: ${season} BEGINS WITH THE TITLE RACE RESET`,
-    dek:`The ${prior} final is the starting point. Week 1 decides what survives into the new season.`,
+    facts:{ winner:{ name:'The defending champion' }, loser:{ name:'the field' } },
+    headline:`STATE OF THE LEAGUE: ${season} OPENS WITH THE TITLE RACE BLOWN WIDE OPEN`,
+    dek:`The ${prior} final is the starting gun. Week 1 decides which reputations survive contact with a real Sunday.`,
+    narrativeLocked:true,
     paragraphs:[
-      `${datelineTag()} The league has reached its transition point: last season is now evidence, and <b>${season}</b> begins with every roster back under review.`,
-      `The preceding champion remains the standard until the new schedule produces a replacement. When the ${prior} final table is available, this banner attaches the defending champion and exact title path automatically.`,
-      `No matchup recap can replace the transition story before Week 1 establishes the new standings. Champion PPG, expected wins, luck delta and the exact playoff path remain explicit data slots until the prior archive supplies verified values.`,
+      `${datelineTag()} The league has hit its transition point, and it is not a gentle one: last season is evidence now, and <b>${season}</b> opens with every roster dragged back under the knife.`,
+      `Somebody walked out of ${prior} with the ring, and the whole field has spent the winter deciding it is beatable. The defending champion stays the standard until a rival marches up and takes it on the scoreboard — and the moment the ${prior} final table fully resolves, this banner nails the champion and the exact title path to the top of the report.`,
+      `Nothing gets fabricated here — champion PPG, expected wins, luck delta and the round-by-round path stay marked as pending until the archive coughs up verified numbers. But the assignment is already brutal and clear: Week 1 starts separating the contenders from the reputations, and it does not care who won last year.`,
     ],
-    quote:{ text:'The season resets the records, not the expectations.', who:'FSN SENIOR LEAGUE INSIDER' },
+    quote:{ text:'The records reset to zero. The grudges do not.', who:'FSN SENIOR LEAGUE INSIDER' },
     numbers:{ title:'Season Transition', rows:[
       { label:'Defending season', value:String(prior), note:'Final archive source' },
       { label:'New season', value:String(season), note:'Standings reset' },
@@ -10712,13 +10715,24 @@ function guaranteedTimelineFallback(week){
       dateline:leagueDateline()+' · '+prior+' FINAL / '+season+' PRESEASON',
       crest:champ ? {name:champName || 'Defending champion',logo:champ.logo || ''} : (teams[0] ? {name:teams[0].name,logo:teams[0].logo} : null),
       headline:'STATE OF THE LEAGUE: '+(champName ? upper(champName)+' ENTERS '+season+' WITH THE TARGET' : season+' OPENS WITH THE TITLE RACE RESET'),
-      dek:champName ? esc(champName)+' carries the '+prior+' title into a new league-wide audit.' : 'The prior final remains the baseline while the connected archive finishes resolving its champion.',
-      paragraphs:[
-        datelineTag()+' The league transition is on air. '+(champName ? '<b>'+esc(champName)+'</b> enters as the defending champion after a verified '+prior+' final.' : 'The prior champion slot remains explicit until the '+prior+' final table or winners bracket resolves it.'),
-        champName ? 'The macro profile reads <b>'+esc(champName)+'</b> at <b>'+(ppg?n1(ppg)+' PPG':'PPG unavailable')+'</b>, <b>'+(champ && Number.isFinite(Number(champ.expectedWins))?n1(champ.expectedWins):'expected wins unavailable')+'</b>, and a <b>'+(champ && Number.isFinite(Number(champ.luckDelta))?((Number(champ.luckDelta)>=0?'+':'')+n1(champ.luckDelta)):'luck delta unavailable')+'</b>.' : 'Champion PPG, expected wins, luck delta and the round-by-round title path stay visible as unavailable rather than being fabricated.',
-        (path.length ? 'The verified title path contains <b>'+path.length+'</b> elimination result'+(path.length===1?'':'s')+'. ' : '')+(sackoName ? '<b>'+esc(sackoName)+'</b> opens '+season+' on the redemption clock. ' : '')+'Week 1 now decides which parts of the prior season survive the reset.'
-      ],
-      quote:{text:'The records reset. The evidence does not.',who:'FSN SENIOR LEAGUE INSIDER'},
+      dek:champName ? esc(champName)+' carries the '+prior+' title into '+season+' as the most wanted roster in the league.' : 'The prior final remains the baseline while the connected archive finishes resolving its champion.',
+      paragraphs:(function(){
+        const luckTxt = champ && Number.isFinite(Number(champ.luckDelta)) ? ((Number(champ.luckDelta)>=0?'+':'')+n1(champ.luckDelta)) : null;
+        const xwTxt = champ && Number.isFinite(Number(champ.expectedWins)) ? n1(champ.expectedWins) : null;
+        if(champName){
+          return [
+            datelineTag()+' There is a name on the trophy again, and the whole league has spent the offseason learning to hate it. <b>'+esc(champName)+'</b> walks into '+season+' as the defending champion after a verified '+prior+' final — the one roster everybody else is now built to end.',
+            'The receipts are not flattering to the field. <b>'+esc(champName)+'</b> posted '+(ppg?'<b>'+n1(ppg)+' PPG</b>':'a title-winning scoring rate')+(xwTxt?', <b>'+xwTxt+'</b> schedule-neutral expected wins':'')+(luckTxt?' and a luck delta of <b>'+luckTxt+'</b>':'')+' — '+(luckTxt && Number(champ.luckDelta)>=1 ? 'and yes, some of that was fortune the field will point at all season long' : luckTxt && Number(champ.luckDelta)<=-1 ? 'and if anything the scoring says the champion was even better than the record' : 'the kind of profile that does not care how it looked in October')+'.',
+            (path.length ? 'The title path was exact and merciless: <b>'+path.length+'</b> elimination game'+(path.length===1?'':'s')+', <b>'+path.length+'</b> team'+(path.length===1?'':'s')+' sent home. ' : 'The bracket confirmed the ring even if this archive will not print the round-by-round path. ')+(sackoName ? 'At the other end of the ledger, <b>'+esc(sackoName)+'</b> opens '+season+' dead last and on the redemption clock, and the whole league is happy to remind them what time it is. ' : '')+'The ring story is settled. Every other score in this league gets reopened the moment Week 1 kicks off.'
+          ];
+        }
+        return [
+          datelineTag()+' The league has reached its transition point: last season is now evidence, and <b>'+season+'</b> opens with every roster back under the knife.',
+          'The prior champion stays the standard until somebody walks up and takes it on the scoreboard. When the '+prior+' final table resolves, this banner attaches the defending champion and the exact title path automatically.',
+          'Champion PPG, expected wins, luck delta and the round-by-round path stay visible as unavailable rather than invented — but make no mistake, Week 1 decides which parts of last season were real and which were on loan.'
+        ];
+      })(),
+      quote:{text:'The records reset to zero. The target on the champion does not.',who:'FSN SENIOR LEAGUE INSIDER'},
       numbers:{title:'By the Numbers',rows:rows}
     });
     story.timeline=true; story.slot='recap'; story.topic='breaking'; story.at=at;
@@ -10765,13 +10779,36 @@ function getTimelineStream(week){
 
   const key = String(viewedSeasonYear()) + ':' + String(week) + ':' + custom.map(a=> a.id).join(',');
   if(streamCache.key === key && streamCache.list){
-    const cachedCtx = weekContext(week);
-    streamCache.list.forEach(a=>{ restamp(a); applySeasonTone(a, cachedCtx); });
+    let cachedCtx = null;
+    try{ cachedCtx = weekContext(week); }catch(_){ cachedCtx = null; }
+    streamCache.list.forEach(a=>{ try{ restamp(a); if(cachedCtx) applySeasonTone(a, cachedCtx); }catch(_){} });
     return streamCache.list;
   }
 
-  const ctx = weekContext(week);
-  const phase = FSNIntel.seasonPhase(week);
+  /* A weekContext() failure on a sparse or malformed archive must not collapse
+     the entire News Desk to the single last-resort card. Build the context
+     defensively and, if it throws, fall back to an empty pregame context so the
+     State of the League lead and preview generators still run and the desk keeps
+     its depth instead of showing one terse story. */
+  let ctx;
+  try{
+    ctx = weekContext(week);
+  }catch(err){
+    console.error('[Timeline] weekContext failed; using pregame fallback context', err);
+    let teamCount = 0;
+    try{ teamCount = (LeagueData.getTeams() || []).length; }catch(_){ teamCount = 0; }
+    ctx = {
+      week: Number(week) || 1, games: [], sides: [], scored: [], posted: [], teamSlateKey: '',
+      anyScored: false, unplayedWeek: true, futureLiveWeek: false,
+      active2026PregameGuard: true, currentLeagueWeek: 0,
+      weekTotal: 0, allScores: [], avg: 0, median: 0,
+      playoffWeek: false, playoffRound: '', playoffFinalRound: false, priorPlayoffWeek: null,
+      playoffGames: [], championshipGames: [], toiletGames: [], consolationGames: [], featuredGames: [],
+      lineupBoard: [], highSide: null, lowSide: null, high: 0, low: 0, teamCount,
+    };
+  }
+  let phase;
+  try{ phase = FSNIntel.seasonPhase(week); }catch(_){ phase = 'preseason'; }
   const transitionWindow = !ctx.playoffWeek &&
     (phase === 'preseason' || phase === 'draft' || Number(ctx.week) === 1);
   const pregameOnly = ctx.active2026PregameGuard || ctx.allScores.length === 0 || ctx.weekTotal <= 0;
@@ -10804,10 +10841,16 @@ function getTimelineStream(week){
      generator gets one guarded retry; the final fallback is a complete State
      of the League article rather than a recap or null card. */
   if(transitionWindow && !events.some(a=> a && a.kind === 'sotl')){
-    let stateStories = [];
-    try{ stateStories = tlPreseason(ctx) || []; }catch(err){ stateStories = []; }
-    const stateStory = stateStories.find(a=> a && a.kind === 'sotl') || transitionStateFallback(ctx);
-    events.unshift(stateStory);
+    let stateStory = null;
+    try{
+      const stateStories = tlPreseason(ctx) || [];
+      stateStory = stateStories.find(a=> a && a.kind === 'sotl') || null;
+    }catch(err){ console.error('[Timeline] tlPreseason retry failed', err); }
+    if(!stateStory){
+      try{ stateStory = transitionStateFallback(ctx); }
+      catch(err){ console.error('[Timeline] transitionStateFallback failed', err); }
+    }
+    if(stateStory) events.unshift(stateStory);
   }
 
   /* Draft season pulls its coverage to the front — in August nobody wants a
@@ -10858,7 +10901,7 @@ function getTimelineStream(week){
     }
   }
 
-  list.forEach(a=>{ restamp(a); applySeasonTone(a, ctx); });
+  list.forEach(a=>{ try{ restamp(a); applySeasonTone(a, ctx); }catch(_){ /* per-card polish is non-fatal */ } });
   streamCache = { key, list };
   return list;
 }
