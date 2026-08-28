@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>FSN Setup</title>
+<style>
+  html,body{margin:0;width:100%;height:100%;background:#080a0e;overflow:hidden;color:#fff;font-family:system-ui,-apple-system,sans-serif}
+  #status{position:fixed;inset:0;display:grid;place-items:center;z-index:0;color:#7c8698;font-size:12px;font-weight:800;letter-spacing:.14em;text-transform:uppercase}
+  #appFrame{position:fixed;inset:0;width:100%;height:100%;border:0;z-index:1;background:#080a0e}
+</style>
+</head>
+<body>
+<div id="status">Opening FSN setup…</div>
+<iframe id="appFrame" src="/" title="Fantasy Sports Network setup"></iframe>
+<script>
+(function(){
+  var params = new URLSearchParams(window.location.search);
+  var provider = params.get('provider') === 'sleeper' ? 'sleeper' : 'espn';
+  var frame = document.getElementById('appFrame');
+
+  function enterSetup(){
+    try{
+      var win = frame.contentWindow;
+      var doc = frame.contentDocument || (win && win.document);
+      if(!win || !doc) return false;
+
+      if(typeof win.setProvider === 'function') win.setProvider(provider);
+      else {
+        var providerBtn = doc.getElementById(provider === 'sleeper' ? 'providerSleeper' : 'providerEspn');
+        if(providerBtn) providerBtn.click();
+      }
+
+      if(typeof win.setScreen === 'function') win.setScreen('setup');
+      else {
+        var setupBtn = doc.querySelector('[data-tab="setup"]');
+        if(setupBtn) setupBtn.click();
+      }
+
+      try{ if(typeof win.savePrefs === 'function') win.savePrefs(); }catch(_e){}
+
+      var leagueInput = doc.getElementById('leagueIdInput');
+      if(leagueInput) setTimeout(function(){ try{ leagueInput.focus({preventScroll:true}); }catch(_e){ leagueInput.focus(); } }, 100);
+      return true;
+    }catch(e){ return false; }
+  }
+
+  frame.addEventListener('load', function(){
+    var tries = 0;
+    var timer = setInterval(function(){
+      tries++;
+      if(enterSetup() || tries > 40) clearInterval(timer);
+    }, 125);
+  });
+})();
+</script>
+</body>
+</html>
