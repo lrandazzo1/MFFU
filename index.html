@@ -4527,6 +4527,45 @@ function seasonTable(entry){
     };
   });
 
+  /* Schedule-neutral historical analytics for the macro report. ESPN final
+     records tell us what happened; expected wins estimates what each weekly
+     score deserved against that week's league average. */
+  const expectedByTeam = Object.create(null);
+  const bracketStart = bracket.length
+    ? Math.min.apply(null, bracket.map(g=> Number(g.matchupPeriodId || Number.MAX_SAFE_INTEGER)))
+    : Number.MAX_SAFE_INTEGER;
+  const regularGames = (Array.isArray(ld.schedule) ? ld.schedule : []).filter(g=>{
+    if(!g || !g.home || !g.away) return false;
+    const period = Number(g.matchupPeriodId || 0);
+    const homeScore = Number(g.home.totalPoints || 0), awayScore = Number(g.away.totalPoints || 0);
+    return period > 0 && period < bracketStart && (homeScore > 0 || awayScore > 0);
+  });
+  const weeklyScores = Object.create(null);
+  regularGames.forEach(g=>{
+    const period = Number(g.matchupPeriodId || 0);
+    const list = weeklyScores[period] || (weeklyScores[period] = []);
+    list.push({teamId:g.home.teamId,score:Number(g.home.totalPoints || 0)});
+    list.push({teamId:g.away.teamId,score:Number(g.away.totalPoints || 0)});
+  });
+  Object.keys(weeklyScores).forEach(period=>{
+    const list = weeklyScores[period].filter(item=> Number.isFinite(item.score));
+    if(!list.length) return;
+    const average = list.reduce((sum,item)=> sum + item.score,0) / list.length;
+    list.forEach(item=>{
+      const key=String(item.teamId);
+      const row=expectedByTeam[key] || (expectedByTeam[key]={expectedWins:0,samples:0});
+      row.expectedWins += item.score > average ? 1 : (Math.abs(item.score-average)<0.0001 ? 0.5 : 0);
+      row.samples++;
+    });
+  });
+  rows.forEach(r=>{
+    const expected=expectedByTeam[String(r.teamId)] || {expectedWins:0,samples:0};
+    r.actualWins=Number(r.wins || 0) + Number(r.ties || 0)*0.5;
+    r.expectedWins=expected.samples ? expected.expectedWins : null;
+    r.expectedWinSamples=expected.samples;
+    r.luckDelta=expected.samples ? r.actualWins-expected.expectedWins : null;
+  });
+
   const ranked = rows.filter(r=> r.finalRank > 0);
   const complete = ranked.length >= Math.max(2, Math.ceil(rows.length * 0.5)) || bracketChampionId != null;
   let standings;
@@ -4687,6 +4726,7 @@ function preseasonReport(){
         playoffSeed: row.playoffSeed || row.finalRank,
         record: row.record,
         wins: row.wins, losses: row.losses, ties: row.ties, games: row.games,
+        actualWins:row.actualWins, expectedWins:row.expectedWins, expectedWinSamples:row.expectedWinSamples, luckDelta:row.luckDelta,
         pf: row.pf, pa: row.pa, ppg: row.ppg || (row.games ? row.pf / row.games : 0),
         madePlayoffs: row.madePlayoffs,
         profile: p,
@@ -6627,14 +6667,18 @@ function auxiliaryCopy(ctx, category, ordinal, tokens){
 
 /* ============================================================
    NARRATIVE BODY MATRIX
-   Thirty independent openings, developments and closes are combined without
-   replacement across every article category. The allocation key is exactly
-   league_id + season_year + week_number + article_type. A persisted blacklist
-   keeps previously assigned body signatures stable across reloads and prevents
-   another story from receiving the same paragraph skeleton.
+   Forty-eight independent openings, developments and closes form 110,592
+   visible structures per narrative family. SHA-256 assigns each compound key
+   (league_id + season_year + week_number + article_type), while a league-scoped
+   persistent ledger collision-checks every body and headline signature across
+   the full archive. A used structure is never silently recycled.
 ============================================================ */
-const BODY_MATRIX_VERSION = 2;
-const BODY_MEMORY_KEY = 'mffu.narrative.body.memory.v2';
+const BODY_MATRIX_VERSION = 3;
+const BODY_MEMORY_KEY = 'mffu.narrative.body.memory.v3';
+const BODY_LEGACY_MEMORY_KEY = 'mffu.narrative.body.memory.v2';
+const BODY_AXIS_SIZE = 48;
+const BODY_SIGNATURE_SPACE = BODY_AXIS_SIZE * BODY_AXIS_SIZE * BODY_AXIS_SIZE;
+const HEADLINE_SIGNATURE_SPACE = BODY_AXIS_SIZE * BODY_AXIS_SIZE;
 const BODY_OPENINGS = [
   'The first honest read comes from the final score.', 'Start with the part nobody can spin: the scoreboard.',
   'The week changed shape the moment this result went final.', 'Before the excuses arrive, preserve the evidence.',
@@ -6650,7 +6694,17 @@ const BODY_OPENINGS = [
   'The first paragraph belongs to the team that forced the issue.', 'A season reveals itself through results with this much texture.',
   'No headline can improve on the tension already inside the score.', 'The recap starts at the point where probability gave way to fact.',
   'This was the week’s clearest answer to an unresolved question.', 'The final score closed the matchup and opened the investigation.',
-  'Some outcomes need context; this one demanded an accounting.', 'The archive received a result with its own gravity.'
+  'Some outcomes need context; this one demanded an accounting.', 'The archive received a result with its own gravity.',
+  'Read the scoreboard as testimony and the margin as corroboration.', 'The matchup broke from script before either bench could adjust.',
+  'A routine week disappeared as soon as this pairing found leverage.', 'The result arrived with enough force to reset every prior assumption.',
+  'Open the file at the exact point the favorite lost control.', 'The league table changed by one line and the season argument by much more.',
+  'The decisive evidence was hiding in plain sight across the starting lineup.', 'This final deserves an audit before it becomes a memory.',
+  'The contest turned into a referendum on every pregame projection.', 'One matchup supplied the week with its defining piece of proof.',
+  'The score is settled; the meaning of it is only beginning.', 'Start at the pressure point where the matchup stopped being ordinary.',
+  'The Sunday ledger recorded a result nobody gets to edit.', 'This was less a final score than a new operating condition.',
+  'The week found its hinge game and refused to let go.', 'The clean version of the story begins with who absorbed the pressure.',
+  'A matchup becomes news when the consequences outgrow the margin.', 'The standings changed quietly while the league hierarchy moved loudly.',
+  'The tape offered a verdict before the projections could issue a correction.', 'The result belongs in the archive with the warning label still attached.'
 ];
 const BODY_DEVELOPMENTS = [
   'The scoring profile separates repeatable strength from one-week noise.', 'The matchup turns on how production was distributed across the lineup.',
@@ -6667,7 +6721,16 @@ const BODY_DEVELOPMENTS = [
   'The loss is best understood through missed leverage rather than bad luck.', 'The winner created separation in places the projection did not anticipate.',
   'The matchup’s internal math explains more than any postgame quote could.', 'The playoff path or draft capital only matters after surviving this evidence.',
   'The week produced enough data to distinguish execution from fortune.', 'The historical sample turns a hot take into a measurable claim.',
-  'The final reveals both the ceiling of one roster and the exposure of the other.', 'The numbers connect the Sunday result to the season’s larger argument.'
+  'The final reveals both the ceiling of one roster and the exposure of the other.', 'The numbers connect the Sunday result to the season’s larger argument.',
+  'Expected wins supply the counterfactual while the record supplies the consequence.', 'Possession-by-possession scoring exposes where control actually changed hands.',
+  'The lineup floor matters here because the ceiling alone cannot explain the finish.', 'Schedule-adjusted production separates the opponent effect from the roster effect.',
+  'The weekly rank adds scale to a score that otherwise floats without context.', 'Starter concentration shows whether one eruption or a complete roster built the margin.',
+  'The season-to-date differential tests whether this result confirms or contradicts form.', 'Win probability traces the moments where ordinary variance became decisive leverage.',
+  'The matchup pair history measures how much this result changes an established rivalry.', 'Bench opportunity cost converts a managerial decision into points the standings can feel.',
+  'Median-game performance supplies a second opponent and a cleaner measure of strength.', 'The scoring distribution reveals whether the final was stable, fragile or unsustainably hot.',
+  'Record, expected record and points per game now point in the same direction—or expose the split.', 'The opponent’s best answer arrived too late to change the structure of the result.',
+  'The roster’s weakest slot explains more of the margin than its loudest star.', 'A league-wide baseline turns the raw total into a percentile-level performance.',
+  'The closing lineup decisions show whether the finish was managed or merely survived.', 'Historical pace gives the score a standard stricter than this week alone.'
 ];
 const BODY_CLOSES = [
   'The next matchup now begins with a different burden of proof.', 'The standings move on, but this result remains part of the scouting report.',
@@ -6684,8 +6747,298 @@ const BODY_CLOSES = [
   'The lasting consequence is a standard both rosters now have to meet.', 'The calendar advances while the matchup keeps its permanent consequences.',
   'No transaction can undo the result; the next one can only answer it.', 'The final word belongs to the next lineup, but the first draft is already filed.',
   'This outcome will age according to what each team does with it.', 'The playoff math will eventually quantify what the room already felt.',
-  'The story pauses here, with the evidence intact and the pressure redistributed.', 'The season continues under a scoreboard that now knows more.'
+  'The story pauses here, with the evidence intact and the pressure redistributed.', 'The season continues under a scoreboard that now knows more.',
+  'The next opponent receives a scouting report written in this margin.', 'The standings keep only the result; the league will remember the method.',
+  'Every future projection now carries this game as an explicit correction.', 'The roster can answer next week, but it cannot make this evidence disappear.',
+  'The schedule turns forward with one team validated and the other newly exposed.', 'The rematch will begin long before kickoff because this finish now owns the premise.',
+  'The result narrows the range of believable outcomes for both teams.', 'October or December may revise the conclusion, but neither can delete the exhibit.',
+  'The next lineup card becomes the first formal response to this verdict.', 'The league moves on under a hierarchy this matchup helped redraw.',
+  'What looked like variance before kickoff now has a documented consequence.', 'The lasting question is whether the winning formula can survive a different opponent.',
+  'This final becomes the baseline against which the next claim will be measured.', 'One side leaves with proof of concept; the other leaves with a required correction.',
+  'The scoreboard closes, the audit remains open and the season absorbs both.', 'The week ends with a sharper map of where the league’s leverage lives.',
+  'The final becomes a fixed coordinate for every ranking that follows.', 'The next slate begins with this outcome embedded in the burden of proof.'
 ];
+
+const STATE_BODY_OPENINGS = [
+  "The league year begins with the trophy as evidence, not decoration.",
+  "A season transition is an audit of what the champion made repeatable.",
+  "Before Week 1 resets the standings, the prior bracket deserves a complete accounting.",
+  "The macro view starts with the team that survived the final elimination game.",
+  "Every new season inherits one unavoidable fact: somebody enters with the ring.",
+  "The state of the league can be measured from the champion outward.",
+  "The offseason changes rosters; it does not erase the path that crowned the holder.",
+  "Open the new league year at the last moment the old one became final.",
+  "The title defense begins inside the numbers that built the original run.",
+  "A clean preseason forecast first separates championship evidence from offseason mythology.",
+  "The bracket supplied the verdict; the archive supplies the explanation.",
+  "The league resets its records only after carrying forward the lessons of the final table.",
+  "One roster owns the trophy and every other roster owns the response.",
+  "The broadest season outlook begins with the narrowest postseason escape.",
+  "The calendar has moved, but the championship path remains the league’s controlling precedent.",
+  "A title changes the offseason conversation because it turns projection into proof.",
+  "The prior champion enters the new year as both benchmark and target.",
+  "The preseason board is clearest when read through the last completed bracket.",
+  "Every franchise arrives at Week 1 carrying a different burden from the prior season.",
+  "The league’s current condition is written across one title path and a dozen unfinished plans.",
+  "A season closes with a champion and reopens with a league-wide counterargument.",
+  "The trophy gives the macro report its fixed point.",
+  "The new year starts where the previous elimination ladder ended.",
+  "A championship is the league’s most durable data point entering a reset.",
+  "The offseason can change personnel faster than it changes established pressure.",
+  "The first serious forecast treats the final table as evidence and the draft board as hypothesis.",
+  "The defending champion is not a prediction; it is the starting condition.",
+  "Every preseason hierarchy has to explain what it learned from the last bracket.",
+  "The league enters transition with one completed path and many proposed alternatives.",
+  "The title holder sets the standard before a single new matchup can challenge it.",
+  "A macro season review begins by reconstructing how the trophy actually moved.",
+  "The league-wide reset is real, but it is not memoryless.",
+  "The archive opens the new year by naming who converted opportunity into a ring.",
+  "Every contender’s outlook is relative to the champion’s documented route.",
+  "The previous final is the last verified signal before the new schedule starts.",
+  "The title race resets around a champion whose path can be measured round by round.",
+  "A new season does not begin at zero; it begins with inherited evidence.",
+  "The preseason picture comes into focus when luck, scoring and bracket execution are read together.",
+  "The league’s next chapter opens under the shadow of its most recent champion.",
+  "The final standings are a snapshot; the title path is the full transition record.",
+  "The macro file begins with the roster that turned a season into league history.",
+  "The league returns with the trophy settled and every underlying assumption reopened.",
+  "A championship season leaves behind a blueprint, a warning and a target.",
+  "The transition report starts by testing whether the prior winner’s profile can travel.",
+  "The next title race begins under conditions created by the last one.",
+  "The league’s balance of power enters Week 1 with a documented incumbent.",
+  "The offseason narrative becomes useful only after it is checked against the completed data.",
+  "The season outlook starts with the final result and expands through the entire league."
+];
+const STATE_BODY_DEVELOPMENTS = [
+  "The bracket path identifies every elimination opponent and the score that advanced the champion.",
+  "Points per game establishes weekly force while expected wins tests the quality beneath the record.",
+  "Luck delta shows where actual wins separated from schedule-neutral scoring performance.",
+  "The final seed explains the route into the bracket without overstating what happened inside it.",
+  "Round-by-round results distinguish a dominant run from one built on survival margins.",
+  "Historical scoring pace places the champion against more than a single-season field.",
+  "The prior champion’s record, PPG and expected-win profile form three independent tests of strength.",
+  "The title path carries more information when every opponent is attached to the exact period and final.",
+  "League-average scoring supplies the baseline for evaluating both the champion and last place.",
+  "Expected wins remove opponent timing and ask how often the scoring level deserved a result.",
+  "The gap between actual and expected wins measures fortune without dismissing execution.",
+  "Playoff seeding shows where the run began; bracket reconstruction shows how it finished.",
+  "The archive connects regular-season quality with elimination-game delivery.",
+  "The champion’s weekly rate matters because total points alone rewards schedule length.",
+  "Historical profiles expose title droughts that a single preseason ranking would hide.",
+  "Career scoring and playoff appearances identify the strongest unfinished résumés.",
+  "The last-place profile defines the opposite edge of the league’s competitive range.",
+  "Opening-week rematches translate all-time history into immediate schedule pressure.",
+  "Repeat-title frequency gives the defense an empirical baseline instead of a slogan.",
+  "The league field is best understood through scoring distribution, not reputation order.",
+  "A title archetype classifies the run without forcing every champion into the same story.",
+  "The record shows outcomes, PPG shows force and luck delta shows schedule interaction.",
+  "The winners bracket turns the trophy from an assertion into a traceable path.",
+  "Prior-season analytics provide the only completed sample available before kickoff.",
+  "The upcoming slate tests whether last year’s strongest signals remain portable.",
+  "The champion’s seed and scoring rank reveal whether the postseason confirmed or overturned form.",
+  "The archive distinguishes sustained dominance, late acceleration and elimination resilience.",
+  "The macro board combines franchise history with the most recent season’s measured profile.",
+  "Every title opponent adds context to the degree of difficulty.",
+  "The new-season outlook is anchored to completed games rather than draft-room confidence.",
+  "A drought leaderboard reveals where pressure accumulates beyond the defending champion.",
+  "The prior sacko’s weekly scoring rate establishes the clearest redemption baseline.",
+  "All-time rivalry data gives Week 1 matchups consequences older than the current roster.",
+  "The repeat-defense sample estimates how often this league allows continuity at the top.",
+  "Expected-win variance identifies champions who outran or underperformed their scoring quality.",
+  "The title run becomes legible only when regular-season and playoff evidence are separated.",
+  "The final table orders the league; the analytics explain the distance between positions.",
+  "Historical scoring context prevents one inflated or depressed season from defining the standard.",
+  "The champion’s path and the field’s droughts describe both ends of the competitive cycle.",
+  "The outlook uses the prior year as a baseline, never as a guarantee.",
+  "Schedule-neutral performance clarifies which records were helped or punished by opponent timing.",
+  "The bracket’s exact finals identify where the championship was actually at risk.",
+  "The league’s weekly average converts PPG into a relative measure of pressure.",
+  "Career résumés show which managers enter the reset with the most unfinished work.",
+  "The new schedule supplies the next experiment for every conclusion in the archive.",
+  "The macro feature stays grounded by attaching every claim to a record, score or rate.",
+  "The preseason forecast becomes richer when title path, luck and scoring are read as one system.",
+  "The archive supplies enough context to make the upcoming outlook specific without pretending certainty."
+];
+const STATE_BODY_CLOSES = [
+  "Week 1 now decides which parts of the championship profile were durable.",
+  "The defense begins with the field holding a complete scouting report.",
+  "Every contender enters the new schedule with a measurable distance to close.",
+  "The trophy stays put until the next bracket produces contrary evidence.",
+  "The new season can overturn the hierarchy, but it must do so on the scoreboard.",
+  "The first scored slate becomes the opening test of every offseason claim.",
+  "The title holder owns the benchmark; the field owns the opportunity to replace it.",
+  "The macro picture remains provisional only because the next games have not started.",
+  "The archive has set the baseline and the schedule will now supply the revisions.",
+  "No roster carries wins forward, but every roster carries its evidence.",
+  "The title race reopens with the prior champion fully measured.",
+  "The next final will answer which preseason lessons survived contact with the season.",
+  "The league begins again under a standard built from actual elimination games.",
+  "Every Week 1 result will either reinforce or weaken this inherited map.",
+  "The outlook ends where competition begins: with every conclusion available for challenge.",
+  "The bracket is closed, the audit is complete and the new experiment is ready.",
+  "A repeat requires the champion to reproduce advantages the archive has already exposed.",
+  "The field’s task is no longer abstract because the path to beat is documented.",
+  "The season transition turns history into a set of live assignments.",
+  "The next standings table will begin translating forecast pressure into results.",
+  "Nothing in the archive guarantees a repeat; everything in it defines the test.",
+  "The new year starts with the hierarchy known and its durability unknown.",
+  "Every manager receives the same reset and a different historical burden.",
+  "The first kickoff moves this report from outlook to evidence collection.",
+  "The title path is permanent; the balance of power is not.",
+  "The league can now argue about projections without arguing about the baseline.",
+  "The champion’s profile becomes the control case for the coming season.",
+  "The schedule will determine whether the prior run was blueprint, peak or warning.",
+  "Week 1 gives the field its first chance to rewrite the macro story.",
+  "The league enters the reset with its strongest and weakest signals clearly marked.",
+  "The next season begins under questions precise enough to measure.",
+  "A new champion must eventually produce a path at least as concrete as this one.",
+  "The offseason ends when the scoreboard starts accepting new evidence.",
+  "Every inherited narrative now faces a live weekly test.",
+  "The transition is complete once the opening slate starts changing the numbers.",
+  "The field has a target, the champion has a burden and the archive has the receipts.",
+  "The new title race opens with no protected assumptions.",
+  "The first month will show which historical advantages still travel.",
+  "The macro verdict remains valid until the season earns a revision.",
+  "The league moves toward Week 1 with the important questions already quantified.",
+  "The archive closes its review and hands the case to the upcoming schedule.",
+  "The champion begins ahead in history and tied at zero in the standings.",
+  "The next scoring sample will test every line of this outlook.",
+  "The title defense starts as a data problem before it becomes a bracket problem.",
+  "Every franchise now has a defined route from inherited position to new evidence.",
+  "The season opens with the trophy occupied and the future unassigned.",
+  "This report fixes the baseline; competition determines the direction from here.",
+  "The league returns to play with its history preserved and its outcome completely open."
+];
+
+const RECAP_HEADLINE_TEMPLATES = [
+  "{TEAM} FILES THE WEEK’S DECISIVE RESULT",
+  "{TEAM} TURNS THE SCOREBOARD INTO A STATEMENT",
+  "{TEAM} REWRITES THE WEEK AGAINST {OPP}",
+  "{TEAM} TAKES CONTROL OF THE MATCHUP FILE",
+  "{TEAM} LEAVES {OPP} WITH THE CORRECTION PLAN",
+  "{TEAM} WINS THE ARGUMENT ON THE SCOREBOARD",
+  "{TEAM} FORCES A NEW READ OF THE STANDINGS",
+  "{TEAM} CONVERTS PRESSURE INTO A FINAL",
+  "{TEAM} BREAKS THE PROJECTION AGAINST {OPP}",
+  "{TEAM} OWNS THE EVIDENCE AFTER WEEK {WEEK}",
+  "{TEAM} MOVES THE LEAGUE BOARD WITH ONE RESULT",
+  "{TEAM} MAKES THE MARGIN IMPOSSIBLE TO IGNORE",
+  "{TEAM} SETS THE TERMS AND {OPP} CANNOT ANSWER",
+  "{TEAM} CHANGES THE WEEK’S OPERATING CONDITIONS",
+  "{TEAM} DELIVERS THE RESULT THE MODEL MUST CARRY",
+  "{TEAM} PUTS {OPP} UNDER A BRIGHTER LIGHT",
+  "{TEAM} SECURES THE FINAL AND THE LEVERAGE",
+  "{TEAM} TURNS WEEK {WEEK} INTO A REFERENDUM",
+  "{TEAM} MAKES THE FINAL SCORE THE LEAD",
+  "{TEAM} MOVES FROM PROJECTION TO PROOF",
+  "{TEAM} CLAIMS THE MATCHUP’S PRESSURE POINTS",
+  "{TEAM} CLOSES THE FILE ON {OPP}",
+  "{TEAM} BUILDS A RESULT WITH SEASON CONSEQUENCES",
+  "{TEAM} MAKES {SCORE} THE WEEK’S DEFINING LINE",
+  "{TEAM} CREATES SEPARATION WHEN IT MATTERS",
+  "{TEAM} SURVIVES THE MATCHUP AND RAISES THE STANDARD",
+  "{TEAM} PUTS A PERMANENT RESULT ON THE LEDGER",
+  "{TEAM} FINDS THE LEVERAGE {OPP} COULD NOT",
+  "{TEAM} FORCES THE STANDINGS TO NOTICE",
+  "{TEAM} MAKES WEEK {WEEK} A PIECE OF EVIDENCE",
+  "{TEAM} DELIVERS A FINAL WITH A LONG SHADOW",
+  "{TEAM} TURNS LINEUP EXECUTION INTO CONTROL",
+  "{TEAM} EMERGES WITH THE RESULT AND THE RECEIPTS",
+  "{TEAM} BREAKS OPEN THE MATCHUP’S CENTRAL QUESTION",
+  "{TEAM} MAKES THE WEEK’S CLEANEST CASE",
+  "{TEAM} SENDS {OPP} BACK TO THE LINEUP BOARD",
+  "{TEAM} CONVERTS A {MARGIN}-POINT EDGE INTO PROOF",
+  "{TEAM} LEAVES NO ROOM FOR A PROJECTION ALIBI",
+  "{TEAM} CLAIMS THE WEEK’S MOST USEFUL SIGNAL",
+  "{TEAM} TURNS THE FINAL INTO A SCOUTING REPORT",
+  "{TEAM} TAKES THE MATCHUP BEYOND ROUTINE",
+  "{TEAM} PUTS THE SEASON MODEL ON NOTICE",
+  "{TEAM} MAKES {OPP} ABSORB THE WEEK’S VERDICT",
+  "{TEAM} OWNS THE SCORE AND THE NEXT QUESTION",
+  "{TEAM} BUILDS THE RESULT THE ARCHIVE WILL KEEP",
+  "{TEAM} TAKES WEEK {WEEK} FROM THEORY TO FACT",
+  "{TEAM} CHANGES THE HIERARCHY AGAINST {OPP}",
+  "{TEAM} FINISHES WITH THE MATCHUP’S LAST WORD"
+];
+const STATE_HEADLINE_TEMPLATES = [
+  "STATE OF THE LEAGUE: {TEAM} ENTERS {YEAR} WITH THE RING",
+  "STATE OF THE LEAGUE: THE {YEAR} TITLE RACE STARTS AT {TEAM}",
+  "STATE OF THE LEAGUE: {TEAM} SETS THE NEW SEASON STANDARD",
+  "STATE OF THE LEAGUE: THE CHAMPION’S PATH DEFINES {YEAR}",
+  "STATE OF THE LEAGUE: {TEAM} RETURNS AS BENCHMARK AND TARGET",
+  "STATE OF THE LEAGUE: {YEAR} OPENS UNDER A DOCUMENTED INCUMBENT",
+  "STATE OF THE LEAGUE: THE TROPHY IS SETTLED, THE HIERARCHY IS NOT",
+  "STATE OF THE LEAGUE: {TEAM} OWNS THE BASELINE FOR {YEAR}",
+  "STATE OF THE LEAGUE: THE FIELD REOPENS THE CASE AGAINST {TEAM}",
+  "STATE OF THE LEAGUE: {TEAM} CARRIES THE LAST VERIFIED SIGNAL",
+  "STATE OF THE LEAGUE: {YEAR} BEGINS WITH THE BRACKET RECEIPTS",
+  "STATE OF THE LEAGUE: THE TITLE DEFENSE STARTS IN THE DATA",
+  "STATE OF THE LEAGUE: {TEAM} RETURNS WITH A MEASURABLE TARGET",
+  "STATE OF THE LEAGUE: THE NEW YEAR INHERITS {TEAM}’S STANDARD",
+  "STATE OF THE LEAGUE: {YEAR} STARTS WHERE THE LAST FINAL ENDED",
+  "STATE OF THE LEAGUE: {TEAM} ANCHORS THE PRESEASON BOARD",
+  "STATE OF THE LEAGUE: THE ARCHIVE PUTS {TEAM} AT THE CENTER",
+  "STATE OF THE LEAGUE: {YEAR} RESETS AROUND THE DEFENDING CHAMPION",
+  "STATE OF THE LEAGUE: {TEAM} ENTERS THE AUDIT WITH PROOF",
+  "STATE OF THE LEAGUE: THE FIELD HAS A COMPLETE TITLE BLUEPRINT",
+  "STATE OF THE LEAGUE: {TEAM} MAKES THE OFFSEASON QUESTIONS SPECIFIC",
+  "STATE OF THE LEAGUE: {YEAR} OPENS WITH HISTORY STILL ACTIVE",
+  "STATE OF THE LEAGUE: THE CHAMPION IS KNOWN, THE REPEAT IS NOT",
+  "STATE OF THE LEAGUE: {TEAM} STARTS AHEAD IN HISTORY, TIED IN RECORD",
+  "STATE OF THE LEAGUE: THE NEXT TITLE PATH BEGINS HERE",
+  "STATE OF THE LEAGUE: {TEAM} OWNS THE TROPHY AND THE BURDEN",
+  "STATE OF THE LEAGUE: {YEAR} ARRIVES WITH THE BASELINE FIXED",
+  "STATE OF THE LEAGUE: THE DEFENSE OF {TEAM} BECOMES THE CONTROL CASE",
+  "STATE OF THE LEAGUE: {TEAM} RETURNS UNDER LEAGUE-WIDE REVIEW",
+  "STATE OF THE LEAGUE: THE MACRO BOARD STARTS WITH THE LAST CHAMPION",
+  "STATE OF THE LEAGUE: {YEAR} OPENS WITH EVERY ASSUMPTION TESTABLE",
+  "STATE OF THE LEAGUE: {TEAM} CARRIES THE BRACKET INTO WEEK 1",
+  "STATE OF THE LEAGUE: THE TROPHY HOLDER DEFINES THE DISTANCE",
+  "STATE OF THE LEAGUE: {TEAM} ENTERS {YEAR} WITH NO HIDDEN PATH",
+  "STATE OF THE LEAGUE: THE FINAL TABLE BECOMES THE PRESEASON MAP",
+  "STATE OF THE LEAGUE: {TEAM} RETURNS AS EVIDENCE, NOT PROJECTION",
+  "STATE OF THE LEAGUE: {YEAR} BEGINS WITH THE TITLE PROFILE EXPOSED",
+  "STATE OF THE LEAGUE: THE FIELD GETS ITS FIRST SHOT AT {TEAM}",
+  "STATE OF THE LEAGUE: {TEAM} HOLDS THE STANDARD UNTIL REPLACED",
+  "STATE OF THE LEAGUE: THE NEW SCHEDULE TAKES OVER FROM THE ARCHIVE",
+  "STATE OF THE LEAGUE: {YEAR} STARTS WITH THE RING AND THE RECEIPTS",
+  "STATE OF THE LEAGUE: {TEAM} OPENS THE NEXT COMPETITIVE CYCLE",
+  "STATE OF THE LEAGUE: THE TITLE RACE RETURNS WITH A KNOWN INCUMBENT",
+  "STATE OF THE LEAGUE: {TEAM} ENTERS WEEK 1 FULLY MEASURED",
+  "STATE OF THE LEAGUE: {YEAR} REOPENS THE BALANCE OF POWER",
+  "STATE OF THE LEAGUE: THE CHAMPION’S ADVANTAGES FACE A NEW TEST",
+  "STATE OF THE LEAGUE: {TEAM} STANDS AT THE CENTER OF THE RESET",
+  "STATE OF THE LEAGUE: THE LEAGUE RETURNS WITH THE TARGET ASSIGNED"
+];
+const RECAP_HEADLINE_SUFFIXES = [
+  "THE MARGIN BECOMES THE MESSAGE","THE RECORD NOW CARRIES THE PROOF","THE MODEL ABSORBS A NEW SIGNAL","THE STANDINGS FEEL THE IMPACT",
+  "THE LINEUP DECISIONS HOLD UP","THE PROJECTION LOSES THE APPEAL","THE WEEK ENDS WITH LESS DOUBT","THE ARCHIVE KEEPS THE RECEIPT",
+  "THE PRESSURE SHIFTS TO NEXT WEEK","THE REMATCH ACQUIRES A PREMISE","THE SEASON ARGUMENT CHANGES TERMS","THE SCORE CLOSES EVERY ALIBI",
+  "THE WINNER OWNS THE NEXT STANDARD","THE LOSER OWNS THE RESPONSE","THE RIVALRY ADDS ANOTHER CONSEQUENCE","THE PLAYOFF PATH MOVES A DEGREE",
+  "THE WEEKLY BASELINE GETS REWRITTEN","THE BENCH TELLS THE SECOND STORY","THE FINAL OUTGROWS THE PROJECTION","THE HIERARCHY MOVES WITH IT",
+  "THE RESULT SURVIVES EVERY SPIN","THE SCOUTING REPORT GETS SHARPER","THE NEXT OPPONENT GETS THE WARNING","THE EVIDENCE REPLACES THE HYPE",
+  "THE SEASON SAMPLE CHANGES SHAPE","THE POINT DIFFERENTIAL GAINS WEIGHT","THE WEEK FINDS ITS DEFINING RESULT","THE MATCHUP BECOMES PRECEDENT",
+  "THE RESPONSE MUST COME IN THE LINEUP","THE FINAL CREATES A NEW BASELINE","THE NUMBERS REMOVE THE EASY EXCUSE","THE SCHEDULE CARRIES THE CONSEQUENCE",
+  "THE VERDICT ENTERS LEAGUE MEMORY","THE PRESSURE REDISTRIBUTES IMMEDIATELY","THE SCOREBOARD FILES THE DECISION","THE NEXT REFRESH CANNOT ERASE IT",
+  "THE LEAGUE GETS A CLEANER MAP","THE OUTCOME BECOMES A CONTROL POINT","THE WIN CHANGES THE BURDEN OF PROOF","THE LOSS EXPOSES THE REQUIRED FIX",
+  "THE TAPE AND TOTAL AGREE","THE RESULT SETS UP THE NEXT TEST","THE ARCHIVE ADDS A WARNING LABEL","THE WEEK LEAVES A PERMANENT SIGNAL",
+  "THE FINAL DEFINES THE CURRENT SHAPE","THE MATCHUP RESETS EXPECTATIONS","THE SCORE BECOMES THE OPERATING CONDITION","THE SEASON MOVES FORWARD WITH PROOF"
+];
+const STATE_HEADLINE_SUFFIXES = [
+  "THE BRACKET PATH IS FULLY DOCUMENTED","PPG SETS THE WEEKLY STANDARD","EXPECTED WINS TEST THE RECORD","LUCK DELTA EXPOSES THE SCHEDULE EFFECT",
+  "THE FIELD INHERITS A MEASURABLE TARGET","WEEK 1 OPENS THE NEXT AUDIT","THE TITLE DEFENSE HAS A CONTROL CASE","THE ARCHIVE DEFINES THE BASELINE",
+  "THE TROPHY PATH BECOMES THE BLUEPRINT","THE NEW SCHEDULE GETS THE FINAL WORD","THE HIERARCHY STARTS KNOWN, NOT FIXED","THE REPEAT QUESTION ENTERS THE DATA",
+  "THE CHAMPION CARRIES THE BURDEN OF PROOF","THE FIELD CARRIES TWELVE COUNTERARGUMENTS","THE FINAL TABLE BECOMES A FORECAST INPUT","THE OUTLOOK BEGINS WITH COMPLETED GAMES",
+  "THE DROUGHT BOARD ADDS LEAGUE-WIDE PRESSURE","THE SACKO LINE SETS THE REDEMPTION FLOOR","THE OPENING SLATE REVIVES OLD HISTORY","THE TITLE PROFILE FACES A NEW SAMPLE",
+  "THE PRIOR SEASON STAYS EVIDENCE, NOT DESTINY","THE MACRO PICTURE HAS A FIXED POINT","THE DEFENDING PATH SETS THE DEGREE OF DIFFICULTY","THE NEW YEAR STARTS WITH EVERY CLAIM TESTABLE",
+  "THE SCORING RATE TRAVELS INTO THE RESET","THE EXPECTED RECORD REVEALS THE UNDERLYING FORM","THE PLAYOFF ROUNDS SHOW WHERE THE RING WAS AT RISK","THE FIELD GETS A COMPLETE SCOUTING REPORT",
+  "THE ARCHIVE PRESERVES THE CONTEXT","THE STANDINGS RETURN TO ZERO","THE TROPHY DOES NOT","THE TITLE CYCLE REOPENS UNDER REVIEW",
+  "THE CHAMPION STARTS AS BENCHMARK AND TARGET","THE LEAGUE AVERAGE DEFINES THE DISTANCE","THE REPEAT RATE TEMPERS THE MYTHOLOGY","THE NEXT FINAL MUST BUILD ITS OWN PATH",
+  "THE OFFSEASON ENDS WHEN NEW EVIDENCE ARRIVES","THE FIELD HAS ITS FIRST CHANCE TO REVISE THE MAP","THE HISTORY IS SET, THE BALANCE OF POWER IS OPEN","THE TRANSITION REPORT LOCKS THE STARTING CONDITIONS",
+  "THE UPCOMING SLATE TAKES OVER FROM THE MODEL","THE PRIOR RING BECOMES A LIVE ASSIGNMENT","THE NEXT TITLE RACE STARTS WITH RECEIPTS","THE CHAMPIONSHIP PROFILE ENTERS A NEW STRESS TEST",
+  "THE LEAGUE RETURNS WITH ITS QUESTIONS QUANTIFIED","THE TITLE DEFENSE BEGINS BEFORE THE BRACKET","THE MACRO BOARD CONNECTS HISTORY TO OUTLOOK","THE SEASON OPENS WITH THE FUTURE UNASSIGNED"
+];
+
 const BODY_CATEGORY_WORDS = {
   close:'survival', onescore:'late-game leverage', competitive:'control', blowout:'separation',
   bench:'lineup management', fraud:'exposure', power:'ranking pressure', sacko:'course correction',
@@ -6693,57 +7046,181 @@ const BODY_CATEGORY_WORDS = {
   cinderella:'postseason acceleration', juggernaut:'sustained dominance', survival:'elimination resilience',
   closer:'bracket execution', debrief:'postgame evidence', default:'season leverage'
 };
+
+function sha256Hex(input){
+  const text = unescape(encodeURIComponent(String(input == null ? "" : input)));
+  const rightRotate = function(value, amount){ return (value >>> amount) | (value << (32 - amount)); };
+  const words = [];
+  const bitLength = text.length * 8;
+  let i, j;
+  for(i=0; i<text.length; i++) words[i >> 2] |= text.charCodeAt(i) << (24 - (i % 4) * 8);
+  words[bitLength >> 5] |= 0x80 << (24 - bitLength % 32);
+  words[((bitLength + 64 >> 9) << 4) + 15] = bitLength;
+  const h = [0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19];
+  const k = [0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];
+  const w = new Array(64);
+  for(i=0; i<words.length; i+=16){
+    let a=h[0], b=h[1], cc=h[2], d=h[3], e=h[4], f=h[5], g=h[6], hh=h[7];
+    for(j=0; j<64; j++){
+      if(j<16) w[j]=words[i+j] | 0;
+      else{
+        const x=w[j-15], y=w[j-2];
+        const s0=rightRotate(x,7)^rightRotate(x,18)^(x>>>3);
+        const s1=rightRotate(y,17)^rightRotate(y,19)^(y>>>10);
+        w[j]=(w[j-16]+s0+w[j-7]+s1)|0;
+      }
+      const S1=rightRotate(e,6)^rightRotate(e,11)^rightRotate(e,25);
+      const ch=(e&f)^((~e)&g);
+      const temp1=(hh+S1+ch+k[j]+w[j])|0;
+      const S0=rightRotate(a,2)^rightRotate(a,13)^rightRotate(a,22);
+      const maj=(a&b)^(a&cc)^(b&cc);
+      const temp2=(S0+maj)|0;
+      hh=g; g=f; f=e; e=(d+temp1)|0; d=cc; cc=b; b=a; a=(temp1+temp2)|0;
+    }
+    h[0]=(h[0]+a)|0; h[1]=(h[1]+b)|0; h[2]=(h[2]+cc)|0; h[3]=(h[3]+d)|0;
+    h[4]=(h[4]+e)|0; h[5]=(h[5]+f)|0; h[6]=(h[6]+g)|0; h[7]=(h[7]+hh)|0;
+  }
+  return h.map(function(value){ return ("00000000" + (value >>> 0).toString(16)).slice(-8); }).join("");
+}
+function blankNarrativeMemory(){
+  return {version:BODY_MATRIX_VERSION, assignments:{}, headlineAssignments:{}, usedBodies:{}, usedHeadlines:{}};
+}
 function narrativeMemory(){
   try{
-    const parsed = JSON.parse(localStorage.getItem(BODY_MEMORY_KEY) || '{}');
-    return parsed && parsed.version === BODY_MATRIX_VERSION ? parsed : {version:BODY_MATRIX_VERSION, assignments:{}, used:{}};
-  }catch(e){ return {version:BODY_MATRIX_VERSION, assignments:{}, used:{}}; }
+    let parsed = JSON.parse(localStorage.getItem(BODY_MEMORY_KEY) || "null");
+    if(parsed && parsed.version === BODY_MATRIX_VERSION){
+      parsed.assignments = parsed.assignments || {};
+      parsed.headlineAssignments = parsed.headlineAssignments || {};
+      parsed.usedBodies = parsed.usedBodies || {};
+      parsed.usedHeadlines = parsed.usedHeadlines || {};
+      return parsed;
+    }
+    const legacy = JSON.parse(localStorage.getItem(BODY_LEGACY_MEMORY_KEY) || "null");
+    parsed = blankNarrativeMemory();
+    if(legacy && legacy.assignments){
+      parsed.legacyAssignments = legacy.assignments;
+      parsed.legacyUsed = legacy.used || {};
+    }
+    return parsed;
+  }catch(e){ return blankNarrativeMemory(); }
 }
 function saveNarrativeMemory(memory){
   try{ localStorage.setItem(BODY_MEMORY_KEY, JSON.stringify(memory)); }catch(e){}
 }
+function narrativeLeagueKey(){
+  const league = String(selectedLeagueId() || "unscoped-league").trim().toLowerCase();
+  return sha256Hex(league).slice(0,24);
+}
 function narrativeBodyIdentity(ctx, articleType){
-  return [selectedLeagueId(), viewedSeasonYear(), Number(ctx && ctx.week || effectiveWeek() || 0), articleType || 'default'].join('+');
+  return [
+    String(selectedLeagueId() || "unscoped-league").trim().toLowerCase(),
+    Number(viewedSeasonYear() || 0),
+    Number(ctx && ctx.week || effectiveWeek() || 0),
+    String(articleType || "default").trim().toLowerCase()
+  ].join("+");
+}
+function allocateNarrativeSignature(memory, identity, ledgerName, assignmentName, space, dimensions, scope){
+  if(memory[assignmentName][identity]) return memory[assignmentName][identity];
+  const leagueKey = narrativeLeagueKey();
+  const ledgerScope = leagueKey + ":" + String(scope || "global");
+  const used = memory[ledgerName][ledgerScope] || (memory[ledgerName][ledgerScope] = {});
+  const digest = sha256Hex("mffu:v3:" + identity + ":" + ledgerName);
+  const base = parseInt(digest.slice(0,12),16) % space;
+  const stepSeed = parseInt(digest.slice(12,24),16);
+  let step = (stepSeed % (space - 1)) + 1;
+  while(step % 2 === 0 || step % 3 === 0) step = (step + 1) % space || 1;
+  let chosen = null;
+  for(let probe=0; probe<space; probe++){
+    const n = (base + probe * step) % space;
+    const signature = [];
+    let remainder = n;
+    for(let axis=0; axis<dimensions; axis++){
+      signature.push(remainder % BODY_AXIS_SIZE);
+      remainder = Math.floor(remainder / BODY_AXIS_SIZE);
+    }
+    const key = signature.join("-");
+    if(!used[key] || used[key] === identity){
+      chosen = signature;
+      used[key] = identity;
+      break;
+    }
+  }
+  if(!chosen){
+    const overflow = sha256Hex(identity + ":overflow");
+    chosen = [parseInt(overflow.slice(0,2),16)%BODY_AXIS_SIZE,parseInt(overflow.slice(2,4),16)%BODY_AXIS_SIZE,parseInt(overflow.slice(4,6),16)%BODY_AXIS_SIZE,overflow];
+  }
+  memory[assignmentName][identity] = chosen;
+  return chosen;
 }
 function narrativeBodyBlueprint(ctx, articleType){
   const identity = narrativeBodyIdentity(ctx, articleType);
   const memory = narrativeMemory();
-  if(memory.assignments[identity]) return memory.assignments[identity];
-  const used = memory.used.__global || (memory.used.__global = {});
-  const base = Math.abs(hash(identity));
-  let chosen = null;
-  /* 27,000 distinct skeletons per category. Probe deterministically until an
-     unused tuple is found; no random retries and no silent reuse. */
-  for(let probe=0; probe<27000; probe++){
-    const n = (base + probe * 7919) % 27000;
-    const sig = [n % 30, Math.floor(n / 30) % 30, Math.floor(n / 900) % 30];
-    const key = sig.join('-');
-    if(!used[key]){ chosen = sig; used[key] = identity; break; }
-  }
-  /* The device would need 27,001 persisted stories to reach this branch.
-     Preserve uniqueness by expanding the signature instead of recycling. */
-  if(!chosen) chosen = [base % 30, Math.floor(base/30)%30, Math.floor(base/900)%30, base];
-  memory.assignments[identity] = chosen;
+  const chosen = allocateNarrativeSignature(memory,identity,"usedBodies","assignments",BODY_SIGNATURE_SPACE,3,"all-article-types");
   saveNarrativeMemory(memory);
   return chosen;
 }
+function narrativeHeadlineBlueprint(ctx, articleType, family){
+  const identity = narrativeBodyIdentity(ctx, articleType);
+  const memory = narrativeMemory();
+  const chosen = allocateNarrativeSignature(memory,identity,"usedHeadlines","headlineAssignments",HEADLINE_SIGNATURE_SPACE,2,family);
+  saveNarrativeMemory(memory);
+  return chosen;
+}
+function narrativeFamily(articleType){
+  const type = String(articleType || "").toLowerCase();
+  return /sotl|state-of|state_of|champion|cinderella|juggernaut|title-defense/.test(type) ? "sotl" : "recap";
+}
+function narrativeHeadlineTokens(ctx, facts){
+  const f=facts || {};
+  const winner=f.winner || f.champ || {};
+  const loser=f.loser || f.sacko || {};
+  const winnerName=winner.name || winner.displayName || winner.teamName || "League Board";
+  const loserName=loser.name || loser.displayName || loser.teamName || "League Field";
+  const ws=Number(f.winnerScore), ls=Number(f.loserScore), margin=Number(f.margin);
+  return {
+    TEAM:upper(winnerName), OPP:upper(loserName),
+    YEAR:String(Number(viewedSeasonYear() || new Date().getFullYear())),
+    WEEK:String(Number(ctx && ctx.week || effectiveWeek() || 0)),
+    SCORE:Number.isFinite(ws) && Number.isFinite(ls) && (ws>0 || ls>0) ? n1(ws)+"–"+n1(ls) : "THE FINAL",
+    MARGIN:Number.isFinite(margin) && margin>0 ? n1(margin) : "DECISIVE"
+  };
+}
+function fillNarrativeTokens(template,tokens){
+  return String(template || "").replace(/\{([A-Z_]+)\}/g,function(_,key){ return tokens[key] != null ? String(tokens[key]) : ""; });
+}
+function deterministicNarrativeHeadline(ctx, articleType, facts, fallback){
+  const family=narrativeFamily(articleType);
+  const sig=narrativeHeadlineBlueprint(ctx,articleType,family);
+  const templates=family==="sotl" ? STATE_HEADLINE_TEMPLATES : RECAP_HEADLINE_TEMPLATES;
+  const suffixes=family==="sotl" ? STATE_HEADLINE_SUFFIXES : RECAP_HEADLINE_SUFFIXES;
+  const tokens=narrativeHeadlineTokens(ctx,facts);
+  const lead=fillNarrativeTokens(templates[sig[0]],tokens).replace(/\s+/g," ").trim();
+  const suffix=fillNarrativeTokens(suffixes[sig[1]],tokens).replace(/\s+/g," ").trim();
+  const composed=(lead + (suffix ? " — " + suffix : "")).trim();
+  return esc(composed || upper(fallback || "LEAGUE REPORT"));
+}
 function deterministicNarrativeBody(ctx, articleType, facts, detailParagraphs){
-  const f = facts || {};
-  const sig = narrativeBodyBlueprint(ctx, articleType);
-  const winner = f.winner || f.champ || {};
-  const loser = f.loser || f.sacko || {};
-  const winName = esc(winner.name || winner.displayName || 'The featured team');
-  const loseName = esc(loser.name || loser.displayName || 'the opposition');
-  const theme = BODY_CATEGORY_WORDS[articleType] || BODY_CATEGORY_WORDS.default;
-  const score = Number(f.winnerScore) > 0 ? ` The final was <b>${n1(f.winnerScore)}–${n1(f.loserScore)}</b>.` : '';
-  const margin = Number(f.margin) > 0 ? ` The <b>${n1(f.margin)}-point</b> margin measures the separation.` : '';
-  const details = Array.isArray(detailParagraphs) ? detailParagraphs.filter(Boolean) : [];
+  const f=facts || {};
+  const sig=narrativeBodyBlueprint(ctx,articleType);
+  const family=narrativeFamily(articleType);
+  const openings=family==="sotl" ? STATE_BODY_OPENINGS : BODY_OPENINGS;
+  const developments=family==="sotl" ? STATE_BODY_DEVELOPMENTS : BODY_DEVELOPMENTS;
+  const closes=family==="sotl" ? STATE_BODY_CLOSES : BODY_CLOSES;
+  const winner=f.winner || f.champ || {};
+  const loser=f.loser || f.sacko || {};
+  const winName=esc(winner.name || winner.displayName || winner.teamName || "League Board");
+  const loseName=esc(loser.name || loser.displayName || loser.teamName || "League Field");
+  const theme=BODY_CATEGORY_WORDS[articleType] || (family==="sotl" ? BODY_CATEGORY_WORDS.sotl : BODY_CATEGORY_WORDS.default);
+  const score=Number(f.winnerScore)>0 ? " The final was <b>"+n1(f.winnerScore)+"–"+n1(f.loserScore)+"</b>." : "";
+  const margin=Number(f.margin)>0 ? " The <b>"+n1(f.margin)+"-point</b> margin measures the separation." : "";
+  const details=Array.isArray(detailParagraphs) ? detailParagraphs.filter(Boolean) : [];
   return [
-    `${datelineTag()} ${BODY_OPENINGS[sig[0]]} <b>${winName}</b> set the terms against <b>${loseName}</b>.${score}`,
-    `${BODY_DEVELOPMENTS[sig[1]]} For this ${esc(theme)} story, the available league data is the source of truth.${margin} ${details[0] || ''}`,
-    `${details.slice(1).join(' ')} ${BODY_CLOSES[sig[2]]}`.trim(),
+    datelineTag()+" "+openings[sig[0]]+" <b>"+winName+"</b> set the terms against <b>"+loseName+"</b>."+score,
+    developments[sig[1]]+" For this "+esc(theme)+" story, the loaded league record is the source of truth."+margin+" "+(details[0] || ""),
+    (details.slice(1).join(" ")+" "+closes[sig[2]]).trim()
   ];
 }
+
 function fillEditorial(template, f){
   return String(template || '').replace(/\{([A-Z_]+)\}/g, (_, key)=> f[key] !== undefined ? String(f[key]) : '');
 }
@@ -7315,6 +7792,7 @@ function assembleDeterministicStory(ctx, category, ordinal, facts, overrides){
   const historyParagraph = [datedOpen, loreLine, esc(cadence.bridge)].filter(Boolean).join(' ');
   const verdictParagraph = [archetypeLine, esc(cadence.close), esc(outro), esc(phaseLine)].filter(Boolean).join(' ');
   const articleType = o.articleType || o.id || category;
+  headline = deterministicNarrativeHeadline(ctx, articleType, facts, headline);
   const paragraphs = deterministicNarrativeBody(ctx, articleType, facts, [
     esc(lede) + ' ' + context,
     historyParagraph,
@@ -8626,14 +9104,20 @@ function tl(o){
   const def = SLOTS[slot] || SLOTS.gameday;
   const at = o.at || slotTime(slot, o.offset || 0);
   const a = article(Object.assign({}, o, { ageMin: Math.max(1, (Date.now() - at) / MIN) }));
-  if(Array.isArray(a.paragraphs) && a.paragraphs.length && !a.custom){
+  if(!a.custom){
     const articleType = o.articleType || o.id || o.kind || o.topic || 'timeline';
     const featured = o.crest ? { name:o.crest.name, logo:o.crest.logo } : {};
-    a.paragraphs = deterministicNarrativeBody(
-      { week:Number(o.week || effectiveWeek() || 0) }, articleType,
-      { winner:featured, loser:{name:'the league field'} },
-      a.paragraphs
+    const narrativeFacts = o.facts && typeof o.facts === 'object'
+      ? o.facts
+      : { winner:featured, loser:{name:'the league field'} };
+    a.headline = deterministicNarrativeHeadline(
+      { week:Number(o.week || effectiveWeek() || 0) }, articleType, narrativeFacts, a.headline
     );
+    if(Array.isArray(a.paragraphs) && a.paragraphs.length && !o.narrativeLocked){
+      a.paragraphs = deterministicNarrativeBody(
+        { week:Number(o.week || effectiveWeek() || 0) }, articleType, narrativeFacts, a.paragraphs
+      );
+    }
   }
   a.timeline = true;
   a.slot = slot;
@@ -9833,13 +10317,17 @@ function tlPreseason(ctx){
       paragraphs:[
         `${datelineTag()} The calendar has turned to <b>${upcomingYear}</b>, and the league enters Week 1 with every projection still unproven.`,
         `The preceding season remains the proper starting point for a title defense. Its final champion will populate this report automatically as soon as the ${priorYear} final table or winners-bracket result is present in the loaded archive.`,
-        `Until then, the opening slate supplies the only honest assignment: set the lineups, establish a scoring baseline, and let the standings begin from zero.`,
+        `Until then, the opening slate supplies the only honest assignment: set the lineups, establish a scoring baseline, and let the standings begin from zero. The macro slots for champion PPG, expected wins, luck delta and the exact winners-bracket path remain visible and populate only from verified archive data.`,
       ],
       quote:{ text:'A new season starts with no borrowed wins and no protected reputations.', who:'FSN SENIOR LEAGUE INSIDER' },
       numbers:{ title:'Transition Check', rows:[
         { label:'Upcoming season', value:String(upcomingYear), note:'Week 1 reset' },
         { label:'Prior final', value:String(priorYear), note:'Champion data loads from the preceding-year archive' },
         { label:'Teams connected', value:String(teams.length), note:'Current league payload' },
+        { label:'Champion PPG', value:'Unavailable', note:'Requires prior-season final table' },
+        { label:'Expected wins', value:'Unavailable', note:'Requires scored weekly schedule' },
+        { label:'Luck delta', value:'Unavailable', note:'Actual wins minus expected wins' },
+        { label:'Playoff path', value:'Unavailable', note:'Requires prior winners-bracket games' },
       ] },
     })];
   }
@@ -9931,7 +10419,7 @@ function tlPreseason(ctx){
   const legacyRunDetails = runNarratives[archetype.key] || runNarratives.closer;
   const championParagraphs = deterministicNarrativeBody(
     { week:1 },
-    archetype.key || 'champion',
+    'sotl',
     { champ, sacko, winner:champ, loser:sacko },
     legacyRunDetails.map(function(p){
       /* Remove the old canned opening that caused cross-season repetition;
@@ -9939,6 +10427,12 @@ function tlPreseason(ctx){
       return String(p).replace(/^.*?(?=<b>|The bracket|At <b>)/, '');
     })
   );
+
+  const expectedWinsAvailable = Number.isFinite(Number(champ.expectedWins));
+  const luckAvailable = Number.isFinite(Number(champ.luckDelta));
+  const analyticsParagraph = expectedWinsAvailable
+    ? `The schedule-neutral review gives <b>${esc(champName)}</b> <b>${n1(champ.expectedWins)} expected wins</b> across <b>${champ.expectedWinSamples || champ.games}</b> scored regular-season weeks, compared with <b>${n1(champ.actualWins)}</b> actual wins. The resulting luck delta is <b>${champ.luckDelta >= 0 ? '+' : ''}${n1(champ.luckDelta)}</b>; read beside <b>${n1(champPpg)} PPG</b>, it separates weekly force from opponent timing before the ${rep.upcomingYear} outlook begins.`
+    : `The archive confirms <b>${n1(champPpg)} PPG</b> for <b>${esc(champName)}</b>. Expected wins and luck delta remain explicitly unavailable because the predecessor payload does not contain a complete scored regular-season schedule; the report does not manufacture those values.`;
 
   const sackoParagraph = `At the other end of the ledger sits <b>${esc(sackoName)}</b>, who finished <b>${ordinal(sacko.rank)} of ${teamCount}</b> at <b>${esc(sacko.record)}</b>` +
     `${sackoPpg ? ` and <b>${n1(sackoPpg)} PPG</b>` : ''}` +
@@ -9967,6 +10461,8 @@ function tlPreseason(ctx){
     note:`${year} winners bracket · matchup period ${g.period || '—'}`,
   }));
   rows.push(
+    { label:'Expected wins', value: expectedWinsAvailable ? n1(champ.expectedWins) : 'Unavailable', note: expectedWinsAvailable ? ((champ.expectedWinSamples || champ.games) + ' scored regular-season weeks vs weekly league average') : 'Complete weekly schedule required' },
+    { label:'Luck delta', value: luckAvailable ? ((champ.luckDelta >= 0 ? '+' : '') + n1(champ.luckDelta)) : 'Unavailable', note:'Actual wins minus schedule-neutral expected wins' },
     { label:'Reigning last place', value: sackoPpg ? n1(sackoPpg) + ' PPG' : ordinal(sacko.rank) + ' of ' + teamCount,
       note: `${esc(sackoName)} · ${esc(sacko.record)} · ${ordinal(sacko.rank)} of ${teamCount} in ${year}` },
     { label:'Longest active title drought',
@@ -10018,9 +10514,10 @@ function tlPreseason(ctx){
     byline:'FSN Senior League Insider',
     dateline: seasonDateline,
     crest:{ name: champName, logo: champ.logo },
-    headline: `STATE OF THE LEAGUE: ${upper(champName)} DEFENDS AFTER A ${champPpg ? n1(champPpg) + ' PPG' : 'CHAMPIONSHIP'} TITLE RUN`,
+    headline: deterministicNarrativeHeadline({week:1}, 'sotl', {champ, sacko, winner:champ, loser:sacko}, `STATE OF THE LEAGUE: ${upper(champName)} DEFENDS`),
     dek: `${esc(archetype.label)} defined the ${year} champion. ${esc(sackoName)} enters ${rep.upcomingYear} on the redemption clock after ${sackoPpg ? n1(sackoPpg) + ' PPG' : ordinal(sacko.rank) + ' place'}.`,
-    paragraphs: championParagraphs.concat([sackoParagraph, leagueParagraph]),
+    paragraphs: championParagraphs.concat([analyticsParagraph, sackoParagraph, leagueParagraph]),
+    facts:{champ,sacko,winner:champ,loser:sacko}, narrativeLocked:true,
     quote: { text: pick(quotePool, seed + ':quote'), who: upper('FSN Senior League Insider') },
     numbers: { title:'By the Numbers', rows, note: repeatNote },
   })];
@@ -10088,13 +10585,17 @@ function transitionStateFallback(ctx){
     paragraphs:[
       `${datelineTag()} The league has reached its transition point: last season is now evidence, and <b>${season}</b> begins with every roster back under review.`,
       `The preceding champion remains the standard until the new schedule produces a replacement. When the ${prior} final table is available, this banner attaches the defending champion and exact title path automatically.`,
-      `No matchup recap can replace the transition story before Week 1 establishes the new standings.`,
+      `No matchup recap can replace the transition story before Week 1 establishes the new standings. Champion PPG, expected wins, luck delta and the exact playoff path remain explicit data slots until the prior archive supplies verified values.`,
     ],
     quote:{ text:'The season resets the records, not the expectations.', who:'FSN SENIOR LEAGUE INSIDER' },
     numbers:{ title:'Season Transition', rows:[
       { label:'Defending season', value:String(prior), note:'Final archive source' },
       { label:'New season', value:String(season), note:'Standings reset' },
       { label:'Connected teams', value:String(teams.length), note:'Current league payload' },
+      { label:'Champion PPG', value:'Unavailable', note:'Requires prior-season final table' },
+      { label:'Expected wins', value:'Unavailable', note:'Requires scored weekly schedule' },
+      { label:'Luck delta', value:'Unavailable', note:'Actual wins minus expected wins' },
+      { label:'Playoff path', value:'Unavailable', note:'Requires prior winners-bracket games' },
     ] },
   });
 }
@@ -11563,61 +12064,108 @@ function syncStatsModeToggle(){
     btn.setAttribute('aria-selected', String(on));
   });
 }
+
+function finiteStandingsNumber(value){
+  const number=Number(value);
+  return Number.isFinite(number) ? number : 0;
+}
+function normalizedStandingsStreak(value){
+  if(value == null) return {result:"",length:0,label:"—"};
+  if(typeof value === "string"){
+    const match=value.trim().toUpperCase().match(/^([WLT])\s*[- ]?\s*(\d+)$/);
+    return match ? {result:match[1],length:Number(match[2]),label:match[1]+Number(match[2])} : {result:"",length:0,label:"—"};
+  }
+  if(typeof value !== "object") return {result:"",length:0,label:"—"};
+  const result=String(value.result || value.type || value.outcome || "").trim().toUpperCase().slice(0,1);
+  const length=Math.max(0,Math.trunc(finiteStandingsNumber(value.length != null ? value.length : value.count)));
+  return /^(W|L|T)$/.test(result) && length ? {result,length,label:result+length} : {result:"",length:0,label:"—"};
+}
 function renderSeasonStandings(){
-  const week = Math.max(1, parseInt(effectiveWeek(), 10) || 1);
-  let sourceRows = [];
+  let week=1;
+  try{ week=Math.max(1,Math.trunc(finiteStandingsNumber(effectiveWeek())) || 1); }catch(_){ week=1; }
+  let sourceRows=[];
   try{
-    const computed = FSNIntel.standingsThrough(week);
-    sourceRows = Array.isArray(computed) ? computed : [];
+    const computed=FSNIntel && typeof FSNIntel.standingsThrough === "function" ? FSNIntel.standingsThrough(week) : [];
+    sourceRows=Array.isArray(computed) ? computed.filter(Boolean) : [];
   }catch(err){
-    console.warn('[Standings] cumulative table could not be computed', err);
-    return `<div class="analytics-empty">Standings are temporarily unavailable for Week ${week}. The Advanced Analytics view remains available.</div>`;
+    console.warn("[Standings] cumulative table could not be computed",err);
+    sourceRows=[];
   }
 
-  const asNumber = value=> Number.isFinite(Number(value)) ? Number(value) : 0;
-  const rows = sourceRows.reduce((normalized,row)=>{
-    if(!row || typeof row !== 'object') return normalized;
-    const rawTeam = row.team && typeof row.team === 'object' ? row.team : {};
-    const teamId = rawTeam.id != null ? rawTeam.id : (row.teamId != null ? row.teamId : null);
-    if(teamId == null) return normalized;
-    const wins = asNumber(row.wins), losses = asNumber(row.losses), ties = asNumber(row.ties);
-    const pf = asNumber(row.pf), pa = asNumber(row.pa);
-    normalized.push({
-      team:{
-        id:teamId,
-        name:String(rawTeam.name || rawTeam.abbrev || ('Team ' + teamId)),
-        logo:rawTeam.logo || '',
-      },
-      wins, losses, ties, pf, pa,
-      recordLabel:String(row.recordLabel || (wins + '-' + losses + (ties ? '-' + ties : ''))),
+  if(!sourceRows.length){
+    let fallbackTeams=[];
+    try{
+      const rawTeams=LeagueData && typeof LeagueData.getTeams === "function" ? LeagueData.getTeams() : [];
+      fallbackTeams=Array.isArray(rawTeams) ? rawTeams : [];
+    }catch(_){ fallbackTeams=[]; }
+    sourceRows=fallbackTeams.filter(function(team){ return team && typeof team === "object" && team.id != null; }).map(function(team){
+      const overall=team.record && team.record.overall && typeof team.record.overall === "object" ? team.record.overall : {};
+      return {
+        team:team,
+        wins:overall.wins,
+        losses:overall.losses,
+        ties:overall.ties,
+        pf:overall.pointsFor,
+        pa:overall.pointsAgainst,
+        recordLabel:null
+      };
     });
-    return normalized;
-  }, []).sort((a,b)=> (b.wins-a.wins) || (b.ties-a.ties) || (b.pf-a.pf));
+  }
 
-  if(!rows.length) return `<div class="analytics-empty">No completed matchups are available through Week ${week}.</div>`;
+  const rows=[];
+  sourceRows.forEach(function(row){
+    try{
+      if(!row || typeof row !== "object") return;
+      const rawTeam=row.team && typeof row.team === "object" ? row.team : {};
+      const teamId=rawTeam.id != null ? rawTeam.id : (row.teamId != null ? row.teamId : row.id);
+      if(teamId == null) return;
+      const nestedRecord=row.record && row.record.overall && typeof row.record.overall === "object"
+        ? row.record.overall
+        : (rawTeam.record && rawTeam.record.overall && typeof rawTeam.record.overall === "object" ? rawTeam.record.overall : {});
+      const wins=Math.max(0,Math.trunc(finiteStandingsNumber(row.wins != null ? row.wins : nestedRecord.wins)));
+      const losses=Math.max(0,Math.trunc(finiteStandingsNumber(row.losses != null ? row.losses : nestedRecord.losses)));
+      const ties=Math.max(0,Math.trunc(finiteStandingsNumber(row.ties != null ? row.ties : nestedRecord.ties)));
+      const pf=finiteStandingsNumber(row.pf != null ? row.pf : (row.pointsFor != null ? row.pointsFor : nestedRecord.pointsFor));
+      const pa=finiteStandingsNumber(row.pa != null ? row.pa : (row.pointsAgainst != null ? row.pointsAgainst : nestedRecord.pointsAgainst));
+      const name=String(rawTeam.name || [rawTeam.location,rawTeam.nickname].filter(Boolean).join(" ") || rawTeam.abbrev || row.teamName || ("Team "+teamId));
+      rows.push({
+        team:{id:teamId,name:name,logo:String(rawTeam.logo || row.logo || "")},
+        wins:wins,losses:losses,ties:ties,pf:pf,pa:pa,
+        recordLabel:String(row.recordLabel || (typeof row.record === "string" ? row.record : "") || (wins+"-"+losses+(ties ? "-"+ties : "")))
+      });
+    }catch(err){ console.warn("[Standings] skipped malformed team row",err); }
+  });
+  rows.sort(function(a,b){ return (b.wins-a.wins)||(b.ties-a.ties)||(b.pf-a.pf)||(a.pa-b.pa)||String(a.team.name).localeCompare(String(b.team.name)); });
+  if(!rows.length) return '<div class="analytics-empty">No valid team records are available for Week '+week+'.</div>';
 
-  const tableRows = rows.map((row,index)=>{
-    let streak = null;
-    try{ streak = FSNIntel.getStreakAsOfWeek(row.team.id, week); }
-    catch(err){ streak = null; }
-    const streakLabel = streak && streak.length ? streak.result + streak.length : '—';
-    const differential = row.pf - row.pa;
-    return `<tr>
-      <td><span class="standings-team"><span class="analytics-rank">${index+1}</span>${crest(row.team.name,row.team.logo,24)}<span class="analytics-team-name">${esc(row.team.name)}</span></span></td>
-      <td>${esc(row.recordLabel)}</td><td>${row.wins}</td><td>${row.losses}</td><td>${row.ties}</td>
-      <td>${n1(row.pf)}</td><td>${n1(row.pa)}</td><td class="${differential>=0?'analytics-good':'analytics-bad'}">${differential>=0?'+':''}${n1(differential)}</td>
-      <td class="${streak && streak.result==='W'?'analytics-good':streak && streak.result==='L'?'analytics-bad':'analytics-muted'}">${streakLabel}</td>
-    </tr>`;
-  }).join('');
+  const tableRows=rows.map(function(row,index){
+    let rawStreak=null;
+    try{
+      rawStreak=FSNIntel && typeof FSNIntel.getStreakAsOfWeek === "function"
+        ? FSNIntel.getStreakAsOfWeek(row.team.id,week)
+        : null;
+    }catch(_){ rawStreak=null; }
+    const streak=normalizedStandingsStreak(rawStreak);
+    const differential=finiteStandingsNumber(row.pf)-finiteStandingsNumber(row.pa);
+    let teamMark="";
+    try{ teamMark=crest(row.team.name,row.team.logo,24); }
+    catch(_){ teamMark='<span class="analytics-rank" aria-hidden="true">TM</span>'; }
+    return '<tr>'+
+      '<td><span class="standings-team"><span class="analytics-rank">'+(index+1)+'</span>'+teamMark+'<span class="analytics-team-name">'+esc(row.team.name)+'</span></span></td>'+
+      '<td>'+esc(row.recordLabel)+'</td><td>'+row.wins+'</td><td>'+row.losses+'</td><td>'+row.ties+'</td>'+
+      '<td>'+n1(row.pf)+'</td><td>'+n1(row.pa)+'</td><td class="'+(differential>=0?"analytics-good":"analytics-bad")+'">'+(differential>=0?"+":"")+n1(differential)+'</td>'+
+      '<td class="'+(streak.result==="W"?"analytics-good":streak.result==="L"?"analytics-bad":"analytics-muted")+'">'+esc(streak.label)+'</td>'+
+      '</tr>';
+  }).join("");
 
-  return `<div class="analytics-status">
-      <span class="analytics-status-chip"><b>${rows.length}</b> Teams</span>
-      <span class="analytics-status-chip"><b>Week ${week}</b> Through</span>
-    </div>
-    <div class="standings-card"><div class="analytics-table-wrap no-bar"><table class="standings-table">
-      <thead><tr><th>Team</th><th>Record</th><th>W</th><th>L</th><th>T</th><th>PF</th><th>PA</th><th>DIFF</th><th>Streak</th></tr></thead>
-      <tbody>${tableRows}</tbody>
-    </table></div></div>`;
+  return '<div class="analytics-status">'+
+      '<span class="analytics-status-chip"><b>'+rows.length+'</b> Teams</span>'+
+      '<span class="analytics-status-chip"><b>Week '+week+'</b> Through</span>'+
+    '</div>'+
+    '<div class="standings-card"><div class="analytics-table-wrap no-bar"><table class="standings-table">'+
+      '<thead><tr><th>Team</th><th>Record</th><th>W</th><th>L</th><th>T</th><th>PF</th><th>PA</th><th>DIFF</th><th>Streak</th></tr></thead>'+
+      '<tbody>'+tableRows+'</tbody>'+
+    '</table></div></div>';
 }
 
 if($('statsModeToggle')) $('statsModeToggle').addEventListener('click', e=>{
@@ -11631,10 +12179,14 @@ if($('statsModeToggle')) $('statsModeToggle').addEventListener('click', e=>{
 function renderAnalytics(){
   const body = $('analyticsBody');
   if(!body) return;
-  syncStatsModeToggle();
-  if(!LeagueData.hasLive()){
-    $('analyticsSeasonPill').textContent = '— SEASON';
-    $('analyticsUpdated').textContent = 'AWAITING DATA';
+  try{ syncStatsModeToggle(); }catch(err){ console.warn('[Analytics] toggle sync failed', err); }
+  const seasonPill=$('analyticsSeasonPill');
+  const updatedLabel=$('analyticsUpdated');
+  let hasLive=false;
+  try{ hasLive=!!(LeagueData && typeof LeagueData.hasLive === 'function' && LeagueData.hasLive()); }catch(_){ hasLive=false; }
+  if(!hasLive){
+    if(seasonPill) seasonPill.textContent = '— SEASON';
+    if(updatedLabel) updatedLabel.textContent = 'AWAITING DATA';
     body.innerHTML = emptyState('NO ANALYTICS FEED', 'Fetch the current ESPN season to activate all six mathematical models.', 'setup');
     return;
   }
@@ -11642,8 +12194,8 @@ function renderAnalytics(){
   if(ui.statsMode === 'standings'){
     const rawTeams = LeagueData.getTeams();
     const teams = Array.isArray(rawTeams) ? rawTeams.filter(Boolean) : [];
-    $('analyticsSeasonPill').textContent = viewedSeasonYear() + ' SEASON';
-    $('analyticsUpdated').textContent = `WEEK ${effectiveWeek()} STANDINGS`;
+    if(seasonPill) seasonPill.textContent = String(viewedSeasonYear() || '—') + ' SEASON';
+    if(updatedLabel) updatedLabel.textContent = 'WEEK ' + String(effectiveWeek() || 1) + ' STANDINGS';
     try{
       body.innerHTML = teams.length ? renderSeasonStandings() : emptyState('NO STANDINGS', 'Fetch a league to populate Season Stats.', 'setup');
     }catch(err){
@@ -11663,8 +12215,8 @@ function renderAnalytics(){
 
   const rows = model.rows || [];
   const scored = rows.filter(row=> row.games > 0 || row.scores.length > 0);
-  $('analyticsSeasonPill').textContent = model.season + ' SEASON';
-  $('analyticsUpdated').textContent = model.coverage.scoredWeeks
+  if(seasonPill) seasonPill.textContent = model.season + ' SEASON';
+  if(updatedLabel) updatedLabel.textContent = model.coverage.scoredWeeks
     ? `${model.coverage.scoredWeeks} SCORED WEEK${model.coverage.scoredWeeks===1?'':'S'} · THROUGH WEEK ${model.throughWeek}`
     : 'PRESEASON · MODELS READY';
 
