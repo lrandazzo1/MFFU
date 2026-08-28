@@ -14333,7 +14333,11 @@ function applyLeagueHistory(yearsData, skipped, sourceLabel, options){
 
   let msg = `✓ ${sourceLabel}: ${yearsData.length} season${yearsData.length===1?'':'s'} (${years.join(', ')}) — ${managerCount} managers tracked.`;
   if(skipped && skipped.length) msg += ` No game data for: ${skipped.join(', ')}.`;
-  $('historyStatus').textContent = msg;
+  // The historyStatus element was removed in the streamlined Setup UI. Guard it
+  // so folding the current season into the archive on every live fetch cannot
+  // throw here and abort the downstream render sequence.
+  const historyStatusEl = $('historyStatus');
+  if(historyStatusEl) historyStatusEl.textContent = msg;
 
   showHistoryBanner(`✓ Loaded ${yearsData.length} season${yearsData.length===1?'':'s'} (${yearRange}) and ${matchupCount.toLocaleString()} total matchups.`);
   if(!opts.silent) toast('Record Book unlocked — rivalries and records are live.');
@@ -14520,13 +14524,20 @@ async function fetchLeagueData(options){
       historySeed = normalizeHistoryPayload([liveData]).yearsData || [];
     }
     if(historySeed.length){
-      applyLeagueHistory(
-        withCurrentSeason(historySeed),
-        [],
-        uploadedArchive.length ? 'Historical archive + current season' : 'Current season',
-        { silent:true }
-      );
-      renderWeekScrubbers();
+      // Archive seeding is a convenience layer over an already-connected live
+      // season. It must never abort the success path or the render sequence
+      // below, so any failure here is contained and logged.
+      try{
+        applyLeagueHistory(
+          withCurrentSeason(historySeed),
+          [],
+          uploadedArchive.length ? 'Historical archive + current season' : 'Current season',
+          { silent:true }
+        );
+        renderWeekScrubbers();
+      }catch(seedErr){
+        console.warn('[ESPN live fetch] archive seeding failed; live season stays connected.', seedErr);
+      }
     }
 
     $('fetchStatus').style.color = 'var(--green)';
@@ -14769,8 +14780,16 @@ function isPreseasonWeek1(week, viewedYear){
   const phase = typeof FSNIntel !== 'undefined' && FSNIntel.seasonPhase ? FSNIntel.seasonPhase(1) : null;
   if(phase === 'season') return false;
   if(LeagueData.hasLive()){
-    const games = LeagueData.getWeekMatchups(1);
-    const total = games.reduce(function(s,g){ return s + (g.home.totalPoints||0) + (g.away.totalPoints||0); }, 0);
+    // getWeekMatchups() returns { homeScore, awayScore, raw:<espnGame> } — there
+    // is no g.home/g.away here. Read the normalized scores (with a raw fallback)
+    // so a fresh live payload can never throw through this guard.
+    const games = LeagueData.getWeekMatchups(1) || [];
+    const total = games.reduce(function(s,g){
+      const raw = (g && g.raw) || {};
+      const hs = parseFloat(g && g.homeScore) || (raw.home && raw.home.totalPoints) || 0;
+      const as = parseFloat(g && g.awayScore) || (raw.away && raw.away.totalPoints) || 0;
+      return s + hs + as;
+    }, 0);
     if(total > 0) return false;
   }
   return true;
