@@ -1,41 +1,39 @@
--- MFFU League Cloud schema
--- Run once in Supabase SQL Editor, then add SUPABASE_URL and
--- SUPABASE_SERVICE_ROLE_KEY to the deployment environment.
+-- MFFU League Storage schema
+-- Run this in Supabase SQL Editor. Browsers never receive the service-role key
+-- and never query this table directly; Vercel's /api/league route is the data
+-- boundary. Cookie JSON is an AES-256-GCM envelope, not plaintext credentials.
 
-create table if not exists public.mffu_leagues (
-  league_id text primary key check (league_id ~ '^[0-9]{1,20}$'),
-  settings jsonb not null default '{}'::jsonb,
-  historical_archive jsonb not null default '[]'::jsonb,
-  archive_summary jsonb not null default '{}'::jsonb,
-  updated_by_hash text,
-  version bigint not null default 1,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+create table if not exists public.leagues (
+  league_id text not null check (league_id ~ '^[0-9]{1,20}$'),
+  season_year integer not null check (season_year between 1990 and 2100),
+  history_json jsonb not null default '{}'::jsonb,
+  cookies jsonb,
+  updated_at timestamptz not null default now(),
+  primary key (league_id, season_year)
 );
 
-alter table public.mffu_leagues enable row level security;
+alter table public.leagues enable row level security;
 
--- No anon/authenticated policies are intentional: browsers never talk to
--- Supabase directly. /api/league-sync is the only data boundary and uses the
--- service-role key after performing ESPN commissioner verification for writes.
+-- Intentionally no anon/authenticated policies. The service-role key is used
+-- only by /api/league after ESPN commissioner verification on every write.
 
-create or replace function public.mffu_bump_league_version()
+create or replace function public.mffu_touch_league_updated_at()
 returns trigger
 language plpgsql
 security invoker
 set search_path = public
 as $$
 begin
-  new.version := old.version + 1;
   new.updated_at := now();
   return new;
 end;
 $$;
 
-drop trigger if exists mffu_bump_league_version on public.mffu_leagues;
-create trigger mffu_bump_league_version
-before update on public.mffu_leagues
-for each row execute function public.mffu_bump_league_version();
+drop trigger if exists mffu_touch_league_updated_at on public.leagues;
+create trigger mffu_touch_league_updated_at
+before update on public.leagues
+for each row execute function public.mffu_touch_league_updated_at();
 
-create index if not exists mffu_leagues_updated_at_idx
-  on public.mffu_leagues (updated_at desc);
+create index if not exists leagues_updated_at_idx
+  on public.leagues (updated_at desc);
+

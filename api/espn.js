@@ -11,6 +11,8 @@
    cannot be repurposed as an open relay for arbitrary URLs.
 ============================================================ */
 
+const { getStoredLeagueCookies } = require('./league');
+
 const ALLOWED_ESPN_HOSTS = new Set([
   'lm-api-reads.fantasy.espn.com',
   'fantasy.espn.com',
@@ -27,6 +29,17 @@ function applyCorsHeaders(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-espn-s2, x-espn-swid');
+}
+
+function leagueContextFromTarget(target) {
+  const path = String(target && target.pathname || '');
+  const leagueMatch = path.match(/\/(?:leagues|leagueHistory)\/(\d{1,20})(?:\/|$)/);
+  const seasonMatch = path.match(/\/seasons\/(\d{4})(?:\/|$)/);
+  const queryYear = Number(target && target.searchParams && target.searchParams.get('seasonId'));
+  return {
+    leagueId: leagueMatch ? leagueMatch[1] : '',
+    seasonYear: seasonMatch ? Number(seasonMatch[1]) : (Number.isInteger(queryYear) ? queryYear : 0),
+  };
 }
 
 module.exports = async function handler(req, res) {
@@ -70,23 +83,31 @@ module.exports = async function handler(req, res) {
     return res.status(400).json({ error: 'Unsupported ESPN host' });
   }
 
-  // ESPN auth. ESPN's read API returns AUTH_LEAGUE_NOT_VISIBLE to fully
-  // anonymous requests even for leagues flagged "viewable to public", so the
-  // relay must carry an ESPN identity. Two sources, in precedence order:
-  //   1. Per-request headers (x-espn-s2 / x-espn-swid) — a self-hoster or a
-  //      member supplying their own cookies from the browser.
-  //   2. Server-side env vars ESPN_S2 / ESPN_SWID — the app owner's one-time
-  //      credentials, used for EVERY visitor so end users submit nothing. This
-  //      is what makes a deployed, downloadable app "just work" with zero
-  //      per-user friction.
-  const headerS2 = req.headers['x-espn-s2'];
-  const headerSwid = req.headers['x-espn-swid'];
-  const espnS2 = (typeof headerS2 === 'string' && headerS2.trim())
-    ? headerS2.trim()
-    : String(process.env.ESPN_S2 || '').trim();
-  let espnSwid = (typeof headerSwid === 'string' && headerSwid.trim())
-    ? headerSwid.trim()
-    : String(process.env.ESPN_SWID || '').trim();
+  // ESPN auth precedence:
+  //   1. Per-request headers (the browser's localStorage fallback)
+  //   2. Encrypted cookies from public.leagues, decrypted only on the server
+  //   3. Deployment-wide ESPN_S2 / ESPN_SWID environment variables
+  const headerS2 = typeof req.headers['x-espn-s2'] === 'string'
+    ? req.headers['x-espn-s2'].trim()
+    : '';
+  const headerSwid = typeof req.headers['x-espn-swid'] === 'string'
+    ? req.headers['x-espn-swid'].trim()
+    : '';
+
+  let stored = null;
+  if (!headerS2 || !headerSwid) {
+    const context = leagueContextFromTarget(target);
+    if (context.leagueId) {
+      stored = await getStoredLeagueCookies(context.leagueId, context.seasonYear);
+    }
+  }
+
+  const espnS2 = headerS2 ||
+    String(stored && stored.espn_s2 || '').trim() ||
+    String(process.env.ESPN_S2 || '').trim();
+  let espnSwid = headerSwid ||
+    String(stored && stored.swid || '').trim() ||
+    String(process.env.ESPN_SWID || '').trim();
 
   const cookieParts = [];
   if (espnS2) cookieParts.push('espn_s2=' + espnS2);

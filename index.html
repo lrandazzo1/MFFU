@@ -2349,7 +2349,7 @@ html[data-studio-historical="true"] #studio{
       <div class="card p-4">
         <div class="section-head"><span class="bar" style="background:var(--gold)"></span><h2>Private League Access</h2></div>
         <p class="text-[11.5px] text-[var(--dim)] leading-relaxed mb-3">
-          Only needed if your league is set to <strong style="color:var(--off)">private</strong> on ESPN. Paste the two cookie values from your own logged-in browser and every fetch will read your league as you. The values are stored locally in this browser and are sent only to same-origin API routes for ESPN reads and commissioner verification — never to Supabase or another third party.
+          Only needed if your league is set to <strong style="color:var(--off)">private</strong> on ESPN. Paste the two cookie values from your own logged-in browser and every fetch will read your league as you. The values are kept in this browser as a fallback. When a commissioner saves the league, the same-origin backend verifies them with ESPN, encrypts them with AES-256-GCM, and stores only the encrypted envelope in Supabase.
         </p>
         <div class="space-y-3">
           <div>
@@ -2400,14 +2400,14 @@ html[data-studio-historical="true"] #studio{
       <div class="card p-4">
         <div class="section-head"><span class="bar" style="background:var(--green)"></span><h2>League Cloud</h2></div>
         <p class="text-[11.5px] text-[var(--dim)] leading-relaxed mb-3">
-          A commissioner can publish this league's archive and safe command-center settings once. After that, any member entering the same League ID receives the shared record automatically on any device. ESPN cookies and personal preferences are never uploaded.
+          A commissioner can save the League ID, season history, and encrypted private-league access once. After that, any member entering the same League ID receives the shared history automatically and the server can read the private ESPN league without exposing raw cookies.
         </p>
         <div id="cloudSyncStatus" class="cloud-status" data-state="idle" aria-live="polite">
           <span class="cloud-dot" aria-hidden="true"></span>
           <span id="cloudSyncStatusText">Enter a League ID to check for a shared league record.</span>
         </div>
-        <button id="cloudSyncBtn" type="button" class="btn-ghost mt-3">SYNC COMMISSIONER DATA NOW</button>
-        <p class="text-[10px] text-[var(--dim)] leading-relaxed mt-2">Publishing is accepted only when the saved ESPN SWID belongs to a league manager. Cloud reads never return secret credentials.</p>
+        <button id="cloudSyncBtn" type="button" class="btn-ghost mt-3">SAVE LEAGUE DATA NOW</button>
+        <p class="text-[10px] text-[var(--dim)] leading-relaxed mt-2">Saving is accepted only when ESPN confirms the SWID belongs to a league manager. Database reads return only a has_cookies flag—never raw credentials.</p>
       </div>
 
       <div class="text-center py-2">
@@ -2554,7 +2554,7 @@ html[data-studio-historical="true"] #studio{
           <li>When asked, save it as a <span class="onboard-code">.json</span> file to somewhere easy like your Desktop.</li>
           <li>Back on the Setup screen, open <strong style="color:var(--off)">Load Archive JSON</strong> and drag that <span class="onboard-code">.json</span> file into the dropzone (or tap it to pick the file).</li>
         </ol>
-        <div class="onboard-note">The moment it loads, the Record Book and Rivalry Vault unlock. If your ESPN identity is a league manager, MFFU also offers to publish that archive to the league's Supabase service record so teammates do not repeat this upload. ESPN cookies are never included.</div>
+        <div class="onboard-note">The moment it loads, the Record Book and Rivalry Vault unlock. If your ESPN identity is a league manager, MFFU saves the archive plus an encrypted cookie envelope to the league's Supabase record. Teammates can then load by League ID without receiving the raw credentials.</div>
       </div>
     </div>
 
@@ -3055,7 +3055,7 @@ function validEspnPayload(rawData){
    same-origin function is authoritative. Local previews may fall back to
    the legacy browser proxy chain when /api is not being served. */
 /* Optional ESPN auth for PRIVATE leagues. Read from localStorage and forwarded
-   only to the same-origin /api/espn and /api/league-sync routes (never to public
+   only to the same-origin /api/espn and /api/league routes (never to public
    CORS proxies, which would leak them). ESPN reads a private league with the espn_s2 + SWID cookies
    the member's browser holds; the relay replays them so it can read as the member. */
 function getEspnCreds(){
@@ -15015,11 +15015,11 @@ function setFetchLoading(isLoading){
 }
 
 /* ============================================================
-   SUPABASE LEAGUE CLOUD
-   Reads are keyed only by leagueId so teammates never repeat the archive
-   upload. Writes carry the member's ESPN cookies to /api/league-sync, where
-   the backend verifies that SWID is an ESPN league manager before touching
-   Supabase. Secret cookies are never placed in the record body.
+   SUPABASE LEAGUE STORAGE
+   The browser reads shared history from /api/league. Commissioner writes are
+   ESPN-verified by the server; cookies are encrypted before Supabase storage
+   and raw values are never returned to the browser. localStorage remains the
+   offline/failure fallback for league settings, history, and personal cookies.
 ============================================================ */
 function setCloudStatus(state, message){
   const shell = $('cloudSyncStatus');
@@ -15031,7 +15031,7 @@ function setCloudStatus(state, message){
 function cloudSafeSettings(){
   const data = LeagueData.espnData || {};
   return {
-    schemaVersion:1,
+    schemaVersion:2,
     leagueName:(data.settings && data.settings.name) || '',
     activeSeason:Number(data.seasonId || data.season || uiActiveSeasonYear()),
     defaultWeek:Number(currentLeagueWeek() || 1),
@@ -15039,75 +15039,144 @@ function cloudSafeSettings(){
   };
 }
 
-function cloudHeaders(includeBody){
+function cloudSeasonYear(){
+  return parseInt(($('seasonYear').value || '').trim(), 10) || uiActiveSeasonYear();
+}
+
+function cloudHeaders(includeBody, includeCredentials){
   const headers = { Accept:'application/json' };
   if(includeBody) headers['Content-Type'] = 'application/json';
-  try{ Object.assign(headers, espnCredHeaders() || {}); }catch(e){}
+  if(includeCredentials){
+    try{ Object.assign(headers, espnCredHeaders() || {}); }catch(e){}
+  }
   return headers;
+}
+
+function cloudCacheKey(league, season){
+  return 'fsn.league.storage.v2:' + String(league || '') + ':' + String(season || '');
+}
+
+function cacheLeagueRecord(record){
+  if(!record || !record.league_id || !record.season_year) return false;
+  try{
+    // The API already strips the encrypted cookie envelope. Keep only the
+    // non-secret record used to restore the UI when cloud reads are unavailable.
+    localStorage.setItem(cloudCacheKey(record.league_id, record.season_year), JSON.stringify({
+      league_id:String(record.league_id),
+      season_year:Number(record.season_year),
+      history_json:record.history_json || {},
+      has_cookies:!!record.has_cookies,
+      updated_at:record.updated_at || new Date().toISOString(),
+      local_fallback:true,
+    }));
+    return true;
+  }catch(e){
+    return false;
+  }
+}
+
+function readCachedLeagueRecord(league, season){
+  try{
+    const exact = localStorage.getItem(cloudCacheKey(league, season));
+    if(exact) return JSON.parse(exact);
+  }catch(e){}
+  return null;
+}
+
+function storedHistoryPayload(record){
+  const payload = record && (record.history_json !== undefined
+    ? record.history_json
+    : record.historical_archive);
+  if(Array.isArray(payload)) return { yearsData:payload, settings:record.settings || {} };
+  if(payload && typeof payload === 'object'){
+    return {
+      yearsData:Array.isArray(payload.yearsData) ? payload.yearsData
+        : (Array.isArray(payload.historicalArchive) ? payload.historicalArchive
+        : (Array.isArray(payload.archive) ? payload.archive : [])),
+      settings:payload.settings && typeof payload.settings === 'object'
+        ? payload.settings
+        : (record.settings || {}),
+    };
+  }
+  return { yearsData:[], settings:record && record.settings || {} };
 }
 
 function applyCloudRecord(record, league){
   if(!record || String(record.league_id || '') !== String(league)) return false;
-  const archive = record.historical_archive;
+  const stored = storedHistoryPayload(record);
   let loaded = false;
-  if(Array.isArray(archive) && archive.length){
+  if(stored.yearsData.length){
     try{
-      const normalized = normalizeHistoryPayload(archive);
+      const normalized = normalizeHistoryPayload(stored.yearsData);
       if(normalized.yearsData.length){
         applyLeagueHistory(withCurrentSeason(normalized.yearsData), normalized.skipped, 'League Cloud', { silent:true });
         renderWeekScrubbers();
         loaded = true;
       }
-    }catch(err){ console.warn('[League Cloud] archive payload could not be applied', err); }
+    }catch(err){ console.warn('[League Storage] history payload could not be applied', err); }
   }
-  window._fsnCloudSettings = record.settings && typeof record.settings === 'object' ? record.settings : {};
+  window._fsnCloudSettings = stored.settings;
+  window._fsnCloudHasCookies = !!record.has_cookies;
+  refreshEspnAuthStatus();
   if(loaded){
     safeRun('recordbook', renderRecordBook, ()=> renderScreenFallback('recordbook'));
     safeRun('analytics', renderAnalytics, ()=> renderScreenFallback('analytics'));
   }
-  return loaded || !!record.settings;
+  return loaded || Object.keys(stored.settings || {}).length > 0;
+}
+
+function applyLocalLeagueFallback(league, season, reason){
+  const record = readCachedLeagueRecord(league, season);
+  if(!record) return null;
+  const applied = applyCloudRecord(record, league);
+  setCloudStatus('idle', (applied ? 'Using locally cached league history' : 'Using local league settings') +
+    (reason ? ' · ' + reason : '') + '.');
+  return record;
 }
 
 async function hydrateLeagueFromCloud(league, options){
   const opts = options || {};
   const id = String(league || '').trim();
+  const season = Number(opts.seasonYear || cloudSeasonYear());
   if(!/^\d{1,20}$/.test(id)){
-    setCloudStatus('idle', 'Enter a valid numeric League ID to check for a shared league record.');
+    setCloudStatus('idle', 'Enter a valid numeric League ID to check for a stored league record.');
     return null;
   }
   const seq = ++ui.cloudHydrateSeq;
   ui.cloudLeagueId = id;
-  setCloudStatus('syncing', 'Checking the league cloud for shared settings and history…');
+  setCloudStatus('syncing', 'Checking Supabase for saved settings, cookies, and history…');
   try{
-    const response = await fetch('/api/league-sync?leagueId=' + encodeURIComponent(id), {
-      method:'GET', headers:cloudHeaders(false), cache:'no-store',
+    const response = await fetch('/api/league?league_id=' + encodeURIComponent(id) +
+      '&season_year=' + encodeURIComponent(season), {
+      method:'GET', headers:cloudHeaders(false, false), cache:'no-store',
     });
     if(seq !== ui.cloudHydrateSeq || id !== String($('leagueIdInput').value || '').trim()) return null;
     if(response.status === 404){
-      setCloudStatus('idle', 'No shared cloud record exists yet. A commissioner can publish this league after connecting.');
+      const local = applyLocalLeagueFallback(id, season, 'no cloud record exists yet');
+      if(local) return local;
+      setCloudStatus('idle', 'No stored league record exists yet. A commissioner can save it after connecting.');
       return null;
     }
     const payload = await response.json().catch(()=> ({}));
-    if(!response.ok){
-      const unavailable = response.status === 503;
-      setCloudStatus(unavailable ? 'idle' : 'error', unavailable
-        ? 'League Cloud is not configured on this deployment yet.'
-        : (payload.error || 'The shared league record could not be loaded.'));
-      return null;
-    }
+    if(!response.ok) throw new Error(payload.error || ('League storage read failed (HTTP ' + response.status + ').'));
+
     const record = payload.record || payload;
     const applied = applyCloudRecord(record, id);
-    const summary = record.archive_summary || {};
-    const seasons = Number(summary.seasons || (Array.isArray(record.historical_archive) ? record.historical_archive.length : 0));
-    setCloudStatus('ready', applied
-      ? `League Cloud connected${seasons ? ' · ' + seasons + ' shared season' + (seasons===1?'':'s') : ''} · updated ${record.updated_at ? new Date(record.updated_at).toLocaleString() : 'recently'}.`
-      : 'League Cloud connected. This record has settings but no historical archive yet.');
-    if(!opts.silent) toast('Shared league record loaded');
+    cacheLeagueRecord(record);
+    const stored = storedHistoryPayload(record);
+    const seasons = stored.yearsData.length;
+    setCloudStatus('ready', (applied ? 'League storage connected' : 'Saved league configuration loaded') +
+      (seasons ? ' · ' + seasons + ' shared season' + (seasons===1?'':'s') : '') +
+      (record.has_cookies ? ' · private-league access ready' : '') +
+      ' · updated ' + (record.updated_at ? new Date(record.updated_at).toLocaleString() : 'recently') + '.');
+    if(!opts.silent) toast('Saved league record loaded');
     return record;
   }catch(err){
     if(seq === ui.cloudHydrateSeq){
-      console.warn('[League Cloud] hydration failed', err);
-      setCloudStatus('error', 'Could not reach the League Cloud. Live ESPN loading can continue normally.');
+      console.warn('[League Storage] hydration failed', err);
+      const local = applyLocalLeagueFallback(id, season, 'cloud temporarily unavailable');
+      if(local) return local;
+      setCloudStatus('error', 'Could not reach league storage. Local preferences and direct ESPN loading are still available.');
     }
     return null;
   }
@@ -15116,47 +15185,71 @@ async function hydrateLeagueFromCloud(league, options){
 async function syncLeagueToCloud(options){
   const opts = options || {};
   const league = String($('leagueIdInput').value || '').trim();
+  const season = Number(opts.seasonYear || cloudSeasonYear());
   if(!/^\d{1,20}$/.test(league)){
-    setCloudStatus('error', 'Enter a valid League ID before publishing commissioner data.');
+    setCloudStatus('error', 'Enter a valid League ID before saving league data.');
     return false;
   }
   const creds = getEspnCreds();
   if(!creds.s2 || !creds.swid){
-    setCloudStatus('error', 'Commissioner publishing requires both ESPN cookies so the backend can verify league-manager access.');
+    setCloudStatus('error', 'Saving requires both ESPN cookies so the backend can verify commissioner access.');
     if(!opts.silent) toast('Add ESPN cookies to verify commissioner access');
     return false;
   }
   if(ui.cloudSyncing) return false;
 
   const archive = Array.isArray(window._franchiseYearsData) ? window._franchiseYearsData : [];
-  const body = {
-    leagueId:league,
+  const historyJson = {
+    schemaVersion:2,
     settings:cloudSafeSettings(),
-    historicalArchive:archive,
+    yearsData:archive,
+  };
+  const body = {
+    league_id:league,
+    season_year:season,
+    history_json:historyJson,
   };
   const serialized = JSON.stringify(body);
   if(serialized.length > 7.5 * 1024 * 1024){
-    setCloudStatus('error', 'This archive is too large for one cloud publish. Export a lightweight history file without draft/transaction views and retry.');
+    setCloudStatus('error', 'This archive is too large for one save. Export a lightweight history file without draft/transaction views and retry.');
     return false;
   }
 
+  // Persist the non-secret portion immediately. The separate existing cookie
+  // keys already provide the browser-only fallback if the network save fails.
+  cacheLeagueRecord({
+    league_id:league,
+    season_year:season,
+    history_json:historyJson,
+    has_cookies:true,
+    updated_at:new Date().toISOString(),
+  });
+
   ui.cloudSyncing = true;
   if($('cloudSyncBtn')) $('cloudSyncBtn').disabled = true;
-  setCloudStatus('syncing', 'Verifying commissioner access and publishing the shared league record…');
+  setCloudStatus('syncing', 'Verifying commissioner access and saving league data…');
   try{
-    const response = await fetch('/api/league-sync', {
-      method:'POST', headers:cloudHeaders(true), body:serialized, cache:'no-store',
+    const response = await fetch('/api/league', {
+      method:'POST',
+      headers:cloudHeaders(true, true),
+      body:serialized,
+      cache:'no-store',
     });
     const payload = await response.json().catch(()=> ({}));
-    if(!response.ok) throw new Error(payload.error || ('Cloud publish failed (HTTP ' + response.status + ').'));
+    if(!response.ok) throw new Error(payload.error || ('League save failed (HTTP ' + response.status + ').'));
     const record = payload.record || {};
-    setCloudStatus('ready', `Commissioner data synced${archive.length ? ' · ' + archive.length + ' season' + (archive.length===1?'':'s') : ''} · teammates can now load it by League ID.`);
-    if(!opts.silent) toast('Commissioner data published to League Cloud');
+    cacheLeagueRecord(record);
+    window._fsnCloudHasCookies = !!record.has_cookies;
+    setCloudStatus('ready', 'League data saved' +
+      (archive.length ? ' · ' + archive.length + ' season' + (archive.length===1?'':'s') : '') +
+      ' · encrypted private-league access is ready for members.');
+    refreshEspnAuthStatus();
+    if(!opts.silent) toast('League data saved to Supabase');
     return record;
   }catch(err){
-    console.warn('[League Cloud] publish failed', err);
-    setCloudStatus('error', String(err && err.message || err || 'Cloud publish failed.'));
-    if(!opts.silent) toast('League Cloud publish failed');
+    console.warn('[League Storage] save failed; local fallback retained', err);
+    setCloudStatus('error', String(err && err.message || err || 'League save failed.') + ' Local fallback was kept.');
+    if(!opts.silent) toast('Cloud save failed · local copy retained');
     return false;
   }finally{
     ui.cloudSyncing = false;
@@ -15498,8 +15591,9 @@ function refreshHistoryUrlLink(){
 
 /* ============================================================
    JSON FALLBACKS — paste + drag-and-drop are parsed in-browser with
-   FileReader. Only a verified commissioner can publish the normalized archive
-   to League Cloud; ESPN cookies are never included in that payload.
+   FileReader. Only a verified commissioner can save the normalized archive.
+   Raw ESPN cookies stay out of the JSON body; the backend receives them through
+   same-origin headers, verifies them, and stores only an encrypted envelope.
 ============================================================ */
 $('parseJsonBtn').addEventListener('click', ()=>{
   const text = $('jsonPaste').value.trim();
@@ -15649,9 +15743,11 @@ function refreshEspnAuthStatus(){
   if(!el) return;
   const { s2, swid } = getEspnCreds();
   if(s2 && swid){
-    el.innerHTML = '<span style="color:var(--green)">PRIVATE-LEAGUE AUTH SAVED</span> · Fetches read your league using these cookies.';
+    el.innerHTML = '<span style="color:var(--green)">PRIVATE-LEAGUE AUTH SAVED</span> · Local fallback is ready; commissioner saves encrypt a server-side copy.';
   } else if(s2 || swid){
     el.innerHTML = '<span style="color:var(--gold)">INCOMPLETE</span> · Both espn_s2 and SWID are required for a private league.';
+  } else if(window._fsnCloudHasCookies){
+    el.innerHTML = '<span style="color:var(--green)">CLOUD AUTH AVAILABLE</span> · The backend can read this private league without exposing its cookies.';
   } else {
     el.innerHTML = 'Not set — anonymous reads (public leagues only).';
   }
@@ -15716,7 +15812,7 @@ $('historyUnlockToggle').addEventListener('click', ()=>{
 });
 
 /* Private-league ESPN cookies — persisted locally and sent only to same-origin
-   /api/espn reads or /api/league-sync commissioner verification. */
+   /api/espn reads or encrypted /api/league commissioner storage. */
 if($('espnS2Input')){
   $('espnS2Input').addEventListener('input', ()=>{
     try{
