@@ -14534,11 +14534,25 @@ async function fetchLeagueData(options){
     }
     setConn('error');
     const message = String(err && (err.message || err) || '');
-    const auth = /\bHTTP 40[13]\b/.test(message);
     $('fetchStatus').style.color = 'var(--red)';
-    $('fetchStatus').textContent = auth
-      ? 'ESPN denied the 2026 request (401/403). Confirm the server-side ESPN relay credentials and try again.'
-      : 'The live 2026 season could not be loaded. Check the League ID and try again.';
+
+    /* Surface the real reason so a live production failure is diagnosable at a
+       glance instead of always reading "could not be loaded". */
+    let msg;
+    if(/\bHTTP 40[13]\b/.test(message)){
+      msg = 'ESPN denied the 2026 request (401/403) — the league is private or the relay has no ESPN identity. Add your espn_s2 + SWID cookies, or set ESPN_S2 / ESPN_SWID in Vercel, then try again.';
+    } else if(/\bHTTP 404\b/.test(message)){
+      msg = 'ESPN has no 2026 season for this League ID (HTTP 404). Confirm the league renewed for 2026 and the ID is correct.';
+    } else if(/NO_LIVE_LEAGUE_DATA/.test(message)){
+      msg = 'Connected to ESPN, but the 2026 season returned no teams yet. If the league is private add ESPN credentials; if 2026 rosters are not set, try again once the season opens.';
+    } else if(/INVALID_ESPN_JSON/.test(message)){
+      msg = 'The /api/espn relay returned an unexpected (non-JSON) response — the serverless function may not be deployed. Verify the Vercel deployment includes the api/ routes.';
+    } else if(/\bHTTP 5\d\d\b/.test(message) || /upstream/.test(message)){
+      msg = 'The ESPN relay failed upstream (' + (message || 'server error') + '). This is usually a transient ESPN outage — try again in a moment.';
+    } else {
+      msg = 'The live 2026 season could not be loaded (' + (message || 'unknown error') + '). Check the League ID and try again.';
+    }
+    $('fetchStatus').textContent = msg;
     return false;
   }finally{
     setFetchLoading(false);
