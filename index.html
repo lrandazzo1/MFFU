@@ -3772,14 +3772,21 @@ window.FSNIntel = (function(){
 'use strict';
 
 /* ---- memo: every LeagueData publish drops the whole cache ---- */
+/* Clear-on-publish is the primary guard; league-scoping every key is the
+   structural one. A key like 'standings:3' is identical across two leagues in
+   the same week, so if a switch ever failed to publish, League B could read
+   League A's standings straight out of this map. Prefixing with the active
+   league's scope token makes that cross-contamination impossible regardless of
+   purge timing. */
 let cache = {};
 LeagueData.subscribe(()=>{ cache = {}; });
 function memo(key, fn){
-  if(Object.prototype.hasOwnProperty.call(cache, key)) return cache[key];
+  const scopedKey = leagueScopeToken() + '|' + key;
+  if(Object.prototype.hasOwnProperty.call(cache, scopedKey)) return cache[scopedKey];
   let value = null;
   try{ value = fn(); }
   catch(err){ console.error('[FSNIntel] ' + key, err); value = null; }
-  cache[key] = value;
+  cache[scopedKey] = value;
   return value;
 }
 
@@ -5656,6 +5663,17 @@ function weekContext(week){
 function selectedLeagueId(){
   const el = document.getElementById('leagueIdInput');
   return (el && el.value.trim()) || (LeagueData.meta && LeagueData.meta.leagueId) || 'league';
+}
+/* Canonical cache-namespace token for the league currently resident in the
+   stores: provider + league id. Every in-memory derived cache (FSNIntel reads,
+   SeasonAnalytics models, the News Desk stream/gen caches) prefixes its keys
+   with this so a payload computed for one league can never be served for
+   another — even if a purge is missed or a publish is reordered. Two providers
+   can reuse the same numeric id, so the provider is part of the token. */
+function leagueScopeToken(){
+  let provider = 'espn';
+  try{ if(typeof ui !== 'undefined' && ui && ui.provider) provider = ui.provider; }catch(e){}
+  return provider + ':' + selectedLeagueId();
 }
 function viewedSeasonYear(){
   const d = LeagueData.espnData || {};
@@ -11208,7 +11226,7 @@ function getTimelineStream(week){
     return custom.map((a,i)=> adopt(a, i)).sort((a,b)=> b.at - a.at);
   }
 
-  const key = String(viewedSeasonYear()) + ':' + String(week) + ':' + custom.map(a=> a.id).join(',');
+  const key = leagueScopeToken() + '|' + String(viewedSeasonYear()) + ':' + String(week) + ':' + custom.map(a=> a.id).join(',');
   if(streamCache.key === key && streamCache.list){
     let cachedCtx = null;
     try{ cachedCtx = weekContext(week); }catch(_){ cachedCtx = null; }
@@ -11365,7 +11383,9 @@ LeagueData.subscribe(()=>{ genCache = { key:null, list:null }; });
 
 function generate(week){
   if(!LeagueData.hasLive()) return [];
-  const key = String(week);
+  // League-scoped so a switch to a league sitting on the same week can never be
+  // served the previous league's generated story set.
+  const key = leagueScopeToken() + '|' + String(week);
   if(genCache.key === key && genCache.list) return genCache.list;
 
   const ctx = weekContext(week);
@@ -11586,7 +11606,10 @@ function waiverGems(schedule, throughWeek){
 function compute(selectedWeek){
   const data = LeagueData.espnData || {};
   const throughWeek = Math.max(1, number(selectedWeek) || number(data.scoringPeriodId) || 1);
-  const memoKey = String(number(data.seasonId || data.season) || 'season') + ':' + throughWeek;
+  // League-scoped: two leagues playing the same season/week produce an identical
+  // season:week pair, so the memo key must carry the league id to keep one
+  // league's expected-wins / lineup-efficiency models out of another's view.
+  const memoKey = leagueScopeToken() + '|' + String(number(data.seasonId || data.season) || 'season') + ':' + throughWeek;
   if(memo.has(memoKey)) return memo.get(memoKey);
   const teams = LeagueData.getTeams();
   const schedule = Array.isArray(data.schedule) ? data.schedule : [];
@@ -14391,6 +14414,10 @@ function clearLeagueStateForSwitch(nextLeagueId, nextProvider){
   // any half-finished cloud hydration aimed at the previous league.
   ui.rivalA = ''; ui.rivalB = '';
   ui.cloudHydrateSeq = (ui.cloudHydrateSeq || 0) + 1;
+
+  // The reader-view article lookup is keyed by article id; drop it so a
+  // deep-linked story id from the previous league can't resolve after the swap.
+  ui.newsCache = null;
 
   hideHistoryBanner();
   return true;
