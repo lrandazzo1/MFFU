@@ -14363,7 +14363,13 @@ async function fetchLeagueData(options){
   $('leagueIdInput').value = league;
   setFetchLoading(true);
   hideHistoryBanner();
+  $('fetchStatus').style.color = 'var(--dim)';
   $('fetchStatus').textContent = silent ? 'Restoring live 2026 season…' : 'Fetching live 2026 season…';
+
+  // Once the live season is populated we are committed to a success state.
+  // Anything that throws afterward (archive hydration, screen repaints) must
+  // NOT flip the banner back to a red "FETCH FAILED" — the season is connected.
+  let liveConnected = false;
 
   try{
     const proxyUrl = '/api/espn?url=' + encodeURIComponent(liveUrl);
@@ -14428,6 +14434,7 @@ async function fetchLeagueData(options){
 
     const liveInfo = applyLiveLeaguePayload(league, liveData, currentYear);
     setConn('live');
+    liveConnected = true;
 
     // Preserve a manually supplied archive, but keep live 2026 authoritative.
     const uploadedArchive = Array.isArray(window._franchiseYearsData)
@@ -14447,7 +14454,8 @@ async function fetchLeagueData(options){
       renderWeekScrubbers();
     }
 
-    $('fetchStatus').textContent = `✓ 2026 connected · ${liveData.teams.length} teams · Week ${liveInfo.activeWeek}`;
+    $('fetchStatus').style.color = 'var(--green)';
+    $('fetchStatus').textContent = `✓ Live Season Connected · 2026 · ${liveData.teams.length} teams · Week ${liveInfo.activeWeek}`;
     if(!uploadedArchive.length && $('historyStatus')){
       $('historyStatus').textContent = 'Current season is ready. Upload an archive JSON only if you want historical Record Book seasons.';
     }
@@ -14467,9 +14475,17 @@ async function fetchLeagueData(options){
     return true;
   }catch(err){
     console.error('[ESPN live fetch]', err);
+    // If the live season already connected, this error came from a downstream
+    // step (archive hydration, a screen repaint) and must not demote the
+    // banner to "FETCH FAILED" — the current season is live and populated.
+    if(liveConnected){
+      console.warn('[ESPN live fetch] post-connection step failed but live season is connected; keeping success state.', err);
+      return true;
+    }
     setConn('error');
     const message = String(err && (err.message || err) || '');
     const auth = /\bHTTP 40[13]\b/.test(message);
+    $('fetchStatus').style.color = 'var(--red)';
     $('fetchStatus').textContent = auth
       ? 'ESPN denied the 2026 request (401/403). Confirm the server-side ESPN relay credentials and try again.'
       : 'The live 2026 season could not be loaded. Check the League ID and try again.';
@@ -15210,19 +15226,47 @@ function renderTopicBar(list){
   }).join('');
 }
 
+/* A clean default placeholder for the lead slot when the desk has no stories
+   for the viewed week/season yet — shown INSTEAD of the "Display Hiccup" error
+   whenever the timeline engine comes back empty or throws. */
+function newsPlaceholderCard(week, newsLabel){
+  const weekLabel = (newsLabel && /PRESEASON/i.test(newsLabel)) ? 'Preseason' : ('Week ' + week);
+  return `<div class="empty">
+    <div class="glyph">${esc(newsLabel || ('WEEK ' + week))}</div>
+    <p class="text-[12.5px] mt-2 leading-relaxed">${esc(weekLabel + ' Preview Ready — Tap Write Story to generate the first headline for this week.')}</p>
+    <button class="btn-ghost mt-4" type="button" data-write-story>✍ WRITE STORY</button>
+  </div>`;
+}
+
 function renderNews(){
   const week = effectiveWeek();
   const viewedYearNews = parseInt(($('seasonYear').value || '').trim(), 10) || uiActiveSeasonYear();
   const newsLabel = isPreseasonWeek1(week, viewedYearNews) ? 'PRESEASON' : 'WEEK ' + week;
   $('newsWeekPill').textContent = newsLabel;
 
-  const all = newsList();
-  renderTopicBar(all);
+  /* Defensive fallback: the timeline engine can throw when the default weekly
+     stories or the AI cache structures are missing/undefined for the current
+     week/season. That must degrade to a clean placeholder card here — never
+     bubble up into safeRun() and trip the "Display Hiccup" error screen. So the
+     stream is gathered behind a guard, and an empty/failed result renders the
+     placeholder instead. */
+  let all;
+  try{
+    all = newsList() || [];
+  }catch(err){
+    console.warn('[NewsDesk] timeline stream unavailable; showing placeholder card.', err);
+    all = [];
+    if(!ui.newsCache) ui.newsCache = {};
+  }
 
-  const list = ui.topic === 'all' ? all : all.filter(a=> a.topic === ui.topic);
+  try{ renderTopicBar(all); }
+  catch(err){ console.warn('[NewsDesk] topic bar render failed', err); }
+
+  const list = ui.topic === 'all' ? all : all.filter(a=> a && a.topic === ui.topic);
   $('newsCount').textContent = all.length ? all.length + ' STOR' + (all.length === 1 ? 'Y' : 'IES') : '—';
-  $('timelineLive').textContent = list.some(a=> a.live) ? '● LIVE' : '● UPDATING';
-  $('timelineLive').style.color = list.some(a=> a.live) ? 'var(--red)' : 'var(--dim)';
+  const anyLive = list.some(a=> a && a.live);
+  $('timelineLive').textContent = anyLive ? '● LIVE' : '● UPDATING';
+  $('timelineLive').style.color = anyLive ? 'var(--red)' : 'var(--dim)';
 
   if(!LeagueData.hasLive() && !all.length){
     $('newsLeadWrap').innerHTML = emptyState('OFF AIR', 'Connect your ESPN league and the timeline starts filling in — game day carnage, waiver fallout, power rankings and the studio show.', 'setup');
@@ -15230,6 +15274,15 @@ function renderNews(){
     return;
   }
 
+  // No pre-generated stories for this week/season at all → clean placeholder.
+  if(!all.length){
+    $('newsLeadWrap').innerHTML = newsPlaceholderCard(week, newsLabel);
+    $('newsFeedWrap').classList.add('hidden');
+    return;
+  }
+
+  // Stories exist, but the active topic filter has none → keep the desk-specific
+  // note so the manager knows why this particular column is empty.
   if(!list.length){
     const msg = ui.topic === 'community'
       ? 'No manager-authored stories have been published for this season and week yet.'
@@ -15241,22 +15294,30 @@ function renderNews(){
     return;
   }
 
-  $('newsFeedWrap').classList.remove('hidden');
-  $('newsLeadWrap').innerHTML = leadCard(list[0]);
+  // Story rendering is also guarded: a single malformed card must not blank the
+  // desk with the "Display Hiccup" error — fall back to the placeholder instead.
+  try{
+    $('newsFeedWrap').classList.remove('hidden');
+    $('newsLeadWrap').innerHTML = leadCard(list[0]);
 
-  const rest = list.slice(1);
-  let html = '';
-  let lastDay = null;
-  rest.forEach(a=>{
-    const k = dayKey(a.at);
-    if(k !== lastDay){
-      html += `<div class="tl-daybreak">${esc(dayLabel(a.at))}</div>`;
-      lastDay = k;
-    }
-    html += timelineCard(a);
-  });
-  $('timelineFeed').innerHTML = html ||
-    `<div class="card p-4 text-center text-[12.5px] text-[var(--dim)]">That's the whole stream for now.</div>`;
+    const rest = list.slice(1);
+    let html = '';
+    let lastDay = null;
+    rest.forEach(a=>{
+      const k = dayKey(a.at);
+      if(k !== lastDay){
+        html += `<div class="tl-daybreak">${esc(dayLabel(a.at))}</div>`;
+        lastDay = k;
+      }
+      html += timelineCard(a);
+    });
+    $('timelineFeed').innerHTML = html ||
+      `<div class="card p-4 text-center text-[12.5px] text-[var(--dim)]">That's the whole stream for now.</div>`;
+  }catch(err){
+    console.warn('[NewsDesk] story rendering failed; showing placeholder card.', err);
+    $('newsLeadWrap').innerHTML = newsPlaceholderCard(week, newsLabel);
+    $('newsFeedWrap').classList.add('hidden');
+  }
 }
 
 /* The stream ages in place — restamp the visible metadata every 45 seconds so
@@ -15519,6 +15580,11 @@ document.addEventListener('click', (e)=>{
 }, true);
 
 $('writeStoryBtn').addEventListener('click', openStoryComposer);
+// The News Desk placeholder card offers its own "Write Story" CTA; route it to
+// the same composer via delegation so it works no matter when the card renders.
+document.addEventListener('click', (e)=>{
+  if(e.target.closest('[data-write-story]')) openStoryComposer();
+});
 $('storyComposerClose').addEventListener('click', closeStoryComposer);
 $('storyCancel').addEventListener('click', closeStoryComposer);
 $('storyComposer').addEventListener('click', (e)=>{ if(e.target === $('storyComposer')) closeStoryComposer(); });
