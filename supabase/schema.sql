@@ -15,7 +15,7 @@ create table if not exists public.leagues (
 alter table public.leagues enable row level security;
 
 -- Intentionally no anon/authenticated policies. The service-role key is used
--- only by /api/league after ESPN commissioner verification on every write.
+-- only by /api/league after authenticated ESPN league access on every write.
 
 create or replace function public.mffu_touch_league_updated_at()
 returns trigger
@@ -36,4 +36,3 @@ for each row execute function public.mffu_touch_league_updated_at();
 
 create index if not exists leagues_updated_at_idx
   on public.leagues (updated_at desc);
-

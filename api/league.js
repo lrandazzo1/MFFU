@@ -5,7 +5,8 @@
    POST { league_id, season_year, history_json }
 
    ESPN cookies arrive through x-espn-s2 / x-espn-swid (or body.cookies),
-   are commissioner-verified, encrypted with AES-256-GCM, and stored in the
+   are verified by reading the requested league, encrypted with AES-256-GCM,
+   and stored in the
    leagues.cookies JSONB column. Raw cookies are never returned to browsers.
 ============================================================ */
 
@@ -109,7 +110,7 @@ function decryptCookies(envelope) {
   if (!envelope || typeof envelope !== 'object') return { espn_s2: '', swid: '' };
 
   // Read legacy plaintext JSON rows once so existing deployments can migrate
-  // naturally on the next commissioner save. New writes are always encrypted.
+  // naturally on the next authenticated-member save. New writes are encrypted.
   if (envelope.espn_s2 || envelope.s2) return cleanCookies(envelope);
   if (envelope.v !== 1 || envelope.alg !== 'A256GCM') return { espn_s2: '', swid: '' };
 
@@ -145,7 +146,7 @@ async function readBody(req) {
   return chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : {};
 }
 
-async function verifyCommissioner(leagueId, seasonYear, cookies) {
+async function verifyLeagueMember(leagueId, seasonYear, cookies) {
   if (!cookies.espn_s2 || !cookies.swid) {
     return { ok: false, status: 401, error: 'Both ESPN cookies are required to save league data.' };
   }
@@ -153,6 +154,7 @@ async function verifyCommissioner(leagueId, seasonYear, cookies) {
   const targetSwid = cookies.swid.replace(/^\{|\}$/g, '').toLowerCase();
   const seasons = Array.from(new Set([seasonYear, activeFantasySeason(), activeFantasySeason() - 1]));
   let lastStatus = 0;
+  let sawReadableLeague = false;
 
   for (const season of seasons) {
     const url = ESPN_HOST + '/apis/v3/games/ffl/seasons/' + season +
@@ -179,14 +181,25 @@ async function verifyCommissioner(leagueId, seasonYear, cookies) {
     const member = members.find(function (row) {
       return String(row && row.id || '').replace(/^\{|\}$/g, '').toLowerCase() === targetSwid;
     });
-    if (member && (member.isLeagueManager === true || member.isLeagueCreator === true)) return { ok: true };
-    if (member) return { ok: false, status: 403, error: 'This ESPN account is a league member, but not a league manager.' };
+    if (member) return { ok: true };
+
+    // Some ESPN response variants omit members even when authenticated. A
+    // successful private-league read with real league content is itself the
+    // authorization boundary: the supplied cookie pair can access this league.
+    const readableLeague = league && (
+      Array.isArray(league.teams) ||
+      (league.settings && typeof league.settings === 'object')
+    );
+    if (readableLeague && members.length === 0) return { ok: true };
+    if (readableLeague) sawReadableLeague = true;
   }
 
   return {
     ok: false,
     status: lastStatus === 401 || lastStatus === 403 ? lastStatus : 403,
-    error: 'ESPN could not verify this SWID as a commissioner for the requested league.',
+    error: sawReadableLeague
+      ? 'These ESPN cookies can read the league, but the SWID is not listed as a member in any checked season.'
+      : 'ESPN could not verify these cookies as a member of the requested league.',
   };
 }
 
@@ -279,7 +292,7 @@ async function handler(req, res) {
   }
 
   const cookies = requestCookies(req, body);
-  const verification = await verifyCommissioner(leagueId, seasonYear, cookies);
+  const verification = await verifyLeagueMember(leagueId, seasonYear, cookies);
   if (!verification.ok) return res.status(verification.status || 403).json({ error: verification.error });
 
   try {
@@ -308,4 +321,3 @@ async function handler(req, res) {
 
 module.exports = handler;
 module.exports.getStoredLeagueCookies = getStoredLeagueCookies;
-
