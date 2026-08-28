@@ -146,7 +146,7 @@ body{
   background:rgba(10,13,19,.94);
   backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px);
   border-top:1px solid var(--line);
-  display:grid; grid-template-columns:repeat(5,1fr);
+  display:grid; grid-template-columns:repeat(6,1fr);
 }
 .tab-btn{
   display:flex; flex-direction:column; align-items:center; justify-content:center;
@@ -162,6 +162,10 @@ body{
   background:var(--cyan); box-shadow:0 0 12px var(--cyan);
 }
 .tab-btn:active{ transform:scale(.94); }
+@media (max-width:390px){
+  .tab-btn{ gap:2px; font-size:8px; letter-spacing:.08em; }
+  .tab-btn svg{ width:18px; height:18px; }
+}
 
 /* ---------- SCREENS ---------- */
 .screen{ display:none; animation:screenIn .22s ease both; }
@@ -1995,6 +1999,94 @@ html[data-studio-historical="true"] #studio{
 @media (min-width:640px){ .profile-grid{ grid-template-columns:repeat(3,minmax(0,1fr)); } }
 @media (min-width:820px){ .profile-grid{ grid-template-columns:repeat(4,minmax(0,1fr)); } }
 
+/* ============================================================
+   SEASON STATS & ANALYTICS — six live models, one terminal board
+============================================================ */
+.analytics-shell{ padding:0 16px 22px; }
+.analytics-status{
+  display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-bottom:12px;
+}
+.analytics-status-chip{
+  display:inline-flex; align-items:center; gap:6px; min-height:28px; padding:6px 9px;
+  border:1px solid var(--line-2); border-radius:999px; background:#0a0f17;
+  color:var(--dim); font-family:'JetBrains Mono',monospace; font-size:9px;
+  font-weight:700; letter-spacing:.08em; text-transform:uppercase;
+}
+.analytics-status-chip b{ color:var(--off); font-weight:800; }
+.analytics-grid{ display:grid; grid-template-columns:minmax(0,1fr); gap:12px; }
+.analytics-model{
+  min-width:0; padding:14px; border:1px solid var(--line); border-radius:15px;
+  background:linear-gradient(155deg,#111824,#090d14); position:relative; overflow:hidden;
+}
+.analytics-model::before{
+  content:''; position:absolute; left:0; top:0; width:3px; height:100%;
+  background:var(--model-accent,var(--cyan)); box-shadow:0 0 14px var(--model-accent,var(--cyan));
+}
+.analytics-model-head{ display:flex; align-items:flex-start; gap:10px; margin-bottom:11px; }
+.analytics-model-num{
+  flex:none; display:grid; place-items:center; width:28px; height:28px; border-radius:8px;
+  border:1px solid color-mix(in srgb,var(--model-accent,var(--cyan)) 40%,transparent);
+  color:var(--model-accent,var(--cyan)); background:#080c12;
+  font-family:'JetBrains Mono',monospace; font-size:10px; font-weight:900;
+}
+.analytics-model-title{
+  color:#fff; font-family:'Anton',Impact,sans-serif; font-size:17px;
+  line-height:1.08; letter-spacing:.045em; text-transform:uppercase;
+}
+.analytics-model-copy{ margin-top:4px; color:var(--dim); font-size:10.5px; line-height:1.5; }
+.analytics-table-wrap{ overflow-x:auto; border:1px solid var(--line); border-radius:10px; }
+.analytics-table{ width:100%; min-width:470px; border-collapse:collapse; font-size:10.5px; }
+.analytics-table th{
+  padding:8px 9px; color:#647084; background:#090d14; text-align:right;
+  font-family:'JetBrains Mono',monospace; font-size:8px; letter-spacing:.1em;
+  text-transform:uppercase; white-space:nowrap;
+}
+.analytics-table th:first-child,.analytics-table td:first-child{ text-align:left; }
+.analytics-table td{
+  padding:9px; border-top:1px solid rgba(255,255,255,.055); text-align:right;
+  color:var(--off); font-family:'JetBrains Mono',monospace; white-space:nowrap;
+}
+.analytics-table tr:first-child td{ background:rgba(0,224,255,.035); }
+.analytics-team{ display:flex; align-items:center; min-width:145px; gap:7px; }
+.analytics-rank{ width:18px; color:#566174; font-size:9px; }
+.analytics-team-name{
+  max-width:160px; overflow:hidden; text-overflow:ellipsis; color:#fff;
+  font-family:'Oswald',sans-serif; font-weight:700; letter-spacing:.025em;
+}
+.analytics-good{ color:var(--green) !important; }
+.analytics-warn{ color:var(--gold) !important; }
+.analytics-bad{ color:var(--red) !important; }
+.analytics-muted{ color:var(--dim) !important; }
+.analytics-empty{
+  padding:18px 12px; text-align:center; color:var(--dim); font-size:10.5px;
+  line-height:1.55; border:1px dashed var(--line-2); border-radius:10px;
+}
+.analytics-gems{ display:grid; grid-template-columns:minmax(0,1fr); gap:8px; }
+.analytics-gem{
+  display:grid; grid-template-columns:minmax(0,1fr) auto; gap:10px; align-items:center;
+  padding:10px; border:1px solid var(--line); border-radius:10px; background:#090d14;
+}
+.analytics-gem-name{ color:#fff; font-weight:700; font-size:11.5px; }
+.analytics-gem-meta{ color:var(--dim); font-size:9.5px; margin-top:3px; }
+.analytics-gem-roi{ text-align:right; color:var(--green); font-family:'JetBrains Mono',monospace; font-size:13px; font-weight:900; }
+.analytics-gem-roi span{ display:block; margin-top:2px; color:var(--dim); font-size:8px; font-weight:600; letter-spacing:.08em; }
+@media (min-width:900px){
+  .analytics-grid{ grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .analytics-model.analytics-wide{ grid-column:1 / -1; }
+  .analytics-gems{ grid-template-columns:repeat(3,minmax(0,1fr)); }
+}
+
+/* Commissioner cloud-sync status lives in Setup but never exposes credentials. */
+.cloud-status{
+  display:flex; gap:9px; align-items:flex-start; padding:10px 11px; border-radius:10px;
+  border:1px solid var(--line); background:#090d14; color:var(--dim);
+  font-size:10.5px; line-height:1.5;
+}
+.cloud-dot{ width:7px; height:7px; margin-top:4px; border-radius:50%; flex:none; background:var(--dim); }
+.cloud-status[data-state="ready"] .cloud-dot{ background:var(--green); box-shadow:0 0 9px rgba(57,255,140,.65); }
+.cloud-status[data-state="syncing"] .cloud-dot{ background:var(--cyan); box-shadow:0 0 9px rgba(0,224,255,.65); }
+.cloud-status[data-state="error"] .cloud-dot{ background:var(--red); box-shadow:0 0 9px rgba(255,45,85,.65); }
+
 </style>
 <style>*, ::before, ::after{--tw-border-spacing-x:0;--tw-border-spacing-y:0;--tw-translate-x:0;--tw-translate-y:0;--tw-rotate:0;--tw-skew-x:0;--tw-skew-y:0;--tw-scale-x:1;--tw-scale-y:1;--tw-pan-x: ;--tw-pan-y: ;--tw-pinch-zoom: ;--tw-scroll-snap-strictness:proximity;--tw-gradient-from-position: ;--tw-gradient-via-position: ;--tw-gradient-to-position: ;--tw-ordinal: ;--tw-slashed-zero: ;--tw-numeric-figure: ;--tw-numeric-spacing: ;--tw-numeric-fraction: ;--tw-ring-inset: ;--tw-ring-offset-width:0px;--tw-ring-offset-color:#fff;--tw-ring-color:rgb(59 130 246 / 0.5);--tw-ring-offset-shadow:0 0 #0000;--tw-ring-shadow:0 0 #0000;--tw-shadow:0 0 #0000;--tw-shadow-colored:0 0 #0000;--tw-blur: ;--tw-brightness: ;--tw-contrast: ;--tw-grayscale: ;--tw-hue-rotate: ;--tw-invert: ;--tw-saturate: ;--tw-sepia: ;--tw-drop-shadow: ;--tw-backdrop-blur: ;--tw-backdrop-brightness: ;--tw-backdrop-contrast: ;--tw-backdrop-grayscale: ;--tw-backdrop-hue-rotate: ;--tw-backdrop-invert: ;--tw-backdrop-opacity: ;--tw-backdrop-saturate: ;--tw-backdrop-sepia: ;--tw-contain-size: ;--tw-contain-layout: ;--tw-contain-paint: ;--tw-contain-style: }::backdrop{--tw-border-spacing-x:0;--tw-border-spacing-y:0;--tw-translate-x:0;--tw-translate-y:0;--tw-rotate:0;--tw-skew-x:0;--tw-skew-y:0;--tw-scale-x:1;--tw-scale-y:1;--tw-pan-x: ;--tw-pan-y: ;--tw-pinch-zoom: ;--tw-scroll-snap-strictness:proximity;--tw-gradient-from-position: ;--tw-gradient-via-position: ;--tw-gradient-to-position: ;--tw-ordinal: ;--tw-slashed-zero: ;--tw-numeric-figure: ;--tw-numeric-spacing: ;--tw-numeric-fraction: ;--tw-ring-inset: ;--tw-ring-offset-width:0px;--tw-ring-offset-color:#fff;--tw-ring-color:rgb(59 130 246 / 0.5);--tw-ring-offset-shadow:0 0 #0000;--tw-ring-shadow:0 0 #0000;--tw-shadow:0 0 #0000;--tw-shadow-colored:0 0 #0000;--tw-blur: ;--tw-brightness: ;--tw-contrast: ;--tw-grayscale: ;--tw-hue-rotate: ;--tw-invert: ;--tw-saturate: ;--tw-sepia: ;--tw-drop-shadow: ;--tw-backdrop-blur: ;--tw-backdrop-brightness: ;--tw-backdrop-contrast: ;--tw-backdrop-grayscale: ;--tw-backdrop-hue-rotate: ;--tw-backdrop-invert: ;--tw-backdrop-opacity: ;--tw-backdrop-saturate: ;--tw-backdrop-sepia: ;--tw-contain-size: ;--tw-contain-layout: ;--tw-contain-paint: ;--tw-contain-style: }/* ! tailwindcss v3.4.17 | MIT License | https://tailwindcss.com */*,::after,::before{box-sizing:border-box;border-width:0;border-style:solid;border-color:#e5e7eb}::after,::before{--tw-content:''}:host,html{line-height:1.5;-webkit-text-size-adjust:100%;-moz-tab-size:4;tab-size:4;font-family:ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";font-feature-settings:normal;font-variation-settings:normal;-webkit-tap-highlight-color:transparent}body{margin:0;line-height:inherit}hr{height:0;color:inherit;border-top-width:1px}abbr:where([title]){-webkit-text-decoration:underline dotted;text-decoration:underline dotted}h1,h2,h3,h4,h5,h6{font-size:inherit;font-weight:inherit}a{color:inherit;text-decoration:inherit}b,strong{font-weight:bolder}code,kbd,pre,samp{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;font-feature-settings:normal;font-variation-settings:normal;font-size:1em}small{font-size:80%}sub,sup{font-size:75%;line-height:0;position:relative;vertical-align:baseline}sub{bottom:-.25em}sup{top:-.5em}table{text-indent:0;border-color:inherit;border-collapse:collapse}button,input,optgroup,select,textarea{font-family:inherit;font-feature-settings:inherit;font-variation-settings:inherit;font-size:100%;font-weight:inherit;line-height:inherit;letter-spacing:inherit;color:inherit;margin:0;padding:0}button,select{text-transform:none}button,input:where([type=button]),input:where([type=reset]),input:where([type=submit]){-webkit-appearance:button;background-color:transparent;background-image:none}:-moz-focusring{outline:auto}:-moz-ui-invalid{box-shadow:none}progress{vertical-align:baseline}::-webkit-inner-spin-button,::-webkit-outer-spin-button{height:auto}[type=search]{-webkit-appearance:textfield;outline-offset:-2px}::-webkit-search-decoration{-webkit-appearance:none}::-webkit-file-upload-button{-webkit-appearance:button;font:inherit}summary{display:list-item}blockquote,dd,dl,figure,h1,h2,h3,h4,h5,h6,hr,p,pre{margin:0}fieldset{margin:0;padding:0}legend{padding:0}menu,ol,ul{list-style:none;margin:0;padding:0}dialog{padding:0}textarea{resize:vertical}input::placeholder,textarea::placeholder{opacity:1;color:#9ca3af}[role=button],button{cursor:pointer}:disabled{cursor:default}audio,canvas,embed,iframe,img,object,svg,video{display:block;vertical-align:middle}img,video{max-width:100%;height:auto}[hidden]:where(:not([hidden=until-found])){display:none}.relative{position:relative}.my-2\.5{margin-top:0.625rem;margin-bottom:0.625rem}.mb-2{margin-bottom:0.5rem}.mb-3{margin-bottom:0.75rem}.mb-4{margin-bottom:1rem}.ml-auto{margin-left:auto}.mt-1{margin-top:0.25rem}.mt-1\.5{margin-top:0.375rem}.mt-2{margin-top:0.5rem}.mt-3{margin-top:0.75rem}.mt-4{margin-top:1rem}.mt-5{margin-top:1.25rem}.mt-0\.5{margin-top:0.125rem}.mt-2\.5{margin-top:0.625rem}.mb-2\.5{margin-bottom:0.625rem}.mb-3\.5{margin-bottom:0.875rem}.mt-3\.5{margin-top:0.875rem}.mb-1\.5{margin-bottom:0.375rem}.block{display:block}.flex{display:flex}.grid{display:grid}.hidden{display:none}.h-px{height:1px}.w-9{width:2.25rem}.w-full{width:100%}.min-w-0{min-width:0px}.flex-1{flex:1 1 0%}.flex-none{flex:none}.grid-cols-3{grid-template-columns:repeat(3, minmax(0, 1fr))}.grid-cols-2{grid-template-columns:repeat(2, minmax(0, 1fr))}.flex-wrap{flex-wrap:wrap}.items-start{align-items:flex-start}.items-center{align-items:center}.justify-between{justify-content:space-between}.gap-2{gap:0.5rem}.gap-2\.5{gap:0.625rem}.gap-3{gap:0.75rem}.gap-1\.5{gap:0.375rem}.gap-4{gap:1rem}.space-y-2 > :not([hidden]) ~ :not([hidden]){--tw-space-y-reverse:0;margin-top:calc(0.5rem * calc(1 - var(--tw-space-y-reverse)));margin-bottom:calc(0.5rem * var(--tw-space-y-reverse))}.space-y-3 > :not([hidden]) ~ :not([hidden]){--tw-space-y-reverse:0;margin-top:calc(0.75rem * calc(1 - var(--tw-space-y-reverse)));margin-bottom:calc(0.75rem * var(--tw-space-y-reverse))}.space-y-4 > :not([hidden]) ~ :not([hidden]){--tw-space-y-reverse:0;margin-top:calc(1rem * calc(1 - var(--tw-space-y-reverse)));margin-bottom:calc(1rem * var(--tw-space-y-reverse))}.space-y-0 > :not([hidden]) ~ :not([hidden]){--tw-space-y-reverse:0;margin-top:calc(0px * calc(1 - var(--tw-space-y-reverse)));margin-bottom:calc(0px * var(--tw-space-y-reverse))}.space-y-1\.5 > :not([hidden]) ~ :not([hidden]){--tw-space-y-reverse:0;margin-top:calc(0.375rem * calc(1 - var(--tw-space-y-reverse)));margin-bottom:calc(0.375rem * var(--tw-space-y-reverse))}.overflow-x-auto{overflow-x:auto}.truncate{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.break-all{word-break:break-all}.rounded-lg{border-radius:0.5rem}.border{border-width:1px}.border-t{border-top-width:1px}.border-\[rgba\(57\2c 255\2c 140\2c \.28\)\]{border-color:rgba(57,255,140,.28)}.border-\[var\(--line\)\]{border-color:var(--line)}.bg-\[\#0b0f16\]{--tw-bg-opacity:1;background-color:rgb(11 15 22 / var(--tw-bg-opacity, 1))}.bg-\[rgba\(57\2c 255\2c 140\2c \.07\)\]{background-color:rgba(57,255,140,.07)}.bg-\[var\(--line\)\]{background-color:var(--line)}.p-2\.5{padding:0.625rem}.p-3{padding:0.75rem}.p-4{padding:1rem}.p-6{padding:1.5rem}.px-4{padding-left:1rem;padding-right:1rem}.py-2{padding-top:0.5rem;padding-bottom:0.5rem}.px-3\.5{padding-left:0.875rem;padding-right:0.875rem}.py-2\.5{padding-top:0.625rem;padding-bottom:0.625rem}.py-4{padding-top:1rem;padding-bottom:1rem}.px-1{padding-left:0.25rem;padding-right:0.25rem}.px-2{padding-left:0.5rem;padding-right:0.5rem}.px-3{padding-left:0.75rem;padding-right:0.75rem}.pb-1{padding-bottom:0.25rem}.pb-3{padding-bottom:0.75rem}.pt-4{padding-top:1rem}.pt-3{padding-top:0.75rem}.pl-5{padding-left:1.25rem}.pr-4{padding-right:1rem}.text-left{text-align:left}.text-center{text-align:center}.text-right{text-align:right}.font-mono{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace}.text-\[10\.5px\]{font-size:10.5px}.text-\[10px\]{font-size:10px}.text-\[11\.5px\]{font-size:11.5px}.text-\[12px\]{font-size:12px}.text-\[13px\]{font-size:13px}.text-\[21px\]{font-size:21px}.text-\[27px\]{font-size:27px}.text-\[30px\]{font-size:30px}.text-\[11px\]{font-size:11px}.text-\[15px\]{font-size:15px}.text-\[16px\]{font-size:16px}.text-\[17px\]{font-size:17px}.text-\[25px\]{font-size:25px}.text-\[9px\]{font-size:9px}.text-\[12\.5px\]{font-size:12.5px}.text-\[13\.5px\]{font-size:13.5px}.text-\[20px\]{font-size:20px}.text-\[9\.5px\]{font-size:9.5px}.text-\[26px\]{font-size:26px}.font-bold{font-weight:700}.font-semibold{font-weight:600}.font-extrabold{font-weight:800}.normal-case{text-transform:none}.leading-none{line-height:1}.leading-relaxed{line-height:1.625}.leading-tight{line-height:1.25}.tracking-normal{letter-spacing:0em}.tracking-wide{letter-spacing:0.025em}.tracking-widest{letter-spacing:0.1em}.text-\[\#232c3b\]{--tw-text-opacity:1;color:rgb(35 44 59 / var(--tw-text-opacity, 1))}.text-\[var\(--cyan\)\]{color:var(--cyan)}.text-\[var\(--dim\)\]{color:var(--dim)}.text-\[var\(--gold\)\]{color:var(--gold)}.text-\[var\(--green\)\]{color:var(--green)}.text-\[var\(--off\)\]{color:var(--off)}.text-\[var\(--red\)\]{color:var(--red)}.text-\[\#2b3546\]{--tw-text-opacity:1;color:rgb(43 53 70 / var(--tw-text-opacity, 1))}.text-\[\#39424f\]{--tw-text-opacity:1;color:rgb(57 66 79 / var(--tw-text-opacity, 1))}.text-\[\#5d6879\]{--tw-text-opacity:1;color:rgb(93 104 121 / var(--tw-text-opacity, 1))}.underline{-webkit-text-decoration-line:underline;text-decoration-line:underline}.decoration-dotted{-webkit-text-decoration-style:dotted;text-decoration-style:dotted}</style></head>
 <body>
@@ -2117,7 +2209,28 @@ html[data-studio-historical="true"] #studio{
   </section>
 
   <!-- ==========================================================
-       SCREEN 3 — THE RECORD BOOK
+       SCREEN 3 — SEASON STATS & ANALYTICS
+  ========================================================== -->
+  <section class="screen" data-screen="analytics" data-active="false">
+    <div class="screen-shell max-w-6xl mx-auto w-full px-4 sm:px-6">
+      <header class="px-4 pt-4 pb-3">
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <div class="kicker text-[var(--cyan)]">Decision Science · Live</div>
+            <h1 class="font-display text-[27px] leading-none mt-1.5">SEASON STATS &amp; ANALYTICS</h1>
+          </div>
+          <div class="text-right">
+            <div id="analyticsSeasonPill" class="pill pill-cyan">— SEASON</div>
+            <div id="analyticsUpdated" class="text-[10px] text-[var(--dim)] mt-1.5 font-mono tabular">AWAITING DATA</div>
+          </div>
+        </div>
+      </header>
+      <div id="analyticsBody" class="analytics-shell"></div>
+    </div>
+  </section>
+
+  <!-- ==========================================================
+       SCREEN 4 — THE RECORD BOOK
   ========================================================== -->
   <section class="screen" data-screen="recordbook" data-active="false">
     <div class="screen-shell max-w-6xl mx-auto w-full px-4 sm:px-6">
@@ -2140,7 +2253,7 @@ html[data-studio-historical="true"] #studio{
   </section>
 
   <!-- ==========================================================
-       SCREEN 4 — NEWS DESK
+       SCREEN 5 — NEWS DESK
   ========================================================== -->
   <section class="screen" data-screen="news" data-active="false">
     <div class="screen-shell max-w-6xl mx-auto w-full px-4 sm:px-6">
@@ -2187,7 +2300,7 @@ html[data-studio-historical="true"] #studio{
   </section>
 
   <!-- ==========================================================
-       SCREEN 5 — SETUP
+       SCREEN 6 — SETUP
   ========================================================== -->
   <section class="screen" data-screen="setup" data-active="false">
     <div class="screen-shell max-w-6xl mx-auto w-full px-4 sm:px-6">
@@ -2236,7 +2349,7 @@ html[data-studio-historical="true"] #studio{
       <div class="card p-4">
         <div class="section-head"><span class="bar" style="background:var(--gold)"></span><h2>Private League Access</h2></div>
         <p class="text-[11.5px] text-[var(--dim)] leading-relaxed mb-3">
-          Only needed if your league is set to <strong style="color:var(--off)">private</strong> on ESPN. Paste the two cookie values from your own logged-in browser and every fetch will read your league as you. The values are stored locally in this browser and are sent only to the same-origin ESPN relay — never to any third party.
+          Only needed if your league is set to <strong style="color:var(--off)">private</strong> on ESPN. Paste the two cookie values from your own logged-in browser and every fetch will read your league as you. The values are stored locally in this browser and are sent only to same-origin API routes for ESPN reads and commissioner verification — never to Supabase or another third party.
         </p>
         <div class="space-y-3">
           <div>
@@ -2280,7 +2393,21 @@ html[data-studio-historical="true"] #studio{
           <textarea id="jsonPaste" class="field" rows="4" placeholder="[{&quot;seasonId&quot;:2019, ...}]" style="font-size:11px; line-height:1.5;"></textarea>
           <button id="parseJsonBtn" class="btn-ghost mt-2.5">PARSE PASTED JSON</button>
         </div>
-        <p id="jsonStatus" class="text-[11.5px] text-[var(--dim)] leading-relaxed mt-2">✓ Loaded from 57155288.json: 8 seasons, 687 matchups, 16 managers.</p>
+        <p id="jsonStatus" class="text-[11.5px] text-[var(--dim)] leading-relaxed mt-2">No historical archive loaded yet.</p>
+      </div>
+
+      <!-- SUPABASE COMMISSIONER CLOUD -->
+      <div class="card p-4">
+        <div class="section-head"><span class="bar" style="background:var(--green)"></span><h2>League Cloud</h2></div>
+        <p class="text-[11.5px] text-[var(--dim)] leading-relaxed mb-3">
+          A commissioner can publish this league's archive and safe command-center settings once. After that, any member entering the same League ID receives the shared record automatically on any device. ESPN cookies and personal preferences are never uploaded.
+        </p>
+        <div id="cloudSyncStatus" class="cloud-status" data-state="idle" aria-live="polite">
+          <span class="cloud-dot" aria-hidden="true"></span>
+          <span id="cloudSyncStatusText">Enter a League ID to check for a shared league record.</span>
+        </div>
+        <button id="cloudSyncBtn" type="button" class="btn-ghost mt-3">SYNC COMMISSIONER DATA NOW</button>
+        <p class="text-[10px] text-[var(--dim)] leading-relaxed mt-2">Publishing is accepted only when the saved ESPN SWID belongs to a league manager. Cloud reads never return secret credentials.</p>
       </div>
 
       <div class="text-center py-2">
@@ -2307,6 +2434,10 @@ html[data-studio-historical="true"] #studio{
   <button class="tab-btn" data-tab="news" data-active="false">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h12v14H5.5A1.5 1.5 0 0 1 4 17.5Z"></path><path d="M16 9h3.5A1.5 1.5 0 0 1 21 10.5v7a1.5 1.5 0 0 1-1.5 1.5H16"></path><path d="M7 8.5h6"></path><path d="M7 11.5h6"></path><path d="M7 14.5h4"></path></svg>
     <span>News</span>
+  </button>
+  <button class="tab-btn" data-tab="analytics" data-active="false">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V9"></path><path d="M10 19V5"></path><path d="M16 19v-7"></path><path d="M22 19H2"></path></svg>
+    <span>Analytics</span>
   </button>
   <button class="tab-btn" data-tab="recordbook" data-active="false">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"></rect><circle cx="12" cy="12" r="3.5"></circle><path d="M12 6v2"></path><path d="M12 16v2"></path></svg>
@@ -2372,7 +2503,7 @@ html[data-studio-historical="true"] #studio{
   </div>
   <div class="onboard-body no-bar">
     <p class="onboard-intro">
-      No tech background needed. Follow whichever part you need — you only need Steps 1 &amp; 2 to watch your live league, and Step 3 only if you want the all-time Record Book.
+      No tech background needed. Start with Step 1. Public leagues need only the League ID; private leagues also need Step 2. Step 3 is only for the all-time Record Book.
     </p>
 
     <!-- STEP 1 — LEAGUE ID -->
@@ -2423,7 +2554,7 @@ html[data-studio-historical="true"] #studio{
           <li>When asked, save it as a <span class="onboard-code">.json</span> file to somewhere easy like your Desktop.</li>
           <li>Back on the Setup screen, open <strong style="color:var(--off)">Load Archive JSON</strong> and drag that <span class="onboard-code">.json</span> file into the dropzone (or tap it to pick the file).</li>
         </ol>
-        <div class="onboard-note">The moment it loads, the Record Book and Rivalry Vault unlock. The file is read on your device and is never uploaded anywhere.</div>
+        <div class="onboard-note">The moment it loads, the Record Book and Rivalry Vault unlock. If your ESPN identity is a league manager, MFFU also offers to publish that archive to the league's Supabase service record so teammates do not repeat this upload. ESPN cookies are never included.</div>
       </div>
     </div>
 
@@ -2924,8 +3055,8 @@ function validEspnPayload(rawData){
    same-origin function is authoritative. Local previews may fall back to
    the legacy browser proxy chain when /api is not being served. */
 /* Optional ESPN auth for PRIVATE leagues. Read from localStorage and forwarded
-   only to the same-origin /api/espn relay (never to public CORS proxies, which
-   would leak them). ESPN reads a private league with the espn_s2 + SWID cookies
+   only to the same-origin /api/espn and /api/league-sync routes (never to public
+   CORS proxies, which would leak them). ESPN reads a private league with the espn_s2 + SWID cookies
    the member's browser holds; the relay replays them so it can read as the member. */
 function getEspnCreds(){
   let s2 = '', swid = '';
@@ -12857,6 +12988,225 @@ return {
 
 <script>
 /* ============================================================================
+   SEASON ANALYTICS ENGINE
+   Six defensive models derived only from the active LeagueData.espnData
+   payload. Zero-score / unplayed periods are skipped, and every player-level
+   model advertises missing ESPN coverage instead of manufacturing a value.
+============================================================================ */
+window.SeasonAnalytics = (function(){
+'use strict';
+
+let memo = null;
+LeagueData.subscribe(()=>{ memo = null; });
+
+const skillPositions = new Set(['QB','RB','WR','TE']);
+const number = (value)=> Number.isFinite(Number(value)) ? Number(value) : 0;
+const regularGame = (game)=>{
+  const tier = String(game && game.playoffTierType || 'NONE').toUpperCase();
+  return !tier || tier === 'NONE';
+};
+const sideRoster = (side)=> side && (side.rosterForCurrentScoringPeriod || side.rosterForMatchupPeriod);
+const entryPoints = (entry)=>{
+  if(entry && typeof entry.appliedStatTotal === 'number') return entry.appliedStatTotal;
+  const ppe = entry && entry.playerPoolEntry;
+  return ppe && typeof ppe.appliedStatTotal === 'number' ? ppe.appliedStatTotal : null;
+};
+
+function blankRow(team){
+  return {
+    team,
+    scores:[], opponentScores:[], games:0,
+    actualWins:0, expectedWins:0,
+    lineupActual:0, lineupOptimal:0, wastedPoints:0, lineupSamples:0, benchBlunders:0,
+    heartbreaks:0, blowoutWins:0, heartbreakPoints:0, blowoutPoints:0,
+  };
+}
+
+function computePlayerPointIndex(schedule){
+  const index = Object.create(null);
+  const seen = new Set();
+  (schedule || []).forEach(game=>{
+    const week = number(game && game.matchupPeriodId);
+    if(!week) return;
+    ['home','away'].forEach(key=>{
+      const side = game && game[key];
+      const teamId = side && side.teamId;
+      const roster = sideRoster(side);
+      const entries = roster && Array.isArray(roster.entries) ? roster.entries : [];
+      entries.forEach(entry=>{
+        const ppe = entry.playerPoolEntry || {};
+        const player = ppe.player || {};
+        const playerId = player.id != null ? player.id : ppe.id;
+        const points = entryPoints(entry);
+        if(playerId == null || teamId == null || typeof points !== 'number') return;
+        const keyId = String(teamId) + ':' + String(playerId) + ':' + week;
+        if(seen.has(keyId)) return;
+        seen.add(keyId);
+        const indexKey = String(teamId) + ':' + String(playerId);
+        (index[indexKey] = index[indexKey] || []).push({ week, points:number(points) });
+      });
+    });
+  });
+  return index;
+}
+
+function waiverGems(schedule){
+  let transactions = [];
+  try{ transactions = FSNIntel.transactions() || []; }catch(e){ transactions = []; }
+  if(!transactions.length) return [];
+  const pointIndex = computePlayerPointIndex(schedule);
+  const gems = [];
+
+  transactions.forEach(tx=>{
+    if(!tx || !tx.executed || !Array.isArray(tx.adds) || !tx.adds.length) return;
+    if(tx.type !== 'WAIVER' && tx.type !== 'FREEAGENT') return;
+    tx.adds.forEach(add=>{
+      const meta = add.meta || (add.playerId != null ? FSNIntel.player(add.playerId) : null) || {};
+      const pos = String(meta.pos || '').toUpperCase();
+      if(!skillPositions.has(pos)) return; // K and D/ST are intentionally excluded.
+      const rows = pointIndex[String(tx.teamId) + ':' + String(add.playerId)] || [];
+      const fromWeek = Math.max(0, number(tx.week));
+      const points = rows.reduce((sum,row)=> sum + (row.week >= fromWeek ? number(row.points) : 0), 0);
+      if(points <= 0) return;
+      const bid = Math.max(0, number(tx.bid));
+      const costFloor = Math.max(1, bid);
+      gems.push({
+        id:String(tx.id) + ':' + String(add.playerId),
+        player:add.name || meta.name || ('Player ' + add.playerId),
+        pos,
+        team:FSNIntel.teamOf(tx.teamId),
+        week:fromWeek,
+        bid,
+        free:bid === 0,
+        points,
+        roi:points / costFloor,
+      });
+    });
+  });
+
+  gems.sort((a,b)=> (b.roi - a.roi) || (b.points - a.points) || a.player.localeCompare(b.player));
+  return gems.slice(0, 12);
+}
+
+function compute(){
+  if(memo) return memo;
+  const data = LeagueData.espnData || {};
+  const teams = LeagueData.getTeams();
+  const schedule = Array.isArray(data.schedule) ? data.schedule : [];
+  const byTeam = new Map(teams.map(team=> [String(team.id), blankRow(team)]));
+  const weeks = new Map();
+
+  schedule.filter(regularGame).forEach(game=>{
+    const week = number(game && game.matchupPeriodId);
+    const home = game && game.home;
+    const away = game && game.away;
+    if(!week || !home || !away) return;
+    const homeScore = number(home.totalPoints);
+    const awayScore = number(away.totalPoints);
+    if(homeScore <= 0 && awayScore <= 0) return; // explicitly unplayed
+
+    const posted = [];
+    if(homeScore > 0 && byTeam.has(String(home.teamId))) posted.push({ teamId:String(home.teamId), score:homeScore, opponentScore:awayScore });
+    if(awayScore > 0 && byTeam.has(String(away.teamId))) posted.push({ teamId:String(away.teamId), score:awayScore, opponentScore:homeScore });
+    if(!posted.length) return;
+    const bucket = weeks.get(week) || [];
+    posted.forEach(row=> bucket.push(row));
+    weeks.set(week, bucket);
+
+    // Actual outcomes and margin indices require both sides to have posted.
+    if(homeScore <= 0 || awayScore <= 0) return;
+    const margin = Math.abs(homeScore - awayScore);
+    const tie = Math.abs(homeScore - awayScore) < 0.001;
+    [
+      { id:String(home.teamId), score:homeScore, opponent:awayScore },
+      { id:String(away.teamId), score:awayScore, opponent:homeScore },
+    ].forEach(side=>{
+      const row = byTeam.get(side.id);
+      if(!row) return;
+      row.games += 1;
+      row.scores.push(side.score);
+      row.opponentScores.push(side.opponent);
+      if(tie) row.actualWins += .5;
+      else if(side.score > side.opponent){
+        row.actualWins += 1;
+        if(margin > 24){ row.blowoutWins += 1; row.blowoutPoints += margin - 24; }
+      }else if(margin <= 12){
+        row.heartbreaks += 1;
+        row.heartbreakPoints += Math.max(0, 12 - margin);
+      }
+    });
+  });
+
+  // Weekly-average adjusted expected wins. A tie with the mean is half a win.
+  weeks.forEach(entries=>{
+    const average = entries.length ? entries.reduce((sum,row)=> sum + row.score, 0) / entries.length : 0;
+    entries.forEach(entry=>{
+      const row = byTeam.get(entry.teamId);
+      if(!row || average <= 0) return;
+      if(Math.abs(entry.score - average) < 0.001) row.expectedWins += .5;
+      else if(entry.score > average) row.expectedWins += 1;
+    });
+  });
+
+  // Reuse the app's legal-slot optimizer so the News Desk and Analytics tab
+  // cannot disagree about which lineup was actually optimal.
+  Array.from(weeks.keys()).sort((a,b)=>a-b).forEach(week=>{
+    let context = null;
+    try{ context = NewsDesk.weekContext(week); }catch(e){ context = null; }
+    const board = context && Array.isArray(context.lineupBoard) ? context.lineupBoard : [];
+    board.forEach(line=>{
+      const row = line && line.team && byTeam.get(String(line.team.id));
+      if(!row) return;
+      row.lineupActual += number(line.actualScore);
+      row.lineupOptimal += number(line.optimalScore);
+      row.wastedPoints += number(line.wasted);
+      row.lineupSamples += 1;
+      if(line.fatal || number(line.wasted) >= 10) row.benchBlunders += 1;
+    });
+  });
+
+  const leagueOpponentAverage = Array.from(byTeam.values()).reduce((acc,row)=>{
+    row.opponentScores.forEach(score=>{ acc.sum += score; acc.count += 1; });
+    return acc;
+  }, {sum:0,count:0});
+  const opponentBaseline = leagueOpponentAverage.count ? leagueOpponentAverage.sum / leagueOpponentAverage.count : 0;
+
+  const rows = Array.from(byTeam.values()).map(row=>{
+    const mean = row.scores.length ? row.scores.reduce((sum,v)=>sum+v,0) / row.scores.length : 0;
+    const variance = row.scores.length ? row.scores.reduce((sum,v)=>sum+Math.pow(v-mean,2),0) / row.scores.length : 0;
+    const opponentPpg = row.opponentScores.length ? row.opponentScores.reduce((sum,v)=>sum+v,0) / row.opponentScores.length : 0;
+    return Object.assign(row, {
+      ppg:mean,
+      consistencyCv:mean > 0 ? Math.sqrt(variance) / mean * 100 : null,
+      luckDelta:row.actualWins - row.expectedWins,
+      lineupEfficiency:row.lineupOptimal > 0 ? Math.min(100, row.lineupActual / row.lineupOptimal * 100) : null,
+      opponentPpg,
+      scheduleDelta:opponentPpg && opponentBaseline ? opponentPpg - opponentBaseline : null,
+      marginIndex:row.blowoutPoints - row.heartbreakPoints,
+    });
+  });
+
+  memo = {
+    season:number(data.seasonId || data.season) || new Date().getFullYear(),
+    rows,
+    weeks:Array.from(weeks.keys()).sort((a,b)=>a-b),
+    opponentBaseline,
+    waiverGems:waiverGems(schedule),
+    coverage:{
+      scoredWeeks:weeks.size,
+      lineupTeams:rows.filter(row=> row.lineupSamples > 0).length,
+      waiverClaims:(()=>{ try{ return (FSNIntel.transactions() || []).filter(tx=>tx && tx.executed && tx.adds && tx.adds.length).length; }catch(e){ return 0; } })(),
+    },
+  };
+  return memo;
+}
+
+return { compute };
+})();
+</script>
+
+<script>
+/* ============================================================================
    FANTASY SPORTS NETWORK — MOBILE UI LAYER
 ============================================================================ */
 (function(){
@@ -12906,6 +13256,9 @@ const ui = {
   weekLoading: null,
   seasonFetchSeq: 0,
   seasonLoading: null,
+  cloudHydrateSeq: 0,
+  cloudLeagueId: '',
+  cloudSyncing: false,
   rivalA: '', rivalB: '',
 };
 
@@ -13352,6 +13705,11 @@ function selectProfile(teamId){
   }catch(e){}
   closeProfilePicker();
   renderAll();
+  if(role === 'commissioner'){
+    // The backend still performs the authoritative SWID check; this merely
+    // makes commissioner configuration changes publish without another click.
+    setTimeout(()=> syncLeagueToCloud({ silent:true }), 0);
+  }
 }
 
 /* Every ESPN publish runs through this gate. The first live payload opens the
@@ -13785,6 +14143,150 @@ function matchupSide(team, score, leading, status, projected, week){
       <div class="font-mono tabular text-[23px] font-extrabold leading-none ${leading ? 'text-[var(--cyan)]' : 'text-[#5d6879]'}">${score.toFixed(1)}</div>
       ${projLine}
     </div>
+  </div>`;
+}
+
+/* ============================================================
+   SEASON STATS & ANALYTICS
+============================================================ */
+function analyticsValue(value, digits){
+  if(value == null || !Number.isFinite(Number(value))) return '—';
+  return Number(value).toFixed(digits == null ? 1 : digits);
+}
+
+function analyticsTeamCell(row, rank){
+  return `<span class="analytics-team">
+    <span class="analytics-rank">${rank}</span>
+    ${crest(row.team.name, row.team.logo, 24)}
+    <span class="analytics-team-name">${esc(row.team.name)}</span>
+  </span>`;
+}
+
+function analyticsTable(rows, headers, cells){
+  if(!rows.length) return '<div class="analytics-empty">ESPN has not exposed enough completed data for this model yet.</div>';
+  return `<div class="analytics-table-wrap no-bar"><table class="analytics-table">
+    <thead><tr><th>Team</th>${headers.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead>
+    <tbody>${rows.map((row,index)=>`<tr><td>${analyticsTeamCell(row,index+1)}</td>${cells(row).join('')}</tr>`).join('')}</tbody>
+  </table></div>`;
+}
+
+function analyticsModel(numberLabel, title, copy, accent, body, wide){
+  return `<article class="analytics-model${wide ? ' analytics-wide' : ''}" style="--model-accent:${accent}">
+    <div class="analytics-model-head">
+      <span class="analytics-model-num">${numberLabel}</span>
+      <div class="min-w-0">
+        <h2 class="analytics-model-title">${esc(title)}</h2>
+        <p class="analytics-model-copy">${esc(copy)}</p>
+      </div>
+    </div>
+    ${body}
+  </article>`;
+}
+
+function renderAnalytics(){
+  const body = $('analyticsBody');
+  if(!body) return;
+  if(!LeagueData.hasLive()){
+    $('analyticsSeasonPill').textContent = '— SEASON';
+    $('analyticsUpdated').textContent = 'AWAITING DATA';
+    body.innerHTML = emptyState('NO ANALYTICS FEED', 'Fetch the current ESPN season to activate all six mathematical models.', 'setup');
+    return;
+  }
+
+  let model;
+  try{ model = SeasonAnalytics.compute(); }
+  catch(err){
+    console.error('[Analytics] model computation failed', err);
+    body.innerHTML = emptyState('MODEL STANDBY', 'The analytics engine could not read this ESPN payload. Re-fetch the league to retry.', 'setup');
+    return;
+  }
+
+  const rows = model.rows || [];
+  const scored = rows.filter(row=> row.games > 0 || row.scores.length > 0);
+  $('analyticsSeasonPill').textContent = model.season + ' SEASON';
+  $('analyticsUpdated').textContent = model.coverage.scoredWeeks
+    ? `${model.coverage.scoredWeeks} SCORED WEEK${model.coverage.scoredWeeks===1?'':'S'}`
+    : 'PRESEASON · MODELS READY';
+
+  const status = `<div class="analytics-status">
+    <span class="analytics-status-chip"><b>${rows.length}</b> Teams</span>
+    <span class="analytics-status-chip"><b>${model.coverage.scoredWeeks}</b> Scored Weeks</span>
+    <span class="analytics-status-chip"><b>${model.coverage.lineupTeams}</b> Lineup Feeds</span>
+    <span class="analytics-status-chip"><b>${model.coverage.waiverClaims}</b> Executed Adds</span>
+  </div>`;
+
+  if(!model.coverage.scoredWeeks){
+    body.innerHTML = status + `<div class="analytics-grid">${analyticsModel(
+      'LIVE','Models Armed · No Scores Yet',
+      'The schedule is connected, but zero-point and unplayed weeks are excluded. Every board will populate automatically after ESPN posts real scoring.',
+      'var(--cyan)',
+      '<div class="analytics-empty">No 0.0 rows are treated as performance. The analytics feed is waiting for the first scored matchup.</div>',
+      true
+    )}</div>`;
+    return;
+  }
+
+  const expectedRows = scored.slice().sort((a,b)=> (b.expectedWins-a.expectedWins) || (b.ppg-a.ppg));
+  const expectedTable = analyticsTable(expectedRows, ['Actual W','Adj. xW','Luck Δ','PPG'], row=>[
+    `<td>${analyticsValue(row.actualWins)}</td>`,
+    `<td class="analytics-good">${analyticsValue(row.expectedWins)}</td>`,
+    `<td class="${row.luckDelta > .01 ? 'analytics-good' : row.luckDelta < -.01 ? 'analytics-bad' : 'analytics-muted'}">${row.luckDelta > 0 ? '+' : ''}${analyticsValue(row.luckDelta)}</td>`,
+    `<td>${analyticsValue(row.ppg)}</td>`,
+  ]);
+
+  const lineupRows = rows.filter(row=> row.lineupEfficiency != null).sort((a,b)=> (b.lineupEfficiency-a.lineupEfficiency) || (a.wastedPoints-b.wastedPoints));
+  const lineupTable = analyticsTable(lineupRows, ['Efficiency','Wasted','Blunders','Weeks'], row=>[
+    `<td class="${row.lineupEfficiency >= 90 ? 'analytics-good' : row.lineupEfficiency < 80 ? 'analytics-bad' : ''}">${analyticsValue(row.lineupEfficiency)}%</td>`,
+    `<td>${analyticsValue(row.wastedPoints)}</td>`,
+    `<td class="${row.benchBlunders ? 'analytics-bad' : 'analytics-good'}">${row.benchBlunders}</td>`,
+    `<td>${row.lineupSamples}</td>`,
+  ]);
+
+  const consistencyRows = rows.filter(row=> row.consistencyCv != null).sort((a,b)=> a.consistencyCv-b.consistencyCv);
+  const consistencyTable = analyticsTable(consistencyRows, ['CV','PPG','High','Low'], row=>[
+    `<td class="${row.consistencyCv <= 12 ? 'analytics-good' : row.consistencyCv >= 25 ? 'analytics-bad' : ''}">${analyticsValue(row.consistencyCv)}%</td>`,
+    `<td>${analyticsValue(row.ppg)}</td>`,
+    `<td>${analyticsValue(Math.max.apply(null,row.scores))}</td>`,
+    `<td>${analyticsValue(Math.min.apply(null,row.scores))}</td>`,
+  ]);
+
+  const hardshipRows = rows.filter(row=> row.scheduleDelta != null).sort((a,b)=> b.opponentPpg-a.opponentPpg);
+  const hardshipTable = analyticsTable(hardshipRows, ['Opp PPG','vs League','Games','Hardship'], row=>{
+    const delta = row.scheduleDelta;
+    return [
+      `<td>${analyticsValue(row.opponentPpg)}</td>`,
+      `<td class="${delta > 0 ? 'analytics-bad' : 'analytics-good'}">${delta > 0 ? '+' : ''}${analyticsValue(delta)}</td>`,
+      `<td>${row.games}</td>`,
+      `<td class="${delta > 4 ? 'analytics-bad' : delta < -4 ? 'analytics-good' : 'analytics-muted'}">${delta > 4 ? 'BRUTAL' : delta < -4 ? 'SOFT' : 'NEUTRAL'}</td>`,
+    ];
+  });
+
+  const marginRows = rows.filter(row=> row.games > 0).sort((a,b)=> (b.marginIndex-a.marginIndex) || (b.blowoutWins-a.blowoutWins));
+  const marginTable = analyticsTable(marginRows, ['Blowout W','Heartbreak L','Index','Games'], row=>[
+    `<td class="${row.blowoutWins ? 'analytics-good' : 'analytics-muted'}">${row.blowoutWins}</td>`,
+    `<td class="${row.heartbreaks ? 'analytics-bad' : 'analytics-muted'}">${row.heartbreaks}</td>`,
+    `<td class="${row.marginIndex > 0 ? 'analytics-good' : row.marginIndex < 0 ? 'analytics-bad' : 'analytics-muted'}">${row.marginIndex > 0 ? '+' : ''}${analyticsValue(row.marginIndex)}</td>`,
+    `<td>${row.games}</td>`,
+  ]);
+
+  const gems = model.waiverGems || [];
+  const gemBody = gems.length ? `<div class="analytics-gems">${gems.slice(0,6).map((gem,index)=>`
+    <div class="analytics-gem">
+      <div class="min-w-0">
+        <div class="analytics-gem-name truncate">${index+1}. ${esc(gem.player)} · ${esc(gem.pos)}</div>
+        <div class="analytics-gem-meta truncate">${esc(gem.team ? gem.team.name : 'Unknown team')} · Week ${gem.week || '—'} · ${gem.free ? 'Free add' : '$'+analyticsValue(gem.bid,0)+' FAAB'}</div>
+      </div>
+      <div class="analytics-gem-roi">${analyticsValue(gem.roi)}×<span>${analyticsValue(gem.points)} PTS / $1</span></div>
+    </div>`).join('')}</div>`
+    : '<div class="analytics-empty">No executed QB/RB/WR/TE waiver addition has posted measurable points in the loaded feed yet. K and D/ST are excluded by design.</div>';
+
+  body.innerHTML = status + `<div class="analytics-grid">
+    ${analyticsModel('01','Adjusted Expected Wins','One expected win for beating that week’s league average; half for an exact tie. Luck Δ compares real wins with scoring quality.','var(--cyan)',expectedTable,false)}
+    ${analyticsModel('02','Lineup Efficiency & Bench Blunders','Actual legal starters divided by the best legal lineup. A blunder is a fatal swap or at least 10 recoverable bench points.','var(--gold)',lineupTable,false)}
+    ${analyticsModel('03','Scoring Consistency CV','Population standard deviation divided by average scoring. Lower CV means a steadier weekly floor.','var(--green)',consistencyTable,false)}
+    ${analyticsModel('04','Schedule Hardship','Opponent points per game compared with the league’s opponent-scoring baseline. Positive means a tougher draw.','#a78bfa',hardshipTable,false)}
+    ${analyticsModel('05','Heartbreak / Blowout Index','Blowout credit begins beyond 24 points; heartbreak pressure applies to losses of 12 or fewer. The signed index measures the excess margin.','var(--red)',marginTable,false)}
+    ${analyticsModel('06','Waiver Wire Gem Finder ROI','Points scored after an executed add divided by FAAB cost (free adds use a $1 floor). Skill positions only; K and D/ST excluded.','var(--cyan)',gemBody,true)}
   </div>`;
 }
 
@@ -14511,6 +15013,157 @@ function setFetchLoading(isLoading){
   $('fetchSpinner').classList.toggle('hidden', !isLoading);
   $('fetchLabel').textContent = isLoading ? 'CONNECTING…' : 'FETCH LEAGUE DATA';
 }
+
+/* ============================================================
+   SUPABASE LEAGUE CLOUD
+   Reads are keyed only by leagueId so teammates never repeat the archive
+   upload. Writes carry the member's ESPN cookies to /api/league-sync, where
+   the backend verifies that SWID is an ESPN league manager before touching
+   Supabase. Secret cookies are never placed in the record body.
+============================================================ */
+function setCloudStatus(state, message){
+  const shell = $('cloudSyncStatus');
+  const textEl = $('cloudSyncStatusText');
+  if(shell) shell.dataset.state = state || 'idle';
+  if(textEl) textEl.textContent = message || '';
+}
+
+function cloudSafeSettings(){
+  const data = LeagueData.espnData || {};
+  return {
+    schemaVersion:1,
+    leagueName:(data.settings && data.settings.name) || '',
+    activeSeason:Number(data.seasonId || data.season || uiActiveSeasonYear()),
+    defaultWeek:Number(currentLeagueWeek() || 1),
+    teamCount:Array.isArray(data.teams) ? data.teams.length : 0,
+  };
+}
+
+function cloudHeaders(includeBody){
+  const headers = { Accept:'application/json' };
+  if(includeBody) headers['Content-Type'] = 'application/json';
+  try{ Object.assign(headers, espnCredHeaders() || {}); }catch(e){}
+  return headers;
+}
+
+function applyCloudRecord(record, league){
+  if(!record || String(record.league_id || '') !== String(league)) return false;
+  const archive = record.historical_archive;
+  let loaded = false;
+  if(Array.isArray(archive) && archive.length){
+    try{
+      const normalized = normalizeHistoryPayload(archive);
+      if(normalized.yearsData.length){
+        applyLeagueHistory(withCurrentSeason(normalized.yearsData), normalized.skipped, 'League Cloud', { silent:true });
+        renderWeekScrubbers();
+        loaded = true;
+      }
+    }catch(err){ console.warn('[League Cloud] archive payload could not be applied', err); }
+  }
+  window._fsnCloudSettings = record.settings && typeof record.settings === 'object' ? record.settings : {};
+  if(loaded){
+    safeRun('recordbook', renderRecordBook, ()=> renderScreenFallback('recordbook'));
+    safeRun('analytics', renderAnalytics, ()=> renderScreenFallback('analytics'));
+  }
+  return loaded || !!record.settings;
+}
+
+async function hydrateLeagueFromCloud(league, options){
+  const opts = options || {};
+  const id = String(league || '').trim();
+  if(!/^\d{1,20}$/.test(id)){
+    setCloudStatus('idle', 'Enter a valid numeric League ID to check for a shared league record.');
+    return null;
+  }
+  const seq = ++ui.cloudHydrateSeq;
+  ui.cloudLeagueId = id;
+  setCloudStatus('syncing', 'Checking the league cloud for shared settings and history…');
+  try{
+    const response = await fetch('/api/league-sync?leagueId=' + encodeURIComponent(id), {
+      method:'GET', headers:cloudHeaders(false), cache:'no-store',
+    });
+    if(seq !== ui.cloudHydrateSeq || id !== String($('leagueIdInput').value || '').trim()) return null;
+    if(response.status === 404){
+      setCloudStatus('idle', 'No shared cloud record exists yet. A commissioner can publish this league after connecting.');
+      return null;
+    }
+    const payload = await response.json().catch(()=> ({}));
+    if(!response.ok){
+      const unavailable = response.status === 503;
+      setCloudStatus(unavailable ? 'idle' : 'error', unavailable
+        ? 'League Cloud is not configured on this deployment yet.'
+        : (payload.error || 'The shared league record could not be loaded.'));
+      return null;
+    }
+    const record = payload.record || payload;
+    const applied = applyCloudRecord(record, id);
+    const summary = record.archive_summary || {};
+    const seasons = Number(summary.seasons || (Array.isArray(record.historical_archive) ? record.historical_archive.length : 0));
+    setCloudStatus('ready', applied
+      ? `League Cloud connected${seasons ? ' · ' + seasons + ' shared season' + (seasons===1?'':'s') : ''} · updated ${record.updated_at ? new Date(record.updated_at).toLocaleString() : 'recently'}.`
+      : 'League Cloud connected. This record has settings but no historical archive yet.');
+    if(!opts.silent) toast('Shared league record loaded');
+    return record;
+  }catch(err){
+    if(seq === ui.cloudHydrateSeq){
+      console.warn('[League Cloud] hydration failed', err);
+      setCloudStatus('error', 'Could not reach the League Cloud. Live ESPN loading can continue normally.');
+    }
+    return null;
+  }
+}
+
+async function syncLeagueToCloud(options){
+  const opts = options || {};
+  const league = String($('leagueIdInput').value || '').trim();
+  if(!/^\d{1,20}$/.test(league)){
+    setCloudStatus('error', 'Enter a valid League ID before publishing commissioner data.');
+    return false;
+  }
+  const creds = getEspnCreds();
+  if(!creds.s2 || !creds.swid){
+    setCloudStatus('error', 'Commissioner publishing requires both ESPN cookies so the backend can verify league-manager access.');
+    if(!opts.silent) toast('Add ESPN cookies to verify commissioner access');
+    return false;
+  }
+  if(ui.cloudSyncing) return false;
+
+  const archive = Array.isArray(window._franchiseYearsData) ? window._franchiseYearsData : [];
+  const body = {
+    leagueId:league,
+    settings:cloudSafeSettings(),
+    historicalArchive:archive,
+  };
+  const serialized = JSON.stringify(body);
+  if(serialized.length > 7.5 * 1024 * 1024){
+    setCloudStatus('error', 'This archive is too large for one cloud publish. Export a lightweight history file without draft/transaction views and retry.');
+    return false;
+  }
+
+  ui.cloudSyncing = true;
+  if($('cloudSyncBtn')) $('cloudSyncBtn').disabled = true;
+  setCloudStatus('syncing', 'Verifying commissioner access and publishing the shared league record…');
+  try{
+    const response = await fetch('/api/league-sync', {
+      method:'POST', headers:cloudHeaders(true), body:serialized, cache:'no-store',
+    });
+    const payload = await response.json().catch(()=> ({}));
+    if(!response.ok) throw new Error(payload.error || ('Cloud publish failed (HTTP ' + response.status + ').'));
+    const record = payload.record || {};
+    setCloudStatus('ready', `Commissioner data synced${archive.length ? ' · ' + archive.length + ' season' + (archive.length===1?'':'s') : ''} · teammates can now load it by League ID.`);
+    if(!opts.silent) toast('Commissioner data published to League Cloud');
+    return record;
+  }catch(err){
+    console.warn('[League Cloud] publish failed', err);
+    setCloudStatus('error', String(err && err.message || err || 'Cloud publish failed.'));
+    if(!opts.silent) toast('League Cloud publish failed');
+    return false;
+  }finally{
+    ui.cloudSyncing = false;
+    if($('cloudSyncBtn')) $('cloudSyncBtn').disabled = false;
+  }
+}
+
 function buildEspnUrl(){
   const league = $('leagueIdInput').value.trim();
   const bootstrapYear = new Date().getFullYear();
@@ -14626,6 +15279,9 @@ async function fetchLeagueData(options){
   }
 
   $('leagueIdInput').value = league;
+  // Cloud history/settings hydrate in parallel with the live ESPN request.
+  // A missing/unconfigured cloud record never blocks the live connection.
+  hydrateLeagueFromCloud(league, { silent:true });
   setFetchLoading(true);
   hideHistoryBanner();
   $('fetchStatus').style.color = 'var(--dim)';
@@ -14765,6 +15421,7 @@ async function fetchLeagueData(options){
 
     safeRun('desk', renderDesk, ()=> renderScreenFallback('home'));
     safeRun('matchups', renderMatchups, ()=> renderScreenFallback('matchups'));
+    safeRun('analytics', renderAnalytics, ()=> renderScreenFallback('analytics'));
     safeRun('recordbook', renderRecordBook, ()=> renderScreenFallback('recordbook'));
     safeRun('news', renderNews, ()=> renderScreenFallback('news'));
 
@@ -14840,8 +15497,9 @@ function refreshHistoryUrlLink(){
 }
 
 /* ============================================================
-   JSON FALLBACKS — paste + drag-and-drop, read entirely
-   in-browser with FileReader; nothing is uploaded anywhere.
+   JSON FALLBACKS — paste + drag-and-drop are parsed in-browser with
+   FileReader. Only a verified commissioner can publish the normalized archive
+   to League Cloud; ESPN cookies are never included in that payload.
 ============================================================ */
 $('parseJsonBtn').addEventListener('click', ()=>{
   const text = $('jsonPaste').value.trim();
@@ -14912,6 +15570,14 @@ function applyRawPayload(rawData, sourceLabel){
   }
 
   renderAll();
+  if(storedProfileRole() === 'commissioner'){
+    syncLeagueToCloud({ silent:true });
+  } else {
+    const creds = getEspnCreds();
+    if(creds.s2 && creds.swid){
+      setCloudStatus('idle', 'Archive loaded locally. Use “Sync Commissioner Data Now” to verify manager access and publish it.');
+    }
+  }
   setScreen(LeagueData.hasLive() ? 'home' : 'recordbook');
 }
 
@@ -15031,7 +15697,12 @@ function refreshOpenAIStatus(){
 $('leagueIdInput').addEventListener('input', ()=>{
   savePrefs();
   refreshHistoryUrlLink();
+  clearTimeout($('leagueIdInput')._cloudTimer);
+  const league = $('leagueIdInput').value.trim();
+  $('leagueIdInput')._cloudTimer = setTimeout(()=> hydrateLeagueFromCloud(league, { silent:true }), 650);
 });
+
+if($('cloudSyncBtn')) $('cloudSyncBtn').addEventListener('click', ()=> syncLeagueToCloud());
 
 $('historyUnlockToggle').addEventListener('click', ()=>{
   const panel = $('historyUploadPanel');
@@ -15044,8 +15715,8 @@ $('historyUnlockToggle').addEventListener('click', ()=>{
     : 'Want to unlock historical seasons & the Record Book?';
 });
 
-/* Private-league ESPN cookies — persisted locally, never sent anywhere except
-   the same-origin /api/espn relay via espnCredHeaders(). */
+/* Private-league ESPN cookies — persisted locally and sent only to same-origin
+   /api/espn reads or /api/league-sync commissioner verification. */
 if($('espnS2Input')){
   $('espnS2Input').addEventListener('input', ()=>{
     try{
@@ -16211,6 +16882,7 @@ function renderScreenFallback(name){
   const bodyId = {
     home:     'homeQuickScores',
     matchups: 'matchupList',
+    analytics: 'analyticsBody',
     news:     'newsLeadWrap',
     recordbook:    'recordBookBody',
   }[name];
@@ -16242,6 +16914,7 @@ function renderAll(){
     safeRun('homeStories', renderHomeStories);
   }
   else if(ui.screen === 'matchups') safeRun('matchups', renderMatchups, ()=> renderScreenFallback('matchups'));
+  else if(ui.screen === 'analytics') safeRun('analytics', renderAnalytics, ()=> renderScreenFallback('analytics'));
   else if(ui.screen === 'news')     safeRun('news', renderNews, ()=> renderScreenFallback('news'));
   else if(ui.screen === 'recordbook')    safeRun('recordbook', renderRecordBook, ()=> renderScreenFallback('recordbook'));
   // Setup is static markup; only its status chips change.
