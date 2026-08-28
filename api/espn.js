@@ -42,10 +42,19 @@ module.exports = async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  // Extract the target ESPN URL from req.query.url.
-  const raw = Array.isArray(req.query && req.query.url)
+  // Extract the target ESPN URL from req.query.url. Vercel's Node runtime
+  // populates req.query, but fall back to parsing req.url directly so the
+  // function still works under `vercel dev`, other hosts, or any runtime that
+  // hands us a bare request object.
+  let raw = Array.isArray(req.query && req.query.url)
     ? req.query.url[0]
-    : req.query && req.query.url;
+    : (req.query && req.query.url);
+  if (!raw && req.url) {
+    try {
+      const parsed = new URL(req.url, 'http://localhost');
+      raw = parsed.searchParams.get('url');
+    } catch (e) { /* fall through to the missing-param error below */ }
+  }
   if (!raw) {
     return res.status(400).json({ error: 'Missing url query parameter' });
   }
@@ -111,8 +120,27 @@ module.exports = async function handler(req, res) {
     try {
       payload = JSON.parse(body);
     } catch (parseError) {
+      // ESPN (or an edge/CDN in front of it) returned a non-JSON body — an
+      // outage page, an Akamai challenge, an HTML error. Forward it verbatim
+      // with the upstream status so the frontend can report the real failure
+      // rather than a generic "could not be loaded".
       res.setHeader('Content-Type', upstream.headers.get('content-type') || 'text/plain; charset=utf-8');
-      return res.status(upstream.status).send(body);
+      return res.status(upstream.status || 502).send(body);
+    }
+
+    // ESPN sometimes answers an inaccessible (private / not-visible) league
+    // with a 2xx status but an auth-error envelope in the body
+    // ({ messages:[...], details:[...] } and no team data). Normalize that to a
+    // 401 so the frontend's private-league branch fires with an actionable
+    // message instead of silently treating it as "no data".
+    const looksLikeAuthError =
+      payload && !Array.isArray(payload) && !payload.teams &&
+      (Array.isArray(payload.messages) || Array.isArray(payload.details)) &&
+      JSON.stringify(payload.messages || payload.details || '')
+        .toLowerCase()
+        .match(/not authorized|not visible|private|forbidden|denied/);
+    if (looksLikeAuthError && upstream.status >= 200 && upstream.status < 400) {
+      return res.status(401).json(payload);
     }
 
     return res.status(upstream.status).json(payload);
