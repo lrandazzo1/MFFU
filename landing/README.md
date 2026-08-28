@@ -16,11 +16,14 @@ Deploy the `landing/` directory as its own Vercel project (Root Directory: `land
 
 The landing page uses three real FSN mobile screenshots from the product UI and focuses only on league onboarding, historical depth, the News Desk, franchise dossiers, and analytics.
 
-## App CTA routing
+## Early-access waitlist
 
-The ESPN and Sleeper CTA buttons link directly into the main FSN/MFFU setup entry point. By default they target the production app at `https://mffu.vercel.app` and pass the intended setup screen and provider:
+The public landing page does **not** send visitors into the unfinished FSN app. All ESPN and Sleeper CTAs scroll to the early-access email capture instead. The selected platform is carried into the form so launch interest can be segmented by ESPN vs. Sleeper.
 
-- ESPN: `?screen=setup&provider=espn&from=landing`
-- Sleeper: `?screen=setup&provider=sleeper&from=landing`
+Submissions POST to `/api/waitlist` and are stored in Supabase.
 
-If the production app URL changes, set `NEXT_PUBLIC_FSN_APP_URL` in the landing-page Vercel project. The landing page will use that value without requiring a code change.
+1. Run `SUPABASE_WAITLIST.sql` in the same Supabase project used by MFFU.
+2. Add the server-only variables `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` to the landing-page Vercel project.
+3. Redeploy the landing project.
+
+The waitlist table has RLS enabled and no public insert policy. Only the server-side API route writes with the service-role key.
