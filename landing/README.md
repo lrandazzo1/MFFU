@@ -2,6 +2,13 @@
 
 Self-contained Next.js + Tailwind landing page for Fantasy Sports Network.
 
+## Repository layout
+
+- `/landing` — public marketing site
+- `/` — core MFFU application (`index.html`, API routes, Supabase integration)
+
+The two surfaces should be deployed as **separate Vercel projects from the same GitHub repository**.
+
 ## Local development
 
 ```bash
@@ -10,20 +17,38 @@ npm install
 npm run dev
 ```
 
-## Deployment
+The landing page will be available locally at `http://localhost:3000` while the root MFFU app can continue to be run/deployed independently.
 
-Deploy the `landing/` directory as its own Vercel project (Root Directory: `landing`). This keeps the existing single-file MFFU application untouched while the marketing site can be developed and deployed independently.
+## Production deployment architecture
 
-The landing page uses three real FSN mobile screenshots from the product UI and focuses only on league onboarding, historical depth, the News Desk, franchise dossiers, and analytics.
+### Marketing project
 
-## Early-access waitlist
+Create a Vercel project connected to `lrandazzo1/MFFU` with:
 
-The public landing page does **not** send visitors into the unfinished FSN app. All ESPN and Sleeper CTAs scroll to the early-access email capture instead. The selected platform is carried into the form so launch interest can be segmented by ESPN vs. Sleeper.
+- Root Directory: `landing`
+- Framework: Next.js
+- Production branch: `main`
+- Domains: `fantasysportsnetwork.app` and `www.fantasysportsnetwork.app`
 
-Submissions POST to `/api/waitlist` and are stored in Supabase.
+Use one of the two domains as canonical and redirect the other to it in Vercel Project Settings.
 
-1. Run `SUPABASE_WAITLIST.sql` in the same Supabase project used by MFFU.
-2. Add the server-only variables `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` to the landing-page Vercel project.
-3. Redeploy the landing project.
+### Core app project
 
-The waitlist table has RLS enabled and no public insert policy. Only the server-side API route writes with the service-role key.
+Keep a second Vercel project connected to the same repository with:
+
+- Root Directory: repository root (`.` / blank Root Directory)
+- Production branch: `main`
+- Domain: `app.fantasysportsnetwork.app`
+
+This preserves the full MFFU application for testing and daily use while the public site remains isolated in `landing/`.
+
+## Landing → app CTAs
+
+The landing page defaults to:
+
+- ESPN: `https://app.fantasysportsnetwork.app/?screen=setup&provider=espn&from=landing`
+- Sleeper: `https://app.fantasysportsnetwork.app/?screen=setup&provider=sleeper&from=landing`
+
+Set `NEXT_PUBLIC_FSN_APP_URL` on the marketing Vercel project if the app hostname changes.
+
+The hero also clearly displays that FSN is **100% free**.
