@@ -9,7 +9,7 @@
    Duplicate emails are upserted (idempotent), never an error.
 
    On the FIRST signup for an email, sends an instant welcome email
-   through Resend (RESEND_API_KEY) thanking them, flagging the Sept 4th
+   through Resend (RESEND_API_KEY) thanking them, flagging the 2026 NFL season
    drop, and explaining how to find their ESPN SWID / League ID ahead of
    time. Email delivery is best-effort: it never fails the signup, and
    repeat submissions for the same email are not re-emailed.
@@ -24,7 +24,7 @@ const ALLOWED_ORIGINS = [
   'https://app.fantasysportsnetwork.app',
 ];
 
-const LAUNCH_LABEL = 'around September 4th';
+const LAUNCH_LABEL = 'for the 2026 NFL season';
 
 let supabaseClient;
 
@@ -241,7 +241,7 @@ async function sendWelcomeEmail(email, hasCreds) {
       body: JSON.stringify({
         from,
         to: [email],
-        subject: "You're on the FSN waitlist — launch drops " + LAUNCH_LABEL,
+        subject: "You're on the FSN waitlist — FSN drops " + LAUNCH_LABEL,
         html: welcomeEmailHtml(email, hasCreds),
         text: welcomeEmailText(hasCreds),
       }),
