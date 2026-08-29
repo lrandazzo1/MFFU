@@ -243,6 +243,8 @@ async function sendWelcomeEmail(email, hasCreds) {
 }
 
 async function handler(req, res) {
+  const startedAt = Date.now();
+  const requestId = String((req.headers && req.headers['x-vercel-id']) || '');
   const corsAllowed = applyHeaders(res, req);
   if (!corsAllowed) return res.status(403).json({ error: 'Origin not allowed.' });
   if (req.method === 'OPTIONS') return res.status(204).end();
@@ -250,6 +252,13 @@ async function handler(req, res) {
     res.setHeader('Allow', 'POST, OPTIONS');
     return res.status(405).json({ error: 'Method not allowed' });
   }
+
+  console.log(JSON.stringify({
+    level: 'info',
+    message: 'waitlist request started',
+    route: '/api/waitlist',
+    request_id: requestId,
+  }));
 
   const missingEnv = [
     'SUPABASE_URL',
@@ -301,9 +310,19 @@ async function handler(req, res) {
       .maybeSingle();
     if (lookupError) throw lookupError;
     if (existing) isNew = false;
-  } catch (_) {
+  } catch (err) {
     // If the pre-check fails we err toward not spamming: treat as existing.
     isNew = false;
+    console.error(JSON.stringify({
+      level: 'error',
+      message: 'waitlist lookup failed',
+      route: '/api/waitlist',
+      request_id: requestId,
+      error: err && err.message,
+      code: err && err.code,
+      details: err && err.details,
+      hint: err && err.hint,
+    }));
   }
 
   try {
@@ -313,6 +332,17 @@ async function handler(req, res) {
       .upsert(row, { onConflict: 'email' });
     if (error) throw error;
   } catch (err) {
+    console.error(JSON.stringify({
+      level: 'error',
+      message: 'waitlist Supabase upsert failed',
+      route: '/api/waitlist',
+      request_id: requestId,
+      error: err && err.message,
+      code: err && err.code,
+      details: err && err.details,
+      hint: err && err.hint,
+      duration_ms: Date.now() - startedAt,
+    }));
     return res.status(502).json({ error: 'Could not save your signup. Please try again.' });
   }
 
@@ -321,6 +351,16 @@ async function handler(req, res) {
   const emailSent = isNew
     ? await sendWelcomeEmail(email, Boolean(leagueId || swid))
     : false;
+
+  console.log(JSON.stringify({
+    level: 'info',
+    message: 'waitlist request completed',
+    route: '/api/waitlist',
+    request_id: requestId,
+    duplicate: !isNew,
+    email_sent: emailSent,
+    duration_ms: Date.now() - startedAt,
+  }));
 
   return res.status(200).json({
     ok: true,
