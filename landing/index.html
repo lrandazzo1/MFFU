@@ -515,13 +515,11 @@ footer{ border-top:1px solid var(--line); padding:34px 0 46px; color:var(--dim);
      Waitlist modal. All primary CTAs (data-waitlist) open this instead
      of linking to the app, which isn't shipped yet.
 
-     Submissions: the page has no backend of its own (the landing project
-     is static). Set WAITLIST_ENDPOINT to a form endpoint (Formspree, a
-     Vercel function on the app project, etc.) to collect emails server-side.
-     Until then, entries are kept in localStorage so nothing is lost and the
-     visitor still gets a clean confirmation.
+     Submissions go to the landing project's own same-origin Vercel
+     function. Supabase and Resend credentials remain server-only and are
+     never exposed to this page or coupled to the core MFFU deployment.
   ---------------------------------------------------------------- */
-  var WAITLIST_ENDPOINT = 'https://app.fantasysportsnetwork.app/api/waitlist';
+  var WAITLIST_ENDPOINT = '/api/waitlist';
 
   var overlay  = document.getElementById('waitlistOverlay');
   var modal    = document.getElementById('waitlistModal');
@@ -563,15 +561,6 @@ footer{ border-top:1px solid var(--line); padding:34px 0 46px; color:var(--dim);
     if(e.key === 'Escape' && overlay.dataset.open === 'true') closeModal();
   });
 
-  function saveLocal(entry){
-    try{
-      var key = 'fsn.waitlist.v1';
-      var list = JSON.parse(localStorage.getItem(key) || '[]');
-      list.push(entry);
-      localStorage.setItem(key, JSON.stringify(list));
-    }catch(e){}
-  }
-
   form.addEventListener('submit', function(e){
     e.preventDefault();
     var value = (email.value || '').trim();
@@ -589,8 +578,6 @@ footer{ border-top:1px solid var(--line); padding:34px 0 46px; color:var(--dim);
       swid: (swid && swid.value || '').trim(),
       ts: new Date().toISOString()
     };
-    saveLocal(entry);
-
     function done(){ modal.dataset.done = 'true'; }
 
     if(WAITLIST_ENDPOINT){
