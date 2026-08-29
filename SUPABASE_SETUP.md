@@ -26,4 +26,4 @@ View signups in Supabase: **Table Editor → `waitlist_signups`**, or `select em
 
 ## Welcome email
 
-On the **first** signup for an address, the route sends a transactional welcome email via [Resend](https://resend.com): it thanks them, flags the ~Sept 4th drop (free for the 2026 season), and explains how to find their ESPN SWID / League ID ahead of launch. Delivery is best-effort — a Resend failure is logged but never fails the signup, and repeat submissions for the same email are not re-emailed.
+On the **first** signup for an address, the route sends a transactional welcome email via [Resend](https://resend.com): it thanks them, flags the 2026 NFL season drop (free to play), and explains how to find their ESPN SWID / League ID ahead of launch. Delivery is best-effort — a Resend failure is logged but never fails the signup, and repeat submissions for the same email are not re-emailed.

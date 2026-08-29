@@ -9,10 +9,10 @@
    Duplicate emails are upserted (idempotent), never an error.
 
    On the FIRST signup for an email, sends an instant welcome email
-   through Resend (RESEND_API_KEY) thanking them, flagging the Sept 4th
-   drop, and explaining how to find their ESPN SWID / League ID ahead of
-   time. Email delivery is best-effort: it never fails the signup, and
-   repeat submissions for the same email are not re-emailed.
+   through Resend (RESEND_API_KEY) thanking them, flagging the 2026 NFL
+   season drop, and explaining how to find their ESPN SWID / League ID
+   ahead of time. Email delivery is best-effort: it never fails the signup,
+   and repeat submissions for the same email are not re-emailed.
 ============================================================ */
 
 const { createClient } = require('@supabase/supabase-js');
@@ -24,7 +24,7 @@ const ALLOWED_ORIGINS = [
   'https://app.fantasysportsnetwork.app',
 ];
 
-const LAUNCH_LABEL = 'around September 4th';
+const LAUNCH_LABEL = 'for the 2026 NFL season';
 
 let supabaseClient;
 
@@ -153,7 +153,7 @@ function welcomeEmailHtml(email, hasCreds) {
         matchups, breaking news, rivalries and 20 years of all-time records.
       </p>
       <p style="margin:0 0 20px;font-size:15px;line-height:1.6;color:#ffc400">
-        <b>Launch drops ${LAUNCH_LABEL}</b> — and it's free for the entire 2026 season.
+        <b>Launch drops ${LAUNCH_LABEL}</b> — and it's completely free to play.
         We'll email you the moment it's live.
       </p>
       ${credsBlock}
@@ -181,7 +181,7 @@ function welcomeEmailText(hasCreds) {
 
 Thanks for joining the Fantasy Sports Network waitlist. FSN turns your ESPN or Sleeper league into a full broadcast desk.
 
-Launch drops ${LAUNCH_LABEL} — free for the entire 2026 season. We'll email you the moment it's live.
+Launch drops ${LAUNCH_LABEL} — completely free to play. We'll email you the moment it's live.
 
 ${creds}
 
