@@ -59,9 +59,25 @@ function applyHeaders(res, req) {
 }
 
 function getSupabase() {
-  const url = String(process.env.SUPABASE_URL || '').replace(/\/$/, '');
+  const rawUrl = String(process.env.SUPABASE_URL || '').trim();
   const key = String(process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
-  if (!url || !key) return null;
+  if (!rawUrl || !key) return null;
+
+  let url;
+  try {
+    const parsed = new URL(rawUrl);
+    if (parsed.protocol !== 'https:') return null;
+    // SUPABASE_URL must be the project origin. Normalize accidental values such
+    // as https://project.supabase.co/rest/v1 back to the origin because the SDK
+    // appends /rest/v1 itself.
+    url = parsed.origin;
+    if (parsed.pathname && parsed.pathname !== '/') {
+      console.warn('[waitlist] normalized SUPABASE_URL path to project origin');
+    }
+  } catch (_) {
+    return null;
+  }
+
   if (!supabaseClient) {
     supabaseClient = createClient(url, key, {
       auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
