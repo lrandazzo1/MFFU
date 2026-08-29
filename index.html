@@ -3781,7 +3781,14 @@ window.FSNIntel = (function(){
 let cache = {};
 LeagueData.subscribe(()=>{ cache = {}; });
 function memo(key, fn){
-  const scopedKey = leagueScopeToken() + '|' + key;
+  /* leagueScopeToken() lives in the outer app scope (published on window), not
+     in this IIFE. Guard the cross-scope reference so a missing binding can never
+     throw here — a throw in memo() collapses every FSNIntel read and, with it,
+     the entire News Desk. When the token is unavailable we degrade to a single
+     unscoped namespace, which is exactly the pre-league-scoping behavior. */
+  let scope = 'league';
+  try{ if(typeof leagueScopeToken === 'function') scope = leagueScopeToken(); }catch(_){}
+  const scopedKey = scope + '|' + key;
   if(Object.prototype.hasOwnProperty.call(cache, scopedKey)) return cache[scopedKey];
   let value = null;
   try{ value = fn(); }
@@ -5675,6 +5682,14 @@ function leagueScopeToken(){
   try{ if(typeof ui !== 'undefined' && ui && ui.provider) provider = ui.provider; }catch(e){}
   return provider + ':' + selectedLeagueId();
 }
+/* leagueScopeToken() is read from inside the FSNIntel IIFE (see memo()), which
+   is a separate, earlier closure that cannot see this outer declaration. Without
+   a global binding that cross-scope reference throws a ReferenceError inside
+   memo(), which silently kills every FSNIntel derived read (records, standings,
+   power index, injuries, previews) and collapses the whole News Desk to a single
+   fallback card. Publish it so the memo scoping resolves — mirrors the
+   window.effectiveWeek fix for the same IIFE-boundary problem. */
+try{ window.leagueScopeToken = leagueScopeToken; }catch(_){}
 function viewedSeasonYear(){
   const d = LeagueData.espnData || {};
   const el = document.getElementById('seasonYear');
