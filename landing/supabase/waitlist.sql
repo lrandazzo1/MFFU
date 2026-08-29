@@ -12,6 +12,15 @@ create table if not exists public.waitlist_signups (
   updated_at timestamptz not null default now()
 );
 
+-- Bring older waitlist tables forward without deleting or rewriting signups.
+alter table public.waitlist_signups add column if not exists platform text;
+alter table public.waitlist_signups add column if not exists source text;
+alter table public.waitlist_signups add column if not exists user_agent text;
+alter table public.waitlist_signups add column if not exists league_id text;
+alter table public.waitlist_signups add column if not exists espn_swid text;
+alter table public.waitlist_signups add column if not exists created_at timestamptz not null default now();
+alter table public.waitlist_signups add column if not exists updated_at timestamptz not null default now();
+
 alter table public.waitlist_signups enable row level security;
 
 -- No anon/authenticated policies are intentional. Only the landing project's
