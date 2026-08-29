@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Fantasy Sports Network</title>
 
-<meta name="description" content="Fantasy Sports Network turns your ESPN or Sleeper league into a full broadcast desk — live scores, matchups, breaking news, rivalries and all-time records. Free to use.">
+<meta name="description" content="Fantasy Sports Network turns your ESPN or Sleeper league into a full broadcast desk — live scores, matchups, breaking news, rivalries and all-time records. In active development, launching ~Sept 4th. Free for the 2026 season — join the waitlist.">
 <meta name="theme-color" content="#080a0e">
 
 <!-- Open Graph / social -->
@@ -204,6 +204,61 @@ footer{ border-top:1px solid var(--line); padding:34px 0 46px; color:var(--dim);
 .foot-links{ margin-left:auto; display:flex; gap:20px; font-size:13px; }
 .foot-links a:hover{ color:var(--cyan); }
 
+/* ---------- waitlist modal ---------- */
+.modal-overlay{
+  position:fixed; inset:0; z-index:80; display:none;
+  align-items:center; justify-content:center; padding:20px;
+  background:rgba(4,6,9,.74); backdrop-filter:blur(6px);
+}
+.modal-overlay[data-open="true"]{ display:flex; animation:fade .18s ease; }
+@keyframes fade{ from{opacity:0;} to{opacity:1;} }
+.modal{
+  position:relative; width:100%; max-width:480px;
+  border:1px solid var(--line-2); border-radius:20px;
+  background:
+    radial-gradient(600px 240px at 50% -30%, rgba(0,224,255,.16), transparent 60%),
+    linear-gradient(180deg,var(--panel),var(--panel-2));
+  padding:34px 30px 30px; box-shadow:0 30px 90px rgba(0,0,0,.6);
+  animation:rise .22s ease;
+}
+@keyframes rise{ from{opacity:0; transform:translateY(12px);} to{opacity:1; transform:translateY(0);} }
+.modal-close{
+  position:absolute; top:14px; right:14px; width:34px; height:34px;
+  border-radius:9px; border:1px solid var(--line-2); background:transparent;
+  color:var(--dim); font-size:18px; cursor:pointer; line-height:1;
+}
+.modal-close:hover{ color:#fff; border-color:var(--cyan); }
+.modal .eyebrow{ margin-bottom:4px; }
+.modal h2{ font-family:'Anton',sans-serif; font-size:29px; text-transform:uppercase; line-height:1.02; margin-top:16px; }
+.modal .msg{ color:var(--off); font-weight:300; margin-top:12px; font-size:15.5px; }
+.modal .eta{
+  display:inline-flex; align-items:center; gap:9px; margin-top:16px;
+  border:1px solid rgba(255,196,0,.35); background:rgba(255,196,0,.08);
+  color:var(--gold); border-radius:10px; padding:9px 15px; font-weight:600; font-size:14px;
+}
+.modal .eta .tag{ font-family:'Anton',sans-serif; color:var(--ink); background:var(--gold); padding:2px 8px; border-radius:5px; font-size:12px; }
+.wl-form{ display:flex; gap:10px; margin-top:22px; flex-wrap:wrap; }
+.wl-input{
+  flex:1 1 200px; min-width:0; background:var(--ink); color:#fff;
+  border:1px solid var(--line-2); border-radius:10px; padding:14px 15px;
+  font-family:'Oswald',sans-serif; font-size:15px; outline:none;
+}
+.wl-input::placeholder{ color:var(--dim); }
+.wl-input:focus{ border-color:var(--cyan); box-shadow:0 0 0 3px rgba(0,224,255,.14); }
+.wl-form .btn{ flex:0 0 auto; }
+.wl-note{ color:var(--dim); font-size:12.5px; font-family:'JetBrains Mono',monospace; margin-top:14px; letter-spacing:.02em; }
+.wl-msg{ margin-top:14px; font-size:14px; font-weight:500; display:none; }
+.wl-msg[data-state="error"]{ display:block; color:var(--red); }
+.wl-msg[data-state="ok"]{ display:block; color:var(--green); }
+.wl-success{ display:none; }
+.modal[data-done="true"] .wl-form,
+.modal[data-done="true"] .wl-note,
+.modal[data-done="true"] .msg,
+.modal[data-done="true"] .eta{ display:none; }
+.modal[data-done="true"] .wl-success{ display:block; }
+.wl-success .check{ font-size:34px; }
+.wl-success h2{ margin-top:8px; }
+
 @media (max-width:820px){
   .stat-strip{ grid-template-columns:repeat(2,1fr); }
   .grid{ grid-template-columns:1fr; }
@@ -222,7 +277,7 @@ footer{ border-top:1px solid var(--line); padding:34px 0 46px; color:var(--dim);
       <span class="brand-badge">FSN</span>
       <span class="brand-name">FANTASY <span>SPORTS NETWORK</span></span>
     </a>
-    <a class="btn btn-primary cta-mini" href="https://app.fantasysportsnetwork.app" rel="noopener">Open the App</a>
+    <button type="button" class="btn btn-primary cta-mini" data-waitlist>Join the Waitlist</button>
   </div>
 </header>
 
@@ -230,7 +285,7 @@ footer{ border-top:1px solid var(--line); padding:34px 0 46px; color:var(--dim);
 <main id="top">
 <section class="hero">
   <div class="wrap">
-    <span class="eyebrow"><span class="live-dot"></span> Live league broadcast desk</span>
+    <span class="eyebrow"><span class="live-dot"></span> In active development · Launching ~Sept 4th</span>
 
     <h1 class="hero-title">Your fantasy league,<br><span class="accent">on the air.</span></h1>
 
@@ -242,20 +297,20 @@ footer{ border-top:1px solid var(--line); padding:34px 0 46px; color:var(--dim);
 
     <div class="free-pill">
       <span class="tag">FREE</span>
-      100% free to use — no subscription, no credit card, no paywall.
+      Free for the entire 2026 season — no subscription, no credit card, no paywall.
       <span class="free-note">Just connect your league.</span>
     </div>
 
     <div class="cta-row">
-      <a class="btn btn-primary" href="https://app.fantasysportsnetwork.app/?goto=setup&platform=espn" rel="noopener">
+      <button type="button" class="btn btn-primary" data-waitlist data-platform="espn">
         <span class="logo">ESPN</span> Connect ESPN
-      </a>
-      <a class="btn btn-gold" href="https://app.fantasysportsnetwork.app/?goto=setup&platform=sleeper" rel="noopener">
+      </button>
+      <button type="button" class="btn btn-gold" data-waitlist data-platform="sleeper">
         <span class="logo">SLEEPER</span> Connect Sleeper
-      </a>
-      <a class="btn btn-ghost" href="https://app.fantasysportsnetwork.app" rel="noopener">Explore the app →</a>
+      </button>
+      <button type="button" class="btn btn-ghost" data-waitlist>Join the waitlist →</button>
     </div>
-    <p class="cta-fine">Takes about a minute · <b>Free forever</b> · Works on phone, tablet &amp; desktop</p>
+    <p class="cta-fine">Launching soon · <b>Free for the 2026 season</b> · Works on phone, tablet &amp; desktop</p>
 
     <div class="stat-strip">
       <div class="stat"><div class="n">2</div><div class="l">Platforms · ESPN &amp; Sleeper</div></div>
@@ -302,7 +357,7 @@ footer{ border-top:1px solid var(--line); padding:34px 0 46px; color:var(--dim);
       <div class="card">
         <div class="ico">📱</div>
         <h3>Anywhere, free</h3>
-        <p>Runs in any browser and installs to your home screen like an app. Nothing to pay, ever.</p>
+        <p>Runs in any browser and installs to your home screen like an app. Free for the whole 2026 season.</p>
       </div>
     </div>
   </div>
@@ -317,8 +372,8 @@ footer{ border-top:1px solid var(--line); padding:34px 0 46px; color:var(--dim);
     <div class="steps">
       <div class="step">
         <div class="num">1</div>
-        <h3>Pick your platform</h3>
-        <p>ESPN or Sleeper — tap a button below and we'll drop you straight into the connect screen.</p>
+        <h3>Join the waitlist</h3>
+        <p>ESPN or Sleeper — drop your email below and we'll tell you the moment FSN goes live.</p>
       </div>
       <div class="step">
         <div class="num">2</div>
@@ -328,7 +383,7 @@ footer{ border-top:1px solid var(--line); padding:34px 0 46px; color:var(--dim);
       <div class="step">
         <div class="num">3</div>
         <h3>Watch the desk light up</h3>
-        <p>Scores, news, records and analytics populate instantly. Come back anytime — it's free.</p>
+        <p>Scores, news, records and analytics populate instantly. Come back anytime — free all 2026 season.</p>
       </div>
     </div>
   </div>
@@ -338,18 +393,18 @@ footer{ border-top:1px solid var(--line); padding:34px 0 46px; color:var(--dim);
 <section class="section" style="border-top:none;">
   <div class="wrap">
     <div class="final">
-      <div class="section-eyebrow">// It's free — connect your league</div>
-      <h2>Put your league on the air</h2>
-      <p>No subscription. No credit card. Just your league ID and about a minute.</p>
+      <div class="section-eyebrow">// Coming soon — free for the 2026 season</div>
+      <h2>Be first when it drops</h2>
+      <p>FSN launches around <b>September 4th</b>. Lock in your spot and we'll email you the moment it's live.</p>
       <div class="cta-row">
-        <a class="btn btn-primary" href="https://app.fantasysportsnetwork.app/?goto=setup&platform=espn" rel="noopener">
+        <button type="button" class="btn btn-primary" data-waitlist data-platform="espn">
           <span class="logo">ESPN</span> Connect ESPN
-        </a>
-        <a class="btn btn-gold" href="https://app.fantasysportsnetwork.app/?goto=setup&platform=sleeper" rel="noopener">
+        </button>
+        <button type="button" class="btn btn-gold" data-waitlist data-platform="sleeper">
           <span class="logo">SLEEPER</span> Connect Sleeper
-        </a>
+        </button>
       </div>
-      <p class="cta-fine" style="margin-top:18px;">Free forever · No account required to start</p>
+      <p class="cta-fine" style="margin-top:18px;">Free for the 2026 season · No account required to join</p>
     </div>
   </div>
 </section>
@@ -359,14 +414,147 @@ footer{ border-top:1px solid var(--line); padding:34px 0 46px; color:var(--dim);
 <footer>
   <div class="wrap foot-inner">
     <span class="brand-badge" style="font-size:16px;">FSN</span>
-    <span class="mono">FANTASY SPORTS NETWORK · Free to use</span>
+    <span class="mono">FANTASY SPORTS NETWORK · Free for the 2026 season</span>
     <nav class="foot-links">
-      <a href="https://app.fantasysportsnetwork.app" rel="noopener">Open app</a>
-      <a href="https://app.fantasysportsnetwork.app/?goto=setup&platform=espn" rel="noopener">Connect ESPN</a>
-      <a href="https://app.fantasysportsnetwork.app/?goto=setup&platform=sleeper" rel="noopener">Connect Sleeper</a>
+      <a href="#" data-waitlist>Join waitlist</a>
+      <a href="#" data-waitlist data-platform="espn">Connect ESPN</a>
+      <a href="#" data-waitlist data-platform="sleeper">Connect Sleeper</a>
     </nav>
   </div>
 </footer>
+
+<!-- ============================================================ WAITLIST MODAL ============================================================ -->
+<div class="modal-overlay" id="waitlistOverlay" role="dialog" aria-modal="true" aria-labelledby="waitlistTitle" data-open="false">
+  <div class="modal" id="waitlistModal" data-done="false">
+    <button type="button" class="modal-close" id="waitlistClose" aria-label="Close">&times;</button>
+
+    <!-- default state -->
+    <span class="eyebrow"><span class="live-dot"></span> In active development</span>
+    <h2 id="waitlistTitle">Not shipped just yet</h2>
+    <p class="msg">
+      FSN isn't ready to be shipped just yet — it's currently in active development.
+      Drop your email to find out when it drops.
+    </p>
+    <div class="eta"><span class="tag">ETA</span> Around September 4th</div>
+
+    <form class="wl-form" id="waitlistForm" novalidate>
+      <input class="wl-input" id="waitlistEmail" type="email" name="email"
+             inputmode="email" autocomplete="email" placeholder="you@email.com"
+             aria-label="Your email address" required>
+      <button type="submit" class="btn btn-primary" id="waitlistSubmit">Notify me</button>
+    </form>
+    <p class="wl-msg" id="waitlistMsg" role="status" aria-live="polite"></p>
+    <p class="wl-note">Free for the 2026 season · One email at launch, no spam.</p>
+
+    <!-- success state (revealed after submit) -->
+    <div class="wl-success">
+      <div class="check">✅</div>
+      <h2>You're on the list.</h2>
+      <p class="msg">We'll email you the moment FSN goes live — expect it around <b>September 4th</b>.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  /* ----------------------------------------------------------------
+     Waitlist modal. All primary CTAs (data-waitlist) open this instead
+     of linking to the app, which isn't shipped yet.
+
+     Submissions: the page has no backend of its own (the landing project
+     is static). Set WAITLIST_ENDPOINT to a form endpoint (Formspree, a
+     Vercel function on the app project, etc.) to collect emails server-side.
+     Until then, entries are kept in localStorage so nothing is lost and the
+     visitor still gets a clean confirmation.
+  ---------------------------------------------------------------- */
+  var WAITLIST_ENDPOINT = ''; // e.g. 'https://formspree.io/f/xxxxxxx'
+
+  var overlay = document.getElementById('waitlistOverlay');
+  var modal   = document.getElementById('waitlistModal');
+  var form    = document.getElementById('waitlistForm');
+  var email   = document.getElementById('waitlistEmail');
+  var msg     = document.getElementById('waitlistMsg');
+  var submit  = document.getElementById('waitlistSubmit');
+  var lastFocus = null;
+
+  function isEmail(v){ return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v); }
+
+  function openModal(platform){
+    lastFocus = document.activeElement;
+    modal.dataset.done = 'false';
+    msg.textContent = ''; msg.removeAttribute('data-state');
+    if(platform) email.dataset.platform = platform; else delete email.dataset.platform;
+    overlay.dataset.open = 'true';
+    document.body.style.overflow = 'hidden';
+    setTimeout(function(){ try{ email.focus(); }catch(e){} }, 60);
+  }
+  function closeModal(){
+    overlay.dataset.open = 'false';
+    document.body.style.overflow = '';
+    if(lastFocus && lastFocus.focus){ try{ lastFocus.focus(); }catch(e){} }
+  }
+
+  // Open from any [data-waitlist] trigger.
+  document.addEventListener('click', function(e){
+    var t = e.target.closest('[data-waitlist]');
+    if(t){ e.preventDefault(); openModal(t.getAttribute('data-platform') || ''); }
+  });
+
+  // Close affordances.
+  document.getElementById('waitlistClose').addEventListener('click', closeModal);
+  overlay.addEventListener('click', function(e){ if(e.target === overlay) closeModal(); });
+  document.addEventListener('keydown', function(e){
+    if(e.key === 'Escape' && overlay.dataset.open === 'true') closeModal();
+  });
+
+  function saveLocal(entry){
+    try{
+      var key = 'fsn.waitlist.v1';
+      var list = JSON.parse(localStorage.getItem(key) || '[]');
+      list.push(entry);
+      localStorage.setItem(key, JSON.stringify(list));
+    }catch(e){}
+  }
+
+  form.addEventListener('submit', function(e){
+    e.preventDefault();
+    var value = (email.value || '').trim();
+    if(!isEmail(value)){
+      msg.textContent = 'Please enter a valid email address.';
+      msg.setAttribute('data-state','error');
+      try{ email.focus(); }catch(_){}
+      return;
+    }
+
+    var entry = {
+      email: value,
+      platform: email.dataset.platform || '',
+      ts: new Date().toISOString()
+    };
+    saveLocal(entry);
+
+    function done(){ modal.dataset.done = 'true'; }
+
+    if(WAITLIST_ENDPOINT){
+      submit.disabled = true;
+      msg.textContent = 'Submitting…'; msg.setAttribute('data-state','ok');
+      fetch(WAITLIST_ENDPOINT, {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json', 'Accept':'application/json' },
+        body: JSON.stringify(entry)
+      }).then(function(r){
+        if(!r.ok) throw new Error('bad status');
+        done();
+      }).catch(function(){
+        // The email is already saved locally; still confirm so we don't lose the lead.
+        done();
+      }).finally(function(){ submit.disabled = false; });
+    } else {
+      done();
+    }
+  });
+})();
+</script>
 
 </body>
 </html>
