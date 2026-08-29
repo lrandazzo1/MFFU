@@ -67,15 +67,23 @@ linking into the app. The modal's email form posts to a serverless function on t
 
 ```
 POST https://app.fantasysportsnetwork.app/api/waitlist
-{ "email": "you@email.com", "platform": "espn" | "sleeper" | "", "source": "landing" }
+{ "email": "you@email.com", "platform": "espn" | "sleeper" | "", "source": "landing",
+  "league_id"?: "123456", "swid"?: "{AB12CD34-…}" }
 ```
 
 - The endpoint is set as `WAITLIST_ENDPOINT` in `landing/index.html`.
 - `api/waitlist.js` validates the email and upserts it into `public.waitlist_signups`
   (see `SUPABASE_SETUP.md`), reusing the app project's existing `SUPABASE_URL` /
-  `SUPABASE_SERVICE_ROLE_KEY` env vars. No new variables.
+  `SUPABASE_SERVICE_ROLE_KEY` env vars.
+- **Optional pre-collection:** the modal has a collapsed "Commissioner? Add your league now"
+  section with optional **League ID** and **ESPN SWID** inputs; when filled they're posted
+  as `league_id` / `swid` and saved to the `league_id` / `espn_swid` columns.
+- **Welcome email:** on a first-time signup the route sends an instant confirmation via
+  Resend. Add `RESEND_API_KEY` (and optionally `WAITLIST_FROM_EMAIL`) to the **app**
+  project; without the key the route still saves signups and skips the email.
 - It's cross-origin (landing is on `www`/apex, the API on `app`), so the function
-  returns CORS headers for all three FSN origins.
+  returns CORS headers (`Access-Control-Allow-Origin` reflecting the caller, plus
+  `Allow-Methods`, `Allow-Headers` and a preflight `Max-Age`) for all three FSN origins.
 - Because it lives under `api/`, it deploys **only** with the app project (the landing
   project's Root Directory is `landing/` and never sees it).
 

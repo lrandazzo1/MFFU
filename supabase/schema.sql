@@ -46,9 +46,17 @@ create table if not exists public.waitlist_signups (
   platform text,
   source text,
   user_agent text,
+  -- Optional pre-collection: commissioners can paste these ahead of launch so
+  -- their desk is ready on day one. Written only via the service-role route.
+  league_id text,
+  espn_swid text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+-- Idempotent add for projects created before these columns existed.
+alter table public.waitlist_signups add column if not exists league_id text;
+alter table public.waitlist_signups add column if not exists espn_swid text;
 
 alter table public.waitlist_signups enable row level security;
 -- Intentionally no anon/authenticated policies: writes go through the

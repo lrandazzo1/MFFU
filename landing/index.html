@@ -247,11 +247,36 @@ footer{ border-top:1px solid var(--line); padding:34px 0 46px; color:var(--dim);
 .wl-input:focus{ border-color:var(--cyan); box-shadow:0 0 0 3px rgba(0,224,255,.14); }
 .wl-form .btn{ flex:0 0 auto; }
 .wl-note{ color:var(--dim); font-size:12.5px; font-family:'JetBrains Mono',monospace; margin-top:14px; letter-spacing:.02em; }
+
+/* ---------- optional pre-collection fields ---------- */
+.wl-optional{ margin-top:16px; border:1px solid var(--line); border-radius:12px; background:rgba(255,255,255,.02); }
+.wl-optional > summary{
+  list-style:none; cursor:pointer; padding:12px 15px;
+  font-size:13.5px; font-weight:500; color:var(--off); letter-spacing:.02em;
+  display:flex; align-items:center; gap:9px;
+}
+.wl-optional > summary::-webkit-details-marker{ display:none; }
+.wl-optional > summary::after{ content:"+"; margin-left:auto; color:var(--dim); font-size:18px; line-height:1; }
+.wl-optional[open] > summary::after{ content:"–"; }
+.wl-optional > summary:hover{ color:#fff; }
+.wl-optional-tag{
+  font-family:'JetBrains Mono',monospace; font-size:10px; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--cyan); border:1px solid var(--line-2); border-radius:999px; padding:2px 8px;
+}
+.wl-optional-body{ padding:2px 15px 15px; }
+.wl-optional-lead{ color:var(--dim); font-size:13px; font-weight:300; margin:0 0 12px; }
+.wl-field{ display:block; margin-top:10px; }
+.wl-field > span{ display:block; font-size:12px; letter-spacing:.04em; text-transform:uppercase; color:var(--dim); margin-bottom:6px; }
+.wl-field > span em{ text-transform:none; letter-spacing:0; color:var(--dim); font-style:normal; opacity:.8; }
+.wl-field .wl-input{ width:100%; flex:none; }
+.wl-optional-hint{ color:var(--dim); font-size:11.5px; font-family:'JetBrains Mono',monospace; margin-top:10px; line-height:1.5; }
+.wl-optional-hint b{ color:var(--off); }
 .wl-msg{ margin-top:14px; font-size:14px; font-weight:500; display:none; }
 .wl-msg[data-state="error"]{ display:block; color:var(--red); }
 .wl-msg[data-state="ok"]{ display:block; color:var(--green); }
 .wl-success{ display:none; }
 .modal[data-done="true"] .wl-form,
+.modal[data-done="true"] .wl-optional,
 .modal[data-done="true"] .wl-note,
 .modal[data-done="true"] .msg,
 .modal[data-done="true"] .eta{ display:none; }
@@ -443,6 +468,35 @@ footer{ border-top:1px solid var(--line); padding:34px 0 46px; color:var(--dim);
              aria-label="Your email address" required>
       <button type="submit" class="btn btn-primary" id="waitlistSubmit">Notify me</button>
     </form>
+
+    <!-- Optional pre-collection: League ID + ESPN SWID so commissioners can be
+         ready on launch day. Collapsed by default so it never blocks the email. -->
+    <details class="wl-optional">
+      <summary>Commissioner? Add your league now <span class="wl-optional-tag">optional</span></summary>
+      <div class="wl-optional-body">
+        <p class="wl-optional-lead">
+          Paste these and your desk lights up the second FSN drops. Sleeper &amp;
+          public ESPN leagues only need the League ID.
+        </p>
+        <label class="wl-field">
+          <span>League ID</span>
+          <input class="wl-input" id="waitlistLeagueId" type="text" name="league_id"
+                 inputmode="numeric" autocomplete="off" placeholder="e.g. 123456"
+                 aria-label="Your ESPN or Sleeper league ID">
+        </label>
+        <label class="wl-field">
+          <span>ESPN SWID cookie <em>(private ESPN leagues)</em></span>
+          <input class="wl-input" id="waitlistSwid" type="text" name="swid"
+                 autocomplete="off" placeholder="{AB12CD34-…}"
+                 aria-label="Your ESPN SWID cookie">
+        </label>
+        <p class="wl-optional-hint">
+          Find the SWID in your signed-in ESPN browser: DevTools →
+          Application → Cookies → espn.com → <b>SWID</b>.
+        </p>
+      </div>
+    </details>
+
     <p class="wl-msg" id="waitlistMsg" role="status" aria-live="polite"></p>
     <p class="wl-note">Free for the 2026 season · One email at launch, no spam.</p>
 
@@ -469,12 +523,14 @@ footer{ border-top:1px solid var(--line); padding:34px 0 46px; color:var(--dim);
   ---------------------------------------------------------------- */
   var WAITLIST_ENDPOINT = 'https://app.fantasysportsnetwork.app/api/waitlist';
 
-  var overlay = document.getElementById('waitlistOverlay');
-  var modal   = document.getElementById('waitlistModal');
-  var form    = document.getElementById('waitlistForm');
-  var email   = document.getElementById('waitlistEmail');
-  var msg     = document.getElementById('waitlistMsg');
-  var submit  = document.getElementById('waitlistSubmit');
+  var overlay  = document.getElementById('waitlistOverlay');
+  var modal    = document.getElementById('waitlistModal');
+  var form     = document.getElementById('waitlistForm');
+  var email    = document.getElementById('waitlistEmail');
+  var leagueId = document.getElementById('waitlistLeagueId');
+  var swid     = document.getElementById('waitlistSwid');
+  var msg      = document.getElementById('waitlistMsg');
+  var submit   = document.getElementById('waitlistSubmit');
   var lastFocus = null;
 
   function isEmail(v){ return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v); }
@@ -529,6 +585,8 @@ footer{ border-top:1px solid var(--line); padding:34px 0 46px; color:var(--dim);
     var entry = {
       email: value,
       platform: email.dataset.platform || '',
+      league_id: (leagueId && leagueId.value || '').trim(),
+      swid: (swid && swid.value || '').trim(),
       ts: new Date().toISOString()
     };
     saveLocal(entry);
@@ -538,10 +596,13 @@ footer{ border-top:1px solid var(--line); padding:34px 0 46px; color:var(--dim);
     if(WAITLIST_ENDPOINT){
       submit.disabled = true;
       msg.textContent = 'Submitting…'; msg.setAttribute('data-state','ok');
+      var payload = { email: entry.email, platform: entry.platform, source: 'landing' };
+      if(entry.league_id) payload.league_id = entry.league_id;
+      if(entry.swid) payload.swid = entry.swid;
       fetch(WAITLIST_ENDPOINT, {
         method:'POST',
         headers:{ 'Content-Type':'application/json', 'Accept':'application/json' },
-        body: JSON.stringify({ email: entry.email, platform: entry.platform, source: 'landing' })
+        body: JSON.stringify(payload)
       }).then(function(r){
         if(!r.ok) throw new Error('bad status');
         done();

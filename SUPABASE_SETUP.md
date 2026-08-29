@@ -16,9 +16,14 @@ The frontend caches the last successful record in `localStorage`. If Supabase or
 
 `supabase/schema.sql` also creates `public.waitlist_signups` (run the same script — it's idempotent). The `POST /api/waitlist` route writes signups there with the service-role key; browsers never touch the table directly.
 
-- **Body:** `{ "email": "you@email.com", "platform": "espn" | "sleeper" | "", "source": "landing" }`
+- **Body:** `{ "email": "you@email.com", "platform": "espn" | "sleeper" | "", "source": "landing", "league_id"?: "123456", "swid"?: "{AB12CD34-…}" }`
 - **Behavior:** validates the email, upserts on the `email` primary key (repeat signups are idempotent), and returns `{ ok: true }`. Duplicate emails are not an error.
-- **Env vars:** reuses `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` on the **app** project — no new variables.
+- **Optional pre-collection:** `league_id` and `swid` are optional. When present they're sanitized (league IDs to alphanumerics, the SWID normalized to the braced `{…}` form ESPN expects) and stored in the `league_id` / `espn_swid` columns. A later bare signup never wipes previously-saved details.
+- **Env vars:** reuses `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` on the **app** project. For the welcome email add `RESEND_API_KEY` (and optionally `WAITLIST_FROM_EMAIL`, e.g. `Fantasy Sports Network <hello@fantasysportsnetwork.app>` — the from address must be a verified Resend sender/domain). If `RESEND_API_KEY` is unset the route still saves signups and just skips the email.
 - **CORS:** allows the `fantasysportsnetwork.app`, `www.`, and `app.` origins, so the marketing landing page (served from the apex/www domain) can submit to `https://app.fantasysportsnetwork.app/api/waitlist`.
 
-View signups in Supabase: **Table Editor → `waitlist_signups`**, or `select email, platform, created_at from public.waitlist_signups order by created_at desc;`.
+View signups in Supabase: **Table Editor → `waitlist_signups`**, or `select email, platform, league_id, created_at from public.waitlist_signups order by created_at desc;`.
+
+## Welcome email
+
+On the **first** signup for an address, the route sends a transactional welcome email via [Resend](https://resend.com): it thanks them, flags the ~Sept 4th drop (free for the 2026 season), and explains how to find their ESPN SWID / League ID ahead of launch. Delivery is best-effort — a Resend failure is logged but never fails the signup, and repeat submissions for the same email are not re-emailed.
