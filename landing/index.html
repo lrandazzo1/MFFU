@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Fantasy Sports Network</title>
+
+<meta name="description" content="Fantasy Sports Network turns your ESPN or Sleeper league into a full broadcast desk — live scores, matchups, breaking news, rivalries and all-time records. Free to use.">
+<meta name="theme-color" content="#080a0e">
+
+<!-- Open Graph / social -->
+<meta property="og:title" content="Fantasy Sports Network">
+<meta property="og:description" content="Your fantasy league's own broadcast desk. Live scores, matchups, breaking news and all-time records. Free.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.fantasysportsnetwork.app">
+
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns=&#39;http://www.w3.org/2000/svg&#39; viewBox=&#39;0 0 180 180&#39;%3E%3Crect width=&#39;180&#39; height=&#39;180&#39; fill=&#39;%23080a0e&#39;/%3E%3Ctext x=&#39;90&#39; y=&#39;118&#39; font-family=&#39;Helvetica,Arial&#39; font-size=&#39;78&#39; font-weight=&#39;bold&#39; fill=&#39;%2300e0ff&#39; text-anchor=&#39;middle&#39;%3EFSN%3C/text%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=&#39;http://www.w3.org/2000/svg&#39; viewBox=&#39;0 0 64 64&#39;%3E%3Crect width=&#39;64&#39; height=&#39;64&#39; fill=&#39;%23080a0e&#39;/%3E%3Ctext x=&#39;32&#39; y=&#39;43&#39; font-family=&#39;Helvetica,Arial&#39; font-size=&#39;27&#39; font-weight=&#39;bold&#39; fill=&#39;%2300e0ff&#39; text-anchor=&#39;middle&#39;%3EFSN%3C/text%3E%3C/svg%3E">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Oswald:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700;800&display=swap" rel="stylesheet">
+
+<style>
+/* ============================================================
+   TOKENS — athletic broadcast palette (mirrors the core app so the
+   landing page and app.fantasysportsnetwork.app read as one product).
+============================================================ */
+:root{
+  --ink:#080a0e;
+  --panel:#12161f;
+  --panel-2:#181e2a;
+  --line:rgba(255,255,255,.08);
+  --line-2:rgba(255,255,255,.14);
+  --cyan:#00e0ff;
+  --gold:#ffc400;
+  --red:#ff2d55;
+  --green:#39ff8c;
+  --off:#c7cdd8;
+  --dim:#7c8698;
+}
+
+*{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; margin:0; padding:0; }
+
+html{ scroll-behavior:smooth; }
+
+body{
+  background:var(--ink);
+  color:#fff;
+  font-family:'Oswald',system-ui,-apple-system,sans-serif;
+  line-height:1.5;
+  max-width:100%;
+  overflow-x:hidden;
+  -webkit-font-smoothing:antialiased;
+}
+
+.font-display{ font-family:'Anton',Impact,sans-serif; letter-spacing:.01em; }
+.mono{ font-family:'JetBrains Mono',ui-monospace,monospace; }
+
+a{ color:inherit; text-decoration:none; }
+
+.wrap{ width:100%; max-width:1120px; margin:0 auto; padding:0 22px; }
+
+/* ---------- top bar ---------- */
+.topbar{
+  position:sticky; top:0; z-index:40;
+  background:rgba(8,10,14,.82);
+  backdrop-filter:saturate(140%) blur(10px);
+  border-bottom:1px solid var(--line);
+}
+.topbar-inner{ display:flex; align-items:center; gap:14px; height:60px; }
+.brand{ display:flex; align-items:center; gap:10px; }
+.brand-badge{
+  font-family:'Anton',sans-serif; font-size:20px; color:var(--ink);
+  background:var(--cyan); padding:3px 9px; border-radius:6px; line-height:1;
+}
+.brand-name{ font-family:'Anton',sans-serif; font-size:19px; letter-spacing:.02em; }
+.brand-name span{ color:var(--cyan); }
+.topbar .cta-mini{ margin-left:auto; }
+
+/* ---------- buttons ---------- */
+.btn{
+  display:inline-flex; align-items:center; justify-content:center; gap:9px;
+  font-family:'Oswald',sans-serif; font-weight:600; font-size:15px;
+  letter-spacing:.04em; text-transform:uppercase;
+  padding:14px 24px; border-radius:10px; cursor:pointer;
+  border:1px solid transparent; transition:transform .12s ease, box-shadow .12s ease, background .12s ease;
+  white-space:nowrap;
+}
+.btn:active{ transform:translateY(1px); }
+.btn-primary{ background:var(--cyan); color:var(--ink); box-shadow:0 8px 30px rgba(0,224,255,.18); }
+.btn-primary:hover{ box-shadow:0 10px 38px rgba(0,224,255,.32); }
+.btn-gold{ background:var(--gold); color:var(--ink); box-shadow:0 8px 30px rgba(255,196,0,.16); }
+.btn-gold:hover{ box-shadow:0 10px 38px rgba(255,196,0,.30); }
+.btn-ghost{ background:transparent; color:#fff; border-color:var(--line-2); }
+.btn-ghost:hover{ border-color:var(--cyan); color:var(--cyan); }
+.cta-mini{ padding:9px 16px; font-size:13px; }
+
+.btn .logo{ font-family:'Anton',sans-serif; font-size:13px; letter-spacing:.06em; }
+
+/* ---------- hero ---------- */
+.hero{ position:relative; padding:76px 0 60px; overflow:hidden; }
+.hero::before{
+  content:""; position:absolute; inset:0; z-index:0;
+  background:
+    radial-gradient(1200px 520px at 78% -8%, rgba(0,224,255,.16), transparent 60%),
+    radial-gradient(900px 420px at 8% 8%, rgba(255,45,85,.10), transparent 62%),
+    linear-gradient(180deg, transparent, rgba(8,10,14,.4));
+  pointer-events:none;
+}
+.hero .wrap{ position:relative; z-index:1; }
+
+.eyebrow{
+  display:inline-flex; align-items:center; gap:9px;
+  font-family:'JetBrains Mono',monospace; font-weight:700; font-size:12px;
+  letter-spacing:.18em; text-transform:uppercase; color:var(--cyan);
+  border:1px solid var(--line-2); border-radius:999px; padding:7px 14px;
+  background:rgba(0,224,255,.05);
+}
+.live-dot{ width:8px; height:8px; border-radius:50%; background:var(--red); box-shadow:0 0 0 0 rgba(255,45,85,.6); animation:pulse 1.8s infinite; }
+@keyframes pulse{ 0%{box-shadow:0 0 0 0 rgba(255,45,85,.55);} 70%{box-shadow:0 0 0 9px rgba(255,45,85,0);} 100%{box-shadow:0 0 0 0 rgba(255,45,85,0);} }
+
+h1.hero-title{
+  font-family:'Anton',sans-serif; line-height:.94;
+  font-size:clamp(44px, 8.4vw, 88px); margin:20px 0 0; text-transform:uppercase;
+}
+h1.hero-title .accent{ color:var(--cyan); }
+.hero-sub{
+  color:var(--off); font-size:clamp(16px,2.3vw,20px); font-weight:300;
+  max-width:640px; margin:20px 0 0;
+}
+
+/* free banner */
+.free-pill{
+  display:inline-flex; align-items:center; gap:10px; margin-top:26px;
+  border:1px solid rgba(57,255,140,.35); background:rgba(57,255,140,.08);
+  color:var(--green); border-radius:12px; padding:11px 18px;
+  font-weight:600; letter-spacing:.03em; font-size:15px;
+}
+.free-pill .tag{
+  font-family:'Anton',sans-serif; color:var(--ink); background:var(--green);
+  padding:2px 9px; border-radius:6px; font-size:13px; letter-spacing:.04em;
+}
+.free-note{ color:var(--dim); font-weight:300; }
+
+.cta-row{ display:flex; flex-wrap:wrap; gap:14px; margin-top:30px; }
+.cta-fine{ margin-top:16px; color:var(--dim); font-size:13.5px; font-family:'JetBrains Mono',monospace; letter-spacing:.02em; }
+.cta-fine b{ color:var(--off); font-weight:500; }
+
+/* ---------- stat strip ---------- */
+.stat-strip{
+  display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-top:52px;
+}
+.stat{
+  border:1px solid var(--line); background:var(--panel);
+  border-radius:14px; padding:18px 16px;
+}
+.stat .n{ font-family:'Anton',sans-serif; font-size:30px; color:var(--cyan); line-height:1; }
+.stat .l{ color:var(--dim); font-size:12.5px; letter-spacing:.06em; text-transform:uppercase; margin-top:8px; }
+
+/* ---------- feature grid ---------- */
+.section{ padding:64px 0; border-top:1px solid var(--line); }
+.section-eyebrow{ font-family:'JetBrains Mono',monospace; color:var(--cyan); font-size:12px; letter-spacing:.2em; text-transform:uppercase; }
+.section h2{ font-family:'Anton',sans-serif; font-size:clamp(30px,5vw,46px); text-transform:uppercase; margin-top:10px; line-height:1; }
+.section .lead{ color:var(--off); font-weight:300; max-width:620px; margin-top:14px; font-size:17px; }
+
+.grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-top:38px; }
+.card{
+  border:1px solid var(--line); background:linear-gradient(180deg,var(--panel),var(--panel-2));
+  border-radius:16px; padding:22px; transition:border-color .15s ease, transform .15s ease;
+}
+.card:hover{ border-color:var(--line-2); transform:translateY(-2px); }
+.card .ico{
+  width:42px; height:42px; border-radius:11px; display:grid; place-items:center;
+  background:rgba(0,224,255,.10); border:1px solid rgba(0,224,255,.25);
+  font-size:20px; margin-bottom:14px;
+}
+.card h3{ font-family:'Oswald',sans-serif; font-weight:600; font-size:18px; letter-spacing:.02em; text-transform:uppercase; }
+.card p{ color:var(--dim); font-weight:300; font-size:14.5px; margin-top:8px; }
+
+/* ---------- how it works ---------- */
+.steps{ display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-top:38px; }
+.step{ border:1px solid var(--line); border-radius:16px; padding:22px; background:var(--panel); position:relative; }
+.step .num{ font-family:'Anton',sans-serif; font-size:15px; color:var(--ink); background:var(--gold); width:30px; height:30px; border-radius:8px; display:grid; place-items:center; }
+.step h3{ font-family:'Oswald',sans-serif; font-weight:600; font-size:17px; text-transform:uppercase; margin-top:14px; }
+.step p{ color:var(--dim); font-weight:300; font-size:14.5px; margin-top:8px; }
+
+/* ---------- final CTA ---------- */
+.final{
+  margin:14px 0 0; border:1px solid var(--line-2);
+  border-radius:20px; padding:48px 34px; text-align:center;
+  background:
+    radial-gradient(800px 300px at 50% -30%, rgba(0,224,255,.18), transparent 60%),
+    linear-gradient(180deg,var(--panel),var(--panel-2));
+}
+.final h2{ font-family:'Anton',sans-serif; font-size:clamp(30px,5.4vw,52px); text-transform:uppercase; line-height:.98; }
+.final p{ color:var(--off); font-weight:300; margin-top:14px; }
+.final .cta-row{ justify-content:center; }
+
+/* ---------- footer ---------- */
+footer{ border-top:1px solid var(--line); padding:34px 0 46px; color:var(--dim); }
+.foot-inner{ display:flex; flex-wrap:wrap; align-items:center; gap:14px; }
+.foot-inner .mono{ font-size:12.5px; letter-spacing:.04em; }
+.foot-links{ margin-left:auto; display:flex; gap:20px; font-size:13px; }
+.foot-links a:hover{ color:var(--cyan); }
+
+@media (max-width:820px){
+  .stat-strip{ grid-template-columns:repeat(2,1fr); }
+  .grid{ grid-template-columns:1fr; }
+  .steps{ grid-template-columns:1fr; }
+  .btn{ flex:1 1 auto; }
+  .topbar .cta-mini{ flex:0 0 auto; }
+}
+</style>
+</head>
+<body>
+
+<!-- ============================================================ TOP BAR ============================================================ -->
+<header class="topbar">
+  <div class="wrap topbar-inner">
+    <a class="brand" href="#top" aria-label="Fantasy Sports Network home">
+      <span class="brand-badge">FSN</span>
+      <span class="brand-name">FANTASY <span>SPORTS NETWORK</span></span>
+    </a>
+    <a class="btn btn-primary cta-mini" href="https://app.fantasysportsnetwork.app" rel="noopener">Open the App</a>
+  </div>
+</header>
+
+<!-- ============================================================ HERO ============================================================ -->
+<main id="top">
+<section class="hero">
+  <div class="wrap">
+    <span class="eyebrow"><span class="live-dot"></span> Live league broadcast desk</span>
+
+    <h1 class="hero-title">Your fantasy league,<br><span class="accent">on the air.</span></h1>
+
+    <p class="hero-sub">
+      Fantasy Sports Network turns your ESPN or Sleeper league into a full broadcast desk —
+      live scores, weekly matchups, breaking news, rivalries and 20 years of all-time records.
+      Connect once and the studio runs itself.
+    </p>
+
+    <div class="free-pill">
+      <span class="tag">FREE</span>
+      100% free to use — no subscription, no credit card, no paywall.
+      <span class="free-note">Just connect your league.</span>
+    </div>
+
+    <div class="cta-row">
+      <a class="btn btn-primary" href="https://app.fantasysportsnetwork.app/?goto=setup&platform=espn" rel="noopener">
+        <span class="logo">ESPN</span> Connect ESPN
+      </a>
+      <a class="btn btn-gold" href="https://app.fantasysportsnetwork.app/?goto=setup&platform=sleeper" rel="noopener">
+        <span class="logo">SLEEPER</span> Connect Sleeper
+      </a>
+      <a class="btn btn-ghost" href="https://app.fantasysportsnetwork.app" rel="noopener">Explore the app →</a>
+    </div>
+    <p class="cta-fine">Takes about a minute · <b>Free forever</b> · Works on phone, tablet &amp; desktop</p>
+
+    <div class="stat-strip">
+      <div class="stat"><div class="n">2</div><div class="l">Platforms · ESPN &amp; Sleeper</div></div>
+      <div class="stat"><div class="n">20yr</div><div class="l">All-time record book</div></div>
+      <div class="stat"><div class="n">6</div><div class="l">Analytics models</div></div>
+      <div class="stat"><div class="n">$0</div><div class="l">Cost to play</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ FEATURES ============================================================ -->
+<section class="section">
+  <div class="wrap">
+    <div class="section-eyebrow">// The desk</div>
+    <h2>Everything your league talks about, in one place</h2>
+    <p class="lead">Plug in your league ID and FSN builds the whole broadcast — no spreadsheets, no group-chat detective work.</p>
+
+    <div class="grid">
+      <div class="card">
+        <div class="ico">📊</div>
+        <h3>Live scores &amp; matchups</h3>
+        <p>This week's head-to-head board, projections and results the moment they move — pulled straight from ESPN or Sleeper.</p>
+      </div>
+      <div class="card">
+        <div class="ico">📰</div>
+        <h3>News desk</h3>
+        <p>Recaps, waiver fallout, power rankings and storylines written around your actual league — updated every week.</p>
+      </div>
+      <div class="card">
+        <div class="ico">🏆</div>
+        <h3>Record book</h3>
+        <p>Franchise résumés, head-to-head rivalries and all-time records going back two decades of league history.</p>
+      </div>
+      <div class="card">
+        <div class="ico">🧮</div>
+        <h3>Analytics engine</h3>
+        <p>Six mathematical models — strength of schedule, luck index, playoff odds and more — reading your season live.</p>
+      </div>
+      <div class="card">
+        <div class="ico">🔥</div>
+        <h3>Rivalry spotlight</h3>
+        <p>Grudge matches, revenge games and the storylines that make a Sunday personal, surfaced automatically.</p>
+      </div>
+      <div class="card">
+        <div class="ico">📱</div>
+        <h3>Anywhere, free</h3>
+        <p>Runs in any browser and installs to your home screen like an app. Nothing to pay, ever.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ HOW IT WORKS ============================================================ -->
+<section class="section">
+  <div class="wrap">
+    <div class="section-eyebrow">// Kickoff in a minute</div>
+    <h2>How it works</h2>
+
+    <div class="steps">
+      <div class="step">
+        <div class="num">1</div>
+        <h3>Pick your platform</h3>
+        <p>ESPN or Sleeper — tap a button below and we'll drop you straight into the connect screen.</p>
+      </div>
+      <div class="step">
+        <div class="num">2</div>
+        <h3>Enter your league ID</h3>
+        <p>Paste the league ID from your ESPN or Sleeper URL. Public leagues need nothing else.</p>
+      </div>
+      <div class="step">
+        <div class="num">3</div>
+        <h3>Watch the desk light up</h3>
+        <p>Scores, news, records and analytics populate instantly. Come back anytime — it's free.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ FINAL CTA ============================================================ -->
+<section class="section" style="border-top:none;">
+  <div class="wrap">
+    <div class="final">
+      <div class="section-eyebrow">// It's free — connect your league</div>
+      <h2>Put your league on the air</h2>
+      <p>No subscription. No credit card. Just your league ID and about a minute.</p>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="https://app.fantasysportsnetwork.app/?goto=setup&platform=espn" rel="noopener">
+          <span class="logo">ESPN</span> Connect ESPN
+        </a>
+        <a class="btn btn-gold" href="https://app.fantasysportsnetwork.app/?goto=setup&platform=sleeper" rel="noopener">
+          <span class="logo">SLEEPER</span> Connect Sleeper
+        </a>
+      </div>
+      <p class="cta-fine" style="margin-top:18px;">Free forever · No account required to start</p>
+    </div>
+  </div>
+</section>
+</main>
+
+<!-- ============================================================ FOOTER ============================================================ -->
+<footer>
+  <div class="wrap foot-inner">
+    <span class="brand-badge" style="font-size:16px;">FSN</span>
+    <span class="mono">FANTASY SPORTS NETWORK · Free to use</span>
+    <nav class="foot-links">
+      <a href="https://app.fantasysportsnetwork.app" rel="noopener">Open app</a>
+      <a href="https://app.fantasysportsnetwork.app/?goto=setup&platform=espn" rel="noopener">Connect ESPN</a>
+      <a href="https://app.fantasysportsnetwork.app/?goto=setup&platform=sleeper" rel="noopener">Connect Sleeper</a>
+    </nav>
+  </div>
+</footer>
+
+</body>
+</html>

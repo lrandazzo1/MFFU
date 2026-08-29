@@ -16349,6 +16349,37 @@ function renderAll(){
 }
 
 /* ============================================================
+   DEEP LINK — honor ?goto=<screen>&platform=<espn|sleeper> so external
+   entry points (chiefly the marketing landing page at the apex/www domain)
+   can drop a visitor straight into the Setup connect flow. Everything here is
+   optional and defensive: unknown values are ignored and the app behaves as a
+   normal Home boot when no params are present.
+============================================================ */
+function applyDeepLink(){
+  let params;
+  try{ params = new URLSearchParams(window.location.search); }
+  catch(e){ return; }
+
+  const platform = (params.get('platform') || '').toLowerCase();
+  if(platform === 'espn' || platform === 'sleeper'){
+    try{ setProvider(platform); savePrefs(); }catch(e){}
+  }
+
+  const target = (params.get('goto') || '').toLowerCase();
+  const known = ['home','matchups','news','analytics','recordbook','setup'];
+  // A platform hint implies the user came to connect a league, so default the
+  // destination to Setup even if goto was omitted.
+  const dest = known.includes(target) ? target : (platform ? 'setup' : '');
+  if(dest) setScreen(dest);
+
+  // Clean the query string so a refresh or share doesn't re-trigger the jump
+  // and the URL stays tidy. Guarded for older/embedded browsers.
+  if((target || platform) && window.history && window.history.replaceState){
+    try{ window.history.replaceState({}, document.title, window.location.pathname); }catch(e){}
+  }
+}
+
+/* ============================================================
    BOOT — render immediately, then silently rehydrate a saved league.
 ============================================================ */
 function bootApp(){
@@ -16359,6 +16390,13 @@ function bootApp(){
   if(savedWeek > 0) ui.week = savedWeek;
   renderAll();
   setScreen('home');
+
+  // Deep-link entry from the marketing landing page (or any external link).
+  // The apex/www landing site sends visitors here with ?goto=setup and an
+  // optional &platform=espn|sleeper so a "Connect ESPN/Sleeper" click lands
+  // directly on the Setup screen with the right provider preselected. This is
+  // additive: with no params the app boots to Home exactly as before.
+  applyDeepLink();
 
   let savedLeagueId = '';
   try{ savedLeagueId = (localStorage.getItem(SAVED_LEAGUE_ID_KEY) || '').trim(); }catch(e){}
