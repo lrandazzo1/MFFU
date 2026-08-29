@@ -59,19 +59,34 @@ values per domain in each project's **Settings → Domains**):
 
 ---
 
-## 4. How the landing CTAs reach the app
+## 4. Pre-launch waitlist (landing → app API → Supabase)
 
-The landing page's **Connect ESPN** / **Connect Sleeper** buttons link to:
+While the app is in development the landing CTAs open a **waitlist modal** instead of
+linking into the app. The modal's email form posts to a serverless function on the
+**app** project:
 
 ```
-https://app.fantasysportsnetwork.app/?goto=setup&platform=espn
-https://app.fantasysportsnetwork.app/?goto=setup&platform=sleeper
+POST https://app.fantasysportsnetwork.app/api/waitlist
+{ "email": "you@email.com", "platform": "espn" | "sleeper" | "", "source": "landing" }
 ```
 
-The core app reads those query params on boot (`applyDeepLink()` in `index.html`):
-`platform` preselects the ESPN or Sleeper provider, `goto=setup` jumps straight to the
-Setup / connect screen, and the query string is then cleaned from the URL. With no
-params the app boots to Home exactly as before — the behavior is purely additive.
+- The endpoint is set as `WAITLIST_ENDPOINT` in `landing/index.html`.
+- `api/waitlist.js` validates the email and upserts it into `public.waitlist_signups`
+  (see `SUPABASE_SETUP.md`), reusing the app project's existing `SUPABASE_URL` /
+  `SUPABASE_SERVICE_ROLE_KEY` env vars. No new variables.
+- It's cross-origin (landing is on `www`/apex, the API on `app`), so the function
+  returns CORS headers for all three FSN origins.
+- Because it lives under `api/`, it deploys **only** with the app project (the landing
+  project's Root Directory is `landing/` and never sees it).
+
+> When the app ships, flip the landing CTAs back to the app deep-links below and the
+> `applyDeepLink()` handler already in `index.html` takes over — `platform` preselects
+> the provider, `goto=setup` opens the connect screen, then the query string is cleaned:
+>
+> ```
+> https://app.fantasysportsnetwork.app/?goto=setup&platform=espn
+> https://app.fantasysportsnetwork.app/?goto=setup&platform=sleeper
+> ```
 
 ---
 
@@ -79,7 +94,7 @@ params the app boots to Home exactly as before — the behavior is purely additi
 
 - **Landing** = everything under `landing/` (self-contained: one `index.html`, its own
   `vercel.json`). No app code, no API routes, no secrets.
-- **App** = repository root (`index.html`, `league-media-studio.html`, `api/`,
-  `supabase/`, `package.json`).
-- The only coupling is the outbound links above. Neither build imports from the other,
-  so a change on one side cannot break the other.
+- **App** = repository root (`index.html`, `league-media-studio.html`, `api/`
+  including `api/waitlist.js`, `supabase/`, `package.json`).
+- The only coupling is the outbound links / the waitlist API call above. Neither build
+  imports from the other, so a change on one side cannot break the other.

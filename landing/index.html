@@ -467,7 +467,7 @@ footer{ border-top:1px solid var(--line); padding:34px 0 46px; color:var(--dim);
      Until then, entries are kept in localStorage so nothing is lost and the
      visitor still gets a clean confirmation.
   ---------------------------------------------------------------- */
-  var WAITLIST_ENDPOINT = ''; // e.g. 'https://formspree.io/f/xxxxxxx'
+  var WAITLIST_ENDPOINT = 'https://app.fantasysportsnetwork.app/api/waitlist';
 
   var overlay = document.getElementById('waitlistOverlay');
   var modal   = document.getElementById('waitlistModal');
@@ -541,13 +541,15 @@ footer{ border-top:1px solid var(--line); padding:34px 0 46px; color:var(--dim);
       fetch(WAITLIST_ENDPOINT, {
         method:'POST',
         headers:{ 'Content-Type':'application/json', 'Accept':'application/json' },
-        body: JSON.stringify(entry)
+        body: JSON.stringify({ email: entry.email, platform: entry.platform, source: 'landing' })
       }).then(function(r){
         if(!r.ok) throw new Error('bad status');
         done();
       }).catch(function(){
-        // The email is already saved locally; still confirm so we don't lose the lead.
-        done();
+        // Genuine backend failure — the email is stashed locally as a backup,
+        // but surface a retry so we don't falsely claim they're on the list.
+        msg.textContent = 'Something went wrong on our end — please try again.';
+        msg.setAttribute('data-state','error');
       }).finally(function(){ submit.disabled = false; });
     } else {
       done();
