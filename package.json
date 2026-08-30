@@ -9,7 +9,8 @@
     "@supabase/supabase-js": "^2.57.4"
   },
   "scripts": {
-    "build:css": "node scripts/build-css.js"
+    "build:css": "node scripts/build-css.js",
+    "test": "node test/espn.test.js"
   },
   "devDependencies": {
     "tailwindcss": "3.4.17"

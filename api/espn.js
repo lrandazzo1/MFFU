@@ -21,6 +21,8 @@ const ALLOWED_ESPN_HOSTS = new Set([
 
 // A realistic desktop Chrome UA. ESPN's read endpoints return empty or
 // error shells to unrecognized clients, so we present as a normal browser.
+const UPSTREAM_TIMEOUT_MS = 12000;
+
 const BROWSER_USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
   '(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36';
@@ -144,64 +146,112 @@ module.exports = async function handler(req, res) {
     Accept: 'application/json',
     'User-Agent': BROWSER_USER_AGENT,
   };
-  if (cookieParts.length) upstreamHeaders.Cookie = cookieParts.join('; ');
+  const anonymous = cookieParts.length === 0;
+  if (!anonymous) upstreamHeaders.Cookie = cookieParts.join('; ');
+
+  // Anonymous reads get a second host to try. ESPN serves public leagues from
+  // both hosts, but lm-api-reads is the "league manager" read host and is the
+  // one that can answer an uncredentialed request with 401/403 — or, unhelpfully,
+  // a bare 404 that is indistinguishable from "no such league". fantasy.espn.com
+  // serves the same /apis/v3 path and has historically answered public leagues
+  // without cookies, so it is worth one retry before giving up. Only for
+  // anonymous requests: a credentialed request must not have the caller's
+  // cookies replayed to a second host.
+  const candidates = [target.toString()];
+  if (anonymous && target.hostname === 'lm-api-reads.fantasy.espn.com') {
+    const mirror = new URL(target.toString());
+    mirror.hostname = 'fantasy.espn.com';
+    candidates.push(mirror.toString());
+  }
+
+  // An access failure is either a hard 401/403/404, or ESPN's habit of
+  // answering an inaccessible league with 2xx and an auth-error envelope.
+  function isAuthEnvelope(payload) {
+    return !!(payload && !Array.isArray(payload) && !payload.teams &&
+      (Array.isArray(payload.messages) || Array.isArray(payload.details)) &&
+      JSON.stringify(payload.messages || payload.details || '')
+        .toLowerCase()
+        .match(/not authorized|not visible|private|forbidden|denied/));
+  }
 
   try {
-    const upstream = await fetch(target.toString(), {
-      method: 'GET',
-      headers: upstreamHeaders,
-      redirect: 'follow',
-    });
-
-    const body = await upstream.text();
-
-    res.setHeader('Cache-Control', 's-maxage=15, stale-while-revalidate=30');
-
-    // Parse and return the ESPN JSON payload. The leagueHistory route replies
-    // with a top-level array, so we forward whatever JSON shape ESPN sends.
-    // If ESPN ever returns a non-JSON body (an outage page, an HTML error),
-    // surface it verbatim with the upstream status rather than crashing.
+    let upstream = null;
+    let body = '';
     let payload;
-    try {
-      payload = JSON.parse(body);
-    } catch (parseError) {
-      // ESPN (or an edge/CDN in front of it) returned a non-JSON body — an
-      // outage page, an Akamai challenge, an HTML error. Forward it verbatim
-      // with the upstream status so the frontend can report the real failure
-      // rather than a generic "could not be loaded".
+    let parsed = false;
+    let authEnvelope = false;
+    const diag = [];
+
+    for (let i = 0; i < candidates.length; i++) {
+      const candidate = candidates[i];
+      const response = await fetch(candidate, {
+        method: 'GET',
+        headers: upstreamHeaders,
+        redirect: 'follow',
+        signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+      });
+      const text = await response.text();
+      let json;
+      let ok = true;
+      try { json = JSON.parse(text); } catch (e) { ok = false; }
+
+      upstream = response;
+      body = text;
+      payload = json;
+      parsed = ok;
+      authEnvelope = ok && isAuthEnvelope(json);
+
+      const denied = response.status === 401 || response.status === 403 ||
+        response.status === 404 || authEnvelope;
+      diag.push({ host: new URL(candidate).hostname, status: response.status, denied });
+
+      if (!denied) break;                      // usable answer — stop here
+      if (i === candidates.length - 1) break;  // out of candidates — keep the last
+    }
+
+    const denied = upstream.status === 401 || upstream.status === 403 ||
+      upstream.status === 404 || authEnvelope;
+
+    // Never let the edge cache a denial or an error.
+    res.setHeader('Cache-Control', denied || !upstream.ok
+      ? 'no-store'
+      : 's-maxage=15, stale-while-revalidate=30');
+
+    // Non-JSON body (an outage page, an Akamai challenge, an HTML error):
+    // forward it verbatim with the upstream status so the frontend can report
+    // the real failure rather than a generic "could not be loaded".
+    if (!parsed) {
       res.setHeader('Content-Type', upstream.headers.get('content-type') || 'text/plain; charset=utf-8');
       return res.status(upstream.status || 502).send(body);
     }
 
-    // ESPN sometimes answers an inaccessible (private / not-visible) league
-    // with a 2xx status but an auth-error envelope in the body
-    // ({ messages:[...], details:[...] } and no team data). Normalize that to a
-    // 401 so the frontend's private-league branch fires with an actionable
-    // message instead of silently treating it as "no data".
-    const looksLikeAuthError =
-      payload && !Array.isArray(payload) && !payload.teams &&
-      (Array.isArray(payload.messages) || Array.isArray(payload.details)) &&
-      JSON.stringify(payload.messages || payload.details || '')
-        .toLowerCase()
-        .match(/not authorized|not visible|private|forbidden|denied/);
-    if (looksLikeAuthError && upstream.status >= 200 && upstream.status < 400) {
+    // An ANONYMOUS request that every candidate denied. ESPN uses 404 here as
+    // often as 401 — it does not distinguish "you may not read this league"
+    // from "no such league" for an uncredentialed caller. Answering 404 sent
+    // the frontend down its "this season does not exist" branch and told the
+    // user their league had not renewed, which hid the real, fixable cause.
+    // Normalize to 401 so the private-league branch fires, and say plainly
+    // that both readings are possible.
+    if (anonymous && denied) {
       return res.status(401).json({
-        error: cookieParts.length
-          ? 'ESPN rejected the private-league cookies. The espn_s2 / SWID values are likely invalid or expired — re-copy them from your logged-in ESPN browser and try again.'
-          : 'This ESPN league is private. Supply your own espn_s2 and SWID cookies (x-espn-s2 / x-espn-swid headers) so the relay can read it, or have a league member save the league so its stored credentials can be used.',
+        error: 'ESPN would not serve this league without credentials (HTTP ' +
+          upstream.status + '). Either the league is private — paste your espn_s2 ' +
+          'and SWID from a logged-in ESPN browser into Private League Access — or ' +
+          'this League ID has no such season. Public leagues are served without ' +
+          'cookies, so if yours is public, check the League ID and season.',
         espn: payload,
+        diag,
       });
     }
 
-    // A hard 401/403 from ESPN carries no useful JSON of its own; attach an
-    // actionable hint so the frontend (or any consumer) can guide the user to
-    // check their private-league cookies rather than see a bare status code.
-    if (upstream.status === 401 || upstream.status === 403) {
-      return res.status(upstream.status).json({
-        error: cookieParts.length
-          ? 'ESPN rejected the private-league cookies (HTTP ' + upstream.status + '). The espn_s2 / SWID values are likely invalid or expired — re-copy them from your logged-in ESPN browser and try again.'
-          : 'ESPN denied the request (HTTP ' + upstream.status + '). This league is private — supply espn_s2 and SWID cookies so the relay can read it.',
+    // Credentials were supplied and ESPN still refused them.
+    if (upstream.status === 401 || upstream.status === 403 || authEnvelope) {
+      return res.status(401).json({
+        error: 'ESPN rejected the private-league cookies (HTTP ' + upstream.status +
+          '). The espn_s2 / SWID values are likely invalid or expired — re-copy them ' +
+          'from your logged-in ESPN browser and try again.',
         espn: payload,
+        diag,
       });
     }
 
