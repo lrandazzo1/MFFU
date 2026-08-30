@@ -42,6 +42,12 @@ schema, or the 800 KB app bundle. It ships nothing but the marketing page.
   league only. If those vars are still set on the project, delete them — the route
   logs a warning once per cold start while they remain.
 - **Domain:** `app.fantasysportsnetwork.app`.
+- **Styling:** Tailwind is compiled ahead of time and **inlined** into `index.html`
+  and `league-media-studio.html` (between the `<!-- tailwind:start -->` /
+  `<!-- tailwind:end -->` markers). These pages stay single self-contained files
+  that render correctly opened straight from disk, so there is no stylesheet to
+  deploy alongside them. After adding or changing Tailwind classes, run
+  `npm run build:css` and commit the regenerated HTML.
 
 The app deploys exactly as it does today — no root `vercel.json` was added, so its
 working configuration is untouched.

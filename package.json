@@ -9,7 +9,7 @@
     "@supabase/supabase-js": "^2.57.4"
   },
   "scripts": {
-    "build:css": "tailwindcss -c tailwind.config.js -i src/tailwind.css -o assets/tailwind.css --minify"
+    "build:css": "node scripts/build-css.js"
   },
   "devDependencies": {
     "tailwindcss": "3.4.17"
