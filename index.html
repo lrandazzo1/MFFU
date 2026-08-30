@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Fantasy Sports Network</title>
 
 <!-- ============================================================
@@ -2134,10 +2134,22 @@ window.LeagueData = (function(){
     hasLive(){ return !!(store.espnData && store.espnData.teams && store.espnData.teams.length); },
     hasHistory(){ return !!(store.leagueHistory && Object.keys(store.leagueHistory.managers||{}).length); },
 
+    /* Attribute-safe HTML escape. The previous implementation used
+       `div.textContent = str; return div.innerHTML`, which escapes only
+       & < > — the HTML serializer does not escape quotes inside a text
+       node. Every `esc()` result that lands inside a quoted attribute
+       (src="…", data-label="…") or inside a JS string in an inline
+       handler was therefore breakable with a single " or '. League and
+       manager names are attacker-controlled by any league member, so
+       that was a stored-XSS path. Escape quotes and backtick too. */
     esc(str){
-      const div = document.createElement('div');
-      div.textContent = str ?? '';
-      return div.innerHTML;
+      return String(str ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+        .replace(/`/g, '&#96;');
     },
 
     /* ---- live season helpers ---- */
@@ -2396,6 +2408,34 @@ function validEspnPayload(rawData){
    only to the same-origin /api/espn and /api/league routes (never to public
    CORS proxies, which would leak them). ESPN reads a private league with the espn_s2 + SWID cookies
    the member's browser holds; the relay replays them so it can read as the member. */
+/* Every network read in this app went out as a bare fetch(), which has no
+   timeout: a hung connection (dead mobile zone, captive portal, a stalled
+   serverless cold start) never settles, so `finally` never runs. That is how
+   the cloud-sync button ends up disabled forever with "Uploading…" on screen
+   and no way to retry. fsnFetch bounds every request and rejects with a
+   recognisable error the callers already handle. */
+const FSN_DEFAULT_TIMEOUT_MS = 20000;
+function fsnFetch(url, options, timeoutMs){
+  const opts = Object.assign({}, options || {});
+  const limit = timeoutMs || FSN_DEFAULT_TIMEOUT_MS;
+  if(typeof AbortController === 'undefined') return fetch(url, opts);
+  const controller = new AbortController();
+  opts.signal = controller.signal;
+  const timer = setTimeout(()=> controller.abort(), limit);
+  return fetch(url, opts).then(
+    (res)=>{ clearTimeout(timer); return res; },
+    (err)=>{
+      clearTimeout(timer);
+      if(err && err.name === 'AbortError'){
+        const e = new Error('Request timed out after ' + Math.round(limit/1000) + 's.');
+        e.name = 'TimeoutError';
+        throw e;
+      }
+      throw err;
+    }
+  );
+}
+
 function getEspnCreds(){
   let s2 = '', swid = '';
   try{ s2 = (localStorage.getItem('fsn.espn.s2.v1') || '').trim(); }catch(e){}
@@ -2420,7 +2460,7 @@ async function fetchLeagueDataViaProxies(espnUrl){
   if(typeof window !== 'undefined' && window.location && window.location.protocol !== 'file:'){
     const apiUrl = serverlessEspnUrl(espnUrl);
     try{
-      const res = await fetch(apiUrl, { headers: espnCredHeaders() });
+      const res = await fsnFetch(apiUrl, { headers: espnCredHeaders() });
       if(!res.ok) throw new Error('HTTP ' + res.status + ' from ' + apiUrl);
       const rawData = parseEspnProxyPayload(await res.text());
       if(validEspnPayload(rawData)) return rawData;
@@ -3378,7 +3418,7 @@ async function sleeperGet(path){
   }catch(err){
     if(/SLEEPER_HTTP_\d/.test(String(err && err.message))) throw err;
     // Transport failure (blocked host, DNS, offline). Try the same-origin relay.
-    const res = await fetch('/api/sleeper?url=' + encodeURIComponent(direct), {
+    const res = await fsnFetch('/api/sleeper?url=' + encodeURIComponent(direct), {
       headers:{ Accept:'application/json' }, cache:'no-store',
     });
     if(!res.ok) throw new Error('SLEEPER_RELAY_HTTP_' + res.status);
@@ -4892,7 +4932,7 @@ function preseasonReport(){
         involvesChampion: hasChamp,
         involvesSacko: hasSacko,
         score: meetings * 2 + tight + (hasChamp ? 12 : 0) + (hasSacko ? 5 : 0),
-        label: A.name + ' at ' + B.name,
+        label: esc(A.name) + ' at ' + esc(B.name),
       };
     }).sort((a,b)=> b.score - a.score);
 
@@ -7903,7 +7943,7 @@ function assembleDeterministicStory(ctx, category, ordinal, facts, overrides){
     crest:o.crest || (winner.name ? {name:winner.name, logo:winner.logo} : null),
     headline, dek:esc(lede),
     paragraphs,
-    quote:{ text:quote, who:upper(managerLabel(category === 'bench' || category === 'fraud' ? loser : winner)) },
+    quote:{ text:quote, who:esc(upper(managerLabel(category === 'bench' || category === 'fraud' ? loser : winner))) },
     numbers:{ title:'By the Numbers', rows:[
       {label:'Final', value:n1(facts.winnerScore) + '–' + n1(facts.loserScore)},
       {label:'Margin', value:n1(facts.margin)},
@@ -8422,8 +8462,8 @@ function genBenchDisaster(ctx){
     const benchTotal = r.benchTotal;
 
     const headline = fatal
-      ? `BENCH DISASTER: ${upper(mgr)} LEAVES ${n1(left)} ON THE WIRE, LOSES BY ${n1(s.margin)}`
-      : `SITTING DUCK: ${upper(mgr)} BENCHES ${n1(left)} IN WEEK ${ctx.week} DEFEAT`;
+      ? `BENCH DISASTER: ${esc(upper(mgr))} LEAVES ${n1(left)} ON THE WIRE, LOSES BY ${n1(s.margin)}`
+      : `SITTING DUCK: ${esc(upper(mgr))} BENCHES ${n1(left)} IN WEEK ${ctx.week} DEFEAT`;
 
     const verb = pick(['torched','shredded','gashed','gutted','carved up'], seed);
     const adj  = pick(['unwatchable','indefensible','inexplicable','self-inflicted','avoidable'], seed + 'adj');
@@ -8469,8 +8509,8 @@ function genBenchDisaster(ctx){
         title: 'Box Score Impact',
         rows: [
           { label: 'Final margin',                     value: n1(s.margin) },
-          { label: `${r.topBench.name} — benched`,     value: n1(left), note: 'Would have been the team\'s ' + ordinal(r.starters.filter(p=> p.points > left).length + 1) + ' scorer.' },
-          { label: `${r.worstStarter.name} — started`, value: n1(r.worstStarter.points) },
+          { label: `${esc(r.topBench.name)} — benched`,     value: n1(left), note: 'Would have been the team\'s ' + ordinal(r.starters.filter(p=> p.points > left).length + 1) + ' scorer.' },
+          { label: `${esc(r.worstStarter.name)} — started`, value: n1(r.worstStarter.points) },
           { label: 'Swing from one swap',              value: (swing >= 0 ? '+' : '') + n1(swing) },
           { label: 'Total points on the bench',        value: n1(benchTotal) },
         ],
@@ -8530,7 +8570,7 @@ function genBenchDisaster(ctx){
       byline: BYLINES[4],
       ageMin: 34 + (hash(seed) % 50),
       crest: { name: team.name, logo: team.logo },
-      headline: `${upper(swingNeeded)} POINTS SHORT: ${upper(team.name)} FALLS IN WEEK ${ctx.week} THRILLER`,
+      headline: `${esc(upper(swingNeeded))} POINTS SHORT: ${esc(upper(team.name))} FALLS IN WEEK ${ctx.week} THRILLER`,
       dek: `${esc(teamLabel(close.winner))} survives ${n1(close.winnerScore)}–${n1(close.loserScore)} in the closest game on the board.`,
       paragraphs,
       quote: {
@@ -8642,7 +8682,7 @@ function genFraudAlert(ctx){
     byline: BYLINES[2],
     ageMin: 95 + (hash(seed) % 90),
     crest: { name: team.name, logo: team.logo },
-    headline: `FRAUD ALERT: ${upper(team.name)} POSTS ${n1(score)} POINTS — ${n1(belowAvg)} BELOW LEAGUE AVERAGE`,
+    headline: `FRAUD ALERT: ${esc(upper(team.name))} POSTS ${n1(score)} POINTS — ${n1(belowAvg)} BELOW LEAGUE AVERAGE`,
     dek: `A ${pct(belowPct)} shortfall against the field, and the worst score on the Week ${ctx.week} board.`,
     paragraphs,
     quote: {
@@ -8678,9 +8718,9 @@ function genShootout(ctx){
 
   const headline = winner
     ? (classic
-        ? `INSTANT CLASSIC: ${upper(winner.name)} SURVIVES ${upper(loser.name)} ${n1(best.winnerScore)}–${n1(best.loserScore)}`
-        : `${upper(winner.name)} OUTGUNS ${upper(loser.name)} IN ${n1(best.total)}-POINT SHOOTOUT`)
-    : `${upper(g.awayTeam.name)} AND ${upper(g.homeTeam.name)} TRADE BLOWS FOR ${n1(best.total)} COMBINED`;
+        ? `INSTANT CLASSIC: ${esc(upper(winner.name))} SURVIVES ${esc(upper(loser.name))} ${n1(best.winnerScore)}–${n1(best.loserScore)}`
+        : `${esc(upper(winner.name))} OUTGUNS ${esc(upper(loser.name))} IN ${n1(best.total)}-POINT SHOOTOUT`)
+    : `${esc(upper(g.awayTeam.name))} AND ${esc(upper(g.homeTeam.name))} TRADE BLOWS FOR ${n1(best.total)} COMBINED`;
 
   const openVerb = pick(['traded haymakers','went score for score','refused to blink','turned the afternoon into a track meet'], seed);
 
@@ -8818,8 +8858,8 @@ function genMilestone(ctx){
       ageMin: broke ? (7 + hash(seed) % 20) : (60 + hash(seed) % 90),
       crest: { name: team.name, logo: team.logo },
       headline: broke
-        ? `RECORD BOOK: ${upper(team.name)} POSTS ${n1(top.value)}, MOST IN LEAGUE HISTORY`
-        : `${upper(team.name)} PUTS UP ${n1(top.value)}, ${n1(diff)} SHY OF THE ALL-TIME RECORD`,
+        ? `RECORD BOOK: ${esc(upper(team.name))} POSTS ${n1(top.value)}, MOST IN LEAGUE HISTORY`
+        : `${esc(upper(team.name))} PUTS UP ${n1(top.value)}, ${n1(diff)} SHY OF THE ALL-TIME RECORD`,
       dek: broke
         ? `The old mark — ${n1(old.score)} by ${esc(old.teamName)} in ${old.year} — stood until Week ${ctx.week}.`
         : `${esc(old.teamName)}'s ${n1(old.score)} from ${old.year} survives another weekend.`,
@@ -8873,7 +8913,7 @@ function genMilestone(ctx){
       byline: BYLINES[0],
       ageMin: 11 + (hash(seed) % 24),
       crest: { name: w.name, logo: w.logo },
-      headline: `MASSACRE: ${upper(w.name)} WINS BY ${n1(s.margin)}, LARGEST MARGIN IN LEAGUE HISTORY`,
+      headline: `MASSACRE: ${esc(upper(w.name))} WINS BY ${n1(s.margin)}, LARGEST MARGIN IN LEAGUE HISTORY`,
       dek: `The old record — ${n1(old.margin)} by ${esc(old.winnerTeamName)} in ${old.year} — lasted until Week ${ctx.week}.`,
       paragraphs: [
         `${datelineTag()} <b>${esc(w.name)}</b> did not beat <b>${esc(l.name)}</b> on Sunday so much as file a report about it, winning <b>${n1(s.winnerScore)}–${n1(s.loserScore)}</b> — ` +
@@ -8922,8 +8962,8 @@ function genMilestone(ctx){
       ageMin: record ? (14 + hash(seed) % 30) : (70 + hash(seed) % 80),
       crest: { name: team.name, logo: team.logo },
       headline: record
-        ? `${upper(mgr)} WINS ${len} STRAIGHT, MATCHING THE LONGEST RUN IN LEAGUE HISTORY`
-        : `${upper(team.name)} MAKES IT ${len} IN A ROW`,
+        ? `${esc(upper(mgr))} WINS ${len} STRAIGHT, MATCHING THE LONGEST RUN IN LEAGUE HISTORY`
+        : `${esc(upper(team.name))} MAKES IT ${len} IN A ROW`,
       dek: record
         ? `${esc(oldInfo.name || old.ownerId)}'s ${old.length}-game run set the mark. It has company.`
         : `${esc(oldInfo.name || old.ownerId)} still holds the all-time record at ${old.length}.`,
@@ -9584,7 +9624,7 @@ function tlGameDay(ctx){
         const side = ctx.scored.find(x=> x.winner && String(x.winner.id) === String(t.id));
         if(side && side.decided){
           const cat = marginCategory(side.margin);
-          return { text:matrixCopy(ctx, cat, 24, matrixFacts(ctx, side)).quote, who:upper(managerLabel(t)) };
+          return { text:matrixCopy(ctx, cat, 24, matrixFacts(ctx, side)).quote, who:esc(upper(managerLabel(t))) };
         }
         return null;
       })(),
@@ -9825,7 +9865,7 @@ function tlRecap(ctx){
         secondPara,
         thirdPara,
       ],
-      quote: { text:dCopy.quote, who:upper(managerLabel(tight.winner)) },
+      quote: { text:dCopy.quote, who:esc(upper(managerLabel(tight.winner))) },
       numbers: { title:'Week ' + ctx.week + ' Margins', rows: decided.slice().sort((a,b)=> a.margin - b.margin).slice(0,4).map(d=>({
         label: `${esc(d.winner.name)} over ${esc(d.loser.name)}`, value: n1(d.margin),
       })), note:`Closest finishes first. Tier bands: nail-biter under ${n1(NAILBITER_MARGIN)}, one-score through ${n1(ONE_SCORE_MARGIN)}, competitive through ${n1(COMPETITIVE_MARGIN)}, blowout beyond.` },
@@ -9855,7 +9895,7 @@ function tlRecap(ctx){
                 'The bench had nothing. The starters had less.'], bseed),
           `<b>${esc(blowout.winner.name)}</b> moves on. <b>${esc(blowout.loser.name)}</b> has a week to think about it.`,
         ],
-        quote: { text:matrixCopy(ctx, 'blowout', 20, matrixFacts(ctx, blowout)).quote, who:upper(managerLabel(blowout.winner)) },
+        quote: { text:matrixCopy(ctx, 'blowout', 20, matrixFacts(ctx, blowout)).quote, who:esc(upper(managerLabel(blowout.winner))) },
         numbers: { title:'Week ' + ctx.week + ' Blowouts', rows: decided.slice().sort((a,b)=> b.margin - a.margin).slice(0,4).map(d=>({
           label: `${esc(d.winner.name)} over ${esc(d.loser.name)}`, value: n1(d.margin),
         })), note:'Widest margins first.' },
@@ -9902,7 +9942,7 @@ function tlWaivers(ctx){
       byline:'FSN Front Office Correspondent',
       crest: team ? { name: team.name, logo: team.logo } : null,
       headline: spend && team
-        ? `${upper(team.name)} SPENDS $${spend.bid} ON ${upper((target && target.name) || 'THE WIRE')} AND THE LEAGUE HAS QUESTIONS`
+        ? `${esc(upper(team.name))} SPENDS $${spend.bid} ON ${esc(upper((target && target.name) || 'THE WIRE'))} AND THE LEAGUE HAS QUESTIONS`
         : `WAIVER RUN FALLOUT: ${report.claimCount} CLAIMS, ${report.lost.length} BROKEN HEARTS`,
       dek: hb
         ? `And ${esc((FSNIntel.teamOf(hb.loser.teamId) || {}).name || 'someone')} lost ${esc(hb.target.name || 'the player')} by $${hb.gap}.`
@@ -9928,7 +9968,7 @@ function tlWaivers(ctx){
         'A dollar. One dollar. I want a recount.',
         'I bid what he was worth. Somebody else bid what they were scared of.',
         'That\'s my season. That\'s the whole season right there.',
-      ], seed + 'q'), who: upper((FSNIntel.teamOf(hb.loser.teamId) || {}).owner || 'The losing bidder') } : null,
+      ], seed + 'q'), who: esc(upper((FSNIntel.teamOf(hb.loser.teamId) || {}).owner || 'The losing bidder')) } : null,
       numbers: { title:'The Waiver Run', rows, note:'Parsed from the league\'s Week ' + ctx.week + ' transaction log.' },
     }));
   }
@@ -9946,7 +9986,7 @@ function tlWaivers(ctx){
       tag:'RAGE DROP', tone:'red', priority: 70,
       byline:'FSN Bench Report',
       crest: r.team ? { name:r.team.name, logo:r.team.logo } : null,
-      headline: `${upper((r.team && r.team.name) || 'SOMEBODY')} JUST DROPPED ${upper(r.player.name || 'A DRAFT PICK')}`,
+      headline: `${esc(upper((r.team && r.team.name) || 'SOMEBODY'))} JUST DROPPED ${esc(upper(r.player.name || 'A DRAFT PICK'))}`,
       dek: `${esc(roundLabel)}. Cut loose in Week ${r.week || ctx.week}. There is no coming back from this one emotionally.`,
       paragraphs: [
         `${datelineTag()} <b>${esc(r.player.name || 'A drafted player')}</b>` +
@@ -9965,12 +10005,12 @@ function tlWaivers(ctx){
         'I\'m done. I\'ve been done since Week 2.',
         'Roster spot was worth more than he was. Ask me again in a month.',
         'No comment. Actually — put this in: no comment.',
-      ], seed + 'q'), who: upper((r.team && r.team.owner) || 'The manager') },
+      ], seed + 'q'), who: esc(upper((r.team && r.team.owner) || 'The manager')) },
       numbers: { title:'The Investment', rows: [
         r.pick ? { label:'Drafted', value:'R' + r.pick.round + ' · #' + r.pick.overall } : null,
         r.adp ? { label:'League ADP', value: n1(r.adp) } : null,
         { label:'Dropped', value:'WEEK ' + (r.week || ctx.week) },
-        rages[1] ? { label:'Next-most painful drop', value: esc(rages[1].player.name || '—'), note: (rages[1].team && rages[1].team.name) || '' } : null,
+        rages[1] ? { label:'Next-most painful drop', value: esc(rages[1].player.name || '—'), note: esc((rages[1].team && rages[1].team.name) || '') } : null,
       ].filter(Boolean), note:'Cross-referenced against the draft board.' },
     }));
   }
@@ -10288,7 +10328,7 @@ function tlDraft(ctx){
       tag:'ROUND 1 SHOCKER', tone:'gold', priority: 96,
       byline:'FSN Draft Desk',
       crest: shocker.team ? { name: shocker.team.name, logo: shocker.team.logo } : null,
-      headline: `ROUND 1 SHOCKER: ${upper((shocker.team && shocker.team.name) || 'SOMEBODY')} TAKES ${upper(shocker.name)} AT ${shocker.overall}`,
+      headline: `ROUND 1 SHOCKER: ${esc(upper((shocker.team && shocker.team.name) || 'SOMEBODY'))} TAKES ${esc(upper(shocker.name))} AT ${shocker.overall}`,
       dek: shocker.delta < 0
         ? `${n1(Math.abs(shocker.delta))} picks ahead of ADP. The room went quiet.`
         : `${n1(shocker.delta)} picks past ADP. Nobody stopped it.`,
@@ -10322,7 +10362,7 @@ function tlDraft(ctx){
       tag:'REACH OF THE DRAFT', tone:'red', priority: 92,
       byline:'FSN Draft Desk',
       crest: reach.team ? { name: reach.team.name, logo: reach.team.logo } : null,
-      headline: `REACH OF THE DRAFT: ${upper(reach.name)} AT ${reach.overall}, ${n1(Math.abs(reach.delta))} PICKS EARLY`,
+      headline: `REACH OF THE DRAFT: ${esc(upper(reach.name))} AT ${reach.overall}, ${n1(Math.abs(reach.delta))} PICKS EARLY`,
       dek: `ADP said ${n1(reach.adp)}. ${esc((reach.team && reach.team.name) || 'One manager')} said now.`,
       paragraphs: [
         `${datelineTag()} <b>${esc((reach.team && reach.team.name) || 'A manager')}</b> spent pick <b>${reach.overall}</b> ` +
@@ -10353,7 +10393,7 @@ function tlDraft(ctx){
       tag:'STEAL OF THE DRAFT', tone:'green', priority: 90,
       byline:'FSN Draft Desk',
       crest: steal.team ? { name: steal.team.name, logo: steal.team.logo } : null,
-      headline: `STEAL OF THE DRAFT: ${upper(steal.name)} FELL TO ${steal.overall} AND NOBODY STOPPED IT`,
+      headline: `STEAL OF THE DRAFT: ${esc(upper(steal.name))} FELL TO ${steal.overall} AND NOBODY STOPPED IT`,
       dek: `${n1(steal.delta)} picks of value, sitting there in Round ${steal.round}.`,
       paragraphs: [
         `${datelineTag()} <b>${esc(steal.name)}</b>${steal.pos ? ` (${esc(steal.pos)}${steal.proTeam ? ', ' + esc(steal.proTeam) : ''})` : ''} ` +
@@ -10384,7 +10424,7 @@ function tlDraft(ctx){
       tag:'DRAFT GRADES', tone:'cyan', priority: 88,
       byline:'FSN Draft Desk',
       crest: best.team ? { name: best.team.name, logo: best.team.logo } : null,
-      headline: `DRAFT REPORT CARDS: ${upper((best.team && best.team.name) || 'ONE ROOM')} GETS THE ${best.grade}, ${upper((worst.team && worst.team.name) || 'SOMEBODY')} GETS THE ${worst.grade}`,
+      headline: `DRAFT REPORT CARDS: ${esc(upper((best.team && best.team.name) || 'ONE ROOM'))} GETS THE ${best.grade}, ${esc(upper((worst.team && worst.team.name) || 'SOMEBODY'))} GETS THE ${worst.grade}`,
       dek: `Every roster in the league, graded against ADP. No participation trophies.`,
       paragraphs: [
         `${datelineTag()} The desk graded all <b>${grades.length}</b> drafts against average draft position, ` +
@@ -11035,7 +11075,7 @@ function tlPreseason(ctx){
     byline:'FSN Senior League Insider',
     dateline: seasonDateline,
     crest:{ name: champName, logo: champ.logo },
-    headline: deterministicNarrativeHeadline({week:1}, 'sotl', {champ, sacko, winner:champ, loser:sacko}, `STATE OF THE LEAGUE: ${upper(champName)} DEFENDS`),
+    headline: deterministicNarrativeHeadline({week:1}, 'sotl', {champ, sacko, winner:champ, loser:sacko}, `STATE OF THE LEAGUE: ${esc(upper(champName))} DEFENDS`),
     dek: `${esc(archetype.label)} crowned the ${year} champion, and now the whole league wants it back. ${esc(sackoName)} limps into ${rep.upcomingYear} on the redemption clock after ${sackoPpg ? n1(sackoPpg) + ' PPG' : ordinal(sacko.rank) + ' place'}.`,
     paragraphs: championParagraphs.concat([analyticsParagraph, sackoParagraph, leagueParagraph]),
     facts:{champ,sacko,winner:champ,loser:sacko}, narrativeLocked:true,
@@ -11200,7 +11240,7 @@ function guaranteedTimelineFallback(week){
     kind:'recap',tag:featured?'MATCHUP RECAP':'WEEK AHEAD',tone:'cyan',priority:80,
     byline:'FSN Numbers Desk',dateline:leagueDateline()+' · WEEK '+safeWeek,
     crest:winner ? {name:winner.name,logo:winner.logo} : (teams[0] ? {name:teams[0].name,logo:teams[0].logo} : null),
-    headline:featured ? upper(winner.name)+' FILES THE WEEK '+safeWeek+' RESULT' : 'WEEK '+safeWeek+' BOARD IS READY',
+    headline:featured ? esc(upper(winner.name))+' FILES THE WEEK '+safeWeek+' RESULT' : 'WEEK '+safeWeek+' BOARD IS READY',
     dek:featured ? esc(winner.name)+' defeated '+esc(loser.name)+' '+n1(featured.winnerScore)+'–'+n1(featured.loserScore)+'.' : 'The schedule is connected and waiting for verified scoring.',
     paragraphs:featured ? [
       datelineTag()+' <b>'+esc(winner.name)+'</b> defeated <b>'+esc(loser.name)+'</b> <b>'+n1(featured.winnerScore)+'–'+n1(featured.loserScore)+'</b>.',
@@ -11823,7 +11863,8 @@ function crest(name, logo, size){
   const style = `width:${px}px;height:${px}px;`;
   if(logo){
     return `<img class="logo" style="${style}" src="${esc(logo)}" alt=""
-            onerror="this.outerHTML=window.__fsnMono(${JSON.stringify(esc(name)).replace(/"/g,'&quot;')},${px})">`;
+            data-fallback-name="${esc(name)}" data-fallback-px="${px}"
+            onerror="window.__fsnImgFallbackMono(this)">`;
   }
   return monoBadge(name, px);
 }
@@ -11833,6 +11874,37 @@ function monoBadge(name, px){
           background:linear-gradient(150deg,${a}22,#141a26);border-color:${a}44;">${esc(initialsFrom(name))}</div>`;
 }
 window.__fsnMono = (name, px)=> monoBadge(name, px);
+
+/* Image-fallback helpers. These deliberately accept NO interpolated data:
+   the fallback content travels in data-* attributes on the <img> itself and
+   is read back via getAttribute. An inline handler attribute is HTML-entity
+   decoded BEFORE the browser parses it as JavaScript, so escaping a value
+   into a JS string literal inside onerror="…" is not safe — a quote encoded
+   as &#39; re-emerges as a real quote and closes the string. Routing the
+   value through an attribute removes the JS-string context entirely. */
+window.__fsnImgFallbackText = function(img){
+  if(!img || !img.parentNode) return;
+  img.parentNode.textContent = img.getAttribute('data-fallback-text') || '';
+};
+window.__fsnImgFallbackNode = function(img, className){
+  if(!img || !img.parentNode) return;
+  const div = document.createElement('div');
+  if(className) div.className = className;
+  div.textContent = img.getAttribute('data-fallback-text') || '';
+  const style = img.getAttribute('data-fallback-style');
+  if(style) div.setAttribute('style', style);
+  img.replaceWith(div);
+};
+window.__fsnImgFallbackMono = function(img){
+  if(!img || !img.parentNode) return;
+  const holder = document.createElement('div');
+  holder.innerHTML = monoBadge(
+    img.getAttribute('data-fallback-name') || '',
+    Number(img.getAttribute('data-fallback-px')) || 38
+  );
+  const node = holder.firstElementChild;
+  if(node) img.replaceWith(node);
+};
 
 function toast(msg){
   const el = $('toast');
@@ -12235,7 +12307,7 @@ function gameHasActiveTeam(g){
 function profileAvatar(team){
   const initials = initialsFrom(team.name || team.abbrev || 'FSN');
   if(team.logo){
-    return `<span class="profile-avatar"><img src="${esc(team.logo)}" alt="" onerror="this.parentNode.textContent='${esc(initials)}'"></span>`;
+    return `<span class="profile-avatar"><img src="${esc(team.logo)}" alt="" data-fallback-text="${esc(initials)}" onerror="window.__fsnImgFallbackText(this)"></span>`;
   }
   return `<span class="profile-avatar">${esc(initials)}</span>`;
 }
@@ -14151,7 +14223,7 @@ async function hydrateLeagueFromCloud(league, options){
   ui.cloudLeagueId = id;
   setCloudStatus('syncing', 'Checking Supabase for saved settings, cookies, and history…');
   try{
-    const response = await fetch('/api/league?league_id=' + encodeURIComponent(id) +
+    const response = await fsnFetch('/api/league?league_id=' + encodeURIComponent(id) +
       '&season_year=' + encodeURIComponent(season), {
       method:'GET', headers:cloudHeaders(false, false), cache:'no-store',
     });
@@ -14245,12 +14317,12 @@ async function syncLeagueToCloud(options){
   if($('cloudSyncBtn')) $('cloudSyncBtn').disabled = true;
   setCloudStatus('syncing', 'Uploading optimized archive and verifying league-member access…');
   try{
-    const postArchive = ()=> fetch('/api/league', {
+    const postArchive = ()=> fsnFetch('/api/league', {
       method:'POST',
       headers:cloudHeaders(true, true),
       body:requestData.serialized,
       cache:'no-store',
-    });
+    }, 60000);
 
     let response = await postArchive();
 
@@ -14635,7 +14707,7 @@ async function fetchLeagueData(options){
        only mask it. */
     let text = null;
     try{
-      const response = await fetch('/api/espn?url=' + encodeURIComponent(liveUrl), {
+      const response = await fsnFetch('/api/espn?url=' + encodeURIComponent(liveUrl), {
         method:'GET', headers, cache:'no-store',
       });
       text = await response.text();
@@ -15394,12 +15466,13 @@ function leadCard(a){
 function feedRow(a){
   const c = toneVar(a.tone);
   // Team monogram when the story has a subject, tag initials when it doesn't.
-  const mark = esc(a.crest ? initialsFrom(a.crest.name) : a.tag.slice(0, 2));
-  const fallback = `<div class=&quot;thumb&quot; style=&quot;color:${c};background:linear-gradient(150deg,${c}22,#141a26);border-color:${c}44&quot;>${mark}</div>`;
+  const mark = a.crest ? initialsFrom(a.crest.name) : a.tag.slice(0, 2);
+  const thumbStyle = `color:${c};background:linear-gradient(150deg,${c}22,#141a26);border-color:${c}44`;
   const thumb = a.crest && a.crest.logo
     ? `<img class="thumb" src="${esc(a.crest.logo)}" alt="" style="object-fit:cover"
-         onerror="this.outerHTML='${fallback}'">`
-    : `<div class="thumb" style="color:${c};background:linear-gradient(150deg,${c}22,#141a26);border-color:${c}44">${mark}</div>`;
+         data-fallback-text="${esc(mark)}" data-fallback-style="${esc(thumbStyle)}"
+         onerror="window.__fsnImgFallbackNode(this,'thumb')">`
+    : `<div class="thumb" style="${esc(thumbStyle)}">${esc(mark)}</div>`;
 
   return `<button class="card story-row" data-article="${esc(a.id)}">
     ${thumb}
@@ -15544,7 +15617,7 @@ function articleHtml(a){
           </div>
           <div class="val" style="${r.value && String(r.value).charAt(0) === '+' ? 'color:' + c : ''}">${r.value}</div>
         </div>`).join('')}
-      ${a.numbers.table ? `<div class="bn-table-wrap no-bar"><table class="bn-table"><thead><tr>${(a.numbers.table.headers || []).map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${(a.numbers.table.rows || []).map(row=>`<tr>${row.map((cell,ci)=>`<td data-label="${esc(String((a.numbers.table.headers || [])[ci] || ''))}">${cell}</td>`).join('')}</tr>`).join('')}</tbody></table></div>` : ''}
+      ${a.numbers.table ? `<div class="bn-table-wrap no-bar"><table class="bn-table"><thead><tr>${(a.numbers.table.headers || []).map(h=>`<th>${esc(String(h == null ? '' : h))}</th>`).join('')}</tr></thead><tbody>${(a.numbers.table.rows || []).map(row=>`<tr>${row.map((cell,ci)=>`<td data-label="${esc(String((a.numbers.table.headers || [])[ci] || ''))}">${esc(String(cell == null ? '' : cell))}</td>`).join('')}</tr>`).join('')}</tbody></table></div>` : ''}
       ${a.numbers.bracket ? playoffBracketHtml(a.numbers.bracket) : ''}
       ${a.numbers.liveBracket ? livePlayoffBracketHtml(a.numbers.liveBracket) : ''}
       ${a.numbers.note ? `<div class="bn-note">${a.numbers.note}</div>` : ''}
@@ -15752,7 +15825,7 @@ function timelineCard(a){
   const c = TOPIC_TONE[a.topic] || toneVar(a.tone);
   const mark = a.crest ? initialsFrom(a.crest.name) : String(a.tag || 'FSN').slice(0, 2);
   const crestHtml = (a.crest && a.crest.logo)
-    ? `<img class="tl-crest" src="${esc(a.crest.logo)}" alt="" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'tl-crest',textContent:'${esc(mark)}'}))">`
+    ? `<img class="tl-crest" src="${esc(a.crest.logo)}" alt="" data-fallback-text="${esc(mark)}" onerror="window.__fsnImgFallbackNode(this,'tl-crest')">`
     : `<div class="tl-crest" style="color:${c};background:linear-gradient(150deg,${c}22,#131a26);border-color:${c}44">${esc(mark)}</div>`;
 
   const live = a.live ? '<span class="now">● LIVE</span><span class="sep">/</span>' : '';

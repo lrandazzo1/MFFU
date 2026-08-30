@@ -25,12 +25,41 @@ const ALLOWED_ORIGINS = [
 ];
 
 const LAUNCH_LABEL = 'around September 4th';
+const RESEND_TIMEOUT_MS = 5000;
+
+/* Best-effort per-instance throttle. A serverless instance is not a shared
+   store, so this is a speed bump rather than a guarantee — but it removes the
+   trivial "one machine, unbounded loop" case in which an attacker uses this
+   route (and your verified Resend domain) to mail arbitrary third parties.
+   For a hard limit, move the counter into Supabase or a KV store. */
+const RATE_LIMIT_MAX = 5;
+const RATE_LIMIT_WINDOW_MS = 60 * 1000;
+const rateBuckets = new Map();
+
+function rateLimited(req) {
+  const fwd = String((req.headers && req.headers['x-forwarded-for']) || '');
+  const ip = (fwd.split(',')[0] || '').trim() ||
+    (req.socket && req.socket.remoteAddress) || 'unknown';
+  const now = Date.now();
+  const hits = (rateBuckets.get(ip) || []).filter(function (t) { return now - t < RATE_LIMIT_WINDOW_MS; });
+  hits.push(now);
+  rateBuckets.set(ip, hits);
+  if (rateBuckets.size > 5000) rateBuckets.clear(); // bound memory
+  return hits.length > RATE_LIMIT_MAX;
+}
 
 let supabaseClient;
 
 function applyHeaders(res, req) {
   const origin = String((req && req.headers && req.headers.origin) || '');
-  res.setHeader('Access-Control-Allow-Origin', ALLOWED_ORIGINS.includes(origin) ? origin : '*');
+  // Reflect only allow-listed origins. The previous `: '*'` fallback meant the
+  // allow-list decided nothing — every other site on the internet got a
+  // wildcard grant and could post to this route from a victim's browser.
+  // A same-origin / no-Origin caller (curl, server-side) sends no Origin
+  // header at all and is unaffected by CORS either way.
+  if (ALLOWED_ORIGINS.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  }
   res.setHeader('Vary', 'Origin');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Accept');
@@ -198,6 +227,11 @@ async function sendWelcomeEmail(email, hasCreds) {
   try {
     const resp = await fetch('https://api.resend.com/emails', {
       method: 'POST',
+      // Hard bound: the signup is already committed by the time we get here,
+      // so a slow or wedged Resend must never hold the user's request open
+      // until the platform kills the function. On timeout the fetch rejects,
+      // the catch below logs it, and the caller still gets its 200.
+      signal: AbortSignal.timeout(RESEND_TIMEOUT_MS),
       headers: {
         'Authorization': 'Bearer ' + apiKey,
         'Content-Type': 'application/json',
@@ -243,17 +277,24 @@ async function handler(req, res) {
   const email = cleanEmail(body && body.email);
   if (!email) return res.status(400).json({ error: 'A valid email address is required.' });
 
+  if (rateLimited(req)) {
+    res.setHeader('Retry-After', '60');
+    return res.status(429).json({ error: 'Too many signups from this network. Please try again in a minute.' });
+  }
+
   const leagueId = cleanLeagueId(body && (body.league_id != null ? body.league_id : body.leagueId));
   const swid = cleanSwid(body && body.swid);
 
-  const row = {
-    email,
-    platform: cleanShort(body && body.platform, 24),
-    source: cleanShort(body && body.source, 120) || 'landing',
-    user_agent: cleanShort(req.headers['user-agent'], 500),
-  };
-  // Only overwrite the optional pre-collection columns when the visitor
-  // actually supplied them, so a later bare signup can't wipe earlier details.
+  // Only write columns the visitor actually supplied. `upsert` replaces the
+  // whole row, so unconditionally including a null `platform` meant a later
+  // bare re-signup silently wiped the platform captured the first time —
+  // the same clobber the league_id/swid guards below were added to prevent.
+  const row = { email };
+  const platform = cleanShort(body && body.platform, 24);
+  const userAgent = cleanShort(req.headers['user-agent'], 500);
+  if (platform) row.platform = platform;
+  if (userAgent) row.user_agent = userAgent;
+  row.source = cleanShort(body && body.source, 120) || 'landing';
   if (leagueId) row.league_id = leagueId;
   if (swid) row.espn_swid = swid;
 
@@ -286,7 +327,10 @@ async function handler(req, res) {
     await sendWelcomeEmail(email, Boolean(leagueId || swid));
   }
 
-  return res.status(200).json({ ok: true, email, emailed: isNew });
+  // `emailed` used to be returned here, which let anyone probe whether a given
+  // address was already on the waitlist. The client only needs to know it
+  // succeeded.
+  return res.status(200).json({ ok: true });
 }
 
 module.exports = handler;

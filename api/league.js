@@ -15,6 +15,7 @@ const { createClient } = require('@supabase/supabase-js');
 
 const MAX_BODY_BYTES = 8 * 1024 * 1024;
 const ESPN_HOST = 'https://lm-api-reads.fantasy.espn.com';
+const ESPN_VERIFY_TIMEOUT_MS = 8000;
 const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
   '(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36';
@@ -198,6 +199,10 @@ async function verifyLeagueMember(leagueId, seasonYear, cookies) {
           'User-Agent': USER_AGENT,
         },
         redirect: 'follow',
+        // Without this an unresponsive ESPN holds the socket open until the
+        // platform kills the whole function, turning a slow upstream into a
+        // 504 for the user instead of a clean "could not verify" message.
+        signal: AbortSignal.timeout(ESPN_VERIFY_TIMEOUT_MS),
       });
     } catch (error) {
       continue;
@@ -213,17 +218,13 @@ async function verifyLeagueMember(leagueId, seasonYear, cookies) {
     });
     if (member) return { ok: true };
 
-    // Democratized cloud saves: any authenticated league member whose cookies
-    // can READ the private league may save — there is no commissioner-only
-    // gate. ESPN only returns real league content (teams / settings) to
-    // authorized members, so a readable league is itself proof of access. We
-    // no longer require the SWID to appear in the members array (some ESPN
-    // response variants omit it or list it under a differently formatted GUID).
-    const readableLeague = league && (
-      Array.isArray(league.teams) ||
-      (league.settings && typeof league.settings === 'object')
-    );
-    if (readableLeague) return { ok: true };
+    // NOTE: there is deliberately no "the league was readable, so allow it"
+    // fallback here. ESPN serves PUBLIC leagues to anyone, with or without
+    // valid cookies, and answers with a full teams/settings payload. Treating
+    // a readable league as proof of membership therefore authorized any
+    // anonymous caller to overwrite the stored history AND the encrypted
+    // cookies of every public league — the SWID present in the members array
+    // is the only signal that actually proves the caller belongs here.
   }
 
   return {
@@ -428,20 +429,14 @@ async function handler(req, res) {
       details: error && error.details,
       hint: error && error.hint,
     });
-    const parts = [
-      error && error.message ? String(error.message) : 'Unknown database error',
-      error && error.details ? 'Details: ' + String(error.details) : '',
-      error && error.hint ? 'Hint: ' + String(error.hint) : '',
-      error && error.code ? 'Code: ' + String(error.code) : '',
-    ].filter(Boolean);
+    // The full message/details/hint stay in the server log above. They are
+    // NOT returned to the browser: PostgREST errors quote policy names,
+    // column lists and constraint definitions, which hands an anonymous
+    // caller a free map of the schema. The stable Postgres SQLSTATE is safe
+    // to echo and is enough to correlate a report with the log line.
     return res.status(502).json({
-      error: 'League storage save failed — ' + parts.join(' · '),
-      db_error: {
-        message: (error && error.message) || null,
-        code: (error && error.code) || null,
-        details: (error && error.details) || null,
-        hint: (error && error.hint) || null,
-      },
+      error: 'League storage save failed. The history is kept locally and the save will retry.',
+      code: (error && error.code) || null,
     });
   }
 }
