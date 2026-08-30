@@ -42,7 +42,25 @@ function leagueContextFromTarget(target) {
   };
 }
 
+let warnedAboutOwnerCredentials = false;
+
+// These env vars are no longer read for upstream auth. If they are still
+// present on the deployment, say so once per cold start: a stale personal
+// ESPN session sitting in the project environment is worth removing, not
+// leaving around for some future code path to pick up again.
+function warnIfOwnerCredentialsPresent() {
+  if (warnedAboutOwnerCredentials) return;
+  if (!process.env.ESPN_S2 && !process.env.ESPN_SWID) return;
+  warnedAboutOwnerCredentials = true;
+  console.warn(
+    '[api/espn] ESPN_S2 / ESPN_SWID are set on this deployment but are ' +
+    'intentionally ignored — the relay never authenticates as the deployment ' +
+    'owner. Remove them from the project environment.'
+  );
+}
+
 module.exports = async function handler(req, res) {
+  warnIfOwnerCredentialsPresent();
   applyCorsHeaders(res);
 
   // Answer CORS preflight immediately.
@@ -84,9 +102,19 @@ module.exports = async function handler(req, res) {
   }
 
   // ESPN auth precedence:
-  //   1. Per-request headers (the browser's localStorage fallback)
-  //   2. Encrypted cookies from public.leagues, decrypted only on the server
-  //   3. Deployment-wide ESPN_S2 / ESPN_SWID environment variables
+  //   1. Per-request headers (the caller's own cookies, from their browser)
+  //   2. Encrypted cookies from public.leagues, decrypted only on the server,
+  //      and only for the league the request is actually addressing
+  //
+  // There is deliberately NO deployment-wide credential tier. This route is
+  // unauthenticated and CORS-open, so an ESPN_S2 / ESPN_SWID fallback made it
+  // a confused deputy: any caller who omitted cookies got the request signed
+  // with the deployment owner's ESPN session, which reads every league that
+  // account belongs to. Requests with no usable credentials now go upstream
+  // ANONYMOUSLY — public leagues still resolve, and a private league returns
+  // ESPN's 401/403, which the handler below turns into an actionable
+  // "supply your espn_s2 / SWID" message instead of silently succeeding on
+  // borrowed access.
   const headerS2 = typeof req.headers['x-espn-s2'] === 'string'
     ? req.headers['x-espn-s2'].trim()
     : '';
@@ -102,12 +130,8 @@ module.exports = async function handler(req, res) {
     }
   }
 
-  const espnS2 = headerS2 ||
-    String(stored && stored.espn_s2 || '').trim() ||
-    String(process.env.ESPN_S2 || '').trim();
-  let espnSwid = headerSwid ||
-    String(stored && stored.swid || '').trim() ||
-    String(process.env.ESPN_SWID || '').trim();
+  const espnS2 = headerS2 || String(stored && stored.espn_s2 || '').trim();
+  let espnSwid = headerSwid || String(stored && stored.swid || '').trim();
 
   const cookieParts = [];
   if (espnS2) cookieParts.push('espn_s2=' + espnS2);
@@ -164,7 +188,7 @@ module.exports = async function handler(req, res) {
       return res.status(401).json({
         error: cookieParts.length
           ? 'ESPN rejected the private-league cookies. The espn_s2 / SWID values are likely invalid or expired — re-copy them from your logged-in ESPN browser and try again.'
-          : 'This ESPN league is private. Supply espn_s2 and SWID cookies (x-espn-s2 / x-espn-swid headers, or ESPN_S2 / ESPN_SWID env vars) so the relay can read it.',
+          : 'This ESPN league is private. Supply your own espn_s2 and SWID cookies (x-espn-s2 / x-espn-swid headers) so the relay can read it, or have a league member save the league so its stored credentials can be used.',
         espn: payload,
       });
     }

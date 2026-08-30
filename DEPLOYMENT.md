@@ -33,8 +33,14 @@ schema, or the 800 KB app bundle. It ships nothing but the marketing page.
 - **Framework Preset:** Other. `index.html` is served statically and the files in
   `api/` deploy automatically as Node serverless functions (ESPN proxy, Sleeper,
   league sync, league history).
-- **Environment variables:** keep the existing Supabase / ESPN owner-credential env
-  vars on **this** project only (see `SUPABASE_SETUP.md`). The landing project needs none.
+- **Environment variables:** keep the Supabase env vars on **this** project only
+  (see `SUPABASE_SETUP.md`). The landing project needs none.
+- **Do not set `ESPN_S2` / `ESPN_SWID`.** `/api/espn` no longer reads them. The relay
+  is unauthenticated and CORS-open, so a deployment-wide ESPN session would let any
+  caller who omits cookies read every league the owner's account belongs to. Callers
+  now supply their own cookies, or the league's saved credentials are used for that
+  league only. If those vars are still set on the project, delete them — the route
+  logs a warning once per cold start while they remain.
 - **Domain:** `app.fantasysportsnetwork.app`.
 
 The app deploys exactly as it does today — no root `vercel.json` was added, so its
