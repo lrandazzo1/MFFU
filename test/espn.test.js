@@ -22,7 +22,7 @@ function mockRes() {
   r.end = () => { r.sent = true; return r; };
   return r;
 }
-function espnUrl(season = 2026, league = 57155288) {
+function espnUrl(season = 2026, league = 1234567) {
   return `https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/${season}/segments/0/leagues/${league}?view=mTeam&view=mSettings`;
 }
 
@@ -113,6 +113,88 @@ function check(name, cond, extra) {
   await handler({ method: 'GET', headers: {}, query: { url: espnUrl() }, url: '/api/espn' }, res);
   check('7 stored cookies are used', CALLS[0].cookie && CALLS[0].cookie.includes('STORED_S2'), CALLS[0].cookie);
   check('7 stored cookies: no mirror fallback (credentialed)', CALLS.length === 1);
+
+  // 8. Public league, season not rolled over yet. Both hosts 404 the requested
+  //    season, but the PRIOR season reads publicly -> that is not a private
+  //    league and not a bad ID, and the message must say so.
+  STORED = null;
+  CALLS = [];
+  installFetch(() => ({ status: 404, body: {} }));
+  global.fetch = (url, opts) => {
+    const u = new URL(url);
+    CALLS.push({ host: u.hostname, url, cookie: (opts.headers || {}).Cookie || null });
+    const priorSeason = /\/seasons\/2025\//.test(u.pathname);
+    const status = priorSeason ? 200 : 404;
+    const body = priorSeason ? TEAMS : {};
+    return Promise.resolve({
+      status, ok: status >= 200 && status < 300,
+      headers: { get: () => 'application/json' },
+      text: async () => JSON.stringify(body),
+    });
+  };
+  res = mockRes();
+  await handler({ method: 'GET', headers: {}, query: { url: espnUrl(2026) }, url: '/api/espn' }, res);
+  check('8 season-not-rolled-over: 404, not a bogus 401', res.statusCode === 404, { s: res.statusCode });
+  check('8 season-not-rolled-over: machine-readable reason',
+    res.body.reason === 'season-not-available', res.body && res.body.reason);
+  check('8 season-not-rolled-over: names the season and the one that does work',
+    res.body.season === 2026 && res.body.priorSeasonAvailable === 2025, res.body);
+  check('8 season-not-rolled-over: does NOT blame the user or ask for cookies',
+    !/espn_s2|SWID|private/i.test(res.body.error), res.body.error);
+  check('8 season-not-rolled-over: probe ran against the prior season',
+    CALLS.some(c => /\/seasons\/2025\//.test(c.url)), CALLS.map(c => c.url));
+  check('8 season-not-rolled-over: probe stayed anonymous', CALLS.every(c => c.cookie === null));
+  check('8 season-not-rolled-over: no raw ESPN payload echoed back',
+    res.body.espn === undefined, Object.keys(res.body));
+
+  // 9. Prior season is ALSO unreadable -> genuinely ambiguous, keep the
+  //    actionable private-league message rather than guessing.
+  CALLS = []; installFetch(() => ({ status: 404, body: {} }));
+  res = mockRes();
+  await handler({ method: 'GET', headers: {}, query: { url: espnUrl(2026) }, url: '/api/espn' }, res);
+  check('9 ambiguous 404: falls back to the 401 private-league message', res.statusCode === 401, { s: res.statusCode });
+  check('9 ambiguous 404: still names both causes',
+    /private/i.test(res.body.error) && /no such season/i.test(res.body.error), res.body.error);
+
+  // 10. Credentialed 404: access is fine, the season is not there.
+  CALLS = []; installFetch(() => ({ status: 404, body: { messages: ['internal detail'] } }));
+  res = mockRes();
+  await handler({ method: 'GET', headers: { 'x-espn-s2': 'AEBxyz', 'x-espn-swid': '{ABC}' },
+                  query: { url: espnUrl(2026) }, url: '/api/espn' }, res);
+  check('10 creds+404: 404 with a plain explanation', res.statusCode === 404 && res.body.reason === 'season-not-available',
+    { s: res.statusCode, r: res.body.reason });
+  check('10 creds+404: no raw upstream payload forwarded',
+    res.body.espn === undefined && !/internal detail/.test(JSON.stringify(res.body)), res.body);
+  check('10 creds+404: no prior-season probe on a credentialed request',
+    CALLS.every(c => !/\/seasons\/2025\//.test(c.url || '')), CALLS.length);
+
+  // 11. Upstream HTML/outage page must never reach the client verbatim.
+  CALLS = []; installFetch(() => ({ status: 500, body: '<html><body>Error: at Object.handler (/var/task/index.js:88:11)</body></html>' }));
+  res = mockRes();
+  await handler({ method: 'GET', headers: {}, query: { url: espnUrl() }, url: '/api/espn' }, res);
+  check('11 non-JSON upstream: 502 JSON, not the raw body', res.statusCode === 502 && typeof res.body === 'object',
+    { s: res.statusCode, t: typeof res.body });
+  check('11 non-JSON upstream: no stack trace leaked',
+    !/\/var\/task|<html/i.test(JSON.stringify(res.body)), res.body);
+
+  // 12. Upstream 5xx JSON is summarised, not forwarded.
+  CALLS = []; installFetch(() => ({ status: 503, body: { trace: 'espn-internal-abc123' } }));
+  res = mockRes();
+  await handler({ method: 'GET', headers: {}, query: { url: espnUrl() }, url: '/api/espn' }, res);
+  check('12 upstream 5xx: 502 with a friendly message', res.statusCode === 502 && res.body.reason === 'upstream-error',
+    { s: res.statusCode, r: res.body.reason });
+  check('12 upstream 5xx: internal trace not echoed',
+    !/espn-internal-abc123/.test(JSON.stringify(res.body)), res.body);
+
+  // 13. Network failure surfaces as a timeout/unreachable message, no stack.
+  CALLS = [];
+  global.fetch = async () => { const e = new Error('getaddrinfo ENOTFOUND lm-api-reads.fantasy.espn.com'); e.name = 'TimeoutError'; throw e; };
+  res = mockRes();
+  await handler({ method: 'GET', headers: {}, query: { url: espnUrl() }, url: '/api/espn' }, res);
+  check('13 transport failure: 504 with a timeout reason', res.statusCode === 504 && res.body.reason === 'upstream-timeout',
+    { s: res.statusCode, r: res.body.reason });
+  check('13 transport failure: no internal error text leaked',
+    !/ENOTFOUND|getaddrinfo/.test(JSON.stringify(res.body)), res.body);
 
   console.log(`\n${pass} passed, ${fail} failed`);
   process.exit(fail ? 1 : 0);

@@ -211,6 +211,7 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
 .standings-table th{ color:var(--dim); font-size:9px; letter-spacing:.12em; text-transform:uppercase; }
 .standings-table th:first-child,.standings-table td:first-child{ text-align:left; position:sticky; left:0; background:#0d121a; }
 .standings-team{ display:flex; align-items:center; gap:8px; min-width:180px; }
+.standings-table .analytics-team-name{ min-width:0; }
 
 /* ---------- SCREENS ---------- */
 .screen{ display:none; animation:screenIn .22s ease both; }
@@ -1445,6 +1446,74 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
   .analytics-team-name{ max-width:none; flex:1; min-width:0; }
 }
 
+/* ---- Season standings: Team header + labelled stat grid ----
+   The standings table is the widest board in the app (9 columns, a 720px
+   min-width and a sticky first column). Inside .analytics-table-wrap — which
+   hides horizontal overflow on phones — that width was simply clipped, so on
+   an iPhone every column past PF was cut off with no way to scroll to it.
+   Below 640px the table stops being a table and each row becomes its own
+   card, exactly like the analytics models above. */
+@media (max-width:640px){
+  .standings-card{ border:0; border-radius:0; background:transparent; overflow:visible; }
+  .standings-table{ min-width:0; display:block; font-size:11.5px; }
+  .standings-table thead{ display:none; }
+  .standings-table tbody{ display:flex; flex-direction:column; gap:8px; }
+  .standings-table tr{
+    display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:2px 12px;
+    padding:10px 11px; border:1px solid var(--line); border-radius:11px; background:#0b1017;
+  }
+  .standings-table tr:first-child{
+    border-color:color-mix(in srgb,var(--cyan) 32%,var(--line));
+    background:rgba(0,224,255,.05);
+  }
+  .standings-table td{
+    display:flex; align-items:center; justify-content:space-between; gap:8px;
+    padding:4px 0; border-bottom:0; text-align:right; white-space:nowrap;
+  }
+  /* Release the desktop sticky column: position:sticky on a grid item leaves a
+     stray opaque background sitting over the card. */
+  .standings-table td:first-child{ position:static; background:transparent; }
+  .standings-table td.standings-team-cell{
+    grid-column:1 / -1; justify-content:flex-start; white-space:normal;
+    padding:0 0 7px; margin-bottom:5px; border-bottom:1px solid var(--line);
+  }
+  .standings-table td[data-label]::before{
+    content:attr(data-label); flex:none; color:var(--dim);
+    font-family:'JetBrains Mono',monospace; font-size:8px; font-weight:700;
+    letter-spacing:.09em; text-transform:uppercase; text-align:left;
+  }
+  /* min-width:180px on the team block is what forced the row wider than the
+     viewport; on a phone the name wraps inside the card instead. */
+  .standings-team{ min-width:0; width:100%; gap:7px; }
+  .standings-table .analytics-team-name{
+    max-width:none; flex:1; min-width:0; white-space:normal; overflow-wrap:anywhere;
+  }
+}
+
+/* ---- Narrow phones (iPhone SE / mini / Pro at 375-390px) ----
+   Reclaim gutter width and stop fixed-size chrome from setting a floor wider
+   than the viewport: the stats toggle, the status chips and the pills all
+   carry uppercase tracking that does not fit at their desktop sizes. */
+@media (max-width:430px){
+  .analytics-shell{ padding:0 12px 22px; }
+  .stats-mode-toggle{ margin:0 12px 14px; }
+  .stats-mode-toggle button{
+    padding:8px 4px; font-size:9.5px; letter-spacing:.06em; line-height:1.25;
+  }
+  .analytics-status{ gap:6px; }
+  .analytics-status-chip{
+    min-height:26px; padding:5px 8px; font-size:8.5px; letter-spacing:.05em;
+  }
+  /* A pill that cannot fit its line was being clipped by the card's
+     overflow:hidden. Let it wrap instead — taller is fine, cut off is not. */
+  .pill{
+    max-width:100%; white-space:normal; letter-spacing:.1em;
+    text-align:left; overflow-wrap:anywhere;
+  }
+  .standings-table tr{ padding:10px 9px; gap:2px 10px; }
+  .standings-table td{ font-size:11px; }
+}
+
 /* ---- Article "by the numbers": simple labelled stack ---- */
 @media (max-width:640px){
   .bn-table-wrap{ overflow-x:hidden; }
@@ -1772,7 +1841,7 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
               <label class="label" for="leagueIdInput" style="margin-bottom:0">League ID</label>
               <button type="button" class="onboard-link" data-onboard-step="league">Where do I find this?</button>
             </div>
-            <input id="leagueIdInput" class="field mt-1.5" inputmode="numeric" autocomplete="off" placeholder="e.g. 57155288">
+            <input id="leagueIdInput" class="field mt-1.5" inputmode="numeric" autocomplete="off" placeholder="e.g. your-league-id">
           </div>
           <span id="seasonYear" hidden aria-hidden="true"></span>
           <span id="weekNum" hidden aria-hidden="true"></span>
@@ -1955,7 +2024,7 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
       </div>
       <div class="onboard-card">
         <p>Your League ID is a number ESPN gives your league. There are two easy ways to find it:</p>
-        <p><strong style="color:var(--off)">On a computer (web browser):</strong> Log in to your ESPN Fantasy league and open your league page. Look at your browser's address bar at the top — you'll see a web address containing <span class="onboard-code">leagueId=57155288</span>. The number right after <span class="onboard-code">leagueId=</span> is your League ID.</p>
+        <p><strong style="color:var(--off)">On a computer (web browser):</strong> Log in to your ESPN Fantasy league and open your league page. Look at your browser's address bar at the top — you'll see a web address containing <span class="onboard-code">leagueId=XXXXXXXX</span>. The number right after <span class="onboard-code">leagueId=</span> is your League ID.</p>
         <p><strong style="color:var(--off)">On the ESPN mobile app:</strong> Open your league, then tap <strong style="color:var(--off)">League</strong> → <strong style="color:var(--off)">League Info</strong> → <strong style="color:var(--off)">League ID</strong>. The number shown there is your League ID.</p>
         <p>Type just that number into the <strong style="color:var(--off)">League ID</strong> box on the Setup screen and tap <strong style="color:var(--off)">Fetch League Data</strong>.</p>
         <div class="onboard-note">If your league loads, you're done — it's a public league and you can skip Steps 2 and 3.</div>
@@ -2457,6 +2526,32 @@ function espnCredHeaders(){
   return headers;
 }
 
+/* Read a failed /api/espn response. The relay answers every failure with a
+   JSON body carrying `error` (a sentence written for the person looking at the
+   screen) and `reason` (a stable code the UI can branch on). Anything else —
+   an HTML block page, an upstream stack trace, a truncated blob — is deliberately
+   NOT passed through: it is logged, and the caller gets a null message so it
+   falls back to its own plain-language copy. */
+function readRelayError(text){
+  const out = { error: '', reason: '', season: null, priorSeasonAvailable: null };
+  let body;
+  try{ body = JSON.parse(String(text || '')); }
+  catch(_){
+    if(text) console.warn('[FSN] /api/espn returned a non-JSON error body; not surfacing it verbatim.', String(text).slice(0, 400));
+    return out;
+  }
+  if(!body || typeof body !== 'object') return out;
+  /* Only ever surface a short, plain string. A relay that somehow returns
+     markup or a giant blob does not get to render into the status line. */
+  const message = typeof body.error === 'string' ? body.error.replace(/\s+/g, ' ').trim() : '';
+  if(message && message.length <= 400 && !/[<>]/.test(message)) out.error = message;
+  else if(message) console.warn('[FSN] /api/espn error text rejected as unsafe to display.', message.slice(0, 400));
+  if(typeof body.reason === 'string') out.reason = body.reason;
+  if(Number.isFinite(Number(body.season))) out.season = Number(body.season);
+  if(Number.isFinite(Number(body.priorSeasonAvailable))) out.priorSeasonAvailable = Number(body.priorSeasonAvailable);
+  return out;
+}
+
 async function fetchLeagueDataViaProxies(espnUrl){
   let lastErr = null;
   const localPreview = isStaticLocalPreview();
@@ -2466,19 +2561,16 @@ async function fetchLeagueDataViaProxies(espnUrl){
     try{
       const res = await fsnFetch(apiUrl, { headers: espnCredHeaders() });
       if(!res.ok){
-        // /api/espn explains WHY it failed (private league vs. no such season,
-        // and which ESPN hosts were tried). Carry that text into the error so
-        // the status handler can show the real cause instead of only its own
-        // canned guess from the status code.
-        let detail = '';
-        try{
-          const info = await res.clone().json();
-          if(info && info.error) detail = ' — ' + info.error;
-          if(info && Array.isArray(info.diag) && info.diag.length){
-            detail += ' [tried ' + info.diag.map(d=> d.host + ':' + d.status).join(', ') + ']';
-          }
-        }catch(_){}
-        throw new Error('HTTP ' + res.status + ' from ' + apiUrl + detail);
+        // /api/espn explains WHY it failed (private league, a season ESPN has
+        // not created yet, an ESPN-side outage). Carry that sentence into the
+        // error so the status handler shows the real cause instead of only its
+        // own canned guess from the status code.
+        const relay = readRelayError(await res.clone().text().catch(()=> ''));
+        const err = new Error('HTTP ' + res.status + (relay.error ? ': ' + relay.error : ''));
+        err.relayReason = relay.reason;
+        err.relayMessage = relay.error;
+        err.httpStatus = res.status;
+        throw err;
       }
       const rawData = parseEspnProxyPayload(await res.text());
       if(validEspnPayload(rawData)) return rawData;
@@ -3067,6 +3159,48 @@ function getH2H(ownerIdA, ownerIdB){
       won: last.winnerOwnerId === ownerIdA,
     } : null,
     streakOwnerId, streakCount,
+  };
+}
+
+/* One place that decides how an all-time series READS, so no caller has to
+   re-derive the rule and get it wrong differently.
+
+   A dead-tied series has no leader. That includes the 0-0 case, where every
+   recorded meeting ended in a tie. Handing that to whichever team the caller
+   happened to name first — which is what "the edge to <first team>" was doing —
+   states a fact that is not true. Ties are reported as ties.
+
+   Wins are always read from ownerA's side (matching getH2H), but `tape` is
+   rebuilt leader-first so a record never appears next to the name of the team
+   on the wrong end of it. Points are judged separately: a series can be level
+   on wins and lopsided on points, and vice versa. */
+function h2hSeriesVerdict(h2h, nameA, nameB){
+  if(!h2h) return null;
+  const winsA   = Math.max(0, Number(h2h.winsFor) || 0);
+  const winsB   = Math.max(0, Number(h2h.winsAgainst) || 0);
+  const ties    = Math.max(0, Number(h2h.ties) || 0);
+  const meetings = Math.max(0, Number(h2h.meetingCount) || 0);
+  const suffix  = ties ? '-' + ties : '';
+  const tied    = winsA === winsB;
+  const aLeads  = winsA > winsB;
+
+  const rawDiff = Number(h2h.diff);
+  const hasDiff = Number.isFinite(rawDiff);
+  /* Below a tenth of a point the scoreboard itself would print a tie. */
+  const pointsTied = !hasDiff || Math.abs(rawDiff) < 0.05;
+
+  return {
+    meetings, ties, tied,
+    /* From A's perspective — what the Tale of the Tape column shows. */
+    record: winsA + '-' + winsB + suffix,
+    /* Leader first — safe to print beside the leader's name. */
+    tape: tied ? winsA + '-' + winsB + suffix
+               : (aLeads ? winsA + '-' + winsB + suffix : winsB + '-' + winsA + suffix),
+    leaderName:  tied ? null : (aLeads ? nameA : nameB),
+    trailerName: tied ? null : (aLeads ? nameB : nameA),
+    pointsTied,
+    pointsLeaderName: pointsTied ? null : (rawDiff > 0 ? nameA : nameB),
+    pointsMargin: hasDiff ? Math.abs(rawDiff) : null,
   };
 }
 
@@ -9218,8 +9352,13 @@ function genMatchupPreviews(ctx){
     const dogForm = previewFormParagraph(dogP, ctx.week, 'dog', seed);
 
     /* ---- BEAT 4 · history ---- */
-    const history = h2h && h2h.meetingCount
-      ? `These two are not strangers. The Record Book has them at <b>${h2h.winsFor}-${h2h.winsAgainst}${h2h.ties ? '-' + h2h.ties : ''}</b> across <b>${h2h.meetingCount}</b> meeting${h2h.meetingCount === 1 ? '' : 's'}` +
+    const hv = h2hSeriesVerdict(h2h, A.name, B.name);
+    const history = hv && hv.meetings
+      ? `These two are not strangers. The Record Book has them ` +
+        (hv.tied
+          ? `dead level at <b>${hv.record}</b>`
+          : `at <b>${hv.tape}</b> for <b>${esc(hv.leaderName)}</b>`) +
+        ` across <b>${hv.meetings}</b> meeting${hv.meetings === 1 ? '' : 's'}` +
         `${h2h.lastMeeting ? `, the freshest wound a <b>${n1(h2h.lastMeeting.scoreFor)}–${n1(h2h.lastMeeting.scoreAgainst)}</b> verdict back in ${h2h.lastMeeting.year}` : ''}. ` +
         `${h2h.streakCount > 1 ? `Someone in this building has won <b>${h2h.streakCount}</b> straight in the series, and the other manager has heard about every single one of them. ` : ''}` +
         pick([
@@ -9319,9 +9458,17 @@ function genMatchupPreviews(ctx){
           ...(favP.rank && favP.total
             ? [{ label: 'FSN Power Index', value: 'No. ' + favP.rank + (dogP.rank ? ' vs No. ' + dogP.rank : ''), note: 'Model seed of ' + favP.total + ' teams.' }]
             : []),
-          ...(h2h && h2h.meetingCount
-            ? [{ label: 'All-time series', value: h2h.winsFor + '-' + h2h.winsAgainst + (h2h.ties ? '-' + h2h.ties : ''), note: h2h.meetingCount + ' career meeting' + (h2h.meetingCount === 1 ? '' : 's') }]
-            : [{ label: 'All-time series', value: 'First meeting', note: 'No shared history on the ledger yet.' }]),
+          ...(() => {
+            const v = hv;
+            if(!v || !v.meetings) return [{ label: 'All-time series', value: 'First meeting', note: 'No shared history on the ledger yet.' }];
+            const meetingNote = v.meetings + ' career meeting' + (v.meetings === 1 ? '' : 's');
+            /* Name a leader only when there is one; a level series says so. */
+            return [{ label: 'All-time series',
+                      value: v.tied ? 'Series tied ' + v.record : v.record,
+                      note: v.tied
+                        ? meetingNote + ' · dead even, no series leader'
+                        : meetingNote + ' · ' + esc(v.leaderName) + ' leads ' + v.tape }];
+          })(),
         ],
         note: 'Pre-game scouting report. Win probability is a model lean, not a prediction.',
       },
@@ -10078,9 +10225,23 @@ function tlPrimer(ctx){
   const recordB = FSNIntel.getRecordAsOfWeek(B.id, ctx.week);
   rows.push({ label: esc(A.name) + ' record', value: esc(recordA) });
   rows.push({ label: esc(B.name) + ' record', value: esc(recordB) });
-  if(recordbook && recordbook.meetingCount){
-    rows.push({ label:'All-time series', value: recordbook.winsFor + '-' + recordbook.winsAgainst + (recordbook.ties ? '-' + recordbook.ties : ''),
-      note: esc(A.name) + ' leads the ledger by ' + n1(Math.abs(recordbook.diff)) + ' career points against this opponent.' });
+  const rbVerdict = h2hSeriesVerdict(recordbook, A.name, B.name);
+  if(rbVerdict && rbVerdict.meetings){
+    rows.push({
+      label:'All-time series',
+      value: rbVerdict.tied ? 'Series tied ' + rbVerdict.record : rbVerdict.record,
+      /* The points ledger is judged separately from the win column: a series
+         can be level on wins and lopsided on points, or the reverse. The old
+         note credited whichever team was named first with a lead it may not
+         have held — or with a lead of exactly zero. */
+      note: (()=>{
+        const pts = rbVerdict.pointsTied
+          ? (rbVerdict.pointsMargin === null ? '' : 'career points are dead level too.')
+          : esc(rbVerdict.pointsLeaderName) + ' is ahead by ' + n1(rbVerdict.pointsMargin) + ' career points.';
+        if(rbVerdict.tied) return ('Series tied — neither manager has taken it. ' + pts).trim();
+        return (esc(rbVerdict.leaderName) + ' leads the series. ' +
+          (rbVerdict.pointsTied && rbVerdict.pointsMargin !== null ? 'Career points are dead level.' : pts)).trim();
+      })() });
     if(recordbook.lastMeeting){
       rows.push({ label:'Last meeting', value: n1(recordbook.lastMeeting.scoreFor) + ' – ' + n1(recordbook.lastMeeting.scoreAgainst),
         note: recordbook.lastMeeting.year + ' · Week ' + recordbook.lastMeeting.week });
@@ -10114,9 +10275,12 @@ function tlPrimer(ctx){
       `The model gives ${esc(probA >= 50 ? A.name : B.name)} a <b>${Math.round(Math.max(probA, 100 - probA))}%</b> edge, which is ` +
       pick(['not the same as a prediction.','close enough to be worthless.','the polite way of saying coin flip.'], seed),
 
-      recordbook && recordbook.meetingCount
-        ? `The Record Book says these two have met <b>${recordbook.meetingCount}</b> times, with <b>${esc(A.name)}</b> holding a ` +
-          `<b>${recordbook.winsFor}-${recordbook.winsAgainst}${recordbook.ties ? '-' + recordbook.ties : ''}</b> edge` +
+      rbVerdict && rbVerdict.meetings
+        ? `The Record Book says these two have met <b>${rbVerdict.meetings}</b> times, ` +
+          (rbVerdict.tied
+            /* Dead even: name no leader. There isn't one. */
+            ? `and neither one of them has been able to take it — the series is level at <b>${rbVerdict.record}</b>`
+            : `with <b>${esc(rbVerdict.leaderName)}</b> holding a <b>${rbVerdict.tape}</b> edge`) +
           `${recordbook.streakCount > 1 ? ` and the current streak sitting at ${recordbook.streakCount} straight` : ''}. ` +
           `${recordbook.lastMeeting ? `The last one finished ${n1(recordbook.lastMeeting.scoreFor)}–${n1(recordbook.lastMeeting.scoreAgainst)}.` : ''}`
         : `There is no history to lean on here — load the Record Book and the desk will pull the all-time series into this preview.`,
@@ -10201,8 +10365,11 @@ function tlRivalry(ctx){
   const seed = 'rivalry:' + viewedSeasonYear() + ':' + ctx.week + ':' + A.id + ':' + B.id;
   const recordA = FSNIntel.getRecordAsOfWeek(A.id, ctx.week);
   const recordB = FSNIntel.getRecordAsOfWeek(B.id, ctx.week);
-  const seriesLabel = `${h2h.winsFor}-${h2h.winsAgainst}${h2h.ties ? '-' + h2h.ties : ''}`;
-  const leader = h2h.winsFor === h2h.winsAgainst ? null : (h2h.winsFor > h2h.winsAgainst ? A : B);
+  /* `tape` is leader-first, so the record never reads backwards next to the
+     leader's name (a series B owns 3-1 was printing as "1-3 in B's favor"). */
+  const verdict = h2hSeriesVerdict(h2h, A.name, B.name);
+  const seriesLabel = verdict.tape;
+  const leader = verdict.tied ? null : (h2h.winsFor > h2h.winsAgainst ? A : B);
   const streakName = h2h.streakOwnerId
     ? (String(h2h.streakOwnerId) === String(A.ownerId) ? A.name : String(h2h.streakOwnerId) === String(B.ownerId) ? B.name : null)
     : null;
@@ -10211,7 +10378,7 @@ function tlRivalry(ctx){
   const openParagraph = `${datelineTag()} Some games on the Week ${ctx.week} board are just games. This is not one of them. ` +
     `<b>${esc(A.name)}</b> (${esc(recordA)}) and <b>${esc(B.name)}</b> (${esc(recordB)}) have done this <b>${h2h.meetingCount}</b> times already, ` +
     `and the Record Book keeps the series at <b>${seriesLabel}</b>` +
-    `${leader ? ` in <b>${esc(leader.name)}</b>'s favor` : `, dead even, which is the most dangerous kind of rivalry there is`}. ` +
+    `${leader ? ` in <b>${esc(leader.name)}</b>'s favor` : `, a dead-tied series, which is the most dangerous kind of rivalry there is`}. ` +
     pick([
       `Nobody in this building needs a reminder of what is at stake. They keep their own.`,
       `The standings will forget this game by December. Neither of these managers ever will.`,
@@ -10248,7 +10415,8 @@ function tlRivalry(ctx){
       ], seed + ':stake');
 
   const rows = [
-    { label: 'All-time series', value: seriesLabel, note: leader ? esc(leader.name) + ' leads the ledger.' : 'Dead even.' },
+    { label: 'All-time series', value: leader ? seriesLabel : 'Series tied ' + seriesLabel,
+      note: leader ? esc(leader.name) + ' leads the ledger.' : 'Dead even — neither manager has taken this series.' },
     { label: 'Career meetings', value: String(h2h.meetingCount) },
     ...(streakName && h2h.streakCount > 1 ? [{ label: 'Current streak', value: h2h.streakCount + ' straight', note: esc(streakName) }] : []),
     ...(h2h.lastMeeting ? [{ label: 'Last meeting', value: n1(h2h.lastMeeting.scoreFor) + '–' + n1(h2h.lastMeeting.scoreAgainst), note: h2h.lastMeeting.year + ' · Week ' + h2h.lastMeeting.week }] : []),
@@ -10270,7 +10438,7 @@ function tlRivalry(ctx){
     headline: fillEditorial(RIVALRY_HEADLINES[hash(seed) % RIVALRY_HEADLINES.length], {
       A: upper(A.name), B: upper(B.name), WEEK: ctx.week, N: h2h.meetingCount,
     }),
-    dek: `${esc(A.name)} and ${esc(B.name)} have met ${h2h.meetingCount} times. The series sits ${seriesLabel}${leader ? ', ' + esc(leader.name) + ' in front' : ', dead even'}.`,
+    dek: `${esc(A.name)} and ${esc(B.name)} have met ${h2h.meetingCount} times. ${leader ? `The series sits ${seriesLabel}, ${esc(leader.name)} in front` : `The series is tied ${seriesLabel}, with nothing separating them`}.`,
     paragraphs: [openParagraph, historyParagraph, stakesParagraph].filter(Boolean),
     quote: null,
     numbers: { title: 'The Series', rows, note: 'All-time head-to-head from the loaded Record Book archive.' },
@@ -10942,11 +11110,14 @@ function tlPreseason(ctx){
     if(!g || !g.series || !g.meetings) return null;
     const s = g.series;
     const hi = Math.max(s.winsFor, s.winsAgainst), lo = Math.min(s.winsFor, s.winsAgainst);
+    const verdict = h2hSeriesVerdict(s, g.away.name, g.home.name);
     return {
       hi, lo, ties: s.ties || 0,
-      even: s.winsFor === s.winsAgainst,
-      leader: s.winsFor >= s.winsAgainst ? g.away.name : g.home.name,
-      tape: hi + '-' + lo + (s.ties ? '-' + s.ties : ''),
+      even: verdict.tied,
+      /* Null on a dead tie: >= handed the away team a lead it did not have,
+         which any caller reading `leader` without checking `even` would print. */
+      leader: verdict.leaderName,
+      tape: verdict.tape,
     };
   };
   const lead = seriesLead(marquee);
@@ -11849,6 +12020,12 @@ const ui = {
 };
 
 const STORE_KEY = 'fsn.setup.v1';
+/* The League ID box must never ship an example that is a real league. A live
+   ID in a placeholder is other people's league data on screen — and it gets
+   typed in by anyone who mistakes the greyed-out sample for a default. Both
+   providers share one neutral hint; the platform-specific "where do I find
+   this?" guide carries the format detail instead. */
+const LEAGUE_ID_PLACEHOLDER = 'e.g. your-league-id';
 const SAVED_LEAGUE_ID_KEY = 'fsn_saved_league_id';
 const SAVED_LEAGUES_KEY = 'mffu.saved.leagues.v1';
 const ACTIVE_TEAM_KEY = 'fsn_active_team_id';
@@ -12945,11 +13122,15 @@ function renderSeasonStandings(){
     let teamMark="";
     try{ teamMark=crest(row.team.name,row.team.logo,24); }
     catch(_){ teamMark='<span class="analytics-rank" aria-hidden="true">TM</span>'; }
+    /* data-label carries each column header onto the cell itself. On phones the
+       table stops being a table (see the max-width:640px block in the stylesheet)
+       and every row stacks into its own labelled card, so no column can push the
+       viewport wide. */
     return '<tr>'+
-      '<td><span class="standings-team"><span class="analytics-rank">'+(index+1)+'</span>'+teamMark+'<span class="analytics-team-name">'+esc(row.team.name)+'</span></span></td>'+
-      '<td>'+esc(row.recordLabel)+'</td><td>'+row.wins+'</td><td>'+row.losses+'</td><td>'+row.ties+'</td>'+
-      '<td>'+n1(row.pf)+'</td><td>'+n1(row.pa)+'</td><td class="'+(differential>=0?"analytics-good":"analytics-bad")+'">'+(differential>=0?"+":"")+n1(differential)+'</td>'+
-      '<td class="'+(streak.result==="W"?"analytics-good":streak.result==="L"?"analytics-bad":"analytics-muted")+'">'+esc(streak.label)+'</td>'+
+      '<td class="standings-team-cell"><span class="standings-team"><span class="analytics-rank">'+(index+1)+'</span>'+teamMark+'<span class="analytics-team-name">'+esc(row.team.name)+'</span></span></td>'+
+      '<td data-label="Record">'+esc(row.recordLabel)+'</td><td data-label="W">'+row.wins+'</td><td data-label="L">'+row.losses+'</td><td data-label="T">'+row.ties+'</td>'+
+      '<td data-label="PF">'+n1(row.pf)+'</td><td data-label="PA">'+n1(row.pa)+'</td><td data-label="Diff" class="'+(differential>=0?"analytics-good":"analytics-bad")+'">'+(differential>=0?"+":"")+n1(differential)+'</td>'+
+      '<td data-label="Streak" class="'+(streak.result==="W"?"analytics-good":streak.result==="L"?"analytics-bad":"analytics-muted")+'">'+esc(streak.label)+'</td>'+
       '</tr>';
   }).join("");
 
@@ -13633,9 +13814,17 @@ function renderRivalryResult(){
     return;
   }
 
+  const verdict = h2hSeriesVerdict(h, A.name, B.name);
   const aLeads = h.winsFor > h.winsAgainst;
+  const bLeads = h.winsAgainst > h.winsFor;
   const streakName = h.streakOwnerId ? managerLatestInfo(h.streakOwnerId).name : null;
   const last = h.lastMeeting;
+  /* A dead-tied series gets said out loud. Two identical grey numbers and no
+     caption left the reader guessing, and every other surface that reads this
+     record used to resolve the tie by picking whoever was listed first. */
+  const verdictLine = verdict.tied
+    ? `<span class="pill" style="border-color:rgba(0,224,255,.4);color:var(--cyan);background:rgba(0,224,255,.07)">SERIES TIED · ${verdict.record}</span>`
+    : `<span class="pill pill-gold">${esc(String(verdict.leaderName).toUpperCase())} LEADS ${verdict.tape}</span>`;
 
   box.innerHTML = `<div class="card card-accent accent-cyan">
     <div class="pl-5 pr-4 py-4">
@@ -13650,9 +13839,10 @@ function renderRivalryResult(){
           <div class="font-mono tabular text-[30px] font-extrabold leading-none">
             <span style="color:${aLeads ? 'var(--gold)' : '#5d6879'}">${h.winsFor}</span>
             <span class="text-[#39424f] text-[20px]">–</span>
-            <span style="color:${!aLeads && h.winsAgainst > h.winsFor ? 'var(--gold)' : '#5d6879'}">${h.winsAgainst}</span>
+            <span style="color:${bLeads ? 'var(--gold)' : '#5d6879'}">${h.winsAgainst}</span>
           </div>
           ${h.ties ? `<div class="font-mono tabular text-[9.5px] text-[var(--dim)] mt-1">${h.ties} tie${h.ties===1?'':'s'}</div>` : ''}
+          ${verdict.tied ? `<div class="font-mono tabular text-[9px] text-[var(--cyan)] mt-1 tracking-widest">EVEN</div>` : ''}
         </div>
         <div class="flex-1 min-w-0 text-center">
           ${crest(B.teamName || B.name, B.logo, 46)}
@@ -13660,9 +13850,13 @@ function renderRivalryResult(){
         </div>
       </div>
 
+      <div class="mt-3.5 flex justify-center">${verdictLine}</div>
+
       <div class="grid grid-cols-3 gap-2 mt-4">
         ${statCell('PF (A)', h.pointsFor.toFixed(0), 'var(--cyan)')}
-        ${statCell('Diff', (h.diff >= 0 ? '+' : '') + h.diff.toFixed(1), h.diff >= 0 ? 'var(--green)' : 'var(--red)')}
+        ${statCell('Diff',
+                   verdict.pointsTied ? '0.0' : (h.diff > 0 ? '+' : '') + h.diff.toFixed(1),
+                   verdict.pointsTied ? 'var(--dim)' : h.diff > 0 ? 'var(--green)' : 'var(--red)')}
         ${statCell('PF (B)', h.pointsAgainst.toFixed(0), 'var(--cyan)')}
       </div>
 
@@ -14730,8 +14924,17 @@ async function fetchLeagueData(options){
       });
       text = await response.text();
       if(!response.ok){
-        const detail = String(text || '').replace(/\s+/g, ' ').slice(0, 180);
-        throw new Error(`HTTP ${response.status}${detail ? ': ' + detail : ''}`);
+        /* The relay always answers a failure with JSON carrying a written-for-
+           humans `error` and a machine-readable `reason`. Read those. Splicing
+           180 raw characters of the response body into the message is how an
+           ESPN block page or an upstream stack trace ended up rendered in the
+           status line under the fetch button. */
+        const relay = readRelayError(text);
+        const err = new Error(`HTTP ${response.status}${relay.error ? ': ' + relay.error : ''}`);
+        err.relayReason = relay.reason;
+        err.relayMessage = relay.error;
+        err.httpStatus = response.status;
+        throw err;
       }
     }catch(err){
       // A thrown "HTTP NNN" is a genuine upstream status — surface it. Anything
@@ -14890,12 +15093,29 @@ async function fetchLeagueData(options){
     }
     setConn('error');
     const message = String(err && (err.message || err) || '');
+    const relayReason = (err && err.relayReason) || '';
+    const relayMessage = (err && err.relayMessage) || '';
     $('fetchStatus').style.color = 'var(--red)';
 
     /* Surface the real reason so a live production failure is diagnosable at a
        glance instead of always reading "could not be loaded". */
     let msg;
-    if(/\bHTTP 40[13]\b/.test(message)){
+    /* The relay already worked out which of these it is and wrote the sentence
+       for it — including the common, harmless case where a public league simply
+       has no season on ESPN yet. Prefer that over guessing from a status code,
+       and never render a raw response body. */
+    if(relayReason === 'season-not-available'){
+      msg = relayMessage || ('ESPN does not have a ' + currentYear + ' season for this league yet. ' +
+        'The League ID is fine — ESPN just has not rolled this league over. Try again once your ' +
+        'league renews, or load an earlier season.');
+    } else if(relayReason === 'cookies-rejected'){
+      msg = relayMessage || 'ESPN rejected the saved private-league cookies. Re-copy espn_s2 and ' +
+        'SWID from your logged-in ESPN browser and paste them again.';
+    } else if(relayReason === 'upstream-timeout' || relayReason === 'upstream-unreachable' ||
+              relayReason === 'upstream-error' || relayReason === 'upstream-not-json'){
+      msg = relayMessage || 'ESPN is not responding right now. This is an ESPN-side problem, not ' +
+        'your League ID — try again in a moment.';
+    } else if(/\bHTTP 40[13]\b/.test(message)){
       // Tailor the guidance to whether the user has already supplied cookies:
       // present-but-rejected almost always means an invalid or expired paste,
       // while none-set means this private league needs credentials at all.
@@ -14905,10 +15125,11 @@ async function fetchLeagueData(options){
       } else if(s2 || swid){
         msg = 'ESPN denied the request (401/403) and only one cookie is saved — a private league needs BOTH espn_s2 and SWID. Add the missing value in Private League Access (see “How do I connect my league?” → Step 2), then try again.';
       } else {
-        msg = 'ESPN would not serve this league without credentials. Either it is private — open “How do I connect my league?” → Step 2 and paste your espn_s2 + SWID into Private League Access — or this League ID has no such season. Details: ' + message;
+        msg = 'ESPN would not serve this league without credentials. Either it is private — open “How do I connect my league?” → Step 2 and paste your espn_s2 + SWID into Private League Access — or this League ID has no such season.' + (relayMessage ? ' Details: ' + relayMessage : '');
       }
     } else if(/\bHTTP 404\b/.test(message)){
-      msg = 'ESPN has no 2026 season for this League ID (HTTP 404). Confirm the league renewed for 2026 and the ID is correct.';
+      msg = relayMessage || ('ESPN has no ' + currentYear + ' season for this League ID (HTTP 404). ' +
+        'Confirm the league renewed for ' + currentYear + ' and the ID is correct.');
     } else if(/NO_LIVE_LEAGUE_DATA/.test(message)){
       msg = 'Connected to ESPN, but the 2026 season returned no teams yet. If the league is private add ESPN credentials; if 2026 rosters are not set, try again once the season opens.';
     } else if(/INVALID_ESPN_JSON/.test(message)){
@@ -14916,9 +15137,13 @@ async function fetchLeagueData(options){
     } else if(/RELAY_UNREACHABLE|Failed to fetch|NetworkError|Load failed/i.test(message)){
       msg = 'Could not reach the /api/espn relay or any fallback (network error). The serverless function may not be deployed on Vercel, or a browser extension is blocking the request — confirm the api/ routes shipped and retry.';
     } else if(/\bHTTP 5\d\d\b/.test(message) || /upstream/.test(message)){
-      msg = 'The ESPN relay failed upstream (' + (message || 'server error') + '). This is usually a transient ESPN outage — try again in a moment.';
+      msg = relayMessage || 'The ESPN relay failed upstream. This is usually a transient ESPN outage — try again in a moment.';
     } else {
-      msg = 'The live 2026 season could not be loaded (' + (message || 'unknown error') + '). Check the League ID and try again.';
+      /* Last resort. `message` here is ours, not ESPN's — but keep it short and
+         markup-free so nothing unexpected can render into the status line. */
+      const detail = message.replace(/\s+/g, ' ').replace(/[<>]/g, '').slice(0, 160);
+      msg = 'The live ' + currentYear + ' season could not be loaded' + (detail ? ' (' + detail + ')' : '') +
+        '. Check the League ID and try again.';
     }
     $('fetchStatus').textContent = msg;
     return false;
@@ -14944,7 +15169,7 @@ function setProvider(provider){
 
   const input = $('leagueIdInput');
   if(input){
-    input.placeholder = next === 'sleeper' ? 'e.g. 992228620063932416' : 'e.g. 57155288';
+    input.placeholder = LEAGUE_ID_PLACEHOLDER;
   }
   const heading = $('leagueSourceHeading');
   if(heading) heading.textContent = next === 'sleeper' ? 'Connect League' : 'Connect League';
