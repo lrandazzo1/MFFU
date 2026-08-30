@@ -2195,7 +2195,10 @@ window.LeagueData = (function(){
   const store = {
     espnData: null,        // one season's league object (mTeam/mMatchup views)
     leagueHistory: null,   // { managers, h2h, perManagerGameLog, records }
-    meta: { leagueId:'', season:'', week:'' },
+    /* provider belongs here, not in the UI layer's `ui` object: the cache
+       scope token below is read from four separate closures, none of which can
+       see `ui`. */
+    meta: { leagueId:'', season:'', week:'', provider:'espn' },
 
     /* ---- pub/sub ---- */
     subscribe(fn){ subs.push(fn); try{ fn(store); }catch(e){ console.error(e); } return fn; },
@@ -2238,6 +2241,7 @@ window.LeagueData = (function(){
         const name = ((t.location||'') + ' ' + (t.nickname||'')).trim() || t.name || ('Team ' + t.id);
         const ownerId = t.primaryOwner || (t.owners && t.owners[0]) || '';
         const rec = t.record && t.record.overall;
+        const num = (v)=> Number.isFinite(Number(v)) ? Number(v) : 0;
         return {
           id: t.id,
           name,
@@ -2245,6 +2249,15 @@ window.LeagueData = (function(){
           abbrev: t.abbrev || name.replace(/[^A-Za-z]/g,'').slice(0,3).toUpperCase() || 'TM',
           logo: t.logo || '',
           record: rec ? `${rec.wins}-${rec.losses}${rec.ties ? '-' + rec.ties : ''}` : '',
+          /* `record` above is a DISPLAY STRING, and a string cannot carry
+             points. Normalising to it alone threw away wins/losses/ties as
+             numbers and points-for/against entirely, so anything reading a
+             normalised team (the standings fallback, most visibly) had nothing
+             to show but zeros. Keep the structured overall record beside it. */
+          recordOverall: rec ? {
+            wins: num(rec.wins), losses: num(rec.losses), ties: num(rec.ties),
+            pointsFor: num(rec.pointsFor), pointsAgainst: num(rec.pointsAgainst),
+          } : null,
           owner: memberNames[ownerId] || '',
           /* The bracket cards label every side by seed, so it travels with the team. */
           playoffSeed: Number(t.playoffSeed || 0) || null,
@@ -2360,6 +2373,44 @@ window.LeagueData = (function(){
 
   return store;
 })();
+
+/* ============================================================
+   LEAGUE CACHE SCOPE
+   Every derived cache in the app — FSNIntel's memo map, the News Desk stream
+   and generator caches, SeasonAnalytics' model memo — prefixes its keys with
+   the active league's scope token so a payload computed for one league can
+   never be served for another, regardless of purge timing.
+
+   These two functions MUST be global. They used to live inside the
+   `window.NewsDesk` closure, where three of their four callers could not
+   reach them: FSNIntel's memo() and SeasonAnalytics' compute() both threw
+   `ReferenceError: leagueScopeToken is not defined` on every single call.
+   Because memo() built the scoped key OUTSIDE its own try/catch, the throw
+   escaped to the caller, so standingsThrough, powerRankings, getRecordAsOfWeek,
+   getStreakAsOfWeek, injuries, draft, faabReport and every Timeline generator
+   failed silently in the background. Defining them here, between the store and
+   the closures that consume it, is what makes them reachable from all of them.
+============================================================ */
+function selectedLeagueId(){
+  const el = document.getElementById('leagueIdInput');
+  return (el && el.value.trim()) || (LeagueData.meta && LeagueData.meta.leagueId) || 'league';
+}
+
+/* Canonical cache-namespace token for the league currently resident in the
+   stores: provider + league id. A key like 'standings:3' is identical across
+   two leagues in the same week, so if a switch ever failed to publish, League B
+   could read League A's standings straight out of the map. Two providers can
+   also reuse the same numeric id, so the provider is part of the token — read
+   from the store, because the UI layer's `ui.provider` is closure-local and
+   was never visible from here. */
+function leagueScopeToken(){
+  let provider = 'espn';
+  try{
+    const fromStore = LeagueData.meta && LeagueData.meta.provider;
+    if(fromStore) provider = String(fromStore);
+  }catch(e){}
+  return provider + ':' + selectedLeagueId();
+}
 
 /* ============================================================
    ESPN URL BUILDER
@@ -3826,7 +3877,16 @@ async function buildSeason(leagueId, playerIndex, opts){
       logo: (user.metadata && user.metadata.avatar) || (user.avatar ? 'https://sleepercdn.com/avatars/thumbs/' + user.avatar : ''),
       primaryOwner: ownerId,
       owners: [ownerId],
-      record:{ overall:{ wins:Number(s.wins||0), losses:Number(s.losses||0), ties:Number(s.ties||0) } },
+      /* Sleeper splits points into an integer part and a hundredths part, the
+         same convention standingsSeeds() above already decodes. They were being
+         dropped here, so a Sleeper league had no points anywhere on its teams
+         and the standings table rendered PF/PA as 0.0 whenever it had to read
+         the record rather than recompute from the schedule. */
+      record:{ overall:{
+        wins:Number(s.wins||0), losses:Number(s.losses||0), ties:Number(s.ties||0),
+        pointsFor:Number(s.fpts||0) + Number(s.fpts_decimal||0) / 100,
+        pointsAgainst:Number(s.fpts_against||0) + Number(s.fpts_against_decimal||0) / 100,
+      } },
       playoffSeed: inPlayoffPhase ? seed : null,
       rankCalculatedFinal: String(league.status) === 'complete' ? seed : null,
     };
@@ -5852,21 +5912,13 @@ function weekContext(week){
    Every season uses the local matrix below. Stable archive coordinates drive
    each draw; no remote model, API key, random number, or network write is used.
 ============================================================ */
-function selectedLeagueId(){
-  const el = document.getElementById('leagueIdInput');
-  return (el && el.value.trim()) || (LeagueData.meta && LeagueData.meta.leagueId) || 'league';
-}
-/* Canonical cache-namespace token for the league currently resident in the
-   stores: provider + league id. Every in-memory derived cache (FSNIntel reads,
-   SeasonAnalytics models, the News Desk stream/gen caches) prefixes its keys
-   with this so a payload computed for one league can never be served for
-   another — even if a purge is missed or a publish is reordered. Two providers
-   can reuse the same numeric id, so the provider is part of the token. */
-function leagueScopeToken(){
-  let provider = 'espn';
-  try{ if(typeof ui !== 'undefined' && ui && ui.provider) provider = ui.provider; }catch(e){}
-  return provider + ':' + selectedLeagueId();
-}
+/* selectedLeagueId / leagueScopeToken used to be defined here, inside the
+   NewsDesk closure. FSNIntel and SeasonAnalytics could not see them and threw
+   on every memoised read; the copy here also tried to read the UI layer's
+   `ui.provider`, which is closure-local to a later script and was never
+   visible from this scope either. Both now live beside the store (search
+   "LEAGUE CACHE SCOPE") as globals, which every closure can reach. The calls
+   below resolve to those. */
 function viewedSeasonYear(){
   const d = LeagueData.espnData || {};
   const el = document.getElementById('seasonYear');
@@ -13041,6 +13093,73 @@ function finiteStandingsNumber(value){
   const number=Number(value);
   return Number.isFinite(number) ? number : 0;
 }
+/* A team's record reaches this table in three different shapes, and the reader
+   used to understand only one of them:
+
+     1. FSNIntel.standingsThrough() rows — flat wins/losses/ties/pf/pa numbers.
+     2. A raw ESPN team — { record: { overall: { wins, losses, ties,
+        pointsFor, pointsAgainst } } }.
+     3. A LeagueData.getTeams() team — `record` is a DISPLAY STRING, "8-0"
+        or "8-0-1", because the store flattens ESPN's object on the way out.
+
+   The old fallback path read `team.record.overall` unconditionally. Against
+   shape 3 that is "8-0".overall — undefined — so every column fell back to
+   zero and the whole table rendered 0-0 / 0.0 / +0.0. This accepts all three
+   and reports which fields it actually found, so a caller can tell "genuinely
+   zero" apart from "not present in this shape". */
+function standingsRecordParts(value){
+  const out = { wins:null, losses:null, ties:null, pointsFor:null, pointsAgainst:null, label:'' };
+  if(value == null) return out;
+
+  if(typeof value === "string" || typeof value === "number"){
+    const text = String(value).trim();
+    /* Leading W-L[-T]; tolerates a trailing division/home split such as
+       "8-0-1 (4-2)" and stray whitespace around the dashes. */
+    const parts = text.match(/^(\d+)\s*-\s*(\d+)(?:\s*-\s*(\d+))?/);
+    if(parts){
+      out.wins = Number(parts[1]);
+      out.losses = Number(parts[2]);
+      out.ties = parts[3] == null ? 0 : Number(parts[3]);
+      out.label = text;
+    }
+    return out;
+  }
+
+  if(typeof value !== "object") return out;
+
+  /* ESPN nests the numbers under .overall; an already-flat object is used as-is. */
+  const src = (value.overall && typeof value.overall === "object") ? value.overall : value;
+  const pick = function(){
+    for(let i = 0; i < arguments.length; i++){
+      const raw = src[arguments[i]];
+      if(raw != null && Number.isFinite(Number(raw))) return Number(raw);
+    }
+    return null;
+  };
+  out.wins = pick("wins", "w");
+  out.losses = pick("losses", "l");
+  out.ties = pick("ties", "t");
+  out.pointsFor = pick("pointsFor", "pf");
+  out.pointsAgainst = pick("pointsAgainst", "pa");
+  if(typeof src.record === "string") out.label = src.record.trim();
+  return out;
+}
+
+/* First non-null across the candidate records, field by field: a row may carry
+   its wins flat while its points only exist on the team's structured record. */
+function mergeStandingsRecords(candidates){
+  const merged = { wins:null, losses:null, ties:null, pointsFor:null, pointsAgainst:null, label:'' };
+  const fields = ['wins','losses','ties','pointsFor','pointsAgainst'];
+  candidates.forEach(function(candidate){
+    const parts = standingsRecordParts(candidate);
+    fields.forEach(function(field){
+      if(merged[field] == null && parts[field] != null) merged[field] = parts[field];
+    });
+    if(!merged.label && parts.label) merged.label = parts.label;
+  });
+  return merged;
+}
+
 function normalizedStandingsStreak(value){
   if(value == null) return {result:"",length:0,label:"—"};
   if(typeof value === "string"){
@@ -13070,18 +13189,13 @@ function renderSeasonStandings(){
       const rawTeams=LeagueData && typeof LeagueData.getTeams === "function" ? LeagueData.getTeams() : [];
       fallbackTeams=Array.isArray(rawTeams) ? rawTeams : [];
     }catch(_){ fallbackTeams=[]; }
-    sourceRows=fallbackTeams.filter(function(team){ return team && typeof team === "object" && team.id != null; }).map(function(team){
-      const overall=team.record && team.record.overall && typeof team.record.overall === "object" ? team.record.overall : {};
-      return {
-        team:team,
-        wins:overall.wins,
-        losses:overall.losses,
-        ties:overall.ties,
-        pf:overall.pointsFor,
-        pa:overall.pointsAgainst,
-        recordLabel:null
-      };
-    });
+    /* Pass the team straight through — the merge below reads whichever record
+       shape it actually carries. This branch runs whenever standingsThrough
+       returns nothing, which includes every preseason/week-0 board, where
+       ESPN's own record is the only source there is. */
+    sourceRows=fallbackTeams
+      .filter(function(team){ return team && typeof team === "object" && team.id != null; })
+      .map(function(team){ return { team:team, recordLabel:null }; });
   }
 
   const rows=[];
@@ -13091,19 +13205,30 @@ function renderSeasonStandings(){
       const rawTeam=row.team && typeof row.team === "object" ? row.team : {};
       const teamId=rawTeam.id != null ? rawTeam.id : (row.teamId != null ? row.teamId : row.id);
       if(teamId == null) return;
-      const nestedRecord=row.record && row.record.overall && typeof row.record.overall === "object"
-        ? row.record.overall
-        : (rawTeam.record && rawTeam.record.overall && typeof rawTeam.record.overall === "object" ? rawTeam.record.overall : {});
-      const wins=Math.max(0,Math.trunc(finiteStandingsNumber(row.wins != null ? row.wins : nestedRecord.wins)));
-      const losses=Math.max(0,Math.trunc(finiteStandingsNumber(row.losses != null ? row.losses : nestedRecord.losses)));
-      const ties=Math.max(0,Math.trunc(finiteStandingsNumber(row.ties != null ? row.ties : nestedRecord.ties)));
-      const pf=finiteStandingsNumber(row.pf != null ? row.pf : (row.pointsFor != null ? row.pointsFor : nestedRecord.pointsFor));
-      const pa=finiteStandingsNumber(row.pa != null ? row.pa : (row.pointsAgainst != null ? row.pointsAgainst : nestedRecord.pointsAgainst));
+      /* Highest-confidence source first: the row's own computed numbers, then
+         its record in whatever shape, then the team's structured record, then
+         the team's display string. Merged field by field, because a row can
+         carry wins flat while points only exist on the team's record. */
+      const merged=mergeStandingsRecords([
+        { wins:row.wins, losses:row.losses, ties:row.ties,
+          pointsFor:row.pf != null ? row.pf : row.pointsFor,
+          pointsAgainst:row.pa != null ? row.pa : row.pointsAgainst },
+        row.record,
+        rawTeam.recordOverall,
+        rawTeam.record,
+      ]);
+      const wins=Math.max(0,Math.trunc(finiteStandingsNumber(merged.wins)));
+      const losses=Math.max(0,Math.trunc(finiteStandingsNumber(merged.losses)));
+      const ties=Math.max(0,Math.trunc(finiteStandingsNumber(merged.ties)));
+      const pf=finiteStandingsNumber(merged.pointsFor);
+      const pa=finiteStandingsNumber(merged.pointsAgainst);
       const name=String(rawTeam.name || [rawTeam.location,rawTeam.nickname].filter(Boolean).join(" ") || rawTeam.abbrev || row.teamName || ("Team "+teamId));
       rows.push({
         team:{id:teamId,name:name,logo:String(rawTeam.logo || row.logo || "")},
         wins:wins,losses:losses,ties:ties,pf:pf,pa:pa,
-        recordLabel:String(row.recordLabel || (typeof row.record === "string" ? row.record : "") || (wins+"-"+losses+(ties ? "-"+ties : "")))
+        /* Prefer a supplied label, then any record string the sources carried,
+           then one built from the merged counts. */
+        recordLabel:String(row.recordLabel || merged.label || (wins+"-"+losses+(ties ? "-"+ties : "")))
       });
     }catch(err){ console.warn("[Standings] skipped malformed team row",err); }
   });
@@ -15159,6 +15284,14 @@ async function fetchLeagueData(options){
 function setProvider(provider){
   const next = provider === 'sleeper' ? 'sleeper' : 'espn';
   ui.provider = next;
+  /* Mirror it into the store so leagueScopeToken() — which runs in closures
+     that cannot see `ui` — actually namespaces caches per platform. Assigned
+     rather than pushed through setMeta() on purpose: setMeta publishes, and a
+     publish with a live season re-opens the "who's watching?" picker for anyone
+     who has not picked a team yet. No publish is needed here anyway, because
+     the token itself changes, so the previous provider's entries simply stop
+     being addressable. */
+  try{ if(LeagueData.meta) LeagueData.meta.provider = next; }catch(e){}
   const espnTab = $('providerEspn'), sleeperTab = $('providerSleeper');
   [['espn', espnTab], ['sleeper', sleeperTab]].forEach(([key, tab])=>{
     if(!tab) return;
