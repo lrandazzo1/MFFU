@@ -3335,6 +3335,30 @@ function featuredPlayoffGames(games, week){
   const nonConsolation = list.filter(g=> !isConsolationGame(g));
   return nonConsolation.length ? nonConsolation : list;
 }
+
+/* ============================================================
+   CANONICAL LEAGUE SCOPE TOKEN — SHARED, GLOBAL, DEFINED FIRST
+   Every derived in-memory cache (FSNIntel memo, SeasonAnalytics models, the
+   News Desk stream/gen caches) namespaces its keys with this so a payload
+   computed for one league can never be served for another, even if a purge is
+   missed or a publish is reordered. Two providers can reuse the same numeric
+   id, so the provider is part of the token.
+
+   It lives HERE, at true global scope in the first script block, because its
+   consumers are spread across four separate <script> blocks and three IIFE
+   modules. A copy private to any one module is invisible to the others and
+   throws ReferenceError at their call sites, which is exactly what silently
+   emptied the article engine once.
+============================================================ */
+window.selectedLeagueId = function selectedLeagueId(){
+  const el = document.getElementById('leagueIdInput');
+  return (el && el.value.trim()) || (window.LeagueData && LeagueData.meta && LeagueData.meta.leagueId) || 'league';
+};
+window.leagueScopeToken = function leagueScopeToken(){
+  let provider = 'espn';
+  try{ if(typeof ui !== 'undefined' && ui && ui.provider) provider = ui.provider; }catch(e){}
+  return provider + ':' + window.selectedLeagueId();
+};
 </script>
 
 <script>
@@ -5660,21 +5684,16 @@ function weekContext(week){
    Every season uses the local matrix below. Stable archive coordinates drive
    each draw; no remote model, API key, random number, or network write is used.
 ============================================================ */
-function selectedLeagueId(){
-  const el = document.getElementById('leagueIdInput');
-  return (el && el.value.trim()) || (LeagueData.meta && LeagueData.meta.leagueId) || 'league';
-}
+/* Delegates to the single global implementation so the News Desk, FSNIntel and
+   SeasonAnalytics can never drift onto different league-scope namespaces. */
+function selectedLeagueId(){ return window.selectedLeagueId(); }
 /* Canonical cache-namespace token for the league currently resident in the
    stores: provider + league id. Every in-memory derived cache (FSNIntel reads,
    SeasonAnalytics models, the News Desk stream/gen caches) prefixes its keys
    with this so a payload computed for one league can never be served for
    another — even if a purge is missed or a publish is reordered. Two providers
    can reuse the same numeric id, so the provider is part of the token. */
-function leagueScopeToken(){
-  let provider = 'espn';
-  try{ if(typeof ui !== 'undefined' && ui && ui.provider) provider = ui.provider; }catch(e){}
-  return provider + ':' + selectedLeagueId();
-}
+function leagueScopeToken(){ return window.leagueScopeToken(); }
 function viewedSeasonYear(){
   const d = LeagueData.espnData || {};
   const el = document.getElementById('seasonYear');
