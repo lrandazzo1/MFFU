@@ -5144,7 +5144,15 @@ function preseasonReport(){
         involvesChampion: hasChamp,
         involvesSacko: hasSacko,
         score: meetings * 2 + tight + (hasChamp ? 12 : 0) + (hasSacko ? 5 : 0),
-        label: esc(A.name) + ' at ' + esc(B.name),
+        /* NOT escaped, deliberately. This runs inside the window.FSNIntel
+           closure, which has no `esc` in scope — the call threw
+           "esc is not defined", memo() swallowed it, preseasonReport()
+           returned null, and the State of the League lead silently degraded
+           to its "UNDER REVIEW / Unavailable" archive-missing fallback.
+           Nothing renders this label; every consumer builds its own string
+           from away.name / home.name and escapes at the point of use, which
+           is this file's convention. */
+        label: A.name + ' at ' + B.name,
       };
     }).sort((a,b)=> b.score - a.score);
 
