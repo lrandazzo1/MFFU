@@ -1768,7 +1768,7 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
               <label class="label" for="leagueIdInput" style="margin-bottom:0">League ID</label>
               <button type="button" class="onboard-link" data-onboard-step="league">Where do I find this?</button>
             </div>
-            <input id="leagueIdInput" class="field mt-1.5" inputmode="numeric" autocomplete="off" placeholder="e.g. 57155288">
+            <input id="leagueIdInput" class="field mt-1.5" inputmode="numeric" autocomplete="off" placeholder="e.g. 123456789">
           </div>
           <span id="seasonYear" hidden aria-hidden="true"></span>
           <span id="weekNum" hidden aria-hidden="true"></span>
@@ -14938,7 +14938,7 @@ function setProvider(provider){
 
   const input = $('leagueIdInput');
   if(input){
-    input.placeholder = next === 'sleeper' ? 'e.g. 992228620063932416' : 'e.g. 57155288';
+    input.placeholder = next === 'sleeper' ? 'e.g. 123456789012345678' : 'e.g. 123456789';
   }
   const heading = $('leagueSourceHeading');
   if(heading) heading.textContent = next === 'sleeper' ? 'Connect League' : 'Connect League';
