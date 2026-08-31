@@ -15772,7 +15772,7 @@ function articleHtml(a){
         ${a.custom
           ? `<button class="btn-ghost" data-reader-copy>📋 COPY FOR GROUP CHAT</button>
              <button class="btn-ghost story-delete-btn" data-reader-delete>🗑 DELETE ARTICLE</button>`
-          : `<button class="btn-ghost" data-reader-copy>COPY THE HOOK</button>
+          : `<button class="btn-ghost" data-reader-copy>COPY THE BRIEF</button>
              <button class="btn-ghost" data-reader-share>SHARE</button>`}
       </div>
       <p class="text-[10.5px] text-[#4a5464] leading-relaxed mt-4 pt-4 border-t border-[var(--line)]">
@@ -15841,13 +15841,19 @@ function openArticleModal(idx){
    before it happens, because a recipient who can read the outcome in
    the message has no reason to open anything. So nothing below names a
    team, a manager, a score, a margin, a record or a standing. It
-   establishes only that something happened, that it happened in the
-   reader's league, and that the receipts are one tap away.
+   establishes only that a filing exists, that it concerns the reader's
+   league, and that the full report is one tap away.
+
+   The voice is the News Desk's own: a professional beat reporter or
+   ledger analyst filing an official brief. Measured, evidentiary,
+   institutional — things are filed, logged, reviewed, entered into the
+   record. No hype, no slang, no exclamation. The pull is that a formal
+   report exists and the reader is not yet in it.
 
    Two lines, always:
-     1. the tease — a provocation aimed squarely at "wait, what
-        happened to me?"
-     2. the CTA + link — a sharp invitation into the command center.
+     1. the brief — an objective, high-stakes news line stating that
+        something has been filed, without stating what it says
+     2. the CTA + link — a masthead sign-off pointing at the full report.
 
    Every draw is deterministic. The pools are indexed off stable
    archive coordinates (league, season, week, article id) rather than a
@@ -15876,117 +15882,118 @@ function shareHash(str){
    never be left without a hook. */
 const SHARE_TEASES = {
   sotl: [
-    'An audit was just filed on every roster in your league.',
-    'Someone’s title defense is already a disaster.',
-    'The {SEASON} hierarchy got redrawn today, and one contender is not where they think they are.',
-    'Your league’s balance of power was re-examined this morning. The findings are not flattering.',
-    'Every {SEASON} roster went under review. One of them did not survive it.',
-    'The state of your league is officially on the record now. Somebody comes out of it badly.',
+    'The state of the league has been filed. Every roster is named in it.',
+    'An official review of the {SEASON} field is now on the record.',
+    'The pre-season metrics are locked on the board. One contender did not survive the audit.',
+    'The {SEASON} hierarchy has been recalculated and entered into the record.',
+    'A league-wide audit was filed this morning. The findings are not evenly distributed.',
+    'The championship baseline for {SEASON} is now documented.',
   ],
   breaking: [
-    'Something just broke in your league and nobody has said it out loud yet.',
-    'A result landed in your league that changes the rest of {SEASON}.',
-    'Week {WEEK} produced a headline somebody is going to want deleted.',
-    'There is news out of your league and one manager is not going to enjoy it.',
-    'This one is going to start an argument in the group chat.',
+    'A breaking item has been filed to the wire from your league.',
+    'The desk has published an unscheduled brief on Week {WEEK}.',
+    'A development in your league is now on the record.',
+    'Week {WEEK} produced a result the desk filed immediately.',
+    'An item cleared the wire this morning. One manager is named in it.',
   ],
   nailbiter: [
-    'A game in your league was decided by less than one bad bench decision.',
-    'Somebody lost by a margin they will be re-reading all week.',
-    'Week {WEEK} had a finish that should not be legal.',
-    'One manager is going to spend the rest of {SEASON} on a single-digit margin.',
-    'The closest result in your league has a detail nobody noticed live.',
+    'A Week {WEEK} result was decided inside the margin of a single correction.',
+    'The closest game on the board has been reviewed and filed.',
+    'One result in your league landed inside a single-digit margin. The review is filed.',
+    'The desk has logged the narrowest decision on the Week {WEEK} board.',
+    'A finish that tight gets its own report. That report is now on file.',
   ],
   blowout: [
-    'Something happened in your league that the standings are too polite to describe.',
-    'One roster was taken apart badly enough to need a written record.',
-    'A team in your league lost to a number, not an opponent.',
-    'Week {WEEK} produced something in your league that was not really a game.',
-  ],
-  fraud: [
-    'A fraud alert was filed on somebody in your league this week.',
-    'One team’s record is not matching their receipts.',
-    'Somebody near the top of your standings is not what they look like.',
-    'A contender in your league is playing well above the evidence.',
-    'Week {WEEK} exposed somebody your standings are still protecting.',
-  ],
-  bench: [
-    'A lineup decision in your league is about to age very badly.',
-    'Somebody left the win sitting on their bench in Week {WEEK}.',
-    'One start/sit call in your league now has its own paper trail.',
-    'A manager in your league benched the answer. It is documented.',
-  ],
-  matchup: [
-    'Week {WEEK} has one game everybody in your league should be watching.',
-    'Two teams in your league are walking into something neither of them wants.',
-    'One matchup this week carries consequences the standings do not show yet.',
-    'There is a game on your league’s board that decides more than it looks like.',
-  ],
-  power: [
-    'Your league just got re-ranked and somebody is not going to agree with it.',
-    'The power index moved. One team dropped further than they realise.',
-    'The {SEASON} pecking order was recalculated this week. It is not close to last week.',
-    'Somebody in your league is ranked exactly where they did not want to be.',
-  ],
-  playoff: [
-    'The bracket math changed in your league and somebody’s path just got worse.',
-    'One team’s postseason odds moved in a direction they have not noticed.',
-    'Your league’s playoff picture is not what it was on Sunday.',
-    'Somebody is closer to missing the bracket than their record suggests.',
-  ],
-  waiver: [
-    'A move went through in your league that somebody is going to regret.',
-    'Somebody spent big this week. The receipt is public now.',
-    'A drop in your league is going to look indefensible by December.',
-    'The wire moved in your league and one manager got played.',
-  ],
-  draft: [
-    'The draft board got graded and one pick did not survive it.',
-    'Somebody’s draft is already being discussed in the past tense.',
-    'A first-round decision in your league is aging in real time.',
-    'One pick in your league has quietly become the story of {SEASON}.',
-  ],
-  record: [
-    'Something in your league’s record book moved this week.',
-    'A number that stood for years in your league just got tested.',
-    'The archive has a new entry and somebody’s name is on it.',
-    'Your league’s all-time board is not the same as it was on Sunday.',
-  ],
-  community: [
-    'Somebody in your league put this in writing.',
-    'A manager in your league filed this publicly, and it names names.',
-    'Someone decided the group chat was not a big enough audience.',
-    'This was written by somebody in your league. It is not subtle.',
+    'A Week {WEEK} result cleared the board by a margin the desk had to document.',
+    'One matchup was settled early enough to warrant a separate report.',
+    'The margin from one Week {WEEK} game has been entered into the record.',
+    'A decision on this week’s board left no competitive window. The brief is filed.',
   ],
   result: [
-    'A result went final in your league that somebody is going to be asked about.',
-    'One team in your league had their week decided for them.',
-    'Week {WEEK} settled an argument in your league, loudly.',
-    'A game in your league ended in a way somebody will be explaining for a while.',
+    'A Week {WEEK} decision has been reviewed and entered into the record.',
+    'The final from one matchup on your board is now documented.',
+    'The ledger has been updated for Week {WEEK}.',
+    'A result in your league has been filed with the figures attached.',
+  ],
+  fraud: [
+    'A fraud alert has been filed against a team in your standings.',
+    'One record in your league is not supported by the underlying numbers.',
+    'The desk has flagged a discrepancy between a standing and its evidence.',
+    'A Week {WEEK} audit found a contender trading above its metrics.',
+    'An official review has been filed regarding the top of your standings.',
+  ],
+  bench: [
+    'A lineup decision from Week {WEEK} is now part of the written record.',
+    'The desk has documented a start/sit call and what it cost.',
+    'One roster left points in reserve in Week {WEEK}. The figure is on file.',
+    'A lineup review has been filed. The optimal total is attached.',
+  ],
+  matchup: [
+    'The Week {WEEK} board has one matchup flagged for review.',
+    'The desk has named the game of the week. The preview is filed.',
+    'One Week {WEEK} fixture carries more standing weight than the board shows.',
+    'A matchup on your schedule has been elevated to the lead brief.',
   ],
   statement: [
-    'Somebody in your league made a statement this week and the rest of the field has a problem.',
-    'One team just set the bar in your league. Nobody else is near it.',
-    'A manager in your league put up a Week {WEEK} number the others have to answer.',
-    'Somebody in your league is playing a different sport right now.',
+    'The high score of Week {WEEK} has been logged and the field has been put on notice.',
+    'One roster set the benchmark on this week’s board. The number is filed.',
+    'A Week {WEEK} performance has been entered as the new reference point.',
+    'The desk has documented the ceiling for this week. It moved.',
+  ],
+  power: [
+    'The power index has been recalculated. The new board is published.',
+    'Your league has been re-ranked on scoring strength and lineup efficiency.',
+    'The {SEASON} model-driven rankings are locked for Week {WEEK}.',
+    'A team has moved on the index in a direction the standings do not show.',
+  ],
+  playoff: [
+    'The bracket projection has been updated and re-filed.',
+    'Seeding math changed on the Week {WEEK} board. The revision is published.',
+    'One postseason path has been recalculated. The brief is on the record.',
+    'The playoff picture has been re-run against the Week {WEEK} results.',
+  ],
+  waiver: [
+    'A transaction in your league has been logged and reviewed.',
+    'The Week {WEEK} wire report is filed. One move is going to age badly.',
+    'A roster move has been entered into the ledger with the price attached.',
+    'The waiver report for Week {WEEK} has been published.',
+  ],
+  draft: [
+    'Draft grades have been issued and entered into the record.',
+    'The {SEASON} draft board has been audited. One selection did not clear.',
+    'A first-round decision has been reviewed against current production.',
+    'The draft report card is filed. The margins are not close.',
+  ],
+  record: [
+    'The record book has been amended. There is a new entry on the board.',
+    'A long-standing league record was tested in Week {WEEK}. The result is filed.',
+    'The archive has been updated. One number no longer stands.',
+    'An all-time mark in your league is under formal review.',
+  ],
+  community: [
+    'A manager in your league has filed an on-the-record statement.',
+    'A signed submission has been published to the league wire.',
+    'The desk has accepted a Week {WEEK} op-ed from inside your league.',
+    'A league member has put their position in writing. It is public now.',
   ],
   desk: [
-    'The desk filed something on your league this week.',
-    'There is a story in your league the standings are not telling.',
-    'Week {WEEK} left a mark on your league.',
-    'Something in your league went on the record today.',
+    'The desk has filed a brief on your league.',
+    'A Week {WEEK} report has been published to the wire.',
+    'An item on your league is now on the record.',
+    'The ledger has been updated. The brief is available.',
   ],
 };
 
-/* Paired with any tease. Short, imperative, and about access rather than
-   information — the invitation is to go and look, never a preview. */
+/* Paired with any tease. Each one reads as a masthead sign-off pointing at the
+   filing itself — an instruction to go and read the report, never a preview of
+   what the report says. */
 const SHARE_CTAS = [
-  'Check the full breakdown here:',
-  'See the receipts:',
-  'Open the command center:',
-  'Pull the whole file:',
-  'Read the case here:',
-  'The full breakdown is here:',
+  'Read the full report:',
+  'The complete brief is here:',
+  'Full breakdown and figures:',
+  'Review the filing:',
+  'Open the full report:',
+  'The numbers are here:',
 ];
 
 /* Route a story to its pool.
@@ -16090,7 +16097,7 @@ function shareCopyFor(a){
   };
 }
 
-/* Both outbound paths send the hook, never the article. A paste into the
+/* Both outbound paths send the brief, never the article. A paste into the
    league group chat is a share like any other — the whole point is that the
    recipient has to open the app to find out who it is about. */
 async function shareArticle(mode){
@@ -16104,7 +16111,7 @@ async function shareArticle(mode){
   }
   try{
     await navigator.clipboard.writeText(text);
-    toast('Hook copied — send it with the card');
+    toast('Brief copied — send it with the card');
   }catch(err){
     // Clipboard API is blocked on non-secure origins — fall back to a selection.
     const ta = document.createElement('textarea');
@@ -16112,7 +16119,7 @@ async function shareArticle(mode){
     ta.style.cssText = 'position:fixed;opacity:0;';
     document.body.appendChild(ta);
     ta.select();
-    try{ document.execCommand('copy'); toast('Hook copied — send it with the card'); }
+    try{ document.execCommand('copy'); toast('Brief copied — send it with the card'); }
     catch(e2){ toast('Copy unavailable on this browser'); }
     document.body.removeChild(ta);
   }
