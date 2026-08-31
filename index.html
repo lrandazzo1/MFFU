@@ -2293,6 +2293,28 @@ window.LeagueData = (function(){
     hasLive(){ return !!(store.espnData && store.espnData.teams && store.espnData.teams.length); },
     hasHistory(){ return !!(store.leagueHistory && Object.keys(store.leagueHistory.managers||{}).length); },
 
+    /* ---- canonical league scope ----
+       Every derived in-memory cache (FSNIntel reads, the News Desk stream/gen
+       caches, the SeasonAnalytics models) namespaces its keys with this token
+       so a payload computed for one league can never be served for another,
+       whatever the purge timing.
+
+       It lives on the store rather than in one of the later <script> blocks
+       for a structural reason: those blocks are separate classic scripts that
+       cannot see each other's function declarations, and a scope helper that
+       only half the consumers can reach is worse than none — the callers that
+       cannot see it throw on every read. The store is the one thing every
+       block already depends on. */
+    activeProvider: 'espn',
+    /* Two providers can hand out the same numeric league id, so the provider
+       is part of the token. The UI owns the selection and pushes it here. */
+    setActiveProvider(p){ store.activeProvider = (p === 'sleeper' ? 'sleeper' : 'espn'); },
+    leagueId(){
+      const el = document.getElementById('leagueIdInput');
+      return (el && el.value.trim()) || (store.meta && store.meta.leagueId) || 'league';
+    },
+    scopeToken(){ return store.activeProvider + ':' + store.leagueId(); },
+
     esc(str){
       const div = document.createElement('div');
       div.textContent = str ?? '';
@@ -3940,7 +3962,7 @@ window.FSNIntel = (function(){
 let cache = {};
 LeagueData.subscribe(()=>{ cache = {}; });
 function memo(key, fn){
-  const scopedKey = leagueScopeToken() + '|' + key;
+  const scopedKey = LeagueData.scopeToken() + '|' + key;
   if(Object.prototype.hasOwnProperty.call(cache, scopedKey)) return cache[scopedKey];
   let value = null;
   try{ value = fn(); }
@@ -5819,21 +5841,14 @@ function weekContext(week){
    Every season uses the local matrix below. Stable archive coordinates drive
    each draw; no remote model, API key, random number, or network write is used.
 ============================================================ */
-function selectedLeagueId(){
-  const el = document.getElementById('leagueIdInput');
-  return (el && el.value.trim()) || (LeagueData.meta && LeagueData.meta.leagueId) || 'league';
-}
-/* Canonical cache-namespace token for the league currently resident in the
-   stores: provider + league id. Every in-memory derived cache (FSNIntel reads,
-   SeasonAnalytics models, the News Desk stream/gen caches) prefixes its keys
-   with this so a payload computed for one league can never be served for
-   another — even if a purge is missed or a publish is reordered. Two providers
-   can reuse the same numeric id, so the provider is part of the token. */
-function leagueScopeToken(){
-  let provider = 'espn';
-  try{ if(typeof ui !== 'undefined' && ui && ui.provider) provider = ui.provider; }catch(e){}
-  return provider + ':' + selectedLeagueId();
-}
+/* Both of these are thin aliases onto the store so the Desk's editorial seeds
+   and the cache namespace can never drift from what the rest of the app uses.
+   The previous local copy of the scope token also tried to read `ui.provider`
+   behind a `typeof ui` guard — but `ui` is a const inside the UI layer's IIFE
+   and is never global, so that guard was always false and the provider half of
+   the token was pinned to 'espn' for Sleeper leagues too. */
+function selectedLeagueId(){ return LeagueData.leagueId(); }
+function leagueScopeToken(){ return LeagueData.scopeToken(); }
 function viewedSeasonYear(){
   const d = LeagueData.espnData || {};
   const el = document.getElementById('seasonYear');
@@ -11768,7 +11783,7 @@ function compute(selectedWeek){
   // League-scoped: two leagues playing the same season/week produce an identical
   // season:week pair, so the memo key must carry the league id to keep one
   // league's expected-wins / lineup-efficiency models out of another's view.
-  const memoKey = leagueScopeToken() + '|' + String(number(data.seasonId || data.season) || 'season') + ':' + throughWeek;
+  const memoKey = LeagueData.scopeToken() + '|' + String(number(data.seasonId || data.season) || 'season') + ':' + throughWeek;
   if(memo.has(memoKey)) return memo.get(memoKey);
   const teams = LeagueData.getTeams();
   const schedule = Array.isArray(data.schedule) ? data.schedule : [];
@@ -15003,6 +15018,11 @@ async function fetchLeagueData(options){
 function setProvider(provider){
   const next = provider === 'sleeper' ? 'sleeper' : 'espn';
   ui.provider = next;
+  /* The derived caches namespace themselves by provider + league id, and this
+     is the one funnel every provider change runs through. Deliberately not a
+     publish(): the token change alone retires the old league's entries, and a
+     republish here would fire a full re-render mid-switch. */
+  LeagueData.setActiveProvider(next);
   const espnTab = $('providerEspn'), sleeperTab = $('providerSleeper');
   [['espn', espnTab], ['sleeper', sleeperTab]].forEach(([key, tab])=>{
     if(!tab) return;
