@@ -1,0 +1,9 @@
+# Identity for the Fantasy Sports Network iOS app.
+#
+# Everything here is read from the environment so nothing account-specific is
+# ever committed. GitHub Actions populates these from repository secrets; see
+# IOS_TESTFLIGHT.md for the full list.
+
+app_identifier(ENV["IOS_BUNDLE_ID"] || "com.fantasysportsnetwork.app")
+team_id(ENV["APPLE_TEAM_ID"]) if ENV["APPLE_TEAM_ID"]
+itc_team_id(ENV["APPLE_ITC_TEAM_ID"]) if ENV["APPLE_ITC_TEAM_ID"]

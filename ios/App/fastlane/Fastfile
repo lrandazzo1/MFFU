@@ -1,0 +1,162 @@
+# Fastfile — Fantasy Sports Network iOS
+#
+# Builds the Capacitor iOS shell (ios/App) and ships it to TestFlight.
+# Intended to run from .github/workflows/ios-testflight.yml on a macOS runner,
+# but it works locally too as long as the same environment variables are set.
+#
+#   cd ios/App && fastlane beta
+#
+# Nothing in here touches the web app: the HTML that gets bundled is staged by
+# `npm run build:ios` into www/ and copied in by `npx cap sync ios` before this
+# lane runs.
+
+default_platform(:ios)
+
+XCODE_PROJECT = "App.xcodeproj"
+SCHEME        = "App"
+TARGET        = "App"
+BUILD_DIR     = "./build"
+
+platform :ios do
+  desc "Build a signed Release archive and upload it to TestFlight"
+  lane :beta do |options|
+    bundle_id = ENV["IOS_BUNDLE_ID"] || "com.fantasysportsnetwork.app"
+    team_id   = fetch_env!("APPLE_TEAM_ID")
+
+    # Name of the App Store distribution profile. The workflow reads this out of
+    # the decoded .mobileprovision, so it never has to be maintained by hand.
+    profile_name = fetch_env!("IOS_PROVISIONING_PROFILE_NAME")
+
+    api_key = app_store_connect_api_key(
+      key_id:                fetch_env!("APP_STORE_CONNECT_API_KEY_ID"),
+      issuer_id:             fetch_env!("APP_STORE_CONNECT_API_ISSUER_ID"),
+      key_content:           fetch_env!("APP_STORE_CONNECT_API_KEY_BASE64"),
+      is_key_content_base64: true,
+      in_house:              false
+    )
+
+    build_number = resolve_build_number(options, api_key, bundle_id)
+    UI.message("Building #{bundle_id} build #{build_number} for TestFlight")
+
+    # Flip the project to manual signing for this run only. Locally the project
+    # stays on automatic signing, which is what you want inside Xcode; on CI the
+    # checkout is throwaway so mutating it here is harmless.
+    update_code_signing_settings(
+      path:                 XCODE_PROJECT,
+      targets:              [TARGET],
+      use_automatic_signing: false,
+      team_id:              team_id,
+      bundle_identifier:    bundle_id,
+      code_sign_identity:   "Apple Distribution",
+      profile_name:         profile_name
+    )
+
+    # Info.plist already resolves CFBundleVersion/CFBundleShortVersionString from
+    # these build settings, so overriding them on the xcodebuild command line
+    # sets the version without rewriting any file in the repository.
+    xcargs = ["CURRENT_PROJECT_VERSION=#{build_number}"]
+    marketing_version = options[:marketing_version] || ENV["IOS_MARKETING_VERSION"]
+    xcargs << "MARKETING_VERSION=#{marketing_version}" unless marketing_version.to_s.strip.empty?
+
+    build_app(
+      project:           XCODE_PROJECT,
+      scheme:            SCHEME,
+      configuration:     "Release",
+      export_method:     "app-store",
+      output_directory:  BUILD_DIR,
+      output_name:       "FantasySportsNetwork.ipa",
+      clean:             true,
+      include_symbols:   true,
+      include_bitcode:   false,
+      xcargs:            xcargs.join(" "),
+      export_options: {
+        signingStyle:          "manual",
+        teamID:                team_id,
+        uploadSymbols:         true,
+        provisioningProfiles:  { bundle_id => profile_name }
+      }
+    )
+
+    # Waiting for Apple to finish processing costs 5-15 minutes of runner time.
+    # It is off by default; turn it on when you want the "What to Test" notes
+    # attached, since TestFlight only accepts them once processing completes.
+    wait = truthy?(options[:wait_for_processing] || ENV["IOS_WAIT_FOR_PROCESSING"])
+
+    upload_to_testflight(
+      api_key:                           api_key,
+      app_identifier:                    bundle_id,
+      skip_submission:                   true,
+      skip_waiting_for_build_processing: !wait,
+      distribute_external:               false,
+      changelog:                         (changelog_for(options) if wait)
+    )
+
+    UI.success("Uploaded build #{build_number} to TestFlight.")
+  end
+
+  desc "Build a signed archive without uploading — useful for validating signing"
+  lane :build_only do |options|
+    bundle_id = ENV["IOS_BUNDLE_ID"] || "com.fantasysportsnetwork.app"
+    team_id   = fetch_env!("APPLE_TEAM_ID")
+    profile_name = fetch_env!("IOS_PROVISIONING_PROFILE_NAME")
+
+    update_code_signing_settings(
+      path:                  XCODE_PROJECT,
+      targets:               [TARGET],
+      use_automatic_signing: false,
+      team_id:               team_id,
+      bundle_identifier:     bundle_id,
+      code_sign_identity:    "Apple Distribution",
+      profile_name:          profile_name
+    )
+
+    build_app(
+      project:          XCODE_PROJECT,
+      scheme:           SCHEME,
+      configuration:    "Release",
+      export_method:    "app-store",
+      output_directory: BUILD_DIR,
+      output_name:      "FantasySportsNetwork.ipa",
+      clean:            true,
+      xcargs:           "CURRENT_PROJECT_VERSION=#{options[:build_number] || 1}",
+      export_options: {
+        signingStyle:         "manual",
+        teamID:               team_id,
+        provisioningProfiles: { bundle_id => profile_name }
+      }
+    )
+  end
+end
+
+# --- helpers ----------------------------------------------------------------
+
+def fetch_env!(name)
+  value = ENV[name].to_s.strip
+  UI.user_error!("Missing required environment variable #{name}. See IOS_TESTFLIGHT.md for the secret it maps to.") if value.empty?
+  value
+end
+
+# An explicit build number wins; otherwise take whatever TestFlight already has
+# and add one. `initial_build_number: 0` keeps the very first upload (when the
+# app has no builds yet) from erroring out.
+def resolve_build_number(options, api_key, bundle_id)
+  explicit = options[:build_number] || ENV["IOS_BUILD_NUMBER"]
+  return explicit.to_s.strip unless explicit.to_s.strip.empty?
+
+  latest = latest_testflight_build_number(
+    api_key:             api_key,
+    app_identifier:      bundle_id,
+    initial_build_number: 0
+  )
+  (latest.to_i + 1).to_s
+end
+
+def truthy?(value)
+  %w[1 true yes on].include?(value.to_s.strip.downcase)
+end
+
+def changelog_for(options)
+  text = options[:changelog] || ENV["IOS_CHANGELOG"]
+  return text unless text.to_s.strip.empty?
+  "Automated TestFlight build from #{ENV['GITHUB_REF_NAME'] || 'local'} (#{(ENV['GITHUB_SHA'] || 'local')[0, 7]})."
+end

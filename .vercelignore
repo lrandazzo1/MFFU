@@ -1,0 +1,11 @@
+# Keeps the native iOS packaging out of the Vercel deployments.
+#
+# Both Vercel projects serve static files straight from their Root Directory
+# (see DEPLOYMENT.md), so without this the generated Xcode project would be
+# uploaded and publicly served under /ios/. None of these paths existed before
+# the iOS pipeline was added, so nothing that was previously deployed changes.
+ios/
+www/
+scripts/
+capacitor.config.json
+.github/

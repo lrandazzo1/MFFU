@@ -1,0 +1,17 @@
+{
+  "appId": "com.fantasysportsnetwork.app",
+  "appName": "Fantasy Sports Network",
+  "webDir": "www",
+  "ios": {
+    "contentInset": "always",
+    "limitsNavigationsToAppBoundDomains": false
+  },
+  "server": {
+    "iosScheme": "capacitor",
+    "allowNavigation": [
+      "app.fantasysportsnetwork.app",
+      "fantasysportsnetwork.app",
+      "www.fantasysportsnetwork.app"
+    ]
+  }
+}

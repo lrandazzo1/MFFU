@@ -1,0 +1,216 @@
+# Build the Capacitor iOS shell and upload it to TestFlight.
+#
+# Manual only (workflow_dispatch) — nothing here runs on push, so it can never
+# interfere with the Vercel deployments that build from the same branch.
+#
+# The web app itself is not modified: `npm run build:ios` stages the existing
+# index.html / league-media-studio.html into www/, and `npx cap sync ios` copies
+# that into the Xcode project. See IOS_TESTFLIGHT.md for the required secrets.
+
+name: iOS TestFlight
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_number:
+        description: "Build number (CFBundleVersion). Leave empty to auto-increment from the latest TestFlight build."
+        required: false
+        type: string
+      marketing_version:
+        description: "Marketing version (CFBundleShortVersionString), e.g. 1.0.3. Leave empty to keep the project's value."
+        required: false
+        type: string
+      changelog:
+        description: "TestFlight \"What to Test\" notes. Only applied when 'Wait for processing' is enabled."
+        required: false
+        type: string
+      wait_for_processing:
+        description: "Wait for Apple to finish processing the build (slower, but attaches the changelog)."
+        required: false
+        default: false
+        type: boolean
+      upload:
+        description: "Upload to TestFlight. Uncheck to build and sign only (a dry run of the signing setup)."
+        required: false
+        default: true
+        type: boolean
+
+concurrency:
+  group: ios-testflight
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  testflight:
+    name: Build and upload to TestFlight
+    runs-on: macos-latest
+    timeout-minutes: 60
+
+    env:
+      IOS_BUNDLE_ID: com.fantasysportsnetwork.app
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APP_STORE_CONNECT_API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}
+      APP_STORE_CONNECT_API_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_API_ISSUER_ID }}
+      APP_STORE_CONNECT_API_KEY_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_BASE64 }}
+      IOS_BUILD_NUMBER: ${{ inputs.build_number }}
+      IOS_MARKETING_VERSION: ${{ inputs.marketing_version }}
+      IOS_CHANGELOG: ${{ inputs.changelog }}
+      IOS_WAIT_FOR_PROCESSING: ${{ inputs.wait_for_processing }}
+      # Keep fastlane quiet about analytics/prompts and fail fast in CI.
+      FASTLANE_SKIP_UPDATE_CHECK: "1"
+      FASTLANE_HIDE_CHANGELOG: "1"
+      FASTLANE_XCODEBUILD_SETTINGS_TIMEOUT: "120"
+      LC_ALL: en_US.UTF-8
+      LANG: en_US.UTF-8
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Verify required secrets are present
+        run: |
+          missing=()
+          for name in APPLE_TEAM_ID \
+                      APP_STORE_CONNECT_API_KEY_ID \
+                      APP_STORE_CONNECT_API_ISSUER_ID \
+                      APP_STORE_CONNECT_API_KEY_BASE64 \
+                      BUILD_CERTIFICATE_BASE64 \
+                      P12_PASSWORD \
+                      BUILD_PROVISION_PROFILE_BASE64; do
+            # Indirect expansion, not eval — secret values are never re-parsed.
+            if [ -z "${!name}" ]; then missing+=("$name"); fi
+          done
+          if [ ${#missing[@]} -ne 0 ]; then
+            echo "::error::Missing repository secrets: ${missing[*]}. See IOS_TESTFLIGHT.md."
+            exit 1
+          fi
+          echo "All required secrets are set."
+        env:
+          BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+          P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+          BUILD_PROVISION_PROFILE_BASE64: ${{ secrets.BUILD_PROVISION_PROFILE_BASE64 }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Stage web assets for the native shell
+        run: npm run build:ios
+
+      - name: Sync Capacitor iOS project
+        run: npx cap sync ios
+
+      - name: Show toolchain versions
+        run: |
+          echo "Xcode:    $(xcodebuild -version | head -n1)"
+          echo "Node:     $(node -v)"
+          echo "Capacitor: $(npx cap --version)"
+
+      - name: Ensure fastlane is available
+        run: |
+          if ! command -v fastlane >/dev/null 2>&1; then
+            echo "fastlane not preinstalled on this runner image; installing."
+            gem install fastlane --no-document
+          fi
+          fastlane --version
+
+      - name: Install signing certificate and provisioning profile
+        env:
+          BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+          P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+          BUILD_PROVISION_PROFILE_BASE64: ${{ secrets.BUILD_PROVISION_PROFILE_BASE64 }}
+        run: |
+          set -euo pipefail
+
+          CERT_PATH="$RUNNER_TEMP/build_certificate.p12"
+          PROFILE_PATH="$RUNNER_TEMP/build_pp.mobileprovision"
+          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+
+          echo -n "$BUILD_CERTIFICATE_BASE64" | base64 --decode > "$CERT_PATH"
+          echo -n "$BUILD_PROVISION_PROFILE_BASE64" | base64 --decode > "$PROFILE_PATH"
+
+          # Dedicated, throwaway keychain so we never touch the runner's login keychain.
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -P "$P12_PASSWORD" -A \
+            -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH" >/dev/null
+          security list-keychain -d user -s "$KEYCHAIN_PATH" login.keychain-db
+
+          echo "Signing identities available:"
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+
+          # Decode the profile so we can install it under its UUID and hand its
+          # name to fastlane — no extra secret needed to name the profile.
+          PLIST="$RUNNER_TEMP/profile.plist"
+          security cms -D -i "$PROFILE_PATH" > "$PLIST"
+          PROFILE_NAME=$(/usr/libexec/PlistBuddy -c "Print :Name" "$PLIST")
+          PROFILE_UUID=$(/usr/libexec/PlistBuddy -c "Print :UUID" "$PLIST")
+          PROFILE_APP_ID=$(/usr/libexec/PlistBuddy -c "Print :Entitlements:application-identifier" "$PLIST")
+
+          echo "Profile: $PROFILE_NAME ($PROFILE_UUID)"
+          echo "Profile application-identifier: $PROFILE_APP_ID"
+
+          # Guard against uploading a build signed for the wrong bundle ID.
+          case "$PROFILE_APP_ID" in
+            *".$IOS_BUNDLE_ID") ;;
+            *)
+              echo "::error::Provisioning profile is for '$PROFILE_APP_ID' but this app is '$IOS_BUNDLE_ID'."
+              exit 1
+              ;;
+          esac
+
+          # Xcode 16 reads profiles from both of these locations.
+          for dir in "$HOME/Library/MobileDevice/Provisioning Profiles" \
+                     "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"; do
+            mkdir -p "$dir"
+            cp "$PROFILE_PATH" "$dir/$PROFILE_UUID.mobileprovision"
+          done
+
+          {
+            echo "IOS_PROVISIONING_PROFILE_NAME=$PROFILE_NAME"
+            echo "IOS_PROVISIONING_PROFILE_UUID=$PROFILE_UUID"
+            echo "KEYCHAIN_PATH=$KEYCHAIN_PATH"
+          } >> "$GITHUB_ENV"
+
+          rm -f "$CERT_PATH" "$PLIST"
+
+      - name: Build and upload to TestFlight
+        if: ${{ inputs.upload }}
+        working-directory: ios/App
+        run: fastlane beta
+
+      - name: Build and sign only (no upload)
+        if: ${{ !inputs.upload }}
+        working-directory: ios/App
+        run: fastlane build_only build_number:${{ inputs.build_number || github.run_number }}
+
+      - name: Upload build artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-build-${{ github.run_number }}
+          path: |
+            ios/App/build/*.ipa
+            ios/App/build/*.dSYM.zip
+            ios/App/fastlane/report.xml
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Clean up keychain and provisioning profiles
+        if: always()
+        run: |
+          security delete-keychain "$RUNNER_TEMP/app-signing.keychain-db" || true
+          rm -f "$HOME/Library/MobileDevice/Provisioning Profiles/"*.mobileprovision || true
+          rm -f "$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles/"*.mobileprovision || true
+          rm -f "$RUNNER_TEMP/build_pp.mobileprovision" || true

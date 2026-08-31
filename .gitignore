@@ -2,3 +2,16 @@ node_modules/
 .vercel/
 *.log
 .DS_Store
+
+# --- iOS / Capacitor (generated, never edited by hand) ---
+# Staging copy of the production HTML, rebuilt by `npm run build:ios`.
+www/
+# Xcode + fastlane build output.
+ios/App/build/
+ios/App/fastlane/report.xml
+ios/App/fastlane/README.md
+ios/App/fastlane/*.mobileprovision
+ios/App/fastlane/*.p12
+ios/App/fastlane/*.p8
+*.ipa
+*.dSYM.zip

@@ -5,7 +5,17 @@
   "engines": {
     "node": ">=18"
   },
+  "scripts": {
+    "build:ios": "node scripts/build-ios-web.mjs",
+    "sync:ios": "npm run build:ios && npx cap sync ios",
+    "open:ios": "npx cap open ios"
+  },
   "dependencies": {
     "@supabase/supabase-js": "^2.57.4"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.5.0",
+    "@capacitor/core": "^8.5.0",
+    "@capacitor/ios": "^8.5.0"
   }
 }
