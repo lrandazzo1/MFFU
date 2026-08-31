@@ -693,6 +693,155 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
   .dossier-share-metrics{ grid-template-columns:repeat(2,minmax(0,1fr)); }
 }
 
+/* ============================================================
+   SHAREABLE STORY CARD — off-screen export template
+   Every reader article (a Desk story, a community op-ed or the
+   State of the League brief) can be rendered straight to a PNG the
+   group chat can actually post. The template is built at a fixed
+   pixel size — nothing below uses viewport, root-relative or
+   percentage type — so the exported bitmap is byte-identical on a
+   phone, a tablet and a desktop, and the 4:5 frame drops into an
+   Instagram story or an iMessage thread without recropping.
+============================================================ */
+#shareCardStage{
+  /* Parked off-screen rather than display:none — a display:none node has no
+     layout box, and the renderer serialises computed geometry. */
+  position:fixed; top:0; left:-99999px; z-index:-1; pointer-events:none;
+}
+.share-card{
+  box-sizing:border-box; position:relative; overflow:hidden;
+  width:540px; height:675px;              /* 4:5 → 1080 × 1350 at 2× */
+  display:flex; flex-direction:column;
+  padding:30px 32px 26px;
+  background:
+    radial-gradient(78% 58% at 100% 0%,rgba(255,196,0,.16),transparent 62%),
+    radial-gradient(70% 52% at 0% 100%,rgba(0,224,255,.10),transparent 60%),
+    linear-gradient(158deg,#161b26 0%,#0a0e15 46%,#06080c 100%);
+  border:1px solid rgba(255,196,0,.22);
+  color:#fff; font-family:'Oswald',system-ui,-apple-system,sans-serif;
+}
+.share-card *{ box-sizing:border-box; }
+.share-card-watermark{
+  position:absolute; right:-34px; bottom:-58px; margin:0;
+  font-family:'Anton',Impact,sans-serif; font-size:210px; line-height:1;
+  letter-spacing:.02em; color:rgba(255,255,255,.03); transform:rotate(-8deg);
+}
+
+/* ---- masthead: the yellow accent header the card is branded on ---- */
+.share-card-head{
+  position:relative; z-index:1; flex:none;
+  display:flex; align-items:center; justify-content:space-between; gap:12px;
+}
+.share-card-brand{ display:flex; align-items:center; gap:10px; min-width:0; }
+.share-card-mark{
+  flex:none; display:flex; align-items:center; justify-content:center;
+  width:38px; height:38px; border-radius:9px;
+  background:linear-gradient(150deg,var(--gold),#c88f00); color:#1a1400;
+  font-family:'Anton',Impact,sans-serif; font-size:15px; letter-spacing:.02em;
+}
+.share-card-brand-text{ min-width:0; }
+.share-card-brand-name{
+  display:block; font-size:11px; font-weight:700; letter-spacing:.2em;
+  line-height:1.35; text-transform:uppercase; color:var(--gold);
+}
+.share-card-brand-league{
+  display:block; margin-top:3px; max-width:265px;
+  font-size:10px; line-height:1.35; letter-spacing:.1em; text-transform:uppercase; color:var(--dim);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.share-card-stampline{
+  flex:none; text-align:right; color:var(--dim);
+  font-family:'JetBrains Mono',ui-monospace,monospace; font-size:9.5px;
+  font-weight:700; letter-spacing:.14em; text-transform:uppercase;
+}
+.share-card-rule{
+  flex:none; height:3px; margin-top:16px; border-radius:2px;
+  background:linear-gradient(90deg,var(--gold),rgba(255,196,0,.06));
+}
+
+/* ---- editorial block ---- */
+.share-card-main{ position:relative; z-index:1; flex:1; min-height:0; overflow:hidden; padding-top:18px; display:flex; flex-direction:column; }
+/* A short op-ed with no quote and no stat block would otherwise leave a third
+   of the frame as bare gradient. Centring the column turns that space into a
+   deliberate poster margin instead of a hole. */
+.share-card-main[data-fill="light"]{ justify-content:center; padding-bottom:14px; }
+.share-card-tags{ display:flex; flex-wrap:wrap; align-items:center; gap:7px; }
+.share-card-headline{
+  margin:14px 0 0; font-family:'Anton',Impact,sans-serif;
+  line-height:1.03; letter-spacing:.005em; text-transform:uppercase; color:#fff;
+}
+.share-card-dek{ margin:12px 0 0; font-weight:300; font-size:14.5px; line-height:1.5; color:var(--off); }
+.share-card-excerpt{ margin:14px 0 0; font-weight:300; font-size:13.5px; line-height:1.6; color:#aeb7c6; }
+.share-card-quote{
+  margin:16px 0 0; padding:12px 14px; border-left:3px solid var(--gold);
+  background:rgba(255,196,0,.05); border-radius:0 10px 10px 0;
+}
+.share-card-quote p{ margin:0; font-style:italic; font-weight:300; font-size:14px; line-height:1.48; color:#eef2f8; }
+.share-card-quote span{
+  display:block; margin-top:7px; font-size:9.5px; font-weight:700;
+  letter-spacing:.16em; text-transform:uppercase; color:var(--gold);
+}
+/* Pushed to the foot of the editorial block so a story with four stats and a
+   story with none both end on the same rule above the byline. */
+.share-card-metrics{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; margin-top:auto; padding-top:18px; }
+.share-card-metric{
+  min-width:0; padding:10px 11px; border-radius:11px;
+  border:1px solid var(--line-2); background:rgba(4,7,11,.55);
+}
+.share-card-metric-label{
+  display:block; font-size:8.5px; line-height:1.35; font-weight:700; letter-spacing:.16em;
+  text-transform:uppercase; color:var(--dim);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.share-card-metric-value{
+  display:block; margin-top:6px; color:var(--metricc,#fff);
+  font-family:'JetBrains Mono',ui-monospace,monospace; font-size:15px; line-height:1.35; font-weight:800;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+
+/* ---- byline / attribution rail ---- */
+.share-card-foot{
+  position:relative; z-index:1; flex:none;
+  display:flex; align-items:center; justify-content:space-between; gap:12px;
+  margin-top:18px; padding-top:15px; border-top:1px solid var(--line-2);
+}
+.share-card-byline{ display:flex; align-items:center; gap:10px; min-width:0; }
+.share-card-byline .logo,.share-card-byline .mono-badge{ width:34px; height:34px; border-radius:9px; }
+.share-card-byline-text{ min-width:0; }
+.share-card-byline-name{
+  display:block; max-width:280px; font-size:10.5px; line-height:1.35; font-weight:700;
+  letter-spacing:.13em; text-transform:uppercase; color:#e9edf4;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.share-card-byline-meta{
+  display:block; margin-top:3px; max-width:280px;
+  font-size:9.5px; line-height:1.35; letter-spacing:.1em; text-transform:uppercase; color:var(--dim);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.share-card-cta{
+  flex:none; color:var(--gold); font-family:'JetBrains Mono',ui-monospace,monospace;
+  font-size:9px; font-weight:700; letter-spacing:.1em; text-transform:uppercase;
+}
+
+/* ---- the reader's export affordance ---- */
+.btn-share-card{
+  width:100%; border-radius:12px; padding:13px;
+  display:flex; align-items:center; justify-content:center; gap:9px;
+  background:linear-gradient(100deg,rgba(255,196,0,.17),rgba(255,196,0,.05));
+  border:1px solid rgba(255,196,0,.5); color:var(--gold);
+  font-family:'Oswald',sans-serif; font-size:12px; font-weight:700;
+  letter-spacing:.14em; text-transform:uppercase;
+  transition:transform .12s ease, opacity .12s ease;
+}
+.btn-share-card svg{
+  width:16px; height:16px; flex:none; fill:none; stroke:currentColor;
+  stroke-width:2; stroke-linecap:round; stroke-linejoin:round;
+}
+.btn-share-card:active{ transform:scale(.98); }
+/* One busy flag for both entry points, so a slow render can never be
+   double-fired from the action bar and the article footer at once. */
+[data-card-busy="true"]{ opacity:.5; pointer-events:none; }
+
 /* ---------- TOAST ---------- */
 #toast{
   position:fixed; left:50%; transform:translateX(-50%) translateY(14px);
@@ -2009,6 +2158,9 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
       <svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"></path></svg>
     </button>
     <div class="kicker text-[var(--cyan)] flex-1 truncate">FSN News Desk</div>
+    <button class="icon-btn" id="readerExport" aria-label="Download share card" title="Download share card">
+      <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="12.5" rx="2"></rect><circle cx="8" cy="8" r="1.4"></circle><path d="M21 12.5L16.5 8l-5 5.5"></path><path d="M12 17.5V22"></path><path d="M9.5 19.5l2.5 2.5 2.5-2.5"></path></svg>
+    </button>
     <button class="icon-btn" id="readerCopy" aria-label="Copy article">
       <svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg>
     </button>
@@ -2100,6 +2252,13 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
     </form>
   </div>
 </div>
+
+<!-- ============================================================
+     SHARE-CARD STAGE — the export template is built in here, off-screen,
+     rasterised to a PNG and then torn down. It is never on glass, so it
+     stays out of the tab order and the accessibility tree.
+============================================================ -->
+<div id="shareCardStage" aria-hidden="true"></div>
 
 <div id="toast" class="">Record Book unlocked — rivalries and records are live.</div>
 
@@ -15585,7 +15744,11 @@ function articleHtml(a){
     </div>
 
     <div class="px-4 pt-1">
-      <div class="grid grid-cols-2 gap-2.5">
+      <button class="btn-share-card" data-reader-export>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="12.5" rx="2"></rect><circle cx="8" cy="8" r="1.4"></circle><path d="M21 12.5L16.5 8l-5 5.5"></path><path d="M12 17.5V22"></path><path d="M9.5 19.5l2.5 2.5 2.5-2.5"></path></svg>
+        Download Share Card
+      </button>
+      <div class="grid grid-cols-2 gap-2.5 mt-2.5">
         ${a.custom
           ? `<button class="btn-ghost" data-reader-copy>📋 COPY FOR GROUP CHAT</button>
              <button class="btn-ghost story-delete-btn" data-reader-delete>🗑 DELETE ARTICLE</button>`
@@ -15632,6 +15795,7 @@ function openReader(id){
   $('reader').dataset.open = 'true';
   $('readerBody').scrollTop = 0;
   syncBodyScrollLock();
+  warmShareRenderer();
 }
 function closeReader(){
   $('reader').dataset.open = 'false';
@@ -15667,6 +15831,425 @@ async function shareArticle(mode){
     try{ document.execCommand('copy'); toast('Story copied to clipboard'); }
     catch(e2){ toast('Copy unavailable on this browser'); }
     document.body.removeChild(ta);
+  }
+}
+
+/* ============================================================
+   SHARE-CARD EXPORT
+   The reader can hand any article — a generated Desk story, a
+   community op-ed or the State of the League brief — back as a
+   1080 × 1350 PNG instead of a wall of pasted text.
+
+   The pipeline is deliberately defensive, because every step of it
+   depends on something outside the page:
+
+     1. the rasteriser is pulled from a CDN on demand (html-to-image
+        first, html2canvas as the fallback renderer),
+     2. team logos are inlined as data URLs before the render so a
+        cross-origin crest can never taint the canvas — a logo that
+        will not inline degrades to the monogram badge,
+     3. the webfont CSS is embedded once and cached, since the
+        exported SVG cannot reach the document's own font files.
+
+   Anything that fails leaves the article itself untouched: the copy
+   and share actions next to the button still work.
+============================================================ */
+const SHARE_CARD_PIXEL_RATIO = 2;         /* 540 × 675 CSS px → 1080 × 1350 */
+const SHARE_CARD_BACKDROP = '#06080c';
+const SHARE_CARD_HOST = 'fantasysportsnetwork.app';
+
+/* Tried in order. html-to-image gives the cleaner text rendering; html2canvas
+   is the last resort for a browser or a network that will not serve the first
+   two. The 1.11.13 pin is not incidental — every earlier build calls insertRule
+   against the *blocked* cross-origin sheet while inlining the Google Fonts
+   link, throws SecurityError and silently returns no font CSS at all, which is
+   exactly how a card ends up rendered in Impact. */
+const SHARE_CARD_RENDERERS = [
+  { kind:'html-to-image', global:'htmlToImage', url:'https://cdn.jsdelivr.net/npm/html-to-image@1.11.13/dist/html-to-image.js' },
+  { kind:'html-to-image', global:'htmlToImage', url:'https://unpkg.com/html-to-image@1.11.13/dist/html-to-image.js' },
+  { kind:'html2canvas',   global:'html2canvas', url:'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js' },
+];
+
+let shareRendererPromise = null;
+let shareRendererWarmed = false;
+let shareFontEmbedCache = null;
+let shareCardPrimed = false;
+let shareCardBusy = false;
+const shareImageCache = new Map();
+
+function loadShareScript(src){
+  return new Promise((resolve, reject)=>{
+    const tag = document.createElement('script');
+    tag.src = src;
+    tag.async = true;
+    tag.crossOrigin = 'anonymous';
+    tag.onload = ()=> resolve();
+    tag.onerror = ()=>{ tag.remove(); reject(new Error('renderer unavailable: ' + src)); };
+    document.head.appendChild(tag);
+  });
+}
+
+function ensureShareRenderer(){
+  if(shareRendererPromise) return shareRendererPromise;
+  shareRendererPromise = (async ()=>{
+    for(const source of SHARE_CARD_RENDERERS){
+      if(window[source.global]) return { kind:source.kind, lib:window[source.global] };
+      try{
+        await loadShareScript(source.url);
+        if(window[source.global]) return { kind:source.kind, lib:window[source.global] };
+      }catch(err){
+        console.warn('[FSN] share-card renderer source failed', source.url, err);
+      }
+    }
+    throw new Error('no share-card renderer could be loaded');
+  })();
+  /* Clear the cache on failure so a later tap — on a recovered connection —
+     gets a fresh attempt instead of replaying the same rejection forever. */
+  shareRendererPromise.catch(()=>{ shareRendererPromise = null; });
+  return shareRendererPromise;
+}
+
+/* Warmed once the reader is actually opened, not at boot: the app should not
+   spend a phone's first bytes on a library most sessions never invoke.
+
+   Both halves matter for iOS. WebKit only honours navigator.share() while the
+   tap that triggered it is still live, and resolving the webfont CSS is by far
+   the slowest step in the pipeline — doing it here, ahead of the tap, is what
+   keeps the export inside the gesture window and reaches the share sheet
+   instead of silently degrading to a download. */
+function warmShareRenderer(){
+  if(shareRendererWarmed) return;
+  shareRendererWarmed = true;
+  const kick = ()=> ensureShareRenderer()
+    .then(renderer=>{
+      if(renderer.kind === 'html-to-image') return shareFontEmbedCss(renderer.lib, document.body);
+    })
+    .catch(()=>{ /* retried on demand */ });
+  if(typeof window.requestIdleCallback === 'function') window.requestIdleCallback(kick, { timeout:4000 });
+  else setTimeout(kick, 1500);
+}
+
+/* ---- inline a remote crest so the render never touches the network ---- */
+function inlineShareImage(url){
+  if(!url) return Promise.resolve('');
+  if(shareImageCache.has(url)) return Promise.resolve(shareImageCache.get(url));
+  const remember = (value)=>{ shareImageCache.set(url, value); return value; };
+  const fetched = fetch(url, { mode:'cors', credentials:'omit' })
+    .then(res=> res.ok ? res.blob() : Promise.reject(new Error('HTTP ' + res.status)))
+    .then(blob=> new Promise((resolve, reject)=>{
+      const reader = new FileReader();
+      reader.onload  = ()=> resolve(String(reader.result || ''));
+      reader.onerror = ()=> reject(reader.error || new Error('logo read failed'));
+      reader.readAsDataURL(blob);
+    }))
+    .catch(()=> '');
+  /* A crest is decoration. If the host is slow the card ships with the
+     monogram rather than making the user wait on it. */
+  const timeout = new Promise(resolve=> setTimeout(()=> resolve(''), 4000));
+  return Promise.race([fetched, timeout]).then(remember);
+}
+
+/* The exported SVG is an isolated document — it cannot reach the page's own
+   font files, so the faces have to travel with it. Resolving them is the
+   slowest step in the pipeline, so the result is computed once per session. */
+async function shareFontEmbedCss(lib, node){
+  if(shareFontEmbedCache !== null) return shareFontEmbedCache;
+  if(typeof lib.getFontEmbedCSS !== 'function'){ shareFontEmbedCache = ''; return shareFontEmbedCache; }
+  try{
+    shareFontEmbedCache = await lib.getFontEmbedCSS(node);
+  }catch(err){
+    /* Anton/Oswald could not be inlined — the card still renders, on the
+       Impact/system fallbacks declared in the template. */
+    console.warn('[FSN] share-card webfont embed failed', err);
+    shareFontEmbedCache = '';
+  }
+  return shareFontEmbedCache;
+}
+
+function dataUrlToBlob(dataUrl){
+  const parts = String(dataUrl || '').split(',');
+  if(parts.length < 2 || !parts[1]) throw new Error('renderer returned an empty image');
+  const mime = (parts[0].match(/:(.*?);/) || [null, 'image/png'])[1];
+  const binary = atob(parts[1]);
+  const bytes = new Uint8Array(binary.length);
+  for(let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type:mime });
+}
+
+async function renderShareCardBlob(node){
+  const renderer = await ensureShareRenderer();
+
+  if(renderer.kind === 'html2canvas'){
+    const canvas = await renderer.lib(node, {
+      backgroundColor: SHARE_CARD_BACKDROP,
+      scale: SHARE_CARD_PIXEL_RATIO,
+      useCORS: true,
+      logging: false,
+    });
+    const blob = await new Promise(resolve=> canvas.toBlob(resolve, 'image/png'));
+    if(!blob) throw new Error('canvas produced no image');
+    return blob;
+  }
+
+  const lib = renderer.lib;
+  const options = {
+    width: node.offsetWidth,
+    height: node.offsetHeight,
+    pixelRatio: SHARE_CARD_PIXEL_RATIO,
+    backgroundColor: SHARE_CARD_BACKDROP,
+    fontEmbedCSS: await shareFontEmbedCss(lib, node),
+  };
+  /* A throwaway low-resolution pass on the first export only. Serialising a
+     node whose embedded faces have only just been attached lands on fallback
+     glyphs in WebKit; once that cache is warm the extra pass is pure latency,
+     and latency here is what costs the share sheet on iOS. */
+  if(!shareCardPrimed){
+    try{ await lib.toPng(node, Object.assign({}, options, { pixelRatio:1 })); }
+    catch(err){ console.warn('[FSN] share-card warm-up pass failed', err); }
+    shareCardPrimed = true;
+  }
+  return dataUrlToBlob(await lib.toPng(node, options));
+}
+
+/* ---- template ---- */
+
+/* Article copy carries markup (the generators emit <b> and <br>), and the
+   card is a fixed box with no room to reflow. Strip to plain text, collapse
+   the whitespace and cut on a word-ish boundary. */
+function shareCardText(value, max){
+  const text = String(value == null ? '' : value)
+    .replace(/<br\s*\/?>/gi, ' ')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+  if(!max || text.length <= max) return text;
+  return text.slice(0, max - 1).replace(/[\s,.;:•—–-]+$/, '') + '…';
+}
+
+/* Desk headlines routinely carry a second clause after an em dash. Cutting one
+   mid-word and hanging an ellipsis off it reads as a bug; dropping the whole
+   trailing clause reads as an edit, which is what a card should look like. */
+function shareCardHeadline(value, max){
+  const full = shareCardText(value);
+  if(full.length <= max) return full;
+  const head = full.slice(0, max);
+  const breakAt = Math.max(head.lastIndexOf(' — '), head.lastIndexOf(' – '), head.lastIndexOf('; '));
+  if(breakAt >= Math.floor(max * 0.45)) return full.slice(0, breakAt).trim();
+  return shareCardText(full, max);
+}
+
+/* Anton at a fixed size either overflows a long headline or leaves a short
+   one floating, so the display size steps down with the character count. */
+const SHARE_HEADLINE_SIZES = [46, 40, 34, 30, 26];
+function shareHeadlineSize(text, roomy){
+  const n = text.length;
+  let step = n <= 34 ? 0 : n <= 56 ? 1 : n <= 72 ? 2 : n <= 92 ? 3 : 4;
+  /* A sparse card can afford the next size up — the display type is the
+     only thing carrying the frame when there is no stat block under it. */
+  if(roomy && step > 0) step -= 1;
+  return SHARE_HEADLINE_SIZES[step];
+}
+
+function shareCardTags(a){
+  const pills = [];
+  if(a.custom){
+    pills.push(`<span class="tag tag-community">✦ ${esc(a.communityLabel || 'LEAGUE OP-ED')}</span>`);
+    if(a.category) pills.push(`<span class="tag tag-${esc(a.tone)}">${esc(a.category)}</span>`);
+  }else{
+    pills.push(`<span class="tag tag-${esc(a.tone)}">${esc(a.tag || 'FSN NEWS DESK')}</span>`);
+  }
+  if(a.targetLabel) pills.push(`<span class="pill pill-gold">TAGGED · ${esc(shareCardText(a.targetLabel, 26))}</span>`);
+  return pills.join('');
+}
+
+const SHARE_METRIC_COLORS = ['var(--gold)', 'var(--cyan)', '#eef2f8', 'var(--green)'];
+
+/* "By the Numbers" translates directly into the card's stat block — but only
+   the rows that are genuinely numeric. A prose row ("Narrative archetype")
+   reads as a broken tile at card scale, so it stays in the article. */
+function shareCardMetrics(a){
+  const rows = (a.numbers && Array.isArray(a.numbers.rows)) ? a.numbers.rows : [];
+  const cells = [];
+  rows.forEach(row=>{
+    if(!row || cells.length >= 4) return;
+    const label = shareCardText(row.label, 22);
+    const value = shareCardText(row.value);
+    if(!label || !value || value.length > 22) return;
+    cells.push(`<div class="share-card-metric" style="--metricc:${SHARE_METRIC_COLORS[cells.length]}">
+          <div class="share-card-metric-label">${esc(label)}</div>
+          <div class="share-card-metric-value">${esc(value)}</div>
+        </div>`);
+  });
+  if(cells.length < 2) return '';
+  if(cells.length === 3) cells.pop();   // keep the block a clean 2 × 2
+  return `<div class="share-card-metrics">${cells.join('')}</div>`;
+}
+
+/* The supporting beat under the deck: a pull-quote when the story has one,
+   otherwise the copy itself. The budget flexes with what else is on the card —
+   a community op-ed carries no quote and no stat block, so it gets a couple of
+   real paragraphs rather than one line stranded above 300px of gradient. */
+function shareCardFeature(a, hasMetrics){
+  if(a.quote && a.quote.text){
+    return `<blockquote class="share-card-quote">
+          <p>“${esc(shareCardText(a.quote.text, hasMetrics ? 118 : 200))}”</p>
+          <span>${esc(shareCardText(a.quote.who, 44) || 'FSN News Desk')}</span>
+        </blockquote>`;
+  }
+  const paragraphs = (a.paragraphs || []).map(p=> shareCardText(p)).filter(Boolean);
+  const budget = hasMetrics ? 150 : 440;
+  const out = [];
+  let used = 0;
+  for(const paragraph of paragraphs){
+    if(out.length >= 2 || used >= budget - 80) break;
+    const slice = shareCardText(paragraph, budget - used);
+    if(!slice) break;
+    out.push(`<p class="share-card-excerpt">${esc(slice)}</p>`);
+    used += slice.length;
+  }
+  return out.join('');
+}
+
+async function shareCardCrest(a){
+  const source = a.crest || {};
+  const name = source.name || a.authorTeam || a.byline || 'FSN';
+  const inlined = source.logo ? await inlineShareImage(source.logo) : '';
+  if(inlined) return `<img class="logo" src="${esc(inlined)}" alt="">`;
+  return monoBadge(name, 34);
+}
+
+function shareCardStamp(a){
+  const bits = [];
+  const week = (a.week != null) ? a.week : effectiveWeek();
+  if(week) bits.push('Week ' + week);
+  let season = a.season;
+  if(!season){ try{ season = NewsDesk.viewedSeasonYear(); }catch(err){ season = 0; } }
+  if(season) bits.push(String(season));
+  return bits.join(' · ') || 'FSN News Desk';
+}
+
+async function shareCardHtml(a){
+  const headline = shareCardHeadline(a.headline, 112) || 'FSN NEWS DESK';
+  const dek = shareCardText(a.dek, 150);
+  const metrics = shareCardMetrics(a);
+  const feature = shareCardFeature(a, !!metrics);
+  const roomy = !metrics && feature.replace(/<[^>]+>/g, '').length < 340;
+  const crestHtml = await shareCardCrest(a);
+  const when = (a.custom && a.createdAt)
+    ? new Date(a.createdAt).toLocaleString([], { dateStyle:'medium', timeStyle:'short' })
+    : NewsDesk.relTime(NewsDesk.age(a));
+  const attribution = (a.custom ? 'By ' : '') + shareCardText(a.byline, 40);
+  const subline = when + (a.custom && a.authorTeam ? ' · ' + shareCardText(a.authorTeam, 26) : '');
+
+  return `<article class="share-card">
+      <div class="share-card-watermark">FSN</div>
+
+      <header class="share-card-head">
+        <div class="share-card-brand">
+          <span class="share-card-mark">FSN</span>
+          <div class="share-card-brand-text">
+            <div class="share-card-brand-name">Fantasy Sports Network</div>
+            <div class="share-card-brand-league">${esc(shareCardText(a.dateline, 54) || 'The Wire')}</div>
+          </div>
+        </div>
+        <div class="share-card-stampline">${esc(shareCardStamp(a))}</div>
+      </header>
+      <div class="share-card-rule"></div>
+
+      <div class="share-card-main"${roomy ? ' data-fill="light"' : ''}>
+        <div class="share-card-tags">${shareCardTags(a)}</div>
+        <h1 class="share-card-headline" style="font-size:${shareHeadlineSize(headline, roomy)}px">${esc(headline)}</h1>
+        ${dek ? `<p class="share-card-dek">${esc(dek)}</p>` : ''}
+        ${feature}
+        ${metrics}
+      </div>
+
+      <footer class="share-card-foot">
+        <div class="share-card-byline">
+          ${crestHtml}
+          <div class="share-card-byline-text">
+            <div class="share-card-byline-name">${esc(attribution)}</div>
+            <div class="share-card-byline-meta">${esc(subline)}</div>
+          </div>
+        </div>
+        <div class="share-card-cta">${esc(SHARE_CARD_HOST)}</div>
+      </footer>
+    </article>`;
+}
+
+function shareCardFilename(a){
+  const slug = shareCardText(a.headline, 60)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return 'fsn-' + (slug || 'story') + '-card.png';
+}
+
+/* Mobile gets the native share sheet — the whole point is posting the card
+   straight into the group chat. Desktop, and any browser that will not take
+   a file, gets a download. */
+async function deliverShareCard(blob, a){
+  const filename = shareCardFilename(a);
+  const title = shareCardText(a.headline, 120);
+
+  let file = null;
+  try{ file = new File([blob], filename, { type:'image/png' }); }
+  catch(err){ file = null; }   // File is missing on some older Android WebViews
+
+  if(file && navigator.share && navigator.canShare && navigator.canShare({ files:[file] })){
+    try{
+      await navigator.share({ files:[file], title });
+      return 'shared';
+    }catch(err){
+      if(err && err.name === 'AbortError') return 'cancelled';
+      console.warn('[FSN] share sheet refused the card, downloading instead', err);
+    }
+  }
+
+  const href = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = href;
+  link.download = filename;
+  link.rel = 'noopener';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(()=> URL.revokeObjectURL(href), 10000);
+  return 'downloaded';
+}
+
+async function exportArticleCard(){
+  const a = articleById(ui.readerId);
+  const stage = $('shareCardStage');
+  if(!a || !stage || shareCardBusy) return;
+
+  shareCardBusy = true;
+  const buttons = Array.prototype.slice.call(
+    document.querySelectorAll('#readerExport,[data-reader-export]'));
+  buttons.forEach(btn=> btn.setAttribute('data-card-busy', 'true'));
+  toast('Building share card…');
+
+  try{
+    stage.innerHTML = await shareCardHtml(a);
+    const node = stage.firstElementChild;
+    if(!node) throw new Error('share card template did not build');
+    /* Measure only once the faces the template asks for are actually
+       resolved, or the fixed box lays out against a fallback metric. */
+    if(document.fonts && document.fonts.ready){ try{ await document.fonts.ready; }catch(err){} }
+
+    const blob = await renderShareCardBlob(node);
+    const outcome = await deliverShareCard(blob, a);
+    if(outcome === 'shared') toast('Share card ready');
+    else if(outcome === 'downloaded') toast('Share card saved');
+  }catch(err){
+    console.error('[FSN] share card export failed', err);
+    toast('Card export unavailable — use Copy or Share');
+  }finally{
+    stage.innerHTML = '';
+    buttons.forEach(btn=> btn.removeAttribute('data-card-busy'));
+    shareCardBusy = false;
   }
 }
 
@@ -16200,6 +16783,7 @@ document.addEventListener('click', (e)=>{
 });
 
 $('readerClose').addEventListener('click', closeReader);
+$('readerExport').addEventListener('click', ()=> exportArticleCard());
 $('readerCopy').addEventListener('click', ()=> shareArticle('copy'));
 $('readerShare').addEventListener('click', ()=> shareArticle('share'));
 $('franchiseModalClose').addEventListener('click', closeFranchiseModal);
@@ -16236,6 +16820,7 @@ $('franchiseModalBody').addEventListener('scroll', ()=>{ if(dossierInfoAnchor) c
 window.addEventListener('resize', ()=>{ if(dossierInfoAnchor) positionDossierInfo(); });
 $('franchiseScreenshotBtn').addEventListener('click', toggleFranchiseScreenshot);
 $('readerBody').addEventListener('click', (e)=>{
+  if(e.target.closest('[data-reader-export]')) exportArticleCard();
   if(e.target.closest('[data-reader-copy]'))  shareArticle('copy');
   if(e.target.closest('[data-reader-share]')) shareArticle('share');
   if(e.target.closest('[data-reader-delete]')) deleteCommunityArticle();
