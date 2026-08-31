@@ -2113,6 +2113,80 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
 ============================================================================ */
 
 /* ============================================================
+   GLOBAL SCOPE — CROSS-BLOCK HELPERS
+   This page ships as several independent <script> blocks, and every engine
+   below wraps itself in an IIFE. A helper defined inside one IIFE is invisible
+   to every other block, and the failure is a runtime ReferenceError rather
+   than a parse error — so it shows up as a card that silently refuses to
+   render, not as a red line in the build. (That is exactly how the weekly
+   matchup board broke: FSNIntel.memo() called leagueScopeToken(), which was
+   private to the News Desk IIFE, so every memoised read threw before it could
+   compute anything.)
+
+   Rule: anything called across script blocks is declared here, at global
+   scope, in the first block. Nothing shared goes inside an IIFE.
+============================================================ */
+
+/* Shorthand every layer uses. The engine IIFEs each keep an identical local
+   copy that simply shadows this one; the global exists so the data engine in
+   this block can touch the DOM without reaching into another closure. */
+function $(id){ return document.getElementById(id); }
+
+/* Which fantasy host the resident league came from. The UI layer owns the
+   provider switch and publishes it here, because the cache-scope token below
+   is read by three separate blocks and none of them can see `ui`. */
+window.FSNScope = {
+  provider: 'espn',
+  setProvider(next){
+    FSNScope.provider = next === 'sleeper' ? 'sleeper' : 'espn';
+    return FSNScope.provider;
+  },
+};
+
+/* The league id currently in the inputs, falling back to whatever the store
+   was last told. Used for cache scoping and as the stable seed term for every
+   deterministic article generator. */
+function selectedLeagueId(){
+  const el = document.getElementById('leagueIdInput');
+  const typed = el && typeof el.value === 'string' ? el.value.trim() : '';
+  if(typed) return typed;
+  const meta = window.LeagueData && LeagueData.meta;
+  const stored = meta && meta.leagueId != null ? String(meta.leagueId).trim() : '';
+  return stored || 'league';
+}
+
+/* Canonical cache-namespace token for the league currently resident in the
+   stores: provider + league id. Every in-memory derived cache (FSNIntel reads,
+   SeasonAnalytics models, the News Desk stream/gen caches) prefixes its keys
+   with this so a payload computed for one league can never be served for
+   another — even if a purge is missed or a publish is reordered. Two providers
+   can reuse the same numeric id, so the provider is part of the token. */
+function leagueScopeToken(){
+  const provider = (window.FSNScope && FSNScope.provider) || 'espn';
+  return provider + ':' + selectedLeagueId();
+}
+
+/* Renderers and week/season accessors that genuinely need the UI layer's
+   closure cannot be hoisted out here, so the UI layer registers them instead.
+   Callers in other blocks go through FSNBridge, which reports a missing or
+   throwing handler loudly instead of taking the calling render down with it. */
+window.FSNBridge = {
+  fns: Object.create(null),
+  register(map){ Object.assign(FSNBridge.fns, map || {}); },
+  has(name){ return typeof FSNBridge.fns[name] === 'function'; },
+  call(name){
+    const fn = FSNBridge.fns[name];
+    if(typeof fn !== 'function'){
+      console.warn('[FSNBridge] "' + name + '" is not registered; skipping the call.');
+      return undefined;
+    }
+    const args = Array.prototype.slice.call(arguments, 1);
+    try{ return fn.apply(null, args); }
+    catch(err){ console.error('[FSNBridge] "' + name + '" threw', err); return undefined; }
+  },
+};
+
+/* ============================================================
    SHARED STORE — one league object, one history object, and the
    read helpers every screen renders from.
 ============================================================ */
@@ -2607,18 +2681,18 @@ async function fetchAllTimeHistory(leagueId) {
     LeagueData.setLeagueHistory(stats);
     window._franchiseYearsData = yearsData;
 
-    renderWeekScrubbers();
+    FSNBridge.call('renderWeekScrubbers');
 
     const activeSeason = parseInt(
       LeagueData.espnData && (LeagueData.espnData.seasonId || LeagueData.espnData.season), 10
-    ) || uiActiveSeasonYear();
+    ) || FSNBridge.call('uiActiveSeasonYear') || 0;
     const loadedYears = yearsData.map(entry=> entry.year);
     const connectionStatus = `✓ Connected — ${activeSeason} Live + ${yearsData.length} Historical Seasons Loaded (${loadedYears.join(', ')})`;
     if ($('fetchStatus')) $('fetchStatus').textContent = connectionStatus;
 
-    try{ renderRecordBook(); }catch(err){ console.warn('[FSN] Record Book refresh failed', err); }
-    try{ renderNews(); }catch(err){ console.warn('[FSN] Preseason Desk refresh failed', err); }
-    try{ renderHomeStories(); }catch(err){ console.warn('[FSN] Home story refresh failed', err); }
+    FSNBridge.call('renderRecordBook');
+    FSNBridge.call('renderNews');
+    FSNBridge.call('renderHomeStories');
   }
 
   return { yearsData, skipped };
@@ -3780,13 +3854,22 @@ window.FSNIntel = (function(){
    purge timing. */
 let cache = {};
 LeagueData.subscribe(()=>{ cache = {}; });
+/* leagueScopeToken() is a global declared in the first script block. It used
+   to live inside the News Desk IIFE, which made this line throw a
+   ReferenceError on every memoised read — the matchup board, the standings
+   table and every record lookup went down with it. Keying is still guarded:
+   if the token is ever unavailable, compute uncached and say so out loud
+   rather than take the caller's render with us. */
 function memo(key, fn){
-  const scopedKey = leagueScopeToken() + '|' + key;
-  if(Object.prototype.hasOwnProperty.call(cache, scopedKey)) return cache[scopedKey];
+  let scopedKey = null;
+  try{ scopedKey = leagueScopeToken() + '|' + key; }
+  catch(err){ console.error('[FSNIntel] cache scope unavailable for ' + key + '; computing uncached.', err); }
+
+  if(scopedKey && Object.prototype.hasOwnProperty.call(cache, scopedKey)) return cache[scopedKey];
   let value = null;
   try{ value = fn(); }
   catch(err){ console.error('[FSNIntel] ' + key, err); value = null; }
-  cache[scopedKey] = value;
+  if(scopedKey) cache[scopedKey] = value;
   return value;
 }
 
@@ -5623,7 +5706,7 @@ function weekContext(week){
   const playoffFinalRound = playoffWeek && isFinalPlayoffWeek(week);
 
   const active2026 = viewedSeasonYear() === 2026 && activeSeasonYear() === 2026;
-  const liveWeek = (typeof currentLeagueWeek === 'function') ? Number(currentLeagueWeek() || 0) : 0;
+  const liveWeek = Number(FSNBridge.call('currentLeagueWeek') || 0);
   const futureLiveWeek = !!(active2026 && liveWeek > 0 && Number(week) > liveWeek);
   const active2026PregameGuard = !!(active2026 && (futureLiveWeek || weekTotal <= 0 || allScores.length === 0));
 
@@ -5660,21 +5743,10 @@ function weekContext(week){
    Every season uses the local matrix below. Stable archive coordinates drive
    each draw; no remote model, API key, random number, or network write is used.
 ============================================================ */
-function selectedLeagueId(){
-  const el = document.getElementById('leagueIdInput');
-  return (el && el.value.trim()) || (LeagueData.meta && LeagueData.meta.leagueId) || 'league';
-}
-/* Canonical cache-namespace token for the league currently resident in the
-   stores: provider + league id. Every in-memory derived cache (FSNIntel reads,
-   SeasonAnalytics models, the News Desk stream/gen caches) prefixes its keys
-   with this so a payload computed for one league can never be served for
-   another — even if a purge is missed or a publish is reordered. Two providers
-   can reuse the same numeric id, so the provider is part of the token. */
-function leagueScopeToken(){
-  let provider = 'espn';
-  try{ if(typeof ui !== 'undefined' && ui && ui.provider) provider = ui.provider; }catch(e){}
-  return provider + ':' + selectedLeagueId();
-}
+/* selectedLeagueId() and leagueScopeToken() are globals declared in the first
+   script block. They were defined here once, private to this IIFE, which broke
+   both FSNIntel.memo() and the SeasonAnalytics cache — neither block can see
+   this closure. Do not re-declare them here. */
 function viewedSeasonYear(){
   const d = LeagueData.espnData || {};
   const el = document.getElementById('seasonYear');
@@ -14928,6 +15000,9 @@ async function fetchLeagueData(options){
 function setProvider(provider){
   const next = provider === 'sleeper' ? 'sleeper' : 'espn';
   ui.provider = next;
+  // Publish to global scope: leagueScopeToken() keys every derived cache in
+  // the other script blocks off the provider and cannot read `ui` from here.
+  FSNScope.setProvider(next);
   const espnTab = $('providerEspn'), sleeperTab = $('providerSleeper');
   [['espn', espnTab], ['sleeper', sleeperTab]].forEach(([key, tab])=>{
     if(!tab) return;
@@ -16499,6 +16574,18 @@ if(document.readyState === 'loading'){
 } else {
   bootApp();
 }
+
+/* These renderers and accessors need this IIFE's closure, so they cannot be
+   hoisted to global scope. Register them on the bridge instead, so the data
+   engine in the first script block can repaint after archive hydration. */
+FSNBridge.register({
+  renderWeekScrubbers,
+  renderRecordBook,
+  renderNews,
+  renderHomeStories,
+  currentLeagueWeek,
+  uiActiveSeasonYear,
+});
 
 /* The render pipeline lives inside this IIFE; this is the one seam out of it,
    so a smoke test can seed LeagueData directly and repaint. */
