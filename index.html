@@ -11452,6 +11452,90 @@ function toPlainText(a){
   return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
+/* Deterministic external share briefs. These templates sit outside the article
+   engine: they summarize the filing in the same newsroom voice, then direct
+   readers to the full report without rewriting or mutating article content. */
+const SHARE_BRIEF_TEMPLATES = Object.freeze({
+  preseason: [
+    'The {SEASON} pre-season metrics are officially locked on the board. {HEADLINE}.',
+    'The pre-season review for {SEASON} is complete. The official filing: {HEADLINE}.',
+    'The opening ledger for {SEASON} has cleared review. {HEADLINE} is now on the board.',
+  ],
+  standings: [
+    'An official review has been filed regarding the Week {WEEK} standings. {HEADLINE}.',
+    'The competitive order has been audited through Week {WEEK}. The finding: {HEADLINE}.',
+    'The Week {WEEK} table has been certified. {HEADLINE} now stands as the official brief.',
+  ],
+  audit: [
+    'An official performance review has been filed for Week {WEEK}. {HEADLINE}.',
+    'The Week {WEEK} tape has cleared audit. The finding: {HEADLINE}.',
+    'The ledger has flagged a material Week {WEEK} development. {HEADLINE}.',
+  ],
+  transactions: [
+    'The Week {WEEK} transaction ledger has been updated. {HEADLINE}.',
+    'An official personnel filing has been entered for Week {WEEK}. {HEADLINE}.',
+    'The acquisition report is now on record for Week {WEEK}. {HEADLINE}.',
+  ],
+  availability: [
+    'The Week {WEEK} availability report has been filed. {HEADLINE}.',
+    'An official roster-status brief is now on the board for Week {WEEK}. {HEADLINE}.',
+    'The medical and lineup ledger has been updated for Week {WEEK}. {HEADLINE}.',
+  ],
+  preview: [
+    'The scouting file is open for Week {WEEK}. {HEADLINE}.',
+    'The Week {WEEK} advance report has been filed. {HEADLINE}.',
+    'The next competitive review is now on the board. {HEADLINE}.',
+  ],
+  results: [
+    'The ledger has been updated for Week {WEEK}. {HEADLINE} is now part of the official record.',
+    'Week {WEEK} is closed on the board. The latest filing: {HEADLINE}.',
+    'The Week {WEEK} results have cleared review. {HEADLINE} now stands as the official brief.',
+  ],
+});
+
+function shareBriefCategory(a){
+  const kind = String(a && a.kind || '').toLowerCase();
+  const week = Number(a && a.week);
+  const preSeasonText = [a && a.tag, a && a.metaTag, a && a.dateline].filter(Boolean).join(' ');
+  if((kind === 'sotl' && week <= 1) || /pre[ -]?season/i.test(preSeasonText)) return 'preseason';
+  if(['power','sotl','playoff-picture','playoff-bracket'].includes(kind)) return 'standings';
+  if(['bench','coaching','fraud','sacko','startsit'].includes(kind)) return 'audit';
+  if(['faab','rage'].includes(kind)) return 'transactions';
+  if(kind === 'injury') return 'availability';
+  if(['preview','rivalry','motw','draft'].includes(kind)) return 'preview';
+  return 'results';
+}
+
+function cleanShareReportUrl(){
+  const productionUrl = 'https://app.fantasysportsnetwork.app/';
+  try{
+    if(!window.location || !/^https?:$/.test(window.location.protocol)) return productionUrl;
+    const url = new URL(window.location.href);
+    url.search = '';
+    url.hash = '';
+    return url.toString();
+  }catch(err){
+    return productionUrl;
+  }
+}
+
+function toShareText(a){
+  const strip = (html)=> String(html || '')
+    .replace(/<br\s*\/?>/gi, ' ').replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/\s+/g, ' ').trim();
+  const headline = strip(a && a.headline).replace(/[.!?]+$/, '');
+  const season = strip(a && a.season || viewedSeasonYear());
+  const week = Math.max(1, Number(a && a.week) || 1);
+  const category = shareBriefCategory(a);
+  const templates = SHARE_BRIEF_TEMPLATES[category] || SHARE_BRIEF_TEMPLATES.results;
+  const seed = [selectedLeagueId(), season, week, category, a && a.id || headline].join(':');
+  const hook = pick(templates, seed)
+    .replace(/\{SEASON\}/g, season)
+    .replace(/\{WEEK\}/g, String(week))
+    .replace(/\{HEADLINE\}/g, headline);
+  return `${hook}\n\nRead the full report: ${cleanShareReportUrl()}`;
+}
 /* A compact paste made for the league group chat rather than a full article
    dump. The reader still exposes the full native share action separately. */
 function toGroupChat(a){
@@ -11474,7 +11558,7 @@ function toGroupChat(a){
 }
 
 return {
-  generate, all, weekContext, relTime, age, toPlainText, toGroupChat,
+  generate, all, weekContext, relTime, age, toPlainText, toGroupChat, toShareText,
   /* Manager of the Week — exported so the News Desk and any future view can
      read the same Coaching Efficiency board the timeline writes from. */
   genManagerOfTheWeek,
@@ -15649,7 +15733,9 @@ function openArticleModal(idx){
 async function shareArticle(mode){
   const a = articleById(ui.readerId);
   if(!a) return;
-  const text = a.custom && mode === 'copy' ? NewsDesk.toGroupChat(a) : NewsDesk.toPlainText(a);
+  const text = mode === 'share'
+    ? NewsDesk.toShareText(a)
+    : (a.custom ? NewsDesk.toGroupChat(a) : NewsDesk.toPlainText(a));
   if(mode === 'share' && navigator.share){
     try{ await navigator.share({ title: a.headline.replace(/<[^>]+>/g,''), text }); return; }
     catch(err){ if(err && err.name === 'AbortError') return; }
