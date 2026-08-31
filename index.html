@@ -2161,7 +2161,7 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
     <button class="icon-btn" id="readerExport" aria-label="Download share card" title="Download share card">
       <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="12.5" rx="2"></rect><circle cx="8" cy="8" r="1.4"></circle><path d="M21 12.5L16.5 8l-5 5.5"></path><path d="M12 17.5V22"></path><path d="M9.5 19.5l2.5 2.5 2.5-2.5"></path></svg>
     </button>
-    <button class="icon-btn" id="readerCopy" aria-label="Copy article">
+    <button class="icon-btn" id="readerCopy" aria-label="Copy share text">
       <svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg>
     </button>
     <button class="icon-btn" id="readerShare" aria-label="Share article">
@@ -15772,7 +15772,7 @@ function articleHtml(a){
         ${a.custom
           ? `<button class="btn-ghost" data-reader-copy>📋 COPY FOR GROUP CHAT</button>
              <button class="btn-ghost story-delete-btn" data-reader-delete>🗑 DELETE ARTICLE</button>`
-          : `<button class="btn-ghost" data-reader-copy>COPY STORY</button>
+          : `<button class="btn-ghost" data-reader-copy>COPY THE HOOK</button>
              <button class="btn-ghost" data-reader-share>SHARE</button>`}
       </div>
       <p class="text-[10.5px] text-[#4a5464] leading-relaxed mt-4 pt-4 border-t border-[var(--line)]">
@@ -15830,17 +15830,281 @@ function openArticleModal(idx){
   if(id) openReader(id);
 }
 
+/* ============================================================
+   ACQUISITION SHARE COPY
+   Everything this app sends outward — the native share sheet, the
+   clipboard, the message body that rides alongside an exported card —
+   is a curiosity gap rather than a summary.
+
+   The card image already carries the story: headline, score, stat
+   block, byline. Repeating any of that in the text spends the click
+   before it happens, because a recipient who can read the outcome in
+   the message has no reason to open anything. So nothing below names a
+   team, a manager, a score, a margin, a record or a standing. It
+   establishes only that something happened, that it happened in the
+   reader's league, and that the receipts are one tap away.
+
+   Two lines, always:
+     1. the tease — a provocation aimed squarely at "wait, what
+        happened to me?"
+     2. the CTA + link — a sharp invitation into the command center.
+
+   Every draw is deterministic. The pools are indexed off stable
+   archive coordinates (league, season, week, article id) rather than a
+   clock or a random number, so a story shared twice never arrives with
+   two different hooks, and the copy is identical on every device.
+============================================================ */
+
+/* The apex marketing host, not the app subdomain: a recipient outside the
+   league has no data to land in, and this is an acquisition surface first. */
+const SHARE_INVITE_URL = 'https://fantasysportsnetwork.app/?ref=share-card';
+
+/* FNV-1a, mirrored from the News Desk's editorial matrix. The engine layers
+   are separate <script> blocks that cannot see each other's declarations, so
+   the UI layer carries its own copy — the same way it already does for n1(). */
+function shareHash(str){
+  let h = 2166136261;
+  const s = String(str || '');
+  for(let i = 0; i < s.length; i++){ h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return h >>> 0;
+}
+
+/* One pool per article type. {WEEK} and {SEASON} are the only substitutions —
+   they are context, not payoff, and a line that names the week still gives
+   away nothing about who did what to whom. Every pool keeps at least two
+   placeholder-free lines so a story with no resolvable week or season can
+   never be left without a hook. */
+const SHARE_TEASES = {
+  sotl: [
+    'An audit was just filed on every roster in your league.',
+    'Someone’s title defense is already a disaster.',
+    'The {SEASON} hierarchy got redrawn today, and one contender is not where they think they are.',
+    'Your league’s balance of power was re-examined this morning. The findings are not flattering.',
+    'Every {SEASON} roster went under review. One of them did not survive it.',
+    'The state of your league is officially on the record now. Somebody comes out of it badly.',
+  ],
+  breaking: [
+    'Something just broke in your league and nobody has said it out loud yet.',
+    'A result landed in your league that changes the rest of {SEASON}.',
+    'Week {WEEK} produced a headline somebody is going to want deleted.',
+    'There is news out of your league and one manager is not going to enjoy it.',
+    'This one is going to start an argument in the group chat.',
+  ],
+  nailbiter: [
+    'A game in your league was decided by less than one bad bench decision.',
+    'Somebody lost by a margin they will be re-reading all week.',
+    'Week {WEEK} had a finish that should not be legal.',
+    'One manager is going to spend the rest of {SEASON} on a single-digit margin.',
+    'The closest result in your league has a detail nobody noticed live.',
+  ],
+  blowout: [
+    'Something happened in your league that the standings are too polite to describe.',
+    'One roster was taken apart badly enough to need a written record.',
+    'A team in your league lost to a number, not an opponent.',
+    'Week {WEEK} produced something in your league that was not really a game.',
+  ],
+  fraud: [
+    'A fraud alert was filed on somebody in your league this week.',
+    'One team’s record is not matching their receipts.',
+    'Somebody near the top of your standings is not what they look like.',
+    'A contender in your league is playing well above the evidence.',
+    'Week {WEEK} exposed somebody your standings are still protecting.',
+  ],
+  bench: [
+    'A lineup decision in your league is about to age very badly.',
+    'Somebody left the win sitting on their bench in Week {WEEK}.',
+    'One start/sit call in your league now has its own paper trail.',
+    'A manager in your league benched the answer. It is documented.',
+  ],
+  matchup: [
+    'Week {WEEK} has one game everybody in your league should be watching.',
+    'Two teams in your league are walking into something neither of them wants.',
+    'One matchup this week carries consequences the standings do not show yet.',
+    'There is a game on your league’s board that decides more than it looks like.',
+  ],
+  power: [
+    'Your league just got re-ranked and somebody is not going to agree with it.',
+    'The power index moved. One team dropped further than they realise.',
+    'The {SEASON} pecking order was recalculated this week. It is not close to last week.',
+    'Somebody in your league is ranked exactly where they did not want to be.',
+  ],
+  playoff: [
+    'The bracket math changed in your league and somebody’s path just got worse.',
+    'One team’s postseason odds moved in a direction they have not noticed.',
+    'Your league’s playoff picture is not what it was on Sunday.',
+    'Somebody is closer to missing the bracket than their record suggests.',
+  ],
+  waiver: [
+    'A move went through in your league that somebody is going to regret.',
+    'Somebody spent big this week. The receipt is public now.',
+    'A drop in your league is going to look indefensible by December.',
+    'The wire moved in your league and one manager got played.',
+  ],
+  draft: [
+    'The draft board got graded and one pick did not survive it.',
+    'Somebody’s draft is already being discussed in the past tense.',
+    'A first-round decision in your league is aging in real time.',
+    'One pick in your league has quietly become the story of {SEASON}.',
+  ],
+  record: [
+    'Something in your league’s record book moved this week.',
+    'A number that stood for years in your league just got tested.',
+    'The archive has a new entry and somebody’s name is on it.',
+    'Your league’s all-time board is not the same as it was on Sunday.',
+  ],
+  community: [
+    'Somebody in your league put this in writing.',
+    'A manager in your league filed this publicly, and it names names.',
+    'Someone decided the group chat was not a big enough audience.',
+    'This was written by somebody in your league. It is not subtle.',
+  ],
+  result: [
+    'A result went final in your league that somebody is going to be asked about.',
+    'One team in your league had their week decided for them.',
+    'Week {WEEK} settled an argument in your league, loudly.',
+    'A game in your league ended in a way somebody will be explaining for a while.',
+  ],
+  statement: [
+    'Somebody in your league made a statement this week and the rest of the field has a problem.',
+    'One team just set the bar in your league. Nobody else is near it.',
+    'A manager in your league put up a Week {WEEK} number the others have to answer.',
+    'Somebody in your league is playing a different sport right now.',
+  ],
+  desk: [
+    'The desk filed something on your league this week.',
+    'There is a story in your league the standings are not telling.',
+    'Week {WEEK} left a mark on your league.',
+    'Something in your league went on the record today.',
+  ],
+};
+
+/* Paired with any tease. Short, imperative, and about access rather than
+   information — the invitation is to go and look, never a preview. */
+const SHARE_CTAS = [
+  'Check the full breakdown here:',
+  'See the receipts:',
+  'Open the command center:',
+  'Pull the whole file:',
+  'Read the case here:',
+  'The full breakdown is here:',
+];
+
+/* Route a story to its pool.
+
+   The tag is read before the kind, deliberately. The tag is the pill printed
+   on the card the recipient is looking at, while the deterministic matrix
+   reuses one `kind` across several very different tags — 'roast' covers a
+   blowout, a bottom-of-the-board and a week-high alike. Routing on kind first
+   let the text contradict the pill, which is worse than a generic hook: a card
+   stamped BLOWOUT arriving under "decided by a single-digit margin" reads as
+   broken rather than intriguing. Kind is the fallback for the stories whose
+   tag is not descriptive on its own, and a community post stays a community
+   post however it is tagged. */
+function shareCopyTagBucket(label){
+  const tag = String(label || '').toUpperCase();
+  if(!tag) return '';
+  if(/STATE OF THE LEAGUE/.test(tag))                      return 'sotl';
+  if(/NAIL-?BITER|ONE-SCORE|HEARTBREAK|THRILLER/.test(tag))return 'nailbiter';
+  if(/BLOWOUT|BEATDOWN/.test(tag))                         return 'blowout';
+  if(/FRAUD|BOTTOM OF THE BOARD|HOT SEAT|SACKO/.test(tag)) return 'fraud';
+  if(/LINEUP MALPRACTICE|START ?\/ ?SIT|BENCH/.test(tag))  return 'bench';
+  if(/MATCHUP OF THE WEEK|GAME OF THE WEEK|WEEK AHEAD|THURSDAY/.test(tag)) return 'matchup';
+  if(/WEEK HIGH|TOP SCORE|MASTERCLASS/.test(tag))          return 'statement';
+  if(/POWER INDEX|POWER RANK/.test(tag))                   return 'power';
+  if(/PLAYOFF|BRACKET|SEEDING/.test(tag))                  return 'playoff';
+  if(/WAIVER|FAAB|RAGE DROP|TRADE/.test(tag))              return 'waiver';
+  if(/DRAFT|ROUND 1|REACH|STEAL/.test(tag))                return 'draft';
+  if(/RECORD BOOK|MILESTONE|RIVALRY/.test(tag))            return 'record';
+  if(/BREAKING|UPSET ALERT|INJURY/.test(tag))              return 'breaking';
+  return '';
+}
+
+function shareCopyBucket(a){
+  if(a.custom) return 'community';
+
+  /* a.tag before a.metaTag, and never the two concatenated: the tag is the
+     pill actually printed on the card, while metaTag is the broader section
+     label the Desk files the story under. A story pilled WEEK HIGH under a
+     'FINAL' metaTag has to read as a statement, not as a beating. */
+  const byTag = shareCopyTagBucket(a.tag) || shareCopyTagBucket(a.metaTag);
+  if(byTag) return byTag;
+
+  const kind = String(a.kind || '').toLowerCase();
+  if(kind.indexOf('playoff') === 0) return 'playoff';
+
+  /* Most of the wire is match results, and the Desk stamps those with a plain
+     'FINAL' — their character lives in the margin tier the story was built
+     from, not the tag. Routing on that tier is what keeps a five-point finish
+     and a forty-point beating from sharing a hook, and it is the same
+     classification the card's own pill is drawn from. */
+  const MARGIN_BUCKETS = { close:'nailbiter', onescore:'nailbiter', competitive:'result', blowout:'blowout' };
+  let tier = a.matrixCategory || '';
+  if(!tier && a.facts && a.facts.margin != null){
+    try{ tier = marginCategory(a.facts.margin); }catch(err){ tier = ''; }
+  }
+  if(MARGIN_BUCKETS[tier]) return MARGIN_BUCKETS[tier];
+
+  const KIND_BUCKETS = {
+    sotl:'sotl', motw:'matchup', fraud:'fraud', sacko:'fraud',
+    bench:'bench', startsit:'bench', heartbreak:'nailbiter', shootout:'nailbiter',
+    roast:'blowout', power:'power', faab:'waiver', rage:'waiver',
+    draft:'draft', injury:'breaking', recap:'result', debrief:'result',
+  };
+  if(KIND_BUCKETS[kind]) return KIND_BUCKETS[kind];
+
+  return a.live ? 'breaking' : 'desk';
+}
+
+/* The one place outbound copy is built. Returns the pieces as well as the
+   assembled message so the share sheet can use the tease on its own as a
+   subject line without the link being repeated in it. */
+function shareCopyFor(a){
+  const bucket = shareCopyBucket(a);
+
+  let week = (a.week != null) ? a.week : 0;
+  if(!week){ try{ week = effectiveWeek(); }catch(err){ week = 0; } }
+  let season = a.season || 0;
+  if(!season){ try{ season = NewsDesk.viewedSeasonYear(); }catch(err){ season = 0; } }
+
+  const fillable = (line)=>
+    (week   || line.indexOf('{WEEK}')   === -1) &&
+    (season || line.indexOf('{SEASON}') === -1);
+
+  const pool = (SHARE_TEASES[bucket] || SHARE_TEASES.desk).filter(fillable);
+  const usable = pool.length ? pool : SHARE_TEASES.desk.filter(fillable);
+
+  const seed = LeagueData.leagueId() + ':' + season + ':' + week + ':' + (a.id || '') + ':' + bucket;
+  const tease = usable[shareHash(seed) % usable.length]
+    .replace(/\{WEEK\}/g, String(week))
+    .replace(/\{SEASON\}/g, String(season));
+  /* Decorrelated from the tease draw so the same pool position does not always
+     arrive with the same call to action. */
+  const cta = SHARE_CTAS[(shareHash(seed + '::cta') >>> 3) % SHARE_CTAS.length];
+
+  return {
+    bucket,
+    tease,
+    cta,
+    link: SHARE_INVITE_URL,
+    text: tease + '\n\n' + cta + ' ' + SHARE_INVITE_URL,
+  };
+}
+
+/* Both outbound paths send the hook, never the article. A paste into the
+   league group chat is a share like any other — the whole point is that the
+   recipient has to open the app to find out who it is about. */
 async function shareArticle(mode){
   const a = articleById(ui.readerId);
   if(!a) return;
-  const text = a.custom && mode === 'copy' ? NewsDesk.toGroupChat(a) : NewsDesk.toPlainText(a);
+  const copy = shareCopyFor(a);
+  const text = copy.text;
   if(mode === 'share' && navigator.share){
-    try{ await navigator.share({ title: a.headline.replace(/<[^>]+>/g,''), text }); return; }
+    try{ await navigator.share({ title: copy.tease, text }); return; }
     catch(err){ if(err && err.name === 'AbortError') return; }
   }
   try{
     await navigator.clipboard.writeText(text);
-    toast('Story copied to clipboard');
+    toast('Hook copied — send it with the card');
   }catch(err){
     // Clipboard API is blocked on non-secure origins — fall back to a selection.
     const ta = document.createElement('textarea');
@@ -15848,7 +16112,7 @@ async function shareArticle(mode){
     ta.style.cssText = 'position:fixed;opacity:0;';
     document.body.appendChild(ta);
     ta.select();
-    try{ document.execCommand('copy'); toast('Story copied to clipboard'); }
+    try{ document.execCommand('copy'); toast('Hook copied — send it with the card'); }
     catch(e2){ toast('Copy unavailable on this browser'); }
     document.body.removeChild(ta);
   }
@@ -16212,7 +16476,11 @@ function shareCardFilename(a){
    a file, gets a download. */
 async function deliverShareCard(blob, a){
   const filename = shareCardFilename(a);
-  const title = shareCardText(a.headline, 120);
+  /* The headline is on the card, so it must not also be in the message: a
+     recipient who can read the outcome in the notification has no reason to
+     open anything. Both fields carry the tease instead — text becomes the
+     caption in a chat app, title the subject line in a mail client. */
+  const copy = shareCopyFor(a);
 
   let file = null;
   try{ file = new File([blob], filename, { type:'image/png' }); }
@@ -16220,7 +16488,7 @@ async function deliverShareCard(blob, a){
 
   if(file && navigator.share && navigator.canShare && navigator.canShare({ files:[file] })){
     try{
-      await navigator.share({ files:[file], title });
+      await navigator.share({ files:[file], title: copy.tease, text: copy.text });
       return 'shared';
     }catch(err){
       if(err && err.name === 'AbortError') return 'cancelled';
