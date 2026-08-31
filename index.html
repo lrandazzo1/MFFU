@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Fantasy Sports Network</title>
 
 <!-- ============================================================
@@ -20,7 +20,6 @@
 <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns=&#39;http://www.w3.org/2000/svg&#39; viewBox=&#39;0 0 180 180&#39;%3E%3Crect width=&#39;180&#39; height=&#39;180&#39; fill=&#39;%23080a0e&#39;/%3E%3Ctext x=&#39;90&#39; y=&#39;118&#39; font-family=&#39;Helvetica,Arial&#39; font-size=&#39;78&#39; font-weight=&#39;bold&#39; fill=&#39;%2300e0ff&#39; text-anchor=&#39;middle&#39;%3EFSN%3C/text%3E%3C/svg%3E">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=&#39;http://www.w3.org/2000/svg&#39; viewBox=&#39;0 0 64 64&#39;%3E%3Crect width=&#39;64&#39; height=&#39;64&#39; fill=&#39;%23080a0e&#39;/%3E%3Ctext x=&#39;32&#39; y=&#39;43&#39; font-family=&#39;Helvetica,Arial&#39; font-size=&#39;27&#39; font-weight=&#39;bold&#39; fill=&#39;%2300e0ff&#39; text-anchor=&#39;middle&#39;%3EFSN%3C/text%3E%3C/svg%3E">
 
-<script src="https://cdn.tailwindcss.com"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Anton&family=Oswald:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700;800&display=swap" rel="stylesheet">
@@ -54,9 +53,14 @@ html,body{
   overscroll-behavior-y:auto;
   /* Small-viewport guard: nothing is ever wide enough to swipe the whole
      page sideways. In-page carousels (story rail, topic chips, week scrubber)
-     keep their own contained overflow-x; this only clips a stray blowout. */
+     keep their own contained overflow-x; this only clips a stray blowout.
+     `overscroll-behavior-x:none` is the other half of it: without it a swipe
+     that runs off the end of one of those carousels chains out to the page
+     and then to the browser's own back-swipe gesture. */
+  width:100%;
   max-width:100%;
   overflow-x:hidden;
+  overscroll-behavior-x:none;
 }
 html{ min-height:100%; overflow-y:scroll; }
 body{
@@ -68,6 +72,24 @@ body{
   text-rendering:optimizeLegibility;
 }
 html.overlay-open, body.overlay-open{ overflow:hidden !important; }
+
+/* CSS resolves `overflow-x:visible` to `auto` on any box that scrolls in the
+   other axis, so every vertical scroller in this app — each screen, each
+   modal body — was quietly its own sideways scroll container that the
+   page-level `overflow-x:hidden` above could not reach. Pin the axis on all
+   of them in one place: they clip instead of scrolling, so a stray-wide child
+   can never be swiped into view. Carousels that are *meant* to scroll
+   sideways set `overflow-x:auto` on themselves and are unaffected. */
+.screen[data-active="true"],
+.screen-shell,
+.profile-shell,
+#franchiseModalBody,
+#readerBody,
+.onboard-body,
+.story-compose-body{
+  max-width:100%;
+  overflow-x:hidden;
+}
 
 .font-display{ font-family:'Anton',Impact,sans-serif; letter-spacing:.01em; }
 .font-mono{ font-family:'JetBrains Mono',ui-monospace,monospace; }
@@ -86,6 +108,11 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
    the scroll lives only in the middle so the chrome never moves.
 ============================================================ */
 #appShell{
+  /* The shell never sets its own overflow: forcing one axis here would turn
+     the shell into a scroll container and steal the page scroll. Bounding the
+     width is enough — the clipping is html/body's job. */
+  width:100%;
+  max-width:100%;
   min-height:100vh;
   min-height:100dvh;
   padding-top:calc(var(--ticker-h) + env(safe-area-inset-top) + 1px);
@@ -212,6 +239,7 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
 .standings-table th{ color:var(--dim); font-size:9px; letter-spacing:.12em; text-transform:uppercase; }
 .standings-table th:first-child,.standings-table td:first-child{ text-align:left; position:sticky; left:0; background:#0d121a; }
 .standings-team{ display:flex; align-items:center; gap:8px; min-width:180px; }
+.standings-table .analytics-team-name{ min-width:0; }
 
 /* ---------- SCREENS ---------- */
 .screen{ display:none; animation:screenIn .22s ease both; }
@@ -654,7 +682,7 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
 .dossier-vital-sub{ margin-top:5px; color:var(--dim); font-size:10px; line-height:1.4; }
 .dossier-delta-up{ color:var(--green); }
 .dossier-delta-down{ color:var(--red); }
-.dossier-table-wrap{ overflow-x:auto; border:1px solid var(--line); border-radius:14px; background:#090d13; }
+.dossier-table-wrap{ overflow-x:auto; overscroll-behavior-x:contain; border:1px solid var(--line); border-radius:14px; background:#090d13; }
 .dossier-table{ width:100%; min-width:780px; border-collapse:collapse; }
 .dossier-table th{ padding:10px 11px; text-align:left; color:var(--dim); background:#101620; font-size:8.5px; letter-spacing:.14em; text-transform:uppercase; white-space:nowrap; }
 .dossier-table td{ padding:11px; border-top:1px solid var(--line); font-size:11px; color:var(--off); white-space:nowrap; }
@@ -908,7 +936,7 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
   padding:10px 14px; font-size:11px; line-height:1.55;
   color:var(--dim); background:#080c12; border-top:1px solid var(--line);
 }
-.bn-table-wrap{ overflow-x:auto; border-top:1px solid var(--line); background:#080c12; }
+.bn-table-wrap{ overflow-x:auto; overscroll-behavior-x:contain; border-top:1px solid var(--line); background:#080c12; }
 .bn-table{ width:100%; min-width:500px; border-collapse:collapse; font-size:10.5px; }
 .bn-table th{
   padding:8px 9px; text-align:left; color:#657185; font-size:8.5px;
@@ -1113,7 +1141,7 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
 #leadStoryCard:active{ transform:scale(.99); }
 #leadStoryCard:focus-visible,
 .news-lead-card:focus-visible{ outline:2px solid var(--cyan); outline-offset:2px; }
-.topic-scroll{ display:flex; flex:1; min-width:0; gap:7px; overflow-x:auto; }
+.topic-scroll{ display:flex; flex:1; min-width:0; gap:7px; overflow-x:auto; overscroll-behavior-x:contain; }
 .topic-pill{
   flex:none; display:inline-flex; align-items:center; gap:6px;
   padding:8px 13px; border-radius:999px;
@@ -1283,49 +1311,117 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
 
 /* ============================================================
    NETFLIX-STYLE TEAM PROFILE PICKER
+   One locked screen: the picker fills the viewport exactly and never scrolls
+   in either axis, at any team count. The shell is a three-band flex column
+   (header / card field / guest button); the card field takes whatever height
+   is left over, and `layoutProfilePicker()` measures that leftover box and
+   solves for the largest square tile that still fits every team. A four-team
+   league therefore gets giant icons across one row, sixteen settle into a
+   compact grid, and neither ever produces a scrollbar.
+
+   Every dimension below is a custom property the layout pass overwrites. The
+   values seeded on #profilePicker are the pre-measure fallbacks, so a first
+   paint still reads sensibly before the measurement lands.
 ============================================================ */
 #profilePicker{
   position:fixed; inset:0; z-index:160; display:none; align-items:center; justify-content:center;
-  padding:calc(22px + env(safe-area-inset-top)) 18px calc(22px + env(safe-area-inset-bottom));
+  box-sizing:border-box;
+  padding:calc(14px + env(safe-area-inset-top)) 14px calc(14px + env(safe-area-inset-bottom));
   background:
     radial-gradient(90% 70% at 50% 0%,rgba(0,224,255,.11),transparent 58%),
     rgba(5,7,10,.965);
   backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px);
+  /* Locked to the viewport: no scroll, and no swipe that chains out to the
+     page or to the browser's back gesture. */
+  width:100%; max-width:100%; max-height:100%;
+  overflow:hidden; overscroll-behavior:none;
+  --profile-gap:12px;
+  --profile-cell:150px;
+  --profile-cell-h:150px;
+  --profile-tile:64px;
+  --profile-radius:14px;
+  --profile-name:13px;
+  --profile-manager:10.5px;
 }
 #profilePicker[data-open="true"]{ display:flex; }
-.profile-shell{ width:min(760px,100%); max-height:100%; overflow-y:auto; text-align:center; }
+.profile-shell{
+  display:flex; flex-direction:column; box-sizing:border-box;
+  width:min(1180px,100%); max-width:100%;
+  height:100%; max-height:100%;
+  overflow:hidden; text-align:center;
+}
+.profile-head{ flex:0 0 auto; min-height:0; }
 .profile-title{
-  margin:5px 0 0; font-family:'Anton',Impact,sans-serif; font-size:clamp(32px,8vw,54px);
+  margin:4px 0 0; font-family:'Anton',Impact,sans-serif;
+  /* Bounded by height as well as width so a landscape phone does not spend
+     half its viewport on the headline. */
+  font-size:clamp(24px,min(8vw,5.6vh),54px);
   line-height:1; letter-spacing:.04em; text-transform:uppercase; color:#fff;
 }
-.profile-sub{ color:var(--dim); font-size:12px; letter-spacing:.08em; margin-top:8px; }
+.profile-sub{
+  color:var(--dim); font-size:clamp(10px,1.7vh,12px); letter-spacing:.08em;
+  margin:8px auto 0; max-width:62ch;
+}
 .profile-grid{
-  display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:11px;
-  margin-top:24px; text-align:left;
+  flex:1 1 auto; min-height:0; min-width:0; overflow:hidden;
+  display:flex; flex-wrap:wrap; align-content:center; justify-content:center;
+  gap:var(--profile-gap);
+  margin-top:clamp(8px,2.2vh,24px);
+  text-align:center;
 }
 .profile-card{
-  min-width:0; display:flex; align-items:center; gap:10px; padding:11px; border-radius:14px;
+  flex:0 0 auto; box-sizing:border-box;
+  width:var(--profile-cell); height:var(--profile-cell-h);
+  min-width:0; overflow:hidden;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:calc(var(--profile-tile) * .12);
+  padding:calc(var(--profile-tile) * .08);
+  border-radius:var(--profile-radius);
   background:linear-gradient(160deg,#131a26,#0a0e15); border:1px solid var(--line-2);
   transition:transform .15s ease,border-color .15s ease,box-shadow .15s ease;
 }
-.profile-card:active{ transform:scale(.98); }
+.profile-card:active{ transform:scale(.97); }
 .profile-card:hover{ border-color:rgba(0,224,255,.55); box-shadow:0 10px 30px -22px rgba(0,224,255,.8); }
+.profile-card:focus-visible{ outline:2px solid var(--cyan); outline-offset:2px; }
 .profile-avatar{
-  width:52px; height:52px; border-radius:13px; flex:none; object-fit:cover;
+  width:var(--profile-tile); height:var(--profile-tile); flex:none; object-fit:cover;
+  border-radius:calc(var(--profile-radius) * .85);
   display:flex; align-items:center; justify-content:center; overflow:hidden;
   border:1px solid var(--line-2); background:linear-gradient(150deg,#1b2534,#101621);
-  font-family:'Anton',sans-serif; font-size:17px; color:var(--cyan);
+  font-family:'Anton',sans-serif; font-size:calc(var(--profile-tile) * .33);
+  line-height:1; color:var(--cyan);
 }
 .profile-avatar img{ width:100%; height:100%; object-fit:cover; display:block; }
-.profile-team{ font-family:'Anton',sans-serif; font-size:14px; line-height:1.08; text-transform:uppercase; color:#fff; }
-.profile-manager{ margin-top:4px; color:var(--dim); font-size:10.5px; letter-spacing:.06em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.profile-meta{ display:block; width:100%; min-width:0; }
+.profile-team{
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+  font-family:'Anton',sans-serif; font-size:var(--profile-name); line-height:1.08;
+  text-transform:uppercase; color:#fff;
+  /* `break-word`, not `anywhere`: a long name should wrap between its words
+     and only ever split mid-word when a single word cannot fit on a line. */
+  overflow-wrap:break-word; word-break:normal; hyphens:none;
+}
+.profile-manager{
+  display:block; margin-top:calc(var(--profile-tile) * .05); color:var(--dim);
+  font-size:var(--profile-manager); letter-spacing:.06em;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+/* Below roughly a 46px tile the manager line is unreadable anyway and the
+   name needs the room more, so the densest grids drop it. */
+#profilePicker[data-compact="true"] .profile-manager{ display:none; }
 .profile-guest{
-  margin:16px auto 0; width:min(380px,100%); padding:12px 14px; border-radius:11px;
+  flex:0 0 auto;
+  margin:clamp(8px,1.8vh,16px) auto 0; width:min(380px,100%);
+  padding:clamp(9px,1.4vh,12px) 14px; border-radius:11px;
   border:1px solid rgba(255,255,255,.14); background:#0c1119; color:var(--off);
   font-size:10.5px; font-weight:700; letter-spacing:.14em; text-transform:uppercase;
 }
-@media (min-width:640px){ .profile-grid{ grid-template-columns:repeat(3,minmax(0,1fr)); } }
-@media (min-width:820px){ .profile-grid{ grid-template-columns:repeat(4,minmax(0,1fr)); } }
+/* Landscape phones: the explainer copy is the first thing to go so the cards
+   keep the height instead. */
+@media (max-height:470px){
+  .profile-sub{ display:none; }
+  .profile-head .kicker{ display:none; }
+}
 
 /* ============================================================
    SEASON STATS & ANALYTICS — six live models, one terminal board
@@ -1362,7 +1458,7 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
   line-height:1.08; letter-spacing:.045em; text-transform:uppercase;
 }
 .analytics-model-copy{ margin-top:4px; color:var(--dim); font-size:10.5px; line-height:1.5; }
-.analytics-table-wrap{ overflow-x:auto; border:1px solid var(--line); border-radius:10px; }
+.analytics-table-wrap{ overflow-x:auto; overscroll-behavior-x:contain; border:1px solid var(--line); border-radius:10px; }
 .analytics-table{ width:100%; min-width:470px; border-collapse:collapse; font-size:10.5px; }
 .analytics-table th{
   padding:8px 9px; color:#647084; background:#090d14; text-align:right;
@@ -1446,6 +1542,74 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
   .analytics-team-name{ max-width:none; flex:1; min-width:0; }
 }
 
+/* ---- Season standings: Team header + labelled stat grid ----
+   The standings table is the widest board in the app (9 columns, a 720px
+   min-width and a sticky first column). Inside .analytics-table-wrap — which
+   hides horizontal overflow on phones — that width was simply clipped, so on
+   an iPhone every column past PF was cut off with no way to scroll to it.
+   Below 640px the table stops being a table and each row becomes its own
+   card, exactly like the analytics models above. */
+@media (max-width:640px){
+  .standings-card{ border:0; border-radius:0; background:transparent; overflow:visible; }
+  .standings-table{ min-width:0; display:block; font-size:11.5px; }
+  .standings-table thead{ display:none; }
+  .standings-table tbody{ display:flex; flex-direction:column; gap:8px; }
+  .standings-table tr{
+    display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:2px 12px;
+    padding:10px 11px; border:1px solid var(--line); border-radius:11px; background:#0b1017;
+  }
+  .standings-table tr:first-child{
+    border-color:color-mix(in srgb,var(--cyan) 32%,var(--line));
+    background:rgba(0,224,255,.05);
+  }
+  .standings-table td{
+    display:flex; align-items:center; justify-content:space-between; gap:8px;
+    padding:4px 0; border-bottom:0; text-align:right; white-space:nowrap;
+  }
+  /* Release the desktop sticky column: position:sticky on a grid item leaves a
+     stray opaque background sitting over the card. */
+  .standings-table td:first-child{ position:static; background:transparent; }
+  .standings-table td.standings-team-cell{
+    grid-column:1 / -1; justify-content:flex-start; white-space:normal;
+    padding:0 0 7px; margin-bottom:5px; border-bottom:1px solid var(--line);
+  }
+  .standings-table td[data-label]::before{
+    content:attr(data-label); flex:none; color:var(--dim);
+    font-family:'JetBrains Mono',monospace; font-size:8px; font-weight:700;
+    letter-spacing:.09em; text-transform:uppercase; text-align:left;
+  }
+  /* min-width:180px on the team block is what forced the row wider than the
+     viewport; on a phone the name wraps inside the card instead. */
+  .standings-team{ min-width:0; width:100%; gap:7px; }
+  .standings-table .analytics-team-name{
+    max-width:none; flex:1; min-width:0; white-space:normal; overflow-wrap:anywhere;
+  }
+}
+
+/* ---- Narrow phones (iPhone SE / mini / Pro at 375-390px) ----
+   Reclaim gutter width and stop fixed-size chrome from setting a floor wider
+   than the viewport: the stats toggle, the status chips and the pills all
+   carry uppercase tracking that does not fit at their desktop sizes. */
+@media (max-width:430px){
+  .analytics-shell{ padding:0 12px 22px; }
+  .stats-mode-toggle{ margin:0 12px 14px; }
+  .stats-mode-toggle button{
+    padding:8px 4px; font-size:9.5px; letter-spacing:.06em; line-height:1.25;
+  }
+  .analytics-status{ gap:6px; }
+  .analytics-status-chip{
+    min-height:26px; padding:5px 8px; font-size:8.5px; letter-spacing:.05em;
+  }
+  /* A pill that cannot fit its line was being clipped by the card's
+     overflow:hidden. Let it wrap instead — taller is fine, cut off is not. */
+  .pill{
+    max-width:100%; white-space:normal; letter-spacing:.1em;
+    text-align:left; overflow-wrap:anywhere;
+  }
+  .standings-table tr{ padding:10px 9px; gap:2px 10px; }
+  .standings-table td{ font-size:11px; }
+}
+
 /* ---- Article "by the numbers": simple labelled stack ---- */
 @media (max-width:640px){
   .bn-table-wrap{ overflow-x:hidden; }
@@ -1513,7 +1677,12 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
 .cloud-status[data-state="error"] .cloud-dot{ background:var(--red); box-shadow:0 0 9px rgba(255,45,85,.65); }
 
 </style>
-<style>*, ::before, ::after{--tw-border-spacing-x:0;--tw-border-spacing-y:0;--tw-translate-x:0;--tw-translate-y:0;--tw-rotate:0;--tw-skew-x:0;--tw-skew-y:0;--tw-scale-x:1;--tw-scale-y:1;--tw-pan-x: ;--tw-pan-y: ;--tw-pinch-zoom: ;--tw-scroll-snap-strictness:proximity;--tw-gradient-from-position: ;--tw-gradient-via-position: ;--tw-gradient-to-position: ;--tw-ordinal: ;--tw-slashed-zero: ;--tw-numeric-figure: ;--tw-numeric-spacing: ;--tw-numeric-fraction: ;--tw-ring-inset: ;--tw-ring-offset-width:0px;--tw-ring-offset-color:#fff;--tw-ring-color:rgb(59 130 246 / 0.5);--tw-ring-offset-shadow:0 0 #0000;--tw-ring-shadow:0 0 #0000;--tw-shadow:0 0 #0000;--tw-shadow-colored:0 0 #0000;--tw-blur: ;--tw-brightness: ;--tw-contrast: ;--tw-grayscale: ;--tw-hue-rotate: ;--tw-invert: ;--tw-saturate: ;--tw-sepia: ;--tw-drop-shadow: ;--tw-backdrop-blur: ;--tw-backdrop-brightness: ;--tw-backdrop-contrast: ;--tw-backdrop-grayscale: ;--tw-backdrop-hue-rotate: ;--tw-backdrop-invert: ;--tw-backdrop-opacity: ;--tw-backdrop-saturate: ;--tw-backdrop-sepia: ;--tw-contain-size: ;--tw-contain-layout: ;--tw-contain-paint: ;--tw-contain-style: }::backdrop{--tw-border-spacing-x:0;--tw-border-spacing-y:0;--tw-translate-x:0;--tw-translate-y:0;--tw-rotate:0;--tw-skew-x:0;--tw-skew-y:0;--tw-scale-x:1;--tw-scale-y:1;--tw-pan-x: ;--tw-pan-y: ;--tw-pinch-zoom: ;--tw-scroll-snap-strictness:proximity;--tw-gradient-from-position: ;--tw-gradient-via-position: ;--tw-gradient-to-position: ;--tw-ordinal: ;--tw-slashed-zero: ;--tw-numeric-figure: ;--tw-numeric-spacing: ;--tw-numeric-fraction: ;--tw-ring-inset: ;--tw-ring-offset-width:0px;--tw-ring-offset-color:#fff;--tw-ring-color:rgb(59 130 246 / 0.5);--tw-ring-offset-shadow:0 0 #0000;--tw-ring-shadow:0 0 #0000;--tw-shadow:0 0 #0000;--tw-shadow-colored:0 0 #0000;--tw-blur: ;--tw-brightness: ;--tw-contrast: ;--tw-grayscale: ;--tw-hue-rotate: ;--tw-invert: ;--tw-saturate: ;--tw-sepia: ;--tw-drop-shadow: ;--tw-backdrop-blur: ;--tw-backdrop-brightness: ;--tw-backdrop-contrast: ;--tw-backdrop-grayscale: ;--tw-backdrop-hue-rotate: ;--tw-backdrop-invert: ;--tw-backdrop-opacity: ;--tw-backdrop-saturate: ;--tw-backdrop-sepia: ;--tw-contain-size: ;--tw-contain-layout: ;--tw-contain-paint: ;--tw-contain-style: }/* ! tailwindcss v3.4.17 | MIT License | https://tailwindcss.com */*,::after,::before{box-sizing:border-box;border-width:0;border-style:solid;border-color:#e5e7eb}::after,::before{--tw-content:''}:host,html{line-height:1.5;-webkit-text-size-adjust:100%;-moz-tab-size:4;tab-size:4;font-family:ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";font-feature-settings:normal;font-variation-settings:normal;-webkit-tap-highlight-color:transparent}body{margin:0;line-height:inherit}hr{height:0;color:inherit;border-top-width:1px}abbr:where([title]){-webkit-text-decoration:underline dotted;text-decoration:underline dotted}h1,h2,h3,h4,h5,h6{font-size:inherit;font-weight:inherit}a{color:inherit;text-decoration:inherit}b,strong{font-weight:bolder}code,kbd,pre,samp{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;font-feature-settings:normal;font-variation-settings:normal;font-size:1em}small{font-size:80%}sub,sup{font-size:75%;line-height:0;position:relative;vertical-align:baseline}sub{bottom:-.25em}sup{top:-.5em}table{text-indent:0;border-color:inherit;border-collapse:collapse}button,input,optgroup,select,textarea{font-family:inherit;font-feature-settings:inherit;font-variation-settings:inherit;font-size:100%;font-weight:inherit;line-height:inherit;letter-spacing:inherit;color:inherit;margin:0;padding:0}button,select{text-transform:none}button,input:where([type=button]),input:where([type=reset]),input:where([type=submit]){-webkit-appearance:button;background-color:transparent;background-image:none}:-moz-focusring{outline:auto}:-moz-ui-invalid{box-shadow:none}progress{vertical-align:baseline}::-webkit-inner-spin-button,::-webkit-outer-spin-button{height:auto}[type=search]{-webkit-appearance:textfield;outline-offset:-2px}::-webkit-search-decoration{-webkit-appearance:none}::-webkit-file-upload-button{-webkit-appearance:button;font:inherit}summary{display:list-item}blockquote,dd,dl,figure,h1,h2,h3,h4,h5,h6,hr,p,pre{margin:0}fieldset{margin:0;padding:0}legend{padding:0}menu,ol,ul{list-style:none;margin:0;padding:0}dialog{padding:0}textarea{resize:vertical}input::placeholder,textarea::placeholder{opacity:1;color:#9ca3af}[role=button],button{cursor:pointer}:disabled{cursor:default}audio,canvas,embed,iframe,img,object,svg,video{display:block;vertical-align:middle}img,video{max-width:100%;height:auto}[hidden]:where(:not([hidden=until-found])){display:none}.relative{position:relative}.my-2\.5{margin-top:0.625rem;margin-bottom:0.625rem}.mb-2{margin-bottom:0.5rem}.mb-3{margin-bottom:0.75rem}.mb-4{margin-bottom:1rem}.ml-auto{margin-left:auto}.mt-1{margin-top:0.25rem}.mt-1\.5{margin-top:0.375rem}.mt-2{margin-top:0.5rem}.mt-3{margin-top:0.75rem}.mt-4{margin-top:1rem}.mt-5{margin-top:1.25rem}.mt-0\.5{margin-top:0.125rem}.mt-2\.5{margin-top:0.625rem}.mb-2\.5{margin-bottom:0.625rem}.mb-3\.5{margin-bottom:0.875rem}.mt-3\.5{margin-top:0.875rem}.mb-1\.5{margin-bottom:0.375rem}.block{display:block}.flex{display:flex}.grid{display:grid}.hidden{display:none}.h-px{height:1px}.w-9{width:2.25rem}.w-full{width:100%}.min-w-0{min-width:0px}.flex-1{flex:1 1 0%}.flex-none{flex:none}.grid-cols-3{grid-template-columns:repeat(3, minmax(0, 1fr))}.grid-cols-2{grid-template-columns:repeat(2, minmax(0, 1fr))}.flex-wrap{flex-wrap:wrap}.items-start{align-items:flex-start}.items-center{align-items:center}.justify-between{justify-content:space-between}.gap-2{gap:0.5rem}.gap-2\.5{gap:0.625rem}.gap-3{gap:0.75rem}.gap-1\.5{gap:0.375rem}.gap-4{gap:1rem}.space-y-2 > :not([hidden]) ~ :not([hidden]){--tw-space-y-reverse:0;margin-top:calc(0.5rem * calc(1 - var(--tw-space-y-reverse)));margin-bottom:calc(0.5rem * var(--tw-space-y-reverse))}.space-y-3 > :not([hidden]) ~ :not([hidden]){--tw-space-y-reverse:0;margin-top:calc(0.75rem * calc(1 - var(--tw-space-y-reverse)));margin-bottom:calc(0.75rem * var(--tw-space-y-reverse))}.space-y-4 > :not([hidden]) ~ :not([hidden]){--tw-space-y-reverse:0;margin-top:calc(1rem * calc(1 - var(--tw-space-y-reverse)));margin-bottom:calc(1rem * var(--tw-space-y-reverse))}.space-y-0 > :not([hidden]) ~ :not([hidden]){--tw-space-y-reverse:0;margin-top:calc(0px * calc(1 - var(--tw-space-y-reverse)));margin-bottom:calc(0px * var(--tw-space-y-reverse))}.space-y-1\.5 > :not([hidden]) ~ :not([hidden]){--tw-space-y-reverse:0;margin-top:calc(0.375rem * calc(1 - var(--tw-space-y-reverse)));margin-bottom:calc(0.375rem * var(--tw-space-y-reverse))}.overflow-x-auto{overflow-x:auto}.truncate{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.break-all{word-break:break-all}.rounded-lg{border-radius:0.5rem}.border{border-width:1px}.border-t{border-top-width:1px}.border-\[rgba\(57\2c 255\2c 140\2c \.28\)\]{border-color:rgba(57,255,140,.28)}.border-\[var\(--line\)\]{border-color:var(--line)}.bg-\[\#0b0f16\]{--tw-bg-opacity:1;background-color:rgb(11 15 22 / var(--tw-bg-opacity, 1))}.bg-\[rgba\(57\2c 255\2c 140\2c \.07\)\]{background-color:rgba(57,255,140,.07)}.bg-\[var\(--line\)\]{background-color:var(--line)}.p-2\.5{padding:0.625rem}.p-3{padding:0.75rem}.p-4{padding:1rem}.p-6{padding:1.5rem}.px-4{padding-left:1rem;padding-right:1rem}.py-2{padding-top:0.5rem;padding-bottom:0.5rem}.px-3\.5{padding-left:0.875rem;padding-right:0.875rem}.py-2\.5{padding-top:0.625rem;padding-bottom:0.625rem}.py-4{padding-top:1rem;padding-bottom:1rem}.px-1{padding-left:0.25rem;padding-right:0.25rem}.px-2{padding-left:0.5rem;padding-right:0.5rem}.px-3{padding-left:0.75rem;padding-right:0.75rem}.pb-1{padding-bottom:0.25rem}.pb-3{padding-bottom:0.75rem}.pt-4{padding-top:1rem}.pt-3{padding-top:0.75rem}.pl-5{padding-left:1.25rem}.pr-4{padding-right:1rem}.text-left{text-align:left}.text-center{text-align:center}.text-right{text-align:right}.font-mono{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace}.text-\[10\.5px\]{font-size:10.5px}.text-\[10px\]{font-size:10px}.text-\[11\.5px\]{font-size:11.5px}.text-\[12px\]{font-size:12px}.text-\[13px\]{font-size:13px}.text-\[21px\]{font-size:21px}.text-\[27px\]{font-size:27px}.text-\[30px\]{font-size:30px}.text-\[11px\]{font-size:11px}.text-\[15px\]{font-size:15px}.text-\[16px\]{font-size:16px}.text-\[17px\]{font-size:17px}.text-\[25px\]{font-size:25px}.text-\[9px\]{font-size:9px}.text-\[12\.5px\]{font-size:12.5px}.text-\[13\.5px\]{font-size:13.5px}.text-\[20px\]{font-size:20px}.text-\[9\.5px\]{font-size:9.5px}.text-\[26px\]{font-size:26px}.font-bold{font-weight:700}.font-semibold{font-weight:600}.font-extrabold{font-weight:800}.normal-case{text-transform:none}.leading-none{line-height:1}.leading-relaxed{line-height:1.625}.leading-tight{line-height:1.25}.tracking-normal{letter-spacing:0em}.tracking-wide{letter-spacing:0.025em}.tracking-widest{letter-spacing:0.1em}.text-\[\#232c3b\]{--tw-text-opacity:1;color:rgb(35 44 59 / var(--tw-text-opacity, 1))}.text-\[var\(--cyan\)\]{color:var(--cyan)}.text-\[var\(--dim\)\]{color:var(--dim)}.text-\[var\(--gold\)\]{color:var(--gold)}.text-\[var\(--green\)\]{color:var(--green)}.text-\[var\(--off\)\]{color:var(--off)}.text-\[var\(--red\)\]{color:var(--red)}.text-\[\#2b3546\]{--tw-text-opacity:1;color:rgb(43 53 70 / var(--tw-text-opacity, 1))}.text-\[\#39424f\]{--tw-text-opacity:1;color:rgb(57 66 79 / var(--tw-text-opacity, 1))}.text-\[\#5d6879\]{--tw-text-opacity:1;color:rgb(93 104 121 / var(--tw-text-opacity, 1))}.underline{-webkit-text-decoration-line:underline;text-decoration-line:underline}.decoration-dotted{-webkit-text-decoration-style:dotted;text-decoration-style:dotted}</style></head>
+<!-- Compiled Tailwind (see tailwind.config.js / `npm run build:css`).
+     Kept last in <head> so utilities still win ties against the app
+     stylesheet above, exactly as the CDN build did. -->
+<!-- tailwind:start -->
+<style>*,:after,:before{--tw-border-spacing-x:0;--tw-border-spacing-y:0;--tw-translate-x:0;--tw-translate-y:0;--tw-rotate:0;--tw-skew-x:0;--tw-skew-y:0;--tw-scale-x:1;--tw-scale-y:1;--tw-pan-x: ;--tw-pan-y: ;--tw-pinch-zoom: ;--tw-scroll-snap-strictness:proximity;--tw-gradient-from-position: ;--tw-gradient-via-position: ;--tw-gradient-to-position: ;--tw-ordinal: ;--tw-slashed-zero: ;--tw-numeric-figure: ;--tw-numeric-spacing: ;--tw-numeric-fraction: ;--tw-ring-inset: ;--tw-ring-offset-width:0px;--tw-ring-offset-color:#fff;--tw-ring-color:rgba(59,130,246,.5);--tw-ring-offset-shadow:0 0 #0000;--tw-ring-shadow:0 0 #0000;--tw-shadow:0 0 #0000;--tw-shadow-colored:0 0 #0000;--tw-blur: ;--tw-brightness: ;--tw-contrast: ;--tw-grayscale: ;--tw-hue-rotate: ;--tw-invert: ;--tw-saturate: ;--tw-sepia: ;--tw-drop-shadow: ;--tw-backdrop-blur: ;--tw-backdrop-brightness: ;--tw-backdrop-contrast: ;--tw-backdrop-grayscale: ;--tw-backdrop-hue-rotate: ;--tw-backdrop-invert: ;--tw-backdrop-opacity: ;--tw-backdrop-saturate: ;--tw-backdrop-sepia: ;--tw-contain-size: ;--tw-contain-layout: ;--tw-contain-paint: ;--tw-contain-style: }::backdrop{--tw-border-spacing-x:0;--tw-border-spacing-y:0;--tw-translate-x:0;--tw-translate-y:0;--tw-rotate:0;--tw-skew-x:0;--tw-skew-y:0;--tw-scale-x:1;--tw-scale-y:1;--tw-pan-x: ;--tw-pan-y: ;--tw-pinch-zoom: ;--tw-scroll-snap-strictness:proximity;--tw-gradient-from-position: ;--tw-gradient-via-position: ;--tw-gradient-to-position: ;--tw-ordinal: ;--tw-slashed-zero: ;--tw-numeric-figure: ;--tw-numeric-spacing: ;--tw-numeric-fraction: ;--tw-ring-inset: ;--tw-ring-offset-width:0px;--tw-ring-offset-color:#fff;--tw-ring-color:rgba(59,130,246,.5);--tw-ring-offset-shadow:0 0 #0000;--tw-ring-shadow:0 0 #0000;--tw-shadow:0 0 #0000;--tw-shadow-colored:0 0 #0000;--tw-blur: ;--tw-brightness: ;--tw-contrast: ;--tw-grayscale: ;--tw-hue-rotate: ;--tw-invert: ;--tw-saturate: ;--tw-sepia: ;--tw-drop-shadow: ;--tw-backdrop-blur: ;--tw-backdrop-brightness: ;--tw-backdrop-contrast: ;--tw-backdrop-grayscale: ;--tw-backdrop-hue-rotate: ;--tw-backdrop-invert: ;--tw-backdrop-opacity: ;--tw-backdrop-saturate: ;--tw-backdrop-sepia: ;--tw-contain-size: ;--tw-contain-layout: ;--tw-contain-paint: ;--tw-contain-style: }/*! tailwindcss v3.4.17 | MIT License | https://tailwindcss.com*/*,:after,:before{box-sizing:border-box;border:0 solid #e5e7eb}:after,:before{--tw-content:""}:host,html{line-height:1.5;-webkit-text-size-adjust:100%;-moz-tab-size:4;-o-tab-size:4;tab-size:4;font-family:ui-sans-serif,system-ui,sans-serif,Apple Color Emoji,Segoe UI Emoji,Segoe UI Symbol,Noto Color Emoji;font-feature-settings:normal;font-variation-settings:normal;-webkit-tap-highlight-color:transparent}body{margin:0;line-height:inherit}hr{height:0;color:inherit;border-top-width:1px}abbr:where([title]){-webkit-text-decoration:underline dotted;text-decoration:underline dotted}h1,h2,h3,h4,h5,h6{font-size:inherit;font-weight:inherit}a{color:inherit;text-decoration:inherit}b,strong{font-weight:bolder}code,kbd,pre,samp{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,Liberation Mono,Courier New,monospace;font-feature-settings:normal;font-variation-settings:normal;font-size:1em}small{font-size:80%}sub,sup{font-size:75%;line-height:0;position:relative;vertical-align:baseline}sub{bottom:-.25em}sup{top:-.5em}table{text-indent:0;border-color:inherit;border-collapse:collapse}button,input,optgroup,select,textarea{font-family:inherit;font-feature-settings:inherit;font-variation-settings:inherit;font-size:100%;font-weight:inherit;line-height:inherit;letter-spacing:inherit;color:inherit;margin:0;padding:0}button,select{text-transform:none}button,input:where([type=button]),input:where([type=reset]),input:where([type=submit]){-webkit-appearance:button;background-color:transparent;background-image:none}:-moz-focusring{outline:auto}:-moz-ui-invalid{box-shadow:none}progress{vertical-align:baseline}::-webkit-inner-spin-button,::-webkit-outer-spin-button{height:auto}[type=search]{-webkit-appearance:textfield;outline-offset:-2px}::-webkit-search-decoration{-webkit-appearance:none}::-webkit-file-upload-button{-webkit-appearance:button;font:inherit}summary{display:list-item}blockquote,dd,dl,figure,h1,h2,h3,h4,h5,h6,hr,p,pre{margin:0}fieldset{margin:0}fieldset,legend{padding:0}menu,ol,ul{list-style:none;margin:0;padding:0}dialog{padding:0}textarea{resize:vertical}input::-moz-placeholder,textarea::-moz-placeholder{opacity:1;color:#9ca3af}input::placeholder,textarea::placeholder{opacity:1;color:#9ca3af}[role=button],button{cursor:pointer}:disabled{cursor:default}audio,canvas,embed,iframe,img,object,svg,video{display:block;vertical-align:middle}img,video{max-width:100%;height:auto}[hidden]:where(:not([hidden=until-found])){display:none}.container{width:100%}@media (min-width:640px){.container{max-width:640px}}@media (min-width:768px){.container{max-width:768px}}@media (min-width:1024px){.container{max-width:1024px}}@media (min-width:1280px){.container{max-width:1280px}}@media (min-width:1536px){.container{max-width:1536px}}.pointer-events-none{pointer-events:none}.visible{visibility:visible}.collapse{visibility:collapse}.static{position:static}.fixed{position:fixed}.absolute{position:absolute}.relative{position:relative}.sticky{position:sticky}.inset-0{inset:0}.-bottom-6{bottom:-1.5rem}.bottom-0{bottom:0}.bottom-6{bottom:1.5rem}.bottom-\[16px\]{bottom:16px}.bottom-\[50px\]{bottom:50px}.left-0{left:0}.left-1{left:.25rem}.left-1\/2{left:50%}.left-\[56px\]{left:56px}.left-\[60px\]{left:60px}.right-0{right:0}.right-6{right:1.5rem}.right-\[56px\]{right:56px}.right-\[60px\]{right:60px}.top-0{top:0}.top-5{top:1.25rem}.top-\[210px\]{top:210px}.top-\[260px\]{top:260px}.top-\[270px\]{top:270px}.top-\[300px\]{top:300px}.top-\[32px\]{top:32px}.top-\[380px\]{top:380px}.top-\[50px\]{top:50px}.top-\[600px\]{top:600px}.top-\[60px\]{top:60px}.top-\[64px\]{top:64px}.top-\[740px\]{top:740px}.top-\[830px\]{top:830px}.top-\[90px\]{top:90px}.z-50{z-index:50}.mx-auto{margin-left:auto;margin-right:auto}.my-2{margin-top:.5rem;margin-bottom:.5rem}.my-2\.5{margin-top:.625rem;margin-bottom:.625rem}.my-6{margin-top:1.5rem;margin-bottom:1.5rem}.mb-1{margin-bottom:.25rem}.mb-1\.5{margin-bottom:.375rem}.mb-2{margin-bottom:.5rem}.mb-2\.5{margin-bottom:.625rem}.mb-3{margin-bottom:.75rem}.mb-3\.5{margin-bottom:.875rem}.mb-4{margin-bottom:1rem}.mb-5{margin-bottom:1.25rem}.ml-auto{margin-left:auto}.mt-0{margin-top:0}.mt-0\.5{margin-top:.125rem}.mt-1{margin-top:.25rem}.mt-1\.5{margin-top:.375rem}.mt-2{margin-top:.5rem}.mt-2\.5{margin-top:.625rem}.mt-3{margin-top:.75rem}.mt-3\.5{margin-top:.875rem}.mt-4{margin-top:1rem}.mt-5{margin-top:1.25rem}.mt-6{margin-top:1.5rem}.mt-8{margin-top:2rem}.block{display:block}.inline-block{display:inline-block}.inline{display:inline}.flex{display:flex}.\!table{display:table!important}.table{display:table}.grid{display:grid}.contents{display:contents}.hidden{display:none}.h-1{height:.25rem}.h-1\.5{height:.375rem}.h-4{height:1rem}.h-7{height:1.75rem}.h-9{height:2.25rem}.h-\[10px\]{height:10px}.h-\[240px\]{height:240px}.h-\[380px\]{height:380px}.h-\[6px\]{height:6px}.h-fit{height:-moz-fit-content;height:fit-content}.h-full{height:100%}.h-px{height:1px}.max-h-56{max-height:14rem}.max-h-\[420px\]{max-height:420px}.max-h-\[calc\(100vh-var\(--shell-header\)\)\]{max-height:calc(100vh - var(--shell-header))}.min-h-\[120px\]{min-height:120px}.min-h-\[160px\]{min-height:160px}.min-h-\[calc\(100vh-var\(--shell-header\)\)\]{min-height:calc(100vh - var(--shell-header))}.min-h-screen{min-height:100vh}.w-1{width:.25rem}.w-1\.5{width:.375rem}.w-1\/2{width:50%}.w-10{width:2.5rem}.w-14{width:3.5rem}.w-16{width:4rem}.w-4{width:1rem}.w-7{width:1.75rem}.w-9{width:2.25rem}.w-\[10px\]{width:10px}.w-\[240px\]{width:240px}.w-\[380px\]{width:380px}.w-full{width:100%}.min-w-0{min-width:0}.max-w-6xl{max-width:72rem}.max-w-\[1400px\]{max-width:1400px}.max-w-\[1600px\]{max-width:1600px}.max-w-\[420px\]{max-width:420px}.flex-1{flex:1 1 0%}.flex-none{flex:none}.shrink-0{flex-shrink:0}.origin-top-left{transform-origin:top left}.-translate-x-1{--tw-translate-x:-0.25rem}.-translate-x-1,.-translate-x-1\/2{transform:translate(var(--tw-translate-x),var(--tw-translate-y)) rotate(var(--tw-rotate)) skewX(var(--tw-skew-x)) skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y))}.-translate-x-1\/2{--tw-translate-x:-50%}.translate-y-2{--tw-translate-y:0.5rem}.transform,.translate-y-2{transform:translate(var(--tw-translate-x),var(--tw-translate-y)) rotate(var(--tw-rotate)) skewX(var(--tw-skew-x)) skewY(var(--tw-skew-y)) scaleX(var(--tw-scale-x)) scaleY(var(--tw-scale-y))}.cursor-pointer{cursor:pointer}.resize{resize:both}.grid-cols-1{grid-template-columns:repeat(1,minmax(0,1fr))}.grid-cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}.grid-cols-3{grid-template-columns:repeat(3,minmax(0,1fr))}.grid-cols-4{grid-template-columns:repeat(4,minmax(0,1fr))}.flex-col{flex-direction:column}.flex-wrap{flex-wrap:wrap}.items-start{align-items:flex-start}.items-end{align-items:flex-end}.items-center{align-items:center}.justify-center{justify-content:center}.justify-between{justify-content:space-between}.gap-1{gap:.25rem}.gap-1\.5{gap:.375rem}.gap-2{gap:.5rem}.gap-2\.5{gap:.625rem}.gap-3{gap:.75rem}.gap-4{gap:1rem}.gap-6{gap:1.5rem}.space-y-1>:not([hidden])~:not([hidden]){--tw-space-y-reverse:0;margin-top:calc(.25rem*(1 - var(--tw-space-y-reverse)));margin-bottom:calc(.25rem*var(--tw-space-y-reverse))}.space-y-1\.5>:not([hidden])~:not([hidden]){--tw-space-y-reverse:0;margin-top:calc(.375rem*(1 - var(--tw-space-y-reverse)));margin-bottom:calc(.375rem*var(--tw-space-y-reverse))}.space-y-2>:not([hidden])~:not([hidden]){--tw-space-y-reverse:0;margin-top:calc(.5rem*(1 - var(--tw-space-y-reverse)));margin-bottom:calc(.5rem*var(--tw-space-y-reverse))}.space-y-2\.5>:not([hidden])~:not([hidden]){--tw-space-y-reverse:0;margin-top:calc(.625rem*(1 - var(--tw-space-y-reverse)));margin-bottom:calc(.625rem*var(--tw-space-y-reverse))}.space-y-3>:not([hidden])~:not([hidden]){--tw-space-y-reverse:0;margin-top:calc(.75rem*(1 - var(--tw-space-y-reverse)));margin-bottom:calc(.75rem*var(--tw-space-y-reverse))}.space-y-3\.5>:not([hidden])~:not([hidden]){--tw-space-y-reverse:0;margin-top:calc(.875rem*(1 - var(--tw-space-y-reverse)));margin-bottom:calc(.875rem*var(--tw-space-y-reverse))}.space-y-4>:not([hidden])~:not([hidden]){--tw-space-y-reverse:0;margin-top:calc(1rem*(1 - var(--tw-space-y-reverse)));margin-bottom:calc(1rem*var(--tw-space-y-reverse))}.space-y-5>:not([hidden])~:not([hidden]){--tw-space-y-reverse:0;margin-top:calc(1.25rem*(1 - var(--tw-space-y-reverse)));margin-bottom:calc(1.25rem*var(--tw-space-y-reverse))}.space-y-6>:not([hidden])~:not([hidden]){--tw-space-y-reverse:0;margin-top:calc(1.5rem*(1 - var(--tw-space-y-reverse)));margin-bottom:calc(1.5rem*var(--tw-space-y-reverse))}.overflow-auto{overflow:auto}.overflow-hidden{overflow:hidden}.overflow-y-auto{overflow-y:auto}.truncate{overflow:hidden;text-overflow:ellipsis}.truncate,.whitespace-nowrap{white-space:nowrap}.whitespace-pre-wrap{white-space:pre-wrap}.break-all{word-break:break-all}.rounded{border-radius:.25rem}.rounded-2xl{border-radius:1rem}.rounded-full{border-radius:9999px}.rounded-lg{border-radius:.5rem}.rounded-md{border-radius:.375rem}.rounded-xl{border-radius:.75rem}.rounded-t-md{border-top-left-radius:.375rem;border-top-right-radius:.375rem}.border{border-width:1px}.border-b{border-bottom-width:1px}.border-t{border-top-width:1px}.border-\[var\(--line\)\]{border-color:var(--line)}.border-\[var\(--rd-line\)\]{border-color:var(--rd-line)}.border-white{--tw-border-opacity:1;border-color:rgb(255 255 255/var(--tw-border-opacity,1))}.border-white\/10{border-color:hsla(0,0%,100%,.1)}.bg-\[\#05070a\]{--tw-bg-opacity:1;background-color:rgb(5 7 10/var(--tw-bg-opacity,1))}.bg-\[\#0b0e14\]{--tw-bg-opacity:1;background-color:rgb(11 14 20/var(--tw-bg-opacity,1))}.bg-\[\#0b0e14\]\/95{background-color:rgba(11,14,20,.95)}.bg-\[\#0b0f16\]{--tw-bg-opacity:1;background-color:rgb(11 15 22/var(--tw-bg-opacity,1))}.bg-\[\#151b26\]{--tw-bg-opacity:1;background-color:rgb(21 27 38/var(--tw-bg-opacity,1))}.bg-\[\#1a1608\]{--tw-bg-opacity:1;background-color:rgb(26 22 8/var(--tw-bg-opacity,1))}.bg-\[\#1a2230\]{--tw-bg-opacity:1;background-color:rgb(26 34 48/var(--tw-bg-opacity,1))}.bg-\[var\(--gold\)\]{background-color:var(--gold)}.bg-\[var\(--green\)\]{background-color:var(--green)}.bg-\[var\(--line\)\]{background-color:var(--line)}.bg-\[var\(--pink\)\]{background-color:var(--pink)}.bg-\[var\(--rd-green\)\]{background-color:var(--rd-green)}.bg-white{--tw-bg-opacity:1;background-color:rgb(255 255 255/var(--tw-bg-opacity,1))}.object-cover{-o-object-fit:cover;object-fit:cover}.p-1{padding:.25rem}.p-10{padding:2.5rem}.p-2{padding:.5rem}.p-3{padding:.75rem}.p-4{padding:1rem}.p-5{padding:1.25rem}.p-6{padding:1.5rem}.p-7{padding:1.75rem}.p-8{padding:2rem}.px-1{padding-left:.25rem;padding-right:.25rem}.px-10{padding-left:2.5rem;padding-right:2.5rem}.px-12{padding-left:3rem;padding-right:3rem}.px-2{padding-left:.5rem;padding-right:.5rem}.px-2\.5{padding-left:.625rem;padding-right:.625rem}.px-3{padding-left:.75rem;padding-right:.75rem}.px-3\.5{padding-left:.875rem;padding-right:.875rem}.px-4{padding-left:1rem;padding-right:1rem}.px-5{padding-left:1.25rem;padding-right:1.25rem}.px-6{padding-left:1.5rem;padding-right:1.5rem}.px-8{padding-left:2rem;padding-right:2rem}.py-1{padding-top:.25rem;padding-bottom:.25rem}.py-1\.5{padding-top:.375rem;padding-bottom:.375rem}.py-2{padding-top:.5rem;padding-bottom:.5rem}.py-2\.5{padding-top:.625rem;padding-bottom:.625rem}.py-3{padding-top:.75rem;padding-bottom:.75rem}.py-3\.5{padding-top:.875rem;padding-bottom:.875rem}.py-4{padding-top:1rem;padding-bottom:1rem}.py-5{padding-top:1.25rem;padding-bottom:1.25rem}.py-6{padding-top:1.5rem;padding-bottom:1.5rem}.pb-1{padding-bottom:.25rem}.pb-16{padding-bottom:4rem}.pb-3{padding-bottom:.75rem}.pb-4{padding-bottom:1rem}.pb-8{padding-bottom:2rem}.pl-4{padding-left:1rem}.pl-5{padding-left:1.25rem}.pr-1{padding-right:.25rem}.pr-3{padding-right:.75rem}.pr-3\.5{padding-right:.875rem}.pr-4{padding-right:1rem}.pt-1{padding-top:.25rem}.pt-2{padding-top:.5rem}.pt-3{padding-top:.75rem}.pt-4{padding-top:1rem}.pt-5{padding-top:1.25rem}.text-left{text-align:left}.text-center{text-align:center}.text-right{text-align:right}.font-mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,Liberation Mono,Courier New,monospace}.text-\[10\.5px\]{font-size:10.5px}.text-\[10px\]{font-size:10px}.text-\[11\.5px\]{font-size:11.5px}.text-\[110px\]{font-size:110px}.text-\[11px\]{font-size:11px}.text-\[12\.5px\]{font-size:12.5px}.text-\[120px\]{font-size:120px}.text-\[12px\]{font-size:12px}.text-\[13\.5px\]{font-size:13.5px}.text-\[13px\]{font-size:13px}.text-\[140px\]{font-size:140px}.text-\[15px\]{font-size:15px}.text-\[16px\]{font-size:16px}.text-\[17px\]{font-size:17px}.text-\[18px\]{font-size:18px}.text-\[20px\]{font-size:20px}.text-\[21px\]{font-size:21px}.text-\[220px\]{font-size:220px}.text-\[22px\]{font-size:22px}.text-\[23px\]{font-size:23px}.text-\[24px\]{font-size:24px}.text-\[25px\]{font-size:25px}.text-\[26px\]{font-size:26px}.text-\[27px\]{font-size:27px}.text-\[28px\]{font-size:28px}.text-\[30px\]{font-size:30px}.text-\[36px\]{font-size:36px}.text-\[38px\]{font-size:38px}.text-\[40px\]{font-size:40px}.text-\[42px\]{font-size:42px}.text-\[48px\]{font-size:48px}.text-\[52px\]{font-size:52px}.text-\[58px\]{font-size:58px}.text-\[62px\]{font-size:62px}.text-\[64px\]{font-size:64px}.text-\[72px\]{font-size:72px}.text-\[9\.5px\]{font-size:9.5px}.text-\[90px\]{font-size:90px}.text-\[95px\]{font-size:95px}.text-\[9px\]{font-size:9px}.text-lg{font-size:1.125rem;line-height:1.75rem}.text-sm{font-size:.875rem;line-height:1.25rem}.text-xs{font-size:.75rem;line-height:1rem}.font-bold{font-weight:700}.font-extrabold{font-weight:800}.font-semibold{font-weight:600}.uppercase{text-transform:uppercase}.normal-case{text-transform:none}.ordinal{--tw-ordinal:ordinal;font-variant-numeric:var(--tw-ordinal) var(--tw-slashed-zero) var(--tw-numeric-figure) var(--tw-numeric-spacing) var(--tw-numeric-fraction)}.leading-\[1\.02\]{line-height:1.02}.leading-none{line-height:1}.leading-relaxed{line-height:1.625}.leading-snug{line-height:1.375}.leading-tight{line-height:1.25}.tracking-\[\.14em\]{letter-spacing:.14em}.tracking-\[\.15em\]{letter-spacing:.15em}.tracking-\[0\.35em\]{letter-spacing:.35em}.tracking-\[0\.3em\]{letter-spacing:.3em}.tracking-normal{letter-spacing:0}.tracking-wide{letter-spacing:.025em}.tracking-widest{letter-spacing:.1em}.text-\[\#04150a\]{--tw-text-opacity:1;color:rgb(4 21 10/var(--tw-text-opacity,1))}.text-\[\#0a0c10\]{--tw-text-opacity:1;color:rgb(10 12 16/var(--tw-text-opacity,1))}.text-\[\#1a0209\]{--tw-text-opacity:1;color:rgb(26 2 9/var(--tw-text-opacity,1))}.text-\[\#232c3b\]{--tw-text-opacity:1;color:rgb(35 44 59/var(--tw-text-opacity,1))}.text-\[\#2b3546\]{--tw-text-opacity:1;color:rgb(43 53 70/var(--tw-text-opacity,1))}.text-\[\#39424f\]{--tw-text-opacity:1;color:rgb(57 66 79/var(--tw-text-opacity,1))}.text-\[\#4a5464\]{--tw-text-opacity:1;color:rgb(74 84 100/var(--tw-text-opacity,1))}.text-\[\#5d6879\]{--tw-text-opacity:1;color:rgb(93 104 121/var(--tw-text-opacity,1))}.text-\[var\(--bronze\)\]{color:var(--bronze)}.text-\[var\(--cyan\)\]{color:var(--cyan)}.text-\[var\(--dim\)\]{color:var(--dim)}.text-\[var\(--gold\)\]{color:var(--gold)}.text-\[var\(--green\)\]{color:var(--green)}.text-\[var\(--off\)\]{color:var(--off)}.text-\[var\(--pink\)\]{color:var(--pink)}.text-\[var\(--rd-amber\)\]{color:var(--rd-amber)}.text-\[var\(--rd-green\)\]{color:var(--rd-green)}.text-\[var\(--rd-muted\)\]{color:var(--rd-muted)}.text-\[var\(--rd-text\)\]{color:var(--rd-text)}.text-\[var\(--red\)\]{color:var(--red)}.text-gray-200{--tw-text-opacity:1;color:rgb(229 231 235/var(--tw-text-opacity,1))}.text-gray-300{--tw-text-opacity:1;color:rgb(209 213 219/var(--tw-text-opacity,1))}.text-gray-400{--tw-text-opacity:1;color:rgb(156 163 175/var(--tw-text-opacity,1))}.text-gray-500{--tw-text-opacity:1;color:rgb(107 114 128/var(--tw-text-opacity,1))}.text-gray-600{--tw-text-opacity:1;color:rgb(75 85 99/var(--tw-text-opacity,1))}.text-white{--tw-text-opacity:1;color:rgb(255 255 255/var(--tw-text-opacity,1))}.underline{text-decoration-line:underline}.underline-offset-2{text-underline-offset:2px}.accent-\[var\(--green\)\]{accent-color:var(--green)}.opacity-0{opacity:0}.opacity-25{opacity:.25}.shadow{--tw-shadow:0 1px 3px 0 rgba(0,0,0,.1),0 1px 2px -1px rgba(0,0,0,.1);--tw-shadow-colored:0 1px 3px 0 var(--tw-shadow-color),0 1px 2px -1px var(--tw-shadow-color);box-shadow:var(--tw-ring-offset-shadow,0 0 #0000),var(--tw-ring-shadow,0 0 #0000),var(--tw-shadow)}.outline{outline-style:solid}.ring{--tw-ring-offset-shadow:var(--tw-ring-inset) 0 0 0 var(--tw-ring-offset-width) var(--tw-ring-offset-color);--tw-ring-shadow:var(--tw-ring-inset) 0 0 0 calc(3px + var(--tw-ring-offset-width)) var(--tw-ring-color);box-shadow:var(--tw-ring-offset-shadow),var(--tw-ring-shadow),var(--tw-shadow,0 0 #0000)}.blur{--tw-blur:blur(8px)}.blur,.filter{filter:var(--tw-blur) var(--tw-brightness) var(--tw-contrast) var(--tw-grayscale) var(--tw-hue-rotate) var(--tw-invert) var(--tw-saturate) var(--tw-sepia) var(--tw-drop-shadow)}.backdrop-blur{--tw-backdrop-blur:blur(8px);-webkit-backdrop-filter:var(--tw-backdrop-blur) var(--tw-backdrop-brightness) var(--tw-backdrop-contrast) var(--tw-backdrop-grayscale) var(--tw-backdrop-hue-rotate) var(--tw-backdrop-invert) var(--tw-backdrop-opacity) var(--tw-backdrop-saturate) var(--tw-backdrop-sepia);backdrop-filter:var(--tw-backdrop-blur) var(--tw-backdrop-brightness) var(--tw-backdrop-contrast) var(--tw-backdrop-grayscale) var(--tw-backdrop-hue-rotate) var(--tw-backdrop-invert) var(--tw-backdrop-opacity) var(--tw-backdrop-saturate) var(--tw-backdrop-sepia)}.transition{transition-property:color,background-color,border-color,text-decoration-color,fill,stroke,opacity,box-shadow,transform,filter,-webkit-backdrop-filter;transition-property:color,background-color,border-color,text-decoration-color,fill,stroke,opacity,box-shadow,transform,filter,backdrop-filter;transition-property:color,background-color,border-color,text-decoration-color,fill,stroke,opacity,box-shadow,transform,filter,backdrop-filter,-webkit-backdrop-filter;transition-timing-function:cubic-bezier(.4,0,.2,1);transition-duration:.15s}.ease-in-out{transition-timing-function:cubic-bezier(.4,0,.2,1)}.hover\:text-\[var\(--pink\)\]:hover{color:var(--pink)}@media (min-width:640px){.sm\:flex{display:flex}.sm\:px-6{padding-left:1.5rem;padding-right:1.5rem}}@media (min-width:1024px){.lg\:grid-cols-\[380px_1fr\]{grid-template-columns:380px 1fr}}</style>
+<!-- tailwind:end --></head>
 <body>
 
 <!-- ============================================================
@@ -1768,7 +1937,7 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
               <label class="label" for="leagueIdInput" style="margin-bottom:0">League ID</label>
               <button type="button" class="onboard-link" data-onboard-step="league">Where do I find this?</button>
             </div>
-            <input id="leagueIdInput" class="field mt-1.5" inputmode="numeric" autocomplete="off" placeholder="e.g. 57155288">
+            <input id="leagueIdInput" class="field mt-1.5" inputmode="numeric" autocomplete="off" placeholder="e.g. your-league-id">
           </div>
           <span id="seasonYear" hidden aria-hidden="true"></span>
           <span id="weekNum" hidden aria-hidden="true"></span>
@@ -1891,9 +2060,11 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
 ============================================================ -->
 <div id="profilePicker" data-open="false" role="dialog" aria-modal="true" aria-labelledby="profileTitle">
   <div class="profile-shell no-bar">
-    <div class="kicker text-[var(--cyan)]">Fantasy Sports Network</div>
-    <h2 class="profile-title" id="profileTitle">WHO'S WATCHING?</h2>
-    <p class="profile-sub">Pick your team to pin its matchup across the command center. Any authenticated league member can sync shared data.</p>
+    <div class="profile-head">
+      <div class="kicker text-[var(--cyan)]">Fantasy Sports Network</div>
+      <h2 class="profile-title" id="profileTitle">WHO'S WATCHING?</h2>
+      <p class="profile-sub">Pick your team to pin its matchup across the command center. Any authenticated league member can sync shared data.</p>
+    </div>
     <div class="profile-grid" id="profileGrid"></div>
     <button class="profile-guest" id="profileGuest">Continue as Guest</button>
   </div>
@@ -1951,7 +2122,7 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
       </div>
       <div class="onboard-card">
         <p>Your League ID is a number ESPN gives your league. There are two easy ways to find it:</p>
-        <p><strong style="color:var(--off)">On a computer (web browser):</strong> Log in to your ESPN Fantasy league and open your league page. Look at your browser's address bar at the top — you'll see a web address containing <span class="onboard-code">leagueId=57155288</span>. The number right after <span class="onboard-code">leagueId=</span> is your League ID.</p>
+        <p><strong style="color:var(--off)">On a computer (web browser):</strong> Log in to your ESPN Fantasy league and open your league page. Look at your browser's address bar at the top — you'll see a web address containing <span class="onboard-code">leagueId=XXXXXXXX</span>. The number right after <span class="onboard-code">leagueId=</span> is your League ID.</p>
         <p><strong style="color:var(--off)">On the ESPN mobile app:</strong> Open your league, then tap <strong style="color:var(--off)">League</strong> → <strong style="color:var(--off)">League Info</strong> → <strong style="color:var(--off)">League ID</strong>. The number shown there is your League ID.</p>
         <p>Type just that number into the <strong style="color:var(--off)">League ID</strong> box on the Setup screen and tap <strong style="color:var(--off)">Fetch League Data</strong>.</p>
         <div class="onboard-note">If your league loads, you're done — it's a public league and you can skip Steps 2 and 3.</div>
@@ -2122,7 +2293,10 @@ window.LeagueData = (function(){
   const store = {
     espnData: null,        // one season's league object (mTeam/mMatchup views)
     leagueHistory: null,   // { managers, h2h, perManagerGameLog, records }
-    meta: { leagueId:'', season:'', week:'' },
+    /* provider belongs here, not in the UI layer's `ui` object: the cache
+       scope token below is read from four separate closures, none of which can
+       see `ui`. */
+    meta: { leagueId:'', season:'', week:'', provider:'espn' },
 
     /* ---- pub/sub ---- */
     subscribe(fn){ subs.push(fn); try{ fn(store); }catch(e){ console.error(e); } return fn; },
@@ -2134,10 +2308,22 @@ window.LeagueData = (function(){
     hasLive(){ return !!(store.espnData && store.espnData.teams && store.espnData.teams.length); },
     hasHistory(){ return !!(store.leagueHistory && Object.keys(store.leagueHistory.managers||{}).length); },
 
+    /* Attribute-safe HTML escape. The previous implementation used
+       `div.textContent = str; return div.innerHTML`, which escapes only
+       & < > — the HTML serializer does not escape quotes inside a text
+       node. Every `esc()` result that lands inside a quoted attribute
+       (src="…", data-label="…") or inside a JS string in an inline
+       handler was therefore breakable with a single " or '. League and
+       manager names are attacker-controlled by any league member, so
+       that was a stored-XSS path. Escape quotes and backtick too. */
     esc(str){
-      const div = document.createElement('div');
-      div.textContent = str ?? '';
-      return div.innerHTML;
+      return String(str ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+        .replace(/`/g, '&#96;');
     },
 
     /* ---- live season helpers ---- */
@@ -2153,6 +2339,7 @@ window.LeagueData = (function(){
         const name = ((t.location||'') + ' ' + (t.nickname||'')).trim() || t.name || ('Team ' + t.id);
         const ownerId = t.primaryOwner || (t.owners && t.owners[0]) || '';
         const rec = t.record && t.record.overall;
+        const num = (v)=> Number.isFinite(Number(v)) ? Number(v) : 0;
         return {
           id: t.id,
           name,
@@ -2160,6 +2347,15 @@ window.LeagueData = (function(){
           abbrev: t.abbrev || name.replace(/[^A-Za-z]/g,'').slice(0,3).toUpperCase() || 'TM',
           logo: t.logo || '',
           record: rec ? `${rec.wins}-${rec.losses}${rec.ties ? '-' + rec.ties : ''}` : '',
+          /* `record` above is a DISPLAY STRING, and a string cannot carry
+             points. Normalising to it alone threw away wins/losses/ties as
+             numbers and points-for/against entirely, so anything reading a
+             normalised team (the standings fallback, most visibly) had nothing
+             to show but zeros. Keep the structured overall record beside it. */
+          recordOverall: rec ? {
+            wins: num(rec.wins), losses: num(rec.losses), ties: num(rec.ties),
+            pointsFor: num(rec.pointsFor), pointsAgainst: num(rec.pointsAgainst),
+          } : null,
           owner: memberNames[ownerId] || '',
           /* The bracket cards label every side by seed, so it travels with the team. */
           playoffSeed: Number(t.playoffSeed || 0) || null,
@@ -2275,6 +2471,44 @@ window.LeagueData = (function(){
 
   return store;
 })();
+
+/* ============================================================
+   LEAGUE CACHE SCOPE
+   Every derived cache in the app — FSNIntel's memo map, the News Desk stream
+   and generator caches, SeasonAnalytics' model memo — prefixes its keys with
+   the active league's scope token so a payload computed for one league can
+   never be served for another, regardless of purge timing.
+
+   These two functions MUST be global. They used to live inside the
+   `window.NewsDesk` closure, where three of their four callers could not
+   reach them: FSNIntel's memo() and SeasonAnalytics' compute() both threw
+   `ReferenceError: leagueScopeToken is not defined` on every single call.
+   Because memo() built the scoped key OUTSIDE its own try/catch, the throw
+   escaped to the caller, so standingsThrough, powerRankings, getRecordAsOfWeek,
+   getStreakAsOfWeek, injuries, draft, faabReport and every Timeline generator
+   failed silently in the background. Defining them here, between the store and
+   the closures that consume it, is what makes them reachable from all of them.
+============================================================ */
+function selectedLeagueId(){
+  const el = document.getElementById('leagueIdInput');
+  return (el && el.value.trim()) || (LeagueData.meta && LeagueData.meta.leagueId) || 'league';
+}
+
+/* Canonical cache-namespace token for the league currently resident in the
+   stores: provider + league id. A key like 'standings:3' is identical across
+   two leagues in the same week, so if a switch ever failed to publish, League B
+   could read League A's standings straight out of the map. Two providers can
+   also reuse the same numeric id, so the provider is part of the token — read
+   from the store, because the UI layer's `ui.provider` is closure-local and
+   was never visible from here. */
+function leagueScopeToken(){
+  let provider = 'espn';
+  try{
+    const fromStore = LeagueData.meta && LeagueData.meta.provider;
+    if(fromStore) provider = String(fromStore);
+  }catch(e){}
+  return provider + ':' + selectedLeagueId();
+}
 
 /* ============================================================
    ESPN URL BUILDER
@@ -2396,6 +2630,34 @@ function validEspnPayload(rawData){
    only to the same-origin /api/espn and /api/league routes (never to public
    CORS proxies, which would leak them). ESPN reads a private league with the espn_s2 + SWID cookies
    the member's browser holds; the relay replays them so it can read as the member. */
+/* Every network read in this app went out as a bare fetch(), which has no
+   timeout: a hung connection (dead mobile zone, captive portal, a stalled
+   serverless cold start) never settles, so `finally` never runs. That is how
+   the cloud-sync button ends up disabled forever with "Uploading…" on screen
+   and no way to retry. fsnFetch bounds every request and rejects with a
+   recognisable error the callers already handle. */
+const FSN_DEFAULT_TIMEOUT_MS = 20000;
+function fsnFetch(url, options, timeoutMs){
+  const opts = Object.assign({}, options || {});
+  const limit = timeoutMs || FSN_DEFAULT_TIMEOUT_MS;
+  if(typeof AbortController === 'undefined') return fetch(url, opts);
+  const controller = new AbortController();
+  opts.signal = controller.signal;
+  const timer = setTimeout(()=> controller.abort(), limit);
+  return fetch(url, opts).then(
+    (res)=>{ clearTimeout(timer); return res; },
+    (err)=>{
+      clearTimeout(timer);
+      if(err && err.name === 'AbortError'){
+        const e = new Error('Request timed out after ' + Math.round(limit/1000) + 's.');
+        e.name = 'TimeoutError';
+        throw e;
+      }
+      throw err;
+    }
+  );
+}
+
 function getEspnCreds(){
   let s2 = '', swid = '';
   try{ s2 = (localStorage.getItem('fsn.espn.s2.v1') || '').trim(); }catch(e){}
@@ -2413,6 +2675,32 @@ function espnCredHeaders(){
   return headers;
 }
 
+/* Read a failed /api/espn response. The relay answers every failure with a
+   JSON body carrying `error` (a sentence written for the person looking at the
+   screen) and `reason` (a stable code the UI can branch on). Anything else —
+   an HTML block page, an upstream stack trace, a truncated blob — is deliberately
+   NOT passed through: it is logged, and the caller gets a null message so it
+   falls back to its own plain-language copy. */
+function readRelayError(text){
+  const out = { error: '', reason: '', season: null, priorSeasonAvailable: null };
+  let body;
+  try{ body = JSON.parse(String(text || '')); }
+  catch(_){
+    if(text) console.warn('[FSN] /api/espn returned a non-JSON error body; not surfacing it verbatim.', String(text).slice(0, 400));
+    return out;
+  }
+  if(!body || typeof body !== 'object') return out;
+  /* Only ever surface a short, plain string. A relay that somehow returns
+     markup or a giant blob does not get to render into the status line. */
+  const message = typeof body.error === 'string' ? body.error.replace(/\s+/g, ' ').trim() : '';
+  if(message && message.length <= 400 && !/[<>]/.test(message)) out.error = message;
+  else if(message) console.warn('[FSN] /api/espn error text rejected as unsafe to display.', message.slice(0, 400));
+  if(typeof body.reason === 'string') out.reason = body.reason;
+  if(Number.isFinite(Number(body.season))) out.season = Number(body.season);
+  if(Number.isFinite(Number(body.priorSeasonAvailable))) out.priorSeasonAvailable = Number(body.priorSeasonAvailable);
+  return out;
+}
+
 async function fetchLeagueDataViaProxies(espnUrl){
   let lastErr = null;
   const localPreview = isStaticLocalPreview();
@@ -2420,8 +2708,19 @@ async function fetchLeagueDataViaProxies(espnUrl){
   if(typeof window !== 'undefined' && window.location && window.location.protocol !== 'file:'){
     const apiUrl = serverlessEspnUrl(espnUrl);
     try{
-      const res = await fetch(apiUrl, { headers: espnCredHeaders() });
-      if(!res.ok) throw new Error('HTTP ' + res.status + ' from ' + apiUrl);
+      const res = await fsnFetch(apiUrl, { headers: espnCredHeaders() });
+      if(!res.ok){
+        // /api/espn explains WHY it failed (private league, a season ESPN has
+        // not created yet, an ESPN-side outage). Carry that sentence into the
+        // error so the status handler shows the real cause instead of only its
+        // own canned guess from the status code.
+        const relay = readRelayError(await res.clone().text().catch(()=> ''));
+        const err = new Error('HTTP ' + res.status + (relay.error ? ': ' + relay.error : ''));
+        err.relayReason = relay.reason;
+        err.relayMessage = relay.error;
+        err.httpStatus = res.status;
+        throw err;
+      }
       const rawData = parseEspnProxyPayload(await res.text());
       if(validEspnPayload(rawData)) return rawData;
       throw new Error('Unexpected payload shape from ' + apiUrl);
@@ -2439,7 +2738,7 @@ async function fetchLeagueDataViaProxies(espnUrl){
   for(const wrapWithProxy of CORS_PROXIES){
     const attemptUrl = wrapWithProxy(espnUrl);
     try{
-      const res = await fetch(attemptUrl);
+      const res = await fsnFetch(attemptUrl, null, 12000);
       if(!res.ok){ lastErr = new Error('HTTP ' + res.status + ' from ' + attemptUrl); continue; }
       const rawData = parseEspnProxyPayload(await res.text());
       if(validEspnPayload(rawData)) return rawData;
@@ -3012,6 +3311,48 @@ function getH2H(ownerIdA, ownerIdB){
   };
 }
 
+/* One place that decides how an all-time series READS, so no caller has to
+   re-derive the rule and get it wrong differently.
+
+   A dead-tied series has no leader. That includes the 0-0 case, where every
+   recorded meeting ended in a tie. Handing that to whichever team the caller
+   happened to name first — which is what "the edge to <first team>" was doing —
+   states a fact that is not true. Ties are reported as ties.
+
+   Wins are always read from ownerA's side (matching getH2H), but `tape` is
+   rebuilt leader-first so a record never appears next to the name of the team
+   on the wrong end of it. Points are judged separately: a series can be level
+   on wins and lopsided on points, and vice versa. */
+function h2hSeriesVerdict(h2h, nameA, nameB){
+  if(!h2h) return null;
+  const winsA   = Math.max(0, Number(h2h.winsFor) || 0);
+  const winsB   = Math.max(0, Number(h2h.winsAgainst) || 0);
+  const ties    = Math.max(0, Number(h2h.ties) || 0);
+  const meetings = Math.max(0, Number(h2h.meetingCount) || 0);
+  const suffix  = ties ? '-' + ties : '';
+  const tied    = winsA === winsB;
+  const aLeads  = winsA > winsB;
+
+  const rawDiff = Number(h2h.diff);
+  const hasDiff = Number.isFinite(rawDiff);
+  /* Below a tenth of a point the scoreboard itself would print a tie. */
+  const pointsTied = !hasDiff || Math.abs(rawDiff) < 0.05;
+
+  return {
+    meetings, ties, tied,
+    /* From A's perspective — what the Tale of the Tape column shows. */
+    record: winsA + '-' + winsB + suffix,
+    /* Leader first — safe to print beside the leader's name. */
+    tape: tied ? winsA + '-' + winsB + suffix
+               : (aLeads ? winsA + '-' + winsB + suffix : winsB + '-' + winsA + suffix),
+    leaderName:  tied ? null : (aLeads ? nameA : nameB),
+    trailerName: tied ? null : (aLeads ? nameB : nameA),
+    pointsTied,
+    pointsLeaderName: pointsTied ? null : (rawDiff > 0 ? nameA : nameB),
+    pointsMargin: hasDiff ? Math.abs(rawDiff) : null,
+  };
+}
+
 /* ============================================================
    FRANCHISE RESUME — per-manager career arc built from the raw
    season payloads (final ranks, records, playoff appearances).
@@ -3371,14 +3712,14 @@ const SLEEPER_BASE = 'https://api.sleeper.app/v1';
 async function sleeperGet(path){
   const direct = SLEEPER_BASE + path;
   try{
-    const res = await fetch(direct, { headers:{ Accept:'application/json' }, cache:'no-store' });
+    const res = await fsnFetch(direct, { headers:{ Accept:'application/json' }, cache:'no-store' }, 15000);
     if(res.ok) return await res.json();
     // A real HTTP status (404/5xx) is authoritative — do not mask it behind the relay.
     throw new Error('SLEEPER_HTTP_' + res.status);
   }catch(err){
     if(/SLEEPER_HTTP_\d/.test(String(err && err.message))) throw err;
     // Transport failure (blocked host, DNS, offline). Try the same-origin relay.
-    const res = await fetch('/api/sleeper?url=' + encodeURIComponent(direct), {
+    const res = await fsnFetch('/api/sleeper?url=' + encodeURIComponent(direct), {
       headers:{ Accept:'application/json' }, cache:'no-store',
     });
     if(!res.ok) throw new Error('SLEEPER_RELAY_HTTP_' + res.status);
@@ -3634,7 +3975,16 @@ async function buildSeason(leagueId, playerIndex, opts){
       logo: (user.metadata && user.metadata.avatar) || (user.avatar ? 'https://sleepercdn.com/avatars/thumbs/' + user.avatar : ''),
       primaryOwner: ownerId,
       owners: [ownerId],
-      record:{ overall:{ wins:Number(s.wins||0), losses:Number(s.losses||0), ties:Number(s.ties||0) } },
+      /* Sleeper splits points into an integer part and a hundredths part, the
+         same convention standingsSeeds() above already decodes. They were being
+         dropped here, so a Sleeper league had no points anywhere on its teams
+         and the standings table rendered PF/PA as 0.0 whenever it had to read
+         the record rather than recompute from the schedule. */
+      record:{ overall:{
+        wins:Number(s.wins||0), losses:Number(s.losses||0), ties:Number(s.ties||0),
+        pointsFor:Number(s.fpts||0) + Number(s.fpts_decimal||0) / 100,
+        pointsAgainst:Number(s.fpts_against||0) + Number(s.fpts_against_decimal||0) / 100,
+      } },
       playoffSeed: inPlayoffPhase ? seed : null,
       rankCalculatedFinal: String(league.status) === 'complete' ? seed : null,
     };
@@ -4892,6 +5242,14 @@ function preseasonReport(){
         involvesChampion: hasChamp,
         involvesSacko: hasSacko,
         score: meetings * 2 + tight + (hasChamp ? 12 : 0) + (hasSacko ? 5 : 0),
+        /* NOT escaped, deliberately. This runs inside the window.FSNIntel
+           closure, which has no `esc` in scope — the call threw
+           "esc is not defined", memo() swallowed it, preseasonReport()
+           returned null, and the State of the League lead silently degraded
+           to its "UNDER REVIEW / Unavailable" archive-missing fallback.
+           Nothing renders this label; every consumer builds its own string
+           from away.name / home.name and escapes at the point of use, which
+           is this file's convention. */
         label: A.name + ' at ' + B.name,
       };
     }).sort((a,b)=> b.score - a.score);
@@ -5660,21 +6018,13 @@ function weekContext(week){
    Every season uses the local matrix below. Stable archive coordinates drive
    each draw; no remote model, API key, random number, or network write is used.
 ============================================================ */
-function selectedLeagueId(){
-  const el = document.getElementById('leagueIdInput');
-  return (el && el.value.trim()) || (LeagueData.meta && LeagueData.meta.leagueId) || 'league';
-}
-/* Canonical cache-namespace token for the league currently resident in the
-   stores: provider + league id. Every in-memory derived cache (FSNIntel reads,
-   SeasonAnalytics models, the News Desk stream/gen caches) prefixes its keys
-   with this so a payload computed for one league can never be served for
-   another — even if a purge is missed or a publish is reordered. Two providers
-   can reuse the same numeric id, so the provider is part of the token. */
-function leagueScopeToken(){
-  let provider = 'espn';
-  try{ if(typeof ui !== 'undefined' && ui && ui.provider) provider = ui.provider; }catch(e){}
-  return provider + ':' + selectedLeagueId();
-}
+/* selectedLeagueId / leagueScopeToken used to be defined here, inside the
+   NewsDesk closure. FSNIntel and SeasonAnalytics could not see them and threw
+   on every memoised read; the copy here also tried to read the UI layer's
+   `ui.provider`, which is closure-local to a later script and was never
+   visible from this scope either. Both now live beside the store (search
+   "LEAGUE CACHE SCOPE") as globals, which every closure can reach. The calls
+   below resolve to those. */
 function viewedSeasonYear(){
   const d = LeagueData.espnData || {};
   const el = document.getElementById('seasonYear');
@@ -7903,7 +8253,7 @@ function assembleDeterministicStory(ctx, category, ordinal, facts, overrides){
     crest:o.crest || (winner.name ? {name:winner.name, logo:winner.logo} : null),
     headline, dek:esc(lede),
     paragraphs,
-    quote:{ text:quote, who:upper(managerLabel(category === 'bench' || category === 'fraud' ? loser : winner)) },
+    quote:{ text:quote, who:esc(upper(managerLabel(category === 'bench' || category === 'fraud' ? loser : winner))) },
     numbers:{ title:'By the Numbers', rows:[
       {label:'Final', value:n1(facts.winnerScore) + '–' + n1(facts.loserScore)},
       {label:'Margin', value:n1(facts.margin)},
@@ -8422,8 +8772,8 @@ function genBenchDisaster(ctx){
     const benchTotal = r.benchTotal;
 
     const headline = fatal
-      ? `BENCH DISASTER: ${upper(mgr)} LEAVES ${n1(left)} ON THE WIRE, LOSES BY ${n1(s.margin)}`
-      : `SITTING DUCK: ${upper(mgr)} BENCHES ${n1(left)} IN WEEK ${ctx.week} DEFEAT`;
+      ? `BENCH DISASTER: ${esc(upper(mgr))} LEAVES ${n1(left)} ON THE WIRE, LOSES BY ${n1(s.margin)}`
+      : `SITTING DUCK: ${esc(upper(mgr))} BENCHES ${n1(left)} IN WEEK ${ctx.week} DEFEAT`;
 
     const verb = pick(['torched','shredded','gashed','gutted','carved up'], seed);
     const adj  = pick(['unwatchable','indefensible','inexplicable','self-inflicted','avoidable'], seed + 'adj');
@@ -8469,8 +8819,8 @@ function genBenchDisaster(ctx){
         title: 'Box Score Impact',
         rows: [
           { label: 'Final margin',                     value: n1(s.margin) },
-          { label: `${r.topBench.name} — benched`,     value: n1(left), note: 'Would have been the team\'s ' + ordinal(r.starters.filter(p=> p.points > left).length + 1) + ' scorer.' },
-          { label: `${r.worstStarter.name} — started`, value: n1(r.worstStarter.points) },
+          { label: `${esc(r.topBench.name)} — benched`,     value: n1(left), note: 'Would have been the team\'s ' + ordinal(r.starters.filter(p=> p.points > left).length + 1) + ' scorer.' },
+          { label: `${esc(r.worstStarter.name)} — started`, value: n1(r.worstStarter.points) },
           { label: 'Swing from one swap',              value: (swing >= 0 ? '+' : '') + n1(swing) },
           { label: 'Total points on the bench',        value: n1(benchTotal) },
         ],
@@ -8530,7 +8880,7 @@ function genBenchDisaster(ctx){
       byline: BYLINES[4],
       ageMin: 34 + (hash(seed) % 50),
       crest: { name: team.name, logo: team.logo },
-      headline: `${upper(swingNeeded)} POINTS SHORT: ${upper(team.name)} FALLS IN WEEK ${ctx.week} THRILLER`,
+      headline: `${esc(upper(swingNeeded))} POINTS SHORT: ${esc(upper(team.name))} FALLS IN WEEK ${ctx.week} THRILLER`,
       dek: `${esc(teamLabel(close.winner))} survives ${n1(close.winnerScore)}–${n1(close.loserScore)} in the closest game on the board.`,
       paragraphs,
       quote: {
@@ -8642,7 +8992,7 @@ function genFraudAlert(ctx){
     byline: BYLINES[2],
     ageMin: 95 + (hash(seed) % 90),
     crest: { name: team.name, logo: team.logo },
-    headline: `FRAUD ALERT: ${upper(team.name)} POSTS ${n1(score)} POINTS — ${n1(belowAvg)} BELOW LEAGUE AVERAGE`,
+    headline: `FRAUD ALERT: ${esc(upper(team.name))} POSTS ${n1(score)} POINTS — ${n1(belowAvg)} BELOW LEAGUE AVERAGE`,
     dek: `A ${pct(belowPct)} shortfall against the field, and the worst score on the Week ${ctx.week} board.`,
     paragraphs,
     quote: {
@@ -8678,9 +9028,9 @@ function genShootout(ctx){
 
   const headline = winner
     ? (classic
-        ? `INSTANT CLASSIC: ${upper(winner.name)} SURVIVES ${upper(loser.name)} ${n1(best.winnerScore)}–${n1(best.loserScore)}`
-        : `${upper(winner.name)} OUTGUNS ${upper(loser.name)} IN ${n1(best.total)}-POINT SHOOTOUT`)
-    : `${upper(g.awayTeam.name)} AND ${upper(g.homeTeam.name)} TRADE BLOWS FOR ${n1(best.total)} COMBINED`;
+        ? `INSTANT CLASSIC: ${esc(upper(winner.name))} SURVIVES ${esc(upper(loser.name))} ${n1(best.winnerScore)}–${n1(best.loserScore)}`
+        : `${esc(upper(winner.name))} OUTGUNS ${esc(upper(loser.name))} IN ${n1(best.total)}-POINT SHOOTOUT`)
+    : `${esc(upper(g.awayTeam.name))} AND ${esc(upper(g.homeTeam.name))} TRADE BLOWS FOR ${n1(best.total)} COMBINED`;
 
   const openVerb = pick(['traded haymakers','went score for score','refused to blink','turned the afternoon into a track meet'], seed);
 
@@ -8818,8 +9168,8 @@ function genMilestone(ctx){
       ageMin: broke ? (7 + hash(seed) % 20) : (60 + hash(seed) % 90),
       crest: { name: team.name, logo: team.logo },
       headline: broke
-        ? `RECORD BOOK: ${upper(team.name)} POSTS ${n1(top.value)}, MOST IN LEAGUE HISTORY`
-        : `${upper(team.name)} PUTS UP ${n1(top.value)}, ${n1(diff)} SHY OF THE ALL-TIME RECORD`,
+        ? `RECORD BOOK: ${esc(upper(team.name))} POSTS ${n1(top.value)}, MOST IN LEAGUE HISTORY`
+        : `${esc(upper(team.name))} PUTS UP ${n1(top.value)}, ${n1(diff)} SHY OF THE ALL-TIME RECORD`,
       dek: broke
         ? `The old mark — ${n1(old.score)} by ${esc(old.teamName)} in ${old.year} — stood until Week ${ctx.week}.`
         : `${esc(old.teamName)}'s ${n1(old.score)} from ${old.year} survives another weekend.`,
@@ -8873,7 +9223,7 @@ function genMilestone(ctx){
       byline: BYLINES[0],
       ageMin: 11 + (hash(seed) % 24),
       crest: { name: w.name, logo: w.logo },
-      headline: `MASSACRE: ${upper(w.name)} WINS BY ${n1(s.margin)}, LARGEST MARGIN IN LEAGUE HISTORY`,
+      headline: `MASSACRE: ${esc(upper(w.name))} WINS BY ${n1(s.margin)}, LARGEST MARGIN IN LEAGUE HISTORY`,
       dek: `The old record — ${n1(old.margin)} by ${esc(old.winnerTeamName)} in ${old.year} — lasted until Week ${ctx.week}.`,
       paragraphs: [
         `${datelineTag()} <b>${esc(w.name)}</b> did not beat <b>${esc(l.name)}</b> on Sunday so much as file a report about it, winning <b>${n1(s.winnerScore)}–${n1(s.loserScore)}</b> — ` +
@@ -8922,8 +9272,8 @@ function genMilestone(ctx){
       ageMin: record ? (14 + hash(seed) % 30) : (70 + hash(seed) % 80),
       crest: { name: team.name, logo: team.logo },
       headline: record
-        ? `${upper(mgr)} WINS ${len} STRAIGHT, MATCHING THE LONGEST RUN IN LEAGUE HISTORY`
-        : `${upper(team.name)} MAKES IT ${len} IN A ROW`,
+        ? `${esc(upper(mgr))} WINS ${len} STRAIGHT, MATCHING THE LONGEST RUN IN LEAGUE HISTORY`
+        : `${esc(upper(team.name))} MAKES IT ${len} IN A ROW`,
       dek: record
         ? `${esc(oldInfo.name || old.ownerId)}'s ${old.length}-game run set the mark. It has company.`
         : `${esc(oldInfo.name || old.ownerId)} still holds the all-time record at ${old.length}.`,
@@ -9160,8 +9510,13 @@ function genMatchupPreviews(ctx){
     const dogForm = previewFormParagraph(dogP, ctx.week, 'dog', seed);
 
     /* ---- BEAT 4 · history ---- */
-    const history = h2h && h2h.meetingCount
-      ? `These two are not strangers. The Record Book has them at <b>${h2h.winsFor}-${h2h.winsAgainst}${h2h.ties ? '-' + h2h.ties : ''}</b> across <b>${h2h.meetingCount}</b> meeting${h2h.meetingCount === 1 ? '' : 's'}` +
+    const hv = h2hSeriesVerdict(h2h, A.name, B.name);
+    const history = hv && hv.meetings
+      ? `These two are not strangers. The Record Book has them ` +
+        (hv.tied
+          ? `dead level at <b>${hv.record}</b>`
+          : `at <b>${hv.tape}</b> for <b>${esc(hv.leaderName)}</b>`) +
+        ` across <b>${hv.meetings}</b> meeting${hv.meetings === 1 ? '' : 's'}` +
         `${h2h.lastMeeting ? `, the freshest wound a <b>${n1(h2h.lastMeeting.scoreFor)}–${n1(h2h.lastMeeting.scoreAgainst)}</b> verdict back in ${h2h.lastMeeting.year}` : ''}. ` +
         `${h2h.streakCount > 1 ? `Someone in this building has won <b>${h2h.streakCount}</b> straight in the series, and the other manager has heard about every single one of them. ` : ''}` +
         pick([
@@ -9261,9 +9616,17 @@ function genMatchupPreviews(ctx){
           ...(favP.rank && favP.total
             ? [{ label: 'FSN Power Index', value: 'No. ' + favP.rank + (dogP.rank ? ' vs No. ' + dogP.rank : ''), note: 'Model seed of ' + favP.total + ' teams.' }]
             : []),
-          ...(h2h && h2h.meetingCount
-            ? [{ label: 'All-time series', value: h2h.winsFor + '-' + h2h.winsAgainst + (h2h.ties ? '-' + h2h.ties : ''), note: h2h.meetingCount + ' career meeting' + (h2h.meetingCount === 1 ? '' : 's') }]
-            : [{ label: 'All-time series', value: 'First meeting', note: 'No shared history on the ledger yet.' }]),
+          ...(() => {
+            const v = hv;
+            if(!v || !v.meetings) return [{ label: 'All-time series', value: 'First meeting', note: 'No shared history on the ledger yet.' }];
+            const meetingNote = v.meetings + ' career meeting' + (v.meetings === 1 ? '' : 's');
+            /* Name a leader only when there is one; a level series says so. */
+            return [{ label: 'All-time series',
+                      value: v.tied ? 'Series tied ' + v.record : v.record,
+                      note: v.tied
+                        ? meetingNote + ' · dead even, no series leader'
+                        : meetingNote + ' · ' + esc(v.leaderName) + ' leads ' + v.tape }];
+          })(),
         ],
         note: 'Pre-game scouting report. Win probability is a model lean, not a prediction.',
       },
@@ -9584,7 +9947,7 @@ function tlGameDay(ctx){
         const side = ctx.scored.find(x=> x.winner && String(x.winner.id) === String(t.id));
         if(side && side.decided){
           const cat = marginCategory(side.margin);
-          return { text:matrixCopy(ctx, cat, 24, matrixFacts(ctx, side)).quote, who:upper(managerLabel(t)) };
+          return { text:matrixCopy(ctx, cat, 24, matrixFacts(ctx, side)).quote, who:esc(upper(managerLabel(t))) };
         }
         return null;
       })(),
@@ -9825,7 +10188,7 @@ function tlRecap(ctx){
         secondPara,
         thirdPara,
       ],
-      quote: { text:dCopy.quote, who:upper(managerLabel(tight.winner)) },
+      quote: { text:dCopy.quote, who:esc(upper(managerLabel(tight.winner))) },
       numbers: { title:'Week ' + ctx.week + ' Margins', rows: decided.slice().sort((a,b)=> a.margin - b.margin).slice(0,4).map(d=>({
         label: `${esc(d.winner.name)} over ${esc(d.loser.name)}`, value: n1(d.margin),
       })), note:`Closest finishes first. Tier bands: nail-biter under ${n1(NAILBITER_MARGIN)}, one-score through ${n1(ONE_SCORE_MARGIN)}, competitive through ${n1(COMPETITIVE_MARGIN)}, blowout beyond.` },
@@ -9855,7 +10218,7 @@ function tlRecap(ctx){
                 'The bench had nothing. The starters had less.'], bseed),
           `<b>${esc(blowout.winner.name)}</b> moves on. <b>${esc(blowout.loser.name)}</b> has a week to think about it.`,
         ],
-        quote: { text:matrixCopy(ctx, 'blowout', 20, matrixFacts(ctx, blowout)).quote, who:upper(managerLabel(blowout.winner)) },
+        quote: { text:matrixCopy(ctx, 'blowout', 20, matrixFacts(ctx, blowout)).quote, who:esc(upper(managerLabel(blowout.winner))) },
         numbers: { title:'Week ' + ctx.week + ' Blowouts', rows: decided.slice().sort((a,b)=> b.margin - a.margin).slice(0,4).map(d=>({
           label: `${esc(d.winner.name)} over ${esc(d.loser.name)}`, value: n1(d.margin),
         })), note:'Widest margins first.' },
@@ -9902,7 +10265,7 @@ function tlWaivers(ctx){
       byline:'FSN Front Office Correspondent',
       crest: team ? { name: team.name, logo: team.logo } : null,
       headline: spend && team
-        ? `${upper(team.name)} SPENDS $${spend.bid} ON ${upper((target && target.name) || 'THE WIRE')} AND THE LEAGUE HAS QUESTIONS`
+        ? `${esc(upper(team.name))} SPENDS $${spend.bid} ON ${esc(upper((target && target.name) || 'THE WIRE'))} AND THE LEAGUE HAS QUESTIONS`
         : `WAIVER RUN FALLOUT: ${report.claimCount} CLAIMS, ${report.lost.length} BROKEN HEARTS`,
       dek: hb
         ? `And ${esc((FSNIntel.teamOf(hb.loser.teamId) || {}).name || 'someone')} lost ${esc(hb.target.name || 'the player')} by $${hb.gap}.`
@@ -9928,7 +10291,7 @@ function tlWaivers(ctx){
         'A dollar. One dollar. I want a recount.',
         'I bid what he was worth. Somebody else bid what they were scared of.',
         'That\'s my season. That\'s the whole season right there.',
-      ], seed + 'q'), who: upper((FSNIntel.teamOf(hb.loser.teamId) || {}).owner || 'The losing bidder') } : null,
+      ], seed + 'q'), who: esc(upper((FSNIntel.teamOf(hb.loser.teamId) || {}).owner || 'The losing bidder')) } : null,
       numbers: { title:'The Waiver Run', rows, note:'Parsed from the league\'s Week ' + ctx.week + ' transaction log.' },
     }));
   }
@@ -9946,7 +10309,7 @@ function tlWaivers(ctx){
       tag:'RAGE DROP', tone:'red', priority: 70,
       byline:'FSN Bench Report',
       crest: r.team ? { name:r.team.name, logo:r.team.logo } : null,
-      headline: `${upper((r.team && r.team.name) || 'SOMEBODY')} JUST DROPPED ${upper(r.player.name || 'A DRAFT PICK')}`,
+      headline: `${esc(upper((r.team && r.team.name) || 'SOMEBODY'))} JUST DROPPED ${esc(upper(r.player.name || 'A DRAFT PICK'))}`,
       dek: `${esc(roundLabel)}. Cut loose in Week ${r.week || ctx.week}. There is no coming back from this one emotionally.`,
       paragraphs: [
         `${datelineTag()} <b>${esc(r.player.name || 'A drafted player')}</b>` +
@@ -9965,12 +10328,12 @@ function tlWaivers(ctx){
         'I\'m done. I\'ve been done since Week 2.',
         'Roster spot was worth more than he was. Ask me again in a month.',
         'No comment. Actually — put this in: no comment.',
-      ], seed + 'q'), who: upper((r.team && r.team.owner) || 'The manager') },
+      ], seed + 'q'), who: esc(upper((r.team && r.team.owner) || 'The manager')) },
       numbers: { title:'The Investment', rows: [
         r.pick ? { label:'Drafted', value:'R' + r.pick.round + ' · #' + r.pick.overall } : null,
         r.adp ? { label:'League ADP', value: n1(r.adp) } : null,
         { label:'Dropped', value:'WEEK ' + (r.week || ctx.week) },
-        rages[1] ? { label:'Next-most painful drop', value: esc(rages[1].player.name || '—'), note: (rages[1].team && rages[1].team.name) || '' } : null,
+        rages[1] ? { label:'Next-most painful drop', value: esc(rages[1].player.name || '—'), note: esc((rages[1].team && rages[1].team.name) || '') } : null,
       ].filter(Boolean), note:'Cross-referenced against the draft board.' },
     }));
   }
@@ -10020,9 +10383,23 @@ function tlPrimer(ctx){
   const recordB = FSNIntel.getRecordAsOfWeek(B.id, ctx.week);
   rows.push({ label: esc(A.name) + ' record', value: esc(recordA) });
   rows.push({ label: esc(B.name) + ' record', value: esc(recordB) });
-  if(recordbook && recordbook.meetingCount){
-    rows.push({ label:'All-time series', value: recordbook.winsFor + '-' + recordbook.winsAgainst + (recordbook.ties ? '-' + recordbook.ties : ''),
-      note: esc(A.name) + ' leads the ledger by ' + n1(Math.abs(recordbook.diff)) + ' career points against this opponent.' });
+  const rbVerdict = h2hSeriesVerdict(recordbook, A.name, B.name);
+  if(rbVerdict && rbVerdict.meetings){
+    rows.push({
+      label:'All-time series',
+      value: rbVerdict.tied ? 'Series tied ' + rbVerdict.record : rbVerdict.record,
+      /* The points ledger is judged separately from the win column: a series
+         can be level on wins and lopsided on points, or the reverse. The old
+         note credited whichever team was named first with a lead it may not
+         have held — or with a lead of exactly zero. */
+      note: (()=>{
+        const pts = rbVerdict.pointsTied
+          ? (rbVerdict.pointsMargin === null ? '' : 'career points are dead level too.')
+          : esc(rbVerdict.pointsLeaderName) + ' is ahead by ' + n1(rbVerdict.pointsMargin) + ' career points.';
+        if(rbVerdict.tied) return ('Series tied — neither manager has taken it. ' + pts).trim();
+        return (esc(rbVerdict.leaderName) + ' leads the series. ' +
+          (rbVerdict.pointsTied && rbVerdict.pointsMargin !== null ? 'Career points are dead level.' : pts)).trim();
+      })() });
     if(recordbook.lastMeeting){
       rows.push({ label:'Last meeting', value: n1(recordbook.lastMeeting.scoreFor) + ' – ' + n1(recordbook.lastMeeting.scoreAgainst),
         note: recordbook.lastMeeting.year + ' · Week ' + recordbook.lastMeeting.week });
@@ -10056,9 +10433,12 @@ function tlPrimer(ctx){
       `The model gives ${esc(probA >= 50 ? A.name : B.name)} a <b>${Math.round(Math.max(probA, 100 - probA))}%</b> edge, which is ` +
       pick(['not the same as a prediction.','close enough to be worthless.','the polite way of saying coin flip.'], seed),
 
-      recordbook && recordbook.meetingCount
-        ? `The Record Book says these two have met <b>${recordbook.meetingCount}</b> times, with <b>${esc(A.name)}</b> holding a ` +
-          `<b>${recordbook.winsFor}-${recordbook.winsAgainst}${recordbook.ties ? '-' + recordbook.ties : ''}</b> edge` +
+      rbVerdict && rbVerdict.meetings
+        ? `The Record Book says these two have met <b>${rbVerdict.meetings}</b> times, ` +
+          (rbVerdict.tied
+            /* Dead even: name no leader. There isn't one. */
+            ? `and neither one of them has been able to take it — the series is level at <b>${rbVerdict.record}</b>`
+            : `with <b>${esc(rbVerdict.leaderName)}</b> holding a <b>${rbVerdict.tape}</b> edge`) +
           `${recordbook.streakCount > 1 ? ` and the current streak sitting at ${recordbook.streakCount} straight` : ''}. ` +
           `${recordbook.lastMeeting ? `The last one finished ${n1(recordbook.lastMeeting.scoreFor)}–${n1(recordbook.lastMeeting.scoreAgainst)}.` : ''}`
         : `There is no history to lean on here — load the Record Book and the desk will pull the all-time series into this preview.`,
@@ -10143,8 +10523,11 @@ function tlRivalry(ctx){
   const seed = 'rivalry:' + viewedSeasonYear() + ':' + ctx.week + ':' + A.id + ':' + B.id;
   const recordA = FSNIntel.getRecordAsOfWeek(A.id, ctx.week);
   const recordB = FSNIntel.getRecordAsOfWeek(B.id, ctx.week);
-  const seriesLabel = `${h2h.winsFor}-${h2h.winsAgainst}${h2h.ties ? '-' + h2h.ties : ''}`;
-  const leader = h2h.winsFor === h2h.winsAgainst ? null : (h2h.winsFor > h2h.winsAgainst ? A : B);
+  /* `tape` is leader-first, so the record never reads backwards next to the
+     leader's name (a series B owns 3-1 was printing as "1-3 in B's favor"). */
+  const verdict = h2hSeriesVerdict(h2h, A.name, B.name);
+  const seriesLabel = verdict.tape;
+  const leader = verdict.tied ? null : (h2h.winsFor > h2h.winsAgainst ? A : B);
   const streakName = h2h.streakOwnerId
     ? (String(h2h.streakOwnerId) === String(A.ownerId) ? A.name : String(h2h.streakOwnerId) === String(B.ownerId) ? B.name : null)
     : null;
@@ -10153,7 +10536,7 @@ function tlRivalry(ctx){
   const openParagraph = `${datelineTag()} Some games on the Week ${ctx.week} board are just games. This is not one of them. ` +
     `<b>${esc(A.name)}</b> (${esc(recordA)}) and <b>${esc(B.name)}</b> (${esc(recordB)}) have done this <b>${h2h.meetingCount}</b> times already, ` +
     `and the Record Book keeps the series at <b>${seriesLabel}</b>` +
-    `${leader ? ` in <b>${esc(leader.name)}</b>'s favor` : `, dead even, which is the most dangerous kind of rivalry there is`}. ` +
+    `${leader ? ` in <b>${esc(leader.name)}</b>'s favor` : `, a dead-tied series, which is the most dangerous kind of rivalry there is`}. ` +
     pick([
       `Nobody in this building needs a reminder of what is at stake. They keep their own.`,
       `The standings will forget this game by December. Neither of these managers ever will.`,
@@ -10190,7 +10573,8 @@ function tlRivalry(ctx){
       ], seed + ':stake');
 
   const rows = [
-    { label: 'All-time series', value: seriesLabel, note: leader ? esc(leader.name) + ' leads the ledger.' : 'Dead even.' },
+    { label: 'All-time series', value: leader ? seriesLabel : 'Series tied ' + seriesLabel,
+      note: leader ? esc(leader.name) + ' leads the ledger.' : 'Dead even — neither manager has taken this series.' },
     { label: 'Career meetings', value: String(h2h.meetingCount) },
     ...(streakName && h2h.streakCount > 1 ? [{ label: 'Current streak', value: h2h.streakCount + ' straight', note: esc(streakName) }] : []),
     ...(h2h.lastMeeting ? [{ label: 'Last meeting', value: n1(h2h.lastMeeting.scoreFor) + '–' + n1(h2h.lastMeeting.scoreAgainst), note: h2h.lastMeeting.year + ' · Week ' + h2h.lastMeeting.week }] : []),
@@ -10212,7 +10596,7 @@ function tlRivalry(ctx){
     headline: fillEditorial(RIVALRY_HEADLINES[hash(seed) % RIVALRY_HEADLINES.length], {
       A: upper(A.name), B: upper(B.name), WEEK: ctx.week, N: h2h.meetingCount,
     }),
-    dek: `${esc(A.name)} and ${esc(B.name)} have met ${h2h.meetingCount} times. The series sits ${seriesLabel}${leader ? ', ' + esc(leader.name) + ' in front' : ', dead even'}.`,
+    dek: `${esc(A.name)} and ${esc(B.name)} have met ${h2h.meetingCount} times. ${leader ? `The series sits ${seriesLabel}, ${esc(leader.name)} in front` : `The series is tied ${seriesLabel}, with nothing separating them`}.`,
     paragraphs: [openParagraph, historyParagraph, stakesParagraph].filter(Boolean),
     quote: null,
     numbers: { title: 'The Series', rows, note: 'All-time head-to-head from the loaded Record Book archive.' },
@@ -10288,7 +10672,7 @@ function tlDraft(ctx){
       tag:'ROUND 1 SHOCKER', tone:'gold', priority: 96,
       byline:'FSN Draft Desk',
       crest: shocker.team ? { name: shocker.team.name, logo: shocker.team.logo } : null,
-      headline: `ROUND 1 SHOCKER: ${upper((shocker.team && shocker.team.name) || 'SOMEBODY')} TAKES ${upper(shocker.name)} AT ${shocker.overall}`,
+      headline: `ROUND 1 SHOCKER: ${esc(upper((shocker.team && shocker.team.name) || 'SOMEBODY'))} TAKES ${esc(upper(shocker.name))} AT ${shocker.overall}`,
       dek: shocker.delta < 0
         ? `${n1(Math.abs(shocker.delta))} picks ahead of ADP. The room went quiet.`
         : `${n1(shocker.delta)} picks past ADP. Nobody stopped it.`,
@@ -10322,7 +10706,7 @@ function tlDraft(ctx){
       tag:'REACH OF THE DRAFT', tone:'red', priority: 92,
       byline:'FSN Draft Desk',
       crest: reach.team ? { name: reach.team.name, logo: reach.team.logo } : null,
-      headline: `REACH OF THE DRAFT: ${upper(reach.name)} AT ${reach.overall}, ${n1(Math.abs(reach.delta))} PICKS EARLY`,
+      headline: `REACH OF THE DRAFT: ${esc(upper(reach.name))} AT ${reach.overall}, ${n1(Math.abs(reach.delta))} PICKS EARLY`,
       dek: `ADP said ${n1(reach.adp)}. ${esc((reach.team && reach.team.name) || 'One manager')} said now.`,
       paragraphs: [
         `${datelineTag()} <b>${esc((reach.team && reach.team.name) || 'A manager')}</b> spent pick <b>${reach.overall}</b> ` +
@@ -10353,7 +10737,7 @@ function tlDraft(ctx){
       tag:'STEAL OF THE DRAFT', tone:'green', priority: 90,
       byline:'FSN Draft Desk',
       crest: steal.team ? { name: steal.team.name, logo: steal.team.logo } : null,
-      headline: `STEAL OF THE DRAFT: ${upper(steal.name)} FELL TO ${steal.overall} AND NOBODY STOPPED IT`,
+      headline: `STEAL OF THE DRAFT: ${esc(upper(steal.name))} FELL TO ${steal.overall} AND NOBODY STOPPED IT`,
       dek: `${n1(steal.delta)} picks of value, sitting there in Round ${steal.round}.`,
       paragraphs: [
         `${datelineTag()} <b>${esc(steal.name)}</b>${steal.pos ? ` (${esc(steal.pos)}${steal.proTeam ? ', ' + esc(steal.proTeam) : ''})` : ''} ` +
@@ -10384,7 +10768,7 @@ function tlDraft(ctx){
       tag:'DRAFT GRADES', tone:'cyan', priority: 88,
       byline:'FSN Draft Desk',
       crest: best.team ? { name: best.team.name, logo: best.team.logo } : null,
-      headline: `DRAFT REPORT CARDS: ${upper((best.team && best.team.name) || 'ONE ROOM')} GETS THE ${best.grade}, ${upper((worst.team && worst.team.name) || 'SOMEBODY')} GETS THE ${worst.grade}`,
+      headline: `DRAFT REPORT CARDS: ${esc(upper((best.team && best.team.name) || 'ONE ROOM'))} GETS THE ${best.grade}, ${esc(upper((worst.team && worst.team.name) || 'SOMEBODY'))} GETS THE ${worst.grade}`,
       dek: `Every roster in the league, graded against ADP. No participation trophies.`,
       paragraphs: [
         `${datelineTag()} The desk graded all <b>${grades.length}</b> drafts against average draft position, ` +
@@ -10884,11 +11268,14 @@ function tlPreseason(ctx){
     if(!g || !g.series || !g.meetings) return null;
     const s = g.series;
     const hi = Math.max(s.winsFor, s.winsAgainst), lo = Math.min(s.winsFor, s.winsAgainst);
+    const verdict = h2hSeriesVerdict(s, g.away.name, g.home.name);
     return {
       hi, lo, ties: s.ties || 0,
-      even: s.winsFor === s.winsAgainst,
-      leader: s.winsFor >= s.winsAgainst ? g.away.name : g.home.name,
-      tape: hi + '-' + lo + (s.ties ? '-' + s.ties : ''),
+      even: verdict.tied,
+      /* Null on a dead tie: >= handed the away team a lead it did not have,
+         which any caller reading `leader` without checking `even` would print. */
+      leader: verdict.leaderName,
+      tape: verdict.tape,
     };
   };
   const lead = seriesLead(marquee);
@@ -11035,7 +11422,7 @@ function tlPreseason(ctx){
     byline:'FSN Senior League Insider',
     dateline: seasonDateline,
     crest:{ name: champName, logo: champ.logo },
-    headline: deterministicNarrativeHeadline({week:1}, 'sotl', {champ, sacko, winner:champ, loser:sacko}, `STATE OF THE LEAGUE: ${upper(champName)} DEFENDS`),
+    headline: deterministicNarrativeHeadline({week:1}, 'sotl', {champ, sacko, winner:champ, loser:sacko}, `STATE OF THE LEAGUE: ${esc(upper(champName))} DEFENDS`),
     dek: `${esc(archetype.label)} crowned the ${year} champion, and now the whole league wants it back. ${esc(sackoName)} limps into ${rep.upcomingYear} on the redemption clock after ${sackoPpg ? n1(sackoPpg) + ' PPG' : ordinal(sacko.rank) + ' place'}.`,
     paragraphs: championParagraphs.concat([analyticsParagraph, sackoParagraph, leagueParagraph]),
     facts:{champ,sacko,winner:champ,loser:sacko}, narrativeLocked:true,
@@ -11200,7 +11587,7 @@ function guaranteedTimelineFallback(week){
     kind:'recap',tag:featured?'MATCHUP RECAP':'WEEK AHEAD',tone:'cyan',priority:80,
     byline:'FSN Numbers Desk',dateline:leagueDateline()+' · WEEK '+safeWeek,
     crest:winner ? {name:winner.name,logo:winner.logo} : (teams[0] ? {name:teams[0].name,logo:teams[0].logo} : null),
-    headline:featured ? upper(winner.name)+' FILES THE WEEK '+safeWeek+' RESULT' : 'WEEK '+safeWeek+' BOARD IS READY',
+    headline:featured ? esc(upper(winner.name))+' FILES THE WEEK '+safeWeek+' RESULT' : 'WEEK '+safeWeek+' BOARD IS READY',
     dek:featured ? esc(winner.name)+' defeated '+esc(loser.name)+' '+n1(featured.winnerScore)+'–'+n1(featured.loserScore)+'.' : 'The schedule is connected and waiting for verified scoring.',
     paragraphs:featured ? [
       datelineTag()+' <b>'+esc(winner.name)+'</b> defeated <b>'+esc(loser.name)+'</b> <b>'+n1(featured.winnerScore)+'–'+n1(featured.loserScore)+'</b>.',
@@ -11791,6 +12178,12 @@ const ui = {
 };
 
 const STORE_KEY = 'fsn.setup.v1';
+/* The League ID box must never ship an example that is a real league. A live
+   ID in a placeholder is other people's league data on screen — and it gets
+   typed in by anyone who mistakes the greyed-out sample for a default. Both
+   providers share one neutral hint; the platform-specific "where do I find
+   this?" guide carries the format detail instead. */
+const LEAGUE_ID_PLACEHOLDER = 'e.g. your-league-id';
 const SAVED_LEAGUE_ID_KEY = 'fsn_saved_league_id';
 const SAVED_LEAGUES_KEY = 'mffu.saved.leagues.v1';
 const ACTIVE_TEAM_KEY = 'fsn_active_team_id';
@@ -11823,7 +12216,8 @@ function crest(name, logo, size){
   const style = `width:${px}px;height:${px}px;`;
   if(logo){
     return `<img class="logo" style="${style}" src="${esc(logo)}" alt=""
-            onerror="this.outerHTML=window.__fsnMono(${JSON.stringify(esc(name)).replace(/"/g,'&quot;')},${px})">`;
+            data-fallback-name="${esc(name)}" data-fallback-px="${px}"
+            onerror="window.__fsnImgFallbackMono(this)">`;
   }
   return monoBadge(name, px);
 }
@@ -11833,6 +12227,37 @@ function monoBadge(name, px){
           background:linear-gradient(150deg,${a}22,#141a26);border-color:${a}44;">${esc(initialsFrom(name))}</div>`;
 }
 window.__fsnMono = (name, px)=> monoBadge(name, px);
+
+/* Image-fallback helpers. These deliberately accept NO interpolated data:
+   the fallback content travels in data-* attributes on the <img> itself and
+   is read back via getAttribute. An inline handler attribute is HTML-entity
+   decoded BEFORE the browser parses it as JavaScript, so escaping a value
+   into a JS string literal inside onerror="…" is not safe — a quote encoded
+   as &#39; re-emerges as a real quote and closes the string. Routing the
+   value through an attribute removes the JS-string context entirely. */
+window.__fsnImgFallbackText = function(img){
+  if(!img || !img.parentNode) return;
+  img.parentNode.textContent = img.getAttribute('data-fallback-text') || '';
+};
+window.__fsnImgFallbackNode = function(img, className){
+  if(!img || !img.parentNode) return;
+  const div = document.createElement('div');
+  if(className) div.className = className;
+  div.textContent = img.getAttribute('data-fallback-text') || '';
+  const style = img.getAttribute('data-fallback-style');
+  if(style) div.setAttribute('style', style);
+  img.replaceWith(div);
+};
+window.__fsnImgFallbackMono = function(img){
+  if(!img || !img.parentNode) return;
+  const holder = document.createElement('div');
+  holder.innerHTML = monoBadge(
+    img.getAttribute('data-fallback-name') || '',
+    Number(img.getAttribute('data-fallback-px')) || 38
+  );
+  const node = holder.firstElementChild;
+  if(node) img.replaceWith(node);
+};
 
 function toast(msg){
   const el = $('toast');
@@ -12235,7 +12660,7 @@ function gameHasActiveTeam(g){
 function profileAvatar(team){
   const initials = initialsFrom(team.name || team.abbrev || 'FSN');
   if(team.logo){
-    return `<span class="profile-avatar"><img src="${esc(team.logo)}" alt="" onerror="this.parentNode.textContent='${esc(initials)}'"></span>`;
+    return `<span class="profile-avatar"><img src="${esc(team.logo)}" alt="" data-fallback-text="${esc(initials)}" onerror="window.__fsnImgFallbackText(this)"></span>`;
   }
   return `<span class="profile-avatar">${esc(initials)}</span>`;
 }
@@ -12247,17 +12672,101 @@ function closeProfilePicker(){
   syncBodyScrollLock();
 }
 
+/* ---- Dynamic card sizing for the profile picker ----------------------------
+   The picker is one locked viewport screen, so the cards cannot be a fixed
+   grid that grows a scrollbar past ten teams. Instead the card field reports
+   the box it actually has (it is the flex:1 band between the header and the
+   guest button) and this pass solves for the layout that fills it best.
+
+   For every possible column count it derives the cell that count implies and
+   the largest square avatar tile that fits inside the cell, then keeps the
+   winner. Four teams land on one row of very large tiles; sixteen land on a
+   tight four-by-four. Because the chosen cell height always divides the space
+   that exists, the field is exactly filled and never overflows. */
+
+/* A card is one square tile plus its two text lines plus the padding around
+   them, expressed as multiples of the tile so the tile is the only unknown.
+   The height budget is sized for the worst case a card has to survive — a
+   two-line team name above a manager line — because every card is one uniform
+   size and the tallest one decides whether the field still fits. */
+const PROFILE_CARD_H_PER_TILE = 1.9;
+const PROFILE_CARD_W_PER_TILE = 1.18;
+const PROFILE_TILE_MIN = 28;
+const PROFILE_TILE_MAX = 240;
+
+function clampRange(value, min, max){ return Math.min(max, Math.max(min, value)); }
+
+function layoutProfilePicker(){
+  const picker = $('profilePicker');
+  const grid   = $('profileGrid');
+  if(!picker || !grid) return;
+
+  const count = grid.children.length;
+  /* A closed picker measures 0x0 — nothing to solve, and the next open
+     re-runs this anyway. */
+  const boxW = grid.clientWidth;
+  const boxH = grid.clientHeight;
+  if(!count || boxW <= 0 || boxH <= 0) return;
+
+  const gap = clampRange(Math.round(Math.min(boxW, boxH) * 0.035), 6, 20);
+
+  let best = null;
+  for(let cols = 1; cols <= count; cols++){
+    const rows  = Math.ceil(count / cols);
+    const cellW = (boxW - gap * (cols - 1)) / cols;
+    const cellH = (boxH - gap * (rows - 1)) / rows;
+    if(cellW <= 0 || cellH <= 0) continue;
+    const tile = Math.min(cellW / PROFILE_CARD_W_PER_TILE, cellH / PROFILE_CARD_H_PER_TILE);
+    /* Ties go to the fewer-column candidate, which keeps the grid squarer. */
+    if(!best || tile > best.tile + 0.5) best = { cols, rows, cellW, cellH, tile };
+  }
+  if(!best) return;
+
+  const tile = Math.floor(clampRange(best.tile, PROFILE_TILE_MIN, PROFILE_TILE_MAX));
+  /* Once the tile hits its ceiling the cell stops growing with it, so a
+     four-team league gets big cards rather than four lonely icons adrift in
+     quarter-screen boxes. The field centres whatever is left over. */
+  const cellW = Math.floor(Math.min(best.cellW, tile * PROFILE_CARD_W_PER_TILE * 1.9));
+  const cellH = Math.floor(Math.min(best.cellH, tile * PROFILE_CARD_H_PER_TILE * 1.03));
+
+  const style = picker.style;
+  style.setProperty('--profile-gap', gap + 'px');
+  style.setProperty('--profile-cell', cellW + 'px');
+  style.setProperty('--profile-cell-h', cellH + 'px');
+  style.setProperty('--profile-tile', tile + 'px');
+  style.setProperty('--profile-radius', Math.round(clampRange(tile * 0.2, 8, 30)) + 'px');
+  /* Type is bounded by the cell width as well as by the tile: a one-word team
+     name has to survive on the line it is given, and the narrow cells of a
+     sixteen-team grid are the constraint there, not the icon. */
+  style.setProperty('--profile-name', clampRange(Math.min(tile * 0.19, cellW * 0.15), 9.5, 22).toFixed(1) + 'px');
+  style.setProperty('--profile-manager', clampRange(Math.min(tile * 0.13, cellW * 0.105), 8, 14).toFixed(1) + 'px');
+  picker.dataset.cols = String(best.cols);
+  picker.dataset.compact = tile < 46 ? 'true' : 'false';
+}
+
+/* The leftover box changes with the viewport — rotation, a desktop resize, the
+   mobile URL bar collapsing — so re-solve on every one of those. */
+let profileLayoutFrame = 0;
+function scheduleProfileLayout(){
+  if(profileLayoutFrame) return;
+  profileLayoutFrame = requestAnimationFrame(()=>{
+    profileLayoutFrame = 0;
+    layoutProfilePicker();
+  });
+}
+
 function renderProfilePicker(){
   const teams = LeagueData.getTeams();
   if(!teams.length) return;
   $('profileGrid').innerHTML = teams.map(team=> `
-    <button class="profile-card" data-profile-team="${esc(String(team.id))}">
+    <button class="profile-card" data-profile-team="${esc(String(team.id))}" title="${esc(team.name)}">
       ${profileAvatar(team)}
-      <span class="min-w-0">
-        <span class="profile-team block truncate">${esc(team.name)}</span>
-        <span class="profile-manager block">${esc(team.owner || 'Manager')}</span>
+      <span class="profile-meta">
+        <span class="profile-team">${esc(team.name)}</span>
+        <span class="profile-manager">${esc(team.owner || 'Manager')}</span>
       </span>
     </button>`).join('');
+  scheduleProfileLayout();
 }
 
 function maybePromptTeamProfile(){
@@ -12267,6 +12776,9 @@ function maybePromptTeamProfile(){
   renderProfilePicker();
   $('profilePicker').dataset.open = 'true';
   syncBodyScrollLock();
+  /* Sizing only works once the picker is displayed and the header/guest bands
+     have taken their height, so the solve waits for that frame. */
+  scheduleProfileLayout();
 }
 
 function profileRoleForTeam(teamId){
@@ -12774,6 +13286,73 @@ function finiteStandingsNumber(value){
   const number=Number(value);
   return Number.isFinite(number) ? number : 0;
 }
+/* A team's record reaches this table in three different shapes, and the reader
+   used to understand only one of them:
+
+     1. FSNIntel.standingsThrough() rows — flat wins/losses/ties/pf/pa numbers.
+     2. A raw ESPN team — { record: { overall: { wins, losses, ties,
+        pointsFor, pointsAgainst } } }.
+     3. A LeagueData.getTeams() team — `record` is a DISPLAY STRING, "8-0"
+        or "8-0-1", because the store flattens ESPN's object on the way out.
+
+   The old fallback path read `team.record.overall` unconditionally. Against
+   shape 3 that is "8-0".overall — undefined — so every column fell back to
+   zero and the whole table rendered 0-0 / 0.0 / +0.0. This accepts all three
+   and reports which fields it actually found, so a caller can tell "genuinely
+   zero" apart from "not present in this shape". */
+function standingsRecordParts(value){
+  const out = { wins:null, losses:null, ties:null, pointsFor:null, pointsAgainst:null, label:'' };
+  if(value == null) return out;
+
+  if(typeof value === "string" || typeof value === "number"){
+    const text = String(value).trim();
+    /* Leading W-L[-T]; tolerates a trailing division/home split such as
+       "8-0-1 (4-2)" and stray whitespace around the dashes. */
+    const parts = text.match(/^(\d+)\s*-\s*(\d+)(?:\s*-\s*(\d+))?/);
+    if(parts){
+      out.wins = Number(parts[1]);
+      out.losses = Number(parts[2]);
+      out.ties = parts[3] == null ? 0 : Number(parts[3]);
+      out.label = text;
+    }
+    return out;
+  }
+
+  if(typeof value !== "object") return out;
+
+  /* ESPN nests the numbers under .overall; an already-flat object is used as-is. */
+  const src = (value.overall && typeof value.overall === "object") ? value.overall : value;
+  const pick = function(){
+    for(let i = 0; i < arguments.length; i++){
+      const raw = src[arguments[i]];
+      if(raw != null && Number.isFinite(Number(raw))) return Number(raw);
+    }
+    return null;
+  };
+  out.wins = pick("wins", "w");
+  out.losses = pick("losses", "l");
+  out.ties = pick("ties", "t");
+  out.pointsFor = pick("pointsFor", "pf");
+  out.pointsAgainst = pick("pointsAgainst", "pa");
+  if(typeof src.record === "string") out.label = src.record.trim();
+  return out;
+}
+
+/* First non-null across the candidate records, field by field: a row may carry
+   its wins flat while its points only exist on the team's structured record. */
+function mergeStandingsRecords(candidates){
+  const merged = { wins:null, losses:null, ties:null, pointsFor:null, pointsAgainst:null, label:'' };
+  const fields = ['wins','losses','ties','pointsFor','pointsAgainst'];
+  candidates.forEach(function(candidate){
+    const parts = standingsRecordParts(candidate);
+    fields.forEach(function(field){
+      if(merged[field] == null && parts[field] != null) merged[field] = parts[field];
+    });
+    if(!merged.label && parts.label) merged.label = parts.label;
+  });
+  return merged;
+}
+
 function normalizedStandingsStreak(value){
   if(value == null) return {result:"",length:0,label:"—"};
   if(typeof value === "string"){
@@ -12803,18 +13382,13 @@ function renderSeasonStandings(){
       const rawTeams=LeagueData && typeof LeagueData.getTeams === "function" ? LeagueData.getTeams() : [];
       fallbackTeams=Array.isArray(rawTeams) ? rawTeams : [];
     }catch(_){ fallbackTeams=[]; }
-    sourceRows=fallbackTeams.filter(function(team){ return team && typeof team === "object" && team.id != null; }).map(function(team){
-      const overall=team.record && team.record.overall && typeof team.record.overall === "object" ? team.record.overall : {};
-      return {
-        team:team,
-        wins:overall.wins,
-        losses:overall.losses,
-        ties:overall.ties,
-        pf:overall.pointsFor,
-        pa:overall.pointsAgainst,
-        recordLabel:null
-      };
-    });
+    /* Pass the team straight through — the merge below reads whichever record
+       shape it actually carries. This branch runs whenever standingsThrough
+       returns nothing, which includes every preseason/week-0 board, where
+       ESPN's own record is the only source there is. */
+    sourceRows=fallbackTeams
+      .filter(function(team){ return team && typeof team === "object" && team.id != null; })
+      .map(function(team){ return { team:team, recordLabel:null }; });
   }
 
   const rows=[];
@@ -12824,19 +13398,30 @@ function renderSeasonStandings(){
       const rawTeam=row.team && typeof row.team === "object" ? row.team : {};
       const teamId=rawTeam.id != null ? rawTeam.id : (row.teamId != null ? row.teamId : row.id);
       if(teamId == null) return;
-      const nestedRecord=row.record && row.record.overall && typeof row.record.overall === "object"
-        ? row.record.overall
-        : (rawTeam.record && rawTeam.record.overall && typeof rawTeam.record.overall === "object" ? rawTeam.record.overall : {});
-      const wins=Math.max(0,Math.trunc(finiteStandingsNumber(row.wins != null ? row.wins : nestedRecord.wins)));
-      const losses=Math.max(0,Math.trunc(finiteStandingsNumber(row.losses != null ? row.losses : nestedRecord.losses)));
-      const ties=Math.max(0,Math.trunc(finiteStandingsNumber(row.ties != null ? row.ties : nestedRecord.ties)));
-      const pf=finiteStandingsNumber(row.pf != null ? row.pf : (row.pointsFor != null ? row.pointsFor : nestedRecord.pointsFor));
-      const pa=finiteStandingsNumber(row.pa != null ? row.pa : (row.pointsAgainst != null ? row.pointsAgainst : nestedRecord.pointsAgainst));
+      /* Highest-confidence source first: the row's own computed numbers, then
+         its record in whatever shape, then the team's structured record, then
+         the team's display string. Merged field by field, because a row can
+         carry wins flat while points only exist on the team's record. */
+      const merged=mergeStandingsRecords([
+        { wins:row.wins, losses:row.losses, ties:row.ties,
+          pointsFor:row.pf != null ? row.pf : row.pointsFor,
+          pointsAgainst:row.pa != null ? row.pa : row.pointsAgainst },
+        row.record,
+        rawTeam.recordOverall,
+        rawTeam.record,
+      ]);
+      const wins=Math.max(0,Math.trunc(finiteStandingsNumber(merged.wins)));
+      const losses=Math.max(0,Math.trunc(finiteStandingsNumber(merged.losses)));
+      const ties=Math.max(0,Math.trunc(finiteStandingsNumber(merged.ties)));
+      const pf=finiteStandingsNumber(merged.pointsFor);
+      const pa=finiteStandingsNumber(merged.pointsAgainst);
       const name=String(rawTeam.name || [rawTeam.location,rawTeam.nickname].filter(Boolean).join(" ") || rawTeam.abbrev || row.teamName || ("Team "+teamId));
       rows.push({
         team:{id:teamId,name:name,logo:String(rawTeam.logo || row.logo || "")},
         wins:wins,losses:losses,ties:ties,pf:pf,pa:pa,
-        recordLabel:String(row.recordLabel || (typeof row.record === "string" ? row.record : "") || (wins+"-"+losses+(ties ? "-"+ties : "")))
+        /* Prefer a supplied label, then any record string the sources carried,
+           then one built from the merged counts. */
+        recordLabel:String(row.recordLabel || merged.label || (wins+"-"+losses+(ties ? "-"+ties : "")))
       });
     }catch(err){ console.warn("[Standings] skipped malformed team row",err); }
   });
@@ -12855,11 +13440,15 @@ function renderSeasonStandings(){
     let teamMark="";
     try{ teamMark=crest(row.team.name,row.team.logo,24); }
     catch(_){ teamMark='<span class="analytics-rank" aria-hidden="true">TM</span>'; }
+    /* data-label carries each column header onto the cell itself. On phones the
+       table stops being a table (see the max-width:640px block in the stylesheet)
+       and every row stacks into its own labelled card, so no column can push the
+       viewport wide. */
     return '<tr>'+
-      '<td><span class="standings-team"><span class="analytics-rank">'+(index+1)+'</span>'+teamMark+'<span class="analytics-team-name">'+esc(row.team.name)+'</span></span></td>'+
-      '<td>'+esc(row.recordLabel)+'</td><td>'+row.wins+'</td><td>'+row.losses+'</td><td>'+row.ties+'</td>'+
-      '<td>'+n1(row.pf)+'</td><td>'+n1(row.pa)+'</td><td class="'+(differential>=0?"analytics-good":"analytics-bad")+'">'+(differential>=0?"+":"")+n1(differential)+'</td>'+
-      '<td class="'+(streak.result==="W"?"analytics-good":streak.result==="L"?"analytics-bad":"analytics-muted")+'">'+esc(streak.label)+'</td>'+
+      '<td class="standings-team-cell"><span class="standings-team"><span class="analytics-rank">'+(index+1)+'</span>'+teamMark+'<span class="analytics-team-name">'+esc(row.team.name)+'</span></span></td>'+
+      '<td data-label="Record">'+esc(row.recordLabel)+'</td><td data-label="W">'+row.wins+'</td><td data-label="L">'+row.losses+'</td><td data-label="T">'+row.ties+'</td>'+
+      '<td data-label="PF">'+n1(row.pf)+'</td><td data-label="PA">'+n1(row.pa)+'</td><td data-label="Diff" class="'+(differential>=0?"analytics-good":"analytics-bad")+'">'+(differential>=0?"+":"")+n1(differential)+'</td>'+
+      '<td data-label="Streak" class="'+(streak.result==="W"?"analytics-good":streak.result==="L"?"analytics-bad":"analytics-muted")+'">'+esc(streak.label)+'</td>'+
       '</tr>';
   }).join("");
 
@@ -13543,9 +14132,17 @@ function renderRivalryResult(){
     return;
   }
 
+  const verdict = h2hSeriesVerdict(h, A.name, B.name);
   const aLeads = h.winsFor > h.winsAgainst;
+  const bLeads = h.winsAgainst > h.winsFor;
   const streakName = h.streakOwnerId ? managerLatestInfo(h.streakOwnerId).name : null;
   const last = h.lastMeeting;
+  /* A dead-tied series gets said out loud. Two identical grey numbers and no
+     caption left the reader guessing, and every other surface that reads this
+     record used to resolve the tie by picking whoever was listed first. */
+  const verdictLine = verdict.tied
+    ? `<span class="pill" style="border-color:rgba(0,224,255,.4);color:var(--cyan);background:rgba(0,224,255,.07)">SERIES TIED · ${verdict.record}</span>`
+    : `<span class="pill pill-gold">${esc(String(verdict.leaderName).toUpperCase())} LEADS ${verdict.tape}</span>`;
 
   box.innerHTML = `<div class="card card-accent accent-cyan">
     <div class="pl-5 pr-4 py-4">
@@ -13560,9 +14157,10 @@ function renderRivalryResult(){
           <div class="font-mono tabular text-[30px] font-extrabold leading-none">
             <span style="color:${aLeads ? 'var(--gold)' : '#5d6879'}">${h.winsFor}</span>
             <span class="text-[#39424f] text-[20px]">–</span>
-            <span style="color:${!aLeads && h.winsAgainst > h.winsFor ? 'var(--gold)' : '#5d6879'}">${h.winsAgainst}</span>
+            <span style="color:${bLeads ? 'var(--gold)' : '#5d6879'}">${h.winsAgainst}</span>
           </div>
           ${h.ties ? `<div class="font-mono tabular text-[9.5px] text-[var(--dim)] mt-1">${h.ties} tie${h.ties===1?'':'s'}</div>` : ''}
+          ${verdict.tied ? `<div class="font-mono tabular text-[9px] text-[var(--cyan)] mt-1 tracking-widest">EVEN</div>` : ''}
         </div>
         <div class="flex-1 min-w-0 text-center">
           ${crest(B.teamName || B.name, B.logo, 46)}
@@ -13570,9 +14168,13 @@ function renderRivalryResult(){
         </div>
       </div>
 
+      <div class="mt-3.5 flex justify-center">${verdictLine}</div>
+
       <div class="grid grid-cols-3 gap-2 mt-4">
         ${statCell('PF (A)', h.pointsFor.toFixed(0), 'var(--cyan)')}
-        ${statCell('Diff', (h.diff >= 0 ? '+' : '') + h.diff.toFixed(1), h.diff >= 0 ? 'var(--green)' : 'var(--red)')}
+        ${statCell('Diff',
+                   verdict.pointsTied ? '0.0' : (h.diff > 0 ? '+' : '') + h.diff.toFixed(1),
+                   verdict.pointsTied ? 'var(--dim)' : h.diff > 0 ? 'var(--green)' : 'var(--red)')}
         ${statCell('PF (B)', h.pointsAgainst.toFixed(0), 'var(--cyan)')}
       </div>
 
@@ -14151,7 +14753,7 @@ async function hydrateLeagueFromCloud(league, options){
   ui.cloudLeagueId = id;
   setCloudStatus('syncing', 'Checking Supabase for saved settings, cookies, and history…');
   try{
-    const response = await fetch('/api/league?league_id=' + encodeURIComponent(id) +
+    const response = await fsnFetch('/api/league?league_id=' + encodeURIComponent(id) +
       '&season_year=' + encodeURIComponent(season), {
       method:'GET', headers:cloudHeaders(false, false), cache:'no-store',
     });
@@ -14245,12 +14847,12 @@ async function syncLeagueToCloud(options){
   if($('cloudSyncBtn')) $('cloudSyncBtn').disabled = true;
   setCloudStatus('syncing', 'Uploading optimized archive and verifying league-member access…');
   try{
-    const postArchive = ()=> fetch('/api/league', {
+    const postArchive = ()=> fsnFetch('/api/league', {
       method:'POST',
       headers:cloudHeaders(true, true),
       body:requestData.serialized,
       cache:'no-store',
-    });
+    }, 60000);
 
     let response = await postArchive();
 
@@ -14635,13 +15237,22 @@ async function fetchLeagueData(options){
        only mask it. */
     let text = null;
     try{
-      const response = await fetch('/api/espn?url=' + encodeURIComponent(liveUrl), {
+      const response = await fsnFetch('/api/espn?url=' + encodeURIComponent(liveUrl), {
         method:'GET', headers, cache:'no-store',
       });
       text = await response.text();
       if(!response.ok){
-        const detail = String(text || '').replace(/\s+/g, ' ').slice(0, 180);
-        throw new Error(`HTTP ${response.status}${detail ? ': ' + detail : ''}`);
+        /* The relay always answers a failure with JSON carrying a written-for-
+           humans `error` and a machine-readable `reason`. Read those. Splicing
+           180 raw characters of the response body into the message is how an
+           ESPN block page or an upstream stack trace ended up rendered in the
+           status line under the fetch button. */
+        const relay = readRelayError(text);
+        const err = new Error(`HTTP ${response.status}${relay.error ? ': ' + relay.error : ''}`);
+        err.relayReason = relay.reason;
+        err.relayMessage = relay.error;
+        err.httpStatus = response.status;
+        throw err;
       }
     }catch(err){
       // A thrown "HTTP NNN" is a genuine upstream status — surface it. Anything
@@ -14651,7 +15262,7 @@ async function fetchLeagueData(options){
       text = null;
       for(const wrapWithProxy of CORS_PROXIES){
         try{
-          const res = await fetch(wrapWithProxy(liveUrl), { cache:'no-store' });
+          const res = await fsnFetch(wrapWithProxy(liveUrl), { cache:'no-store' }, 12000);
           if(!res.ok) continue;
           const body = await res.text();
           if(body){ text = body; break; }
@@ -14800,12 +15411,29 @@ async function fetchLeagueData(options){
     }
     setConn('error');
     const message = String(err && (err.message || err) || '');
+    const relayReason = (err && err.relayReason) || '';
+    const relayMessage = (err && err.relayMessage) || '';
     $('fetchStatus').style.color = 'var(--red)';
 
     /* Surface the real reason so a live production failure is diagnosable at a
        glance instead of always reading "could not be loaded". */
     let msg;
-    if(/\bHTTP 40[13]\b/.test(message)){
+    /* The relay already worked out which of these it is and wrote the sentence
+       for it — including the common, harmless case where a public league simply
+       has no season on ESPN yet. Prefer that over guessing from a status code,
+       and never render a raw response body. */
+    if(relayReason === 'season-not-available'){
+      msg = relayMessage || ('ESPN does not have a ' + currentYear + ' season for this league yet. ' +
+        'The League ID is fine — ESPN just has not rolled this league over. Try again once your ' +
+        'league renews, or load an earlier season.');
+    } else if(relayReason === 'cookies-rejected'){
+      msg = relayMessage || 'ESPN rejected the saved private-league cookies. Re-copy espn_s2 and ' +
+        'SWID from your logged-in ESPN browser and paste them again.';
+    } else if(relayReason === 'upstream-timeout' || relayReason === 'upstream-unreachable' ||
+              relayReason === 'upstream-error' || relayReason === 'upstream-not-json'){
+      msg = relayMessage || 'ESPN is not responding right now. This is an ESPN-side problem, not ' +
+        'your League ID — try again in a moment.';
+    } else if(/\bHTTP 40[13]\b/.test(message)){
       // Tailor the guidance to whether the user has already supplied cookies:
       // present-but-rejected almost always means an invalid or expired paste,
       // while none-set means this private league needs credentials at all.
@@ -14815,10 +15443,11 @@ async function fetchLeagueData(options){
       } else if(s2 || swid){
         msg = 'ESPN denied the request (401/403) and only one cookie is saved — a private league needs BOTH espn_s2 and SWID. Add the missing value in Private League Access (see “How do I connect my league?” → Step 2), then try again.';
       } else {
-        msg = 'ESPN denied the request (401/403) — this league is private. Open “How do I connect my league?” → Step 2, paste your espn_s2 + SWID cookies into Private League Access, then fetch again.';
+        msg = 'ESPN would not serve this league without credentials. Either it is private — open “How do I connect my league?” → Step 2 and paste your espn_s2 + SWID into Private League Access — or this League ID has no such season.' + (relayMessage ? ' Details: ' + relayMessage : '');
       }
     } else if(/\bHTTP 404\b/.test(message)){
-      msg = 'ESPN has no 2026 season for this League ID (HTTP 404). Confirm the league renewed for 2026 and the ID is correct.';
+      msg = relayMessage || ('ESPN has no ' + currentYear + ' season for this League ID (HTTP 404). ' +
+        'Confirm the league renewed for ' + currentYear + ' and the ID is correct.');
     } else if(/NO_LIVE_LEAGUE_DATA/.test(message)){
       msg = 'Connected to ESPN, but the 2026 season returned no teams yet. If the league is private add ESPN credentials; if 2026 rosters are not set, try again once the season opens.';
     } else if(/INVALID_ESPN_JSON/.test(message)){
@@ -14826,9 +15455,13 @@ async function fetchLeagueData(options){
     } else if(/RELAY_UNREACHABLE|Failed to fetch|NetworkError|Load failed/i.test(message)){
       msg = 'Could not reach the /api/espn relay or any fallback (network error). The serverless function may not be deployed on Vercel, or a browser extension is blocking the request — confirm the api/ routes shipped and retry.';
     } else if(/\bHTTP 5\d\d\b/.test(message) || /upstream/.test(message)){
-      msg = 'The ESPN relay failed upstream (' + (message || 'server error') + '). This is usually a transient ESPN outage — try again in a moment.';
+      msg = relayMessage || 'The ESPN relay failed upstream. This is usually a transient ESPN outage — try again in a moment.';
     } else {
-      msg = 'The live 2026 season could not be loaded (' + (message || 'unknown error') + '). Check the League ID and try again.';
+      /* Last resort. `message` here is ours, not ESPN's — but keep it short and
+         markup-free so nothing unexpected can render into the status line. */
+      const detail = message.replace(/\s+/g, ' ').replace(/[<>]/g, '').slice(0, 160);
+      msg = 'The live ' + currentYear + ' season could not be loaded' + (detail ? ' (' + detail + ')' : '') +
+        '. Check the League ID and try again.';
     }
     $('fetchStatus').textContent = msg;
     return false;
@@ -14844,6 +15477,14 @@ async function fetchLeagueData(options){
 function setProvider(provider){
   const next = provider === 'sleeper' ? 'sleeper' : 'espn';
   ui.provider = next;
+  /* Mirror it into the store so leagueScopeToken() — which runs in closures
+     that cannot see `ui` — actually namespaces caches per platform. Assigned
+     rather than pushed through setMeta() on purpose: setMeta publishes, and a
+     publish with a live season re-opens the "who's watching?" picker for anyone
+     who has not picked a team yet. No publish is needed here anyway, because
+     the token itself changes, so the previous provider's entries simply stop
+     being addressable. */
+  try{ if(LeagueData.meta) LeagueData.meta.provider = next; }catch(e){}
   const espnTab = $('providerEspn'), sleeperTab = $('providerSleeper');
   [['espn', espnTab], ['sleeper', sleeperTab]].forEach(([key, tab])=>{
     if(!tab) return;
@@ -14854,7 +15495,7 @@ function setProvider(provider){
 
   const input = $('leagueIdInput');
   if(input){
-    input.placeholder = next === 'sleeper' ? 'e.g. 992228620063932416' : 'e.g. 57155288';
+    input.placeholder = LEAGUE_ID_PLACEHOLDER;
   }
   const heading = $('leagueSourceHeading');
   if(heading) heading.textContent = next === 'sleeper' ? 'Connect League' : 'Connect League';
@@ -15394,12 +16035,13 @@ function leadCard(a){
 function feedRow(a){
   const c = toneVar(a.tone);
   // Team monogram when the story has a subject, tag initials when it doesn't.
-  const mark = esc(a.crest ? initialsFrom(a.crest.name) : a.tag.slice(0, 2));
-  const fallback = `<div class=&quot;thumb&quot; style=&quot;color:${c};background:linear-gradient(150deg,${c}22,#141a26);border-color:${c}44&quot;>${mark}</div>`;
+  const mark = a.crest ? initialsFrom(a.crest.name) : a.tag.slice(0, 2);
+  const thumbStyle = `color:${c};background:linear-gradient(150deg,${c}22,#141a26);border-color:${c}44`;
   const thumb = a.crest && a.crest.logo
     ? `<img class="thumb" src="${esc(a.crest.logo)}" alt="" style="object-fit:cover"
-         onerror="this.outerHTML='${fallback}'">`
-    : `<div class="thumb" style="color:${c};background:linear-gradient(150deg,${c}22,#141a26);border-color:${c}44">${mark}</div>`;
+         data-fallback-text="${esc(mark)}" data-fallback-style="${esc(thumbStyle)}"
+         onerror="window.__fsnImgFallbackNode(this,'thumb')">`
+    : `<div class="thumb" style="${esc(thumbStyle)}">${esc(mark)}</div>`;
 
   return `<button class="card story-row" data-article="${esc(a.id)}">
     ${thumb}
@@ -15544,7 +16186,7 @@ function articleHtml(a){
           </div>
           <div class="val" style="${r.value && String(r.value).charAt(0) === '+' ? 'color:' + c : ''}">${r.value}</div>
         </div>`).join('')}
-      ${a.numbers.table ? `<div class="bn-table-wrap no-bar"><table class="bn-table"><thead><tr>${(a.numbers.table.headers || []).map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${(a.numbers.table.rows || []).map(row=>`<tr>${row.map((cell,ci)=>`<td data-label="${esc(String((a.numbers.table.headers || [])[ci] || ''))}">${cell}</td>`).join('')}</tr>`).join('')}</tbody></table></div>` : ''}
+      ${a.numbers.table ? `<div class="bn-table-wrap no-bar"><table class="bn-table"><thead><tr>${(a.numbers.table.headers || []).map(h=>`<th>${esc(String(h == null ? '' : h))}</th>`).join('')}</tr></thead><tbody>${(a.numbers.table.rows || []).map(row=>`<tr>${row.map((cell,ci)=>`<td data-label="${esc(String((a.numbers.table.headers || [])[ci] || ''))}">${esc(String(cell == null ? '' : cell))}</td>`).join('')}</tr>`).join('')}</tbody></table></div>` : ''}
       ${a.numbers.bracket ? playoffBracketHtml(a.numbers.bracket) : ''}
       ${a.numbers.liveBracket ? livePlayoffBracketHtml(a.numbers.liveBracket) : ''}
       ${a.numbers.note ? `<div class="bn-note">${a.numbers.note}</div>` : ''}
@@ -15752,7 +16394,7 @@ function timelineCard(a){
   const c = TOPIC_TONE[a.topic] || toneVar(a.tone);
   const mark = a.crest ? initialsFrom(a.crest.name) : String(a.tag || 'FSN').slice(0, 2);
   const crestHtml = (a.crest && a.crest.logo)
-    ? `<img class="tl-crest" src="${esc(a.crest.logo)}" alt="" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'tl-crest',textContent:'${esc(mark)}'}))">`
+    ? `<img class="tl-crest" src="${esc(a.crest.logo)}" alt="" data-fallback-text="${esc(mark)}" onerror="window.__fsnImgFallbackNode(this,'tl-crest')">`
     : `<div class="tl-crest" style="color:${c};background:linear-gradient(150deg,${c}22,#131a26);border-color:${c}44">${esc(mark)}</div>`;
 
   const live = a.live ? '<span class="now">● LIVE</span><span class="sep">/</span>' : '';
@@ -16105,6 +16747,13 @@ $('profileGrid').addEventListener('click', (e)=>{
   if(btn) selectProfile(btn.dataset.profileTeam);
 });
 $('profileGuest').addEventListener('click', ()=> selectProfile('guest'));
+
+/* Re-solve the picker's card sizing whenever the box it fills can have
+   changed. `visualViewport` covers the mobile URL bar collapsing, which does
+   not always fire a window resize. */
+window.addEventListener('resize', scheduleProfileLayout);
+window.addEventListener('orientationchange', scheduleProfileLayout);
+if(window.visualViewport) window.visualViewport.addEventListener('resize', scheduleProfileLayout);
 
 /* Shared season selector wiring for the Desk, News Timeline and Matchups. */
 document.addEventListener('change', (e)=>{
