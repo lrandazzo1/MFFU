@@ -9665,14 +9665,22 @@ function buildCustomNumbers(week, team){
    uses.
 ============================================================================ */
 
-/* ---- slots: the weekly broadcast schedule, in local time ---- */
+/* ---- slots: the weekly broadcast schedule, in local time ----
+   `dow`/`hour` are the calendar day and hour the slot goes to air. `day` is the
+   slot's position inside a single fantasy week, counted in days from the
+   Tuesday that opens it (the same Tuesday roll `nflRegularSeasonWeek` uses), so
+   the release calendar can turn "week N, waivers" into one exact timestamp.
+   The postgame slots sit at the far end of the cycle on purpose: week N's
+   Sunday night recap is day 5, the Monday nightcap day 6, and the Tuesday
+   morning long-form recap of that same slate lands on day 7 — the Tuesday
+   *after* the games, not the one that opened the week. */
 const SLOTS = {
-  gameday:  { dow:0, hour:20, label:'FINAL',          topic:'breaking' },  // Sunday night
-  primetime:{ dow:1, hour:23, label:'FINAL',          topic:'breaking' },  // Monday night
-  recap:    { dow:2, hour:9,  label:'RECAP',          topic:'power'    },  // Tuesday morning
-  waivers:  { dow:3, hour:9,  label:'WAIVERS',        topic:'waivers'  },  // Wednesday run
-  primer:   { dow:4, hour:17, label:'MATCHUPS',       topic:'matchups' },  // Thursday, pre-TNF
-  injury:   { dow:6, hour:11, label:'INJURY WIRE',    topic:'breaking' },  // Saturday
+  gameday:  { dow:0, hour:20, day:5, label:'FINAL',          topic:'breaking' },  // Sunday night
+  primetime:{ dow:1, hour:23, day:6, label:'FINAL',          topic:'breaking' },  // Monday night
+  recap:    { dow:2, hour:9,  day:7, label:'RECAP',          topic:'power'    },  // Tuesday morning
+  waivers:  { dow:3, hour:9,  day:1, label:'WAIVERS',        topic:'waivers'  },  // Wednesday run
+  primer:   { dow:4, hour:17, day:2, label:'MATCHUPS',       topic:'matchups' },  // Thursday, pre-TNF
+  injury:   { dow:6, hour:11, day:4, label:'INJURY WIRE',    topic:'breaking' },  // Saturday
 };
 
 const TOPICS = [
@@ -9688,16 +9696,117 @@ const TOPICS = [
 const DAY_NAMES = ['SUNDAY','MONDAY','TUESDAY','WEDNESDAY','THURSDAY','FRIDAY','SATURDAY'];
 const MIN = 60000, HOUR = 60 * MIN, DAY = 24 * HOUR;
 
-/* The most recent moment this slot came around — never in the future, so a
-   Thursday primer read on Tuesday is six days old, not one day early. */
-function slotTime(slotName, offsetMinutes){
+/* ============================================================
+   LIVE SEASON RELEASE CALENDAR
+
+   Off-season and in the archives the desk is a time machine: every slot is
+   stamped with the last time it came around so a whole week of coverage is
+   readable the moment a league is loaded. That is the right behaviour for a
+   season that is already in the books, and it is the behaviour every prior
+   season keeps.
+
+   Once the live season opens, though, the desk is a wire, not a boxed set.
+   From Week 1 on, a story is pinned to the exact calendar moment its slot goes
+   to air *in its own week* — Wednesday's waiver fallout to that week's
+   Wednesday, Sunday's finals to that week's Sunday night — and anything whose
+   moment has not arrived yet is simply not on the wire.
+============================================================ */
+
+/* The Tuesday that opens fantasy Week 1 of `seasonYear`. Week 1's Thursday
+   kickoff is Labor Day (the first Monday of September) + 3; the slate rolls the
+   Tuesday two days before it, i.e. Labor Day + 1. This mirrors the calendar
+   authority the live-week mapping already uses, so the release calendar and the
+   week scrubber can never disagree about where a week starts. */
+function seasonWeekOneStart(seasonYear){
+  const year = parseInt(seasonYear, 10);
+  if(!year) return null;
+  const sept1 = new Date(year, 8, 1);
+  const laborDay = new Date(year, 8, 1 + ((8 - sept1.getDay()) % 7));
+  return new Date(laborDay.getFullYear(), laborDay.getMonth(), laborDay.getDate() + 1);
+}
+
+/* The exact local moment slot `slotName` goes to air in week `week` of
+   `seasonYear`. Null whenever the season has no calendar anchor. */
+function slotReleaseAt(slotName, week, seasonYear){
   const slot = SLOTS[slotName] || SLOTS.gameday;
+  const wk = parseInt(week, 10);
+  const start = seasonWeekOneStart(seasonYear);
+  if(!start || !(wk > 0)) return null;
+  const dayOffset = (wk - 1) * 7 + (slot.day != null ? slot.day : 0);
+  return new Date(start.getFullYear(), start.getMonth(), start.getDate() + dayOffset,
+                  slot.hour, 0, 0, 0).getTime();
+}
+
+/* The live regular-season week for `seasonYear` right now: 0 before the opener
+   (draft / preseason), otherwise 1-18. Deliberately a local restatement of the
+   UI's nflRegularSeasonWeek so the News Desk IIFE owns its own calendar and
+   cannot be broken by script ordering. */
+function calendarWeekNow(seasonYear, now){
+  const start = seasonWeekOneStart(seasonYear);
+  if(!start) return 0;
+  const ref = now instanceof Date ? now : new Date();
+  const days = Math.floor((ref - start) / DAY);
+  if(days < 0) return 0;
+  return Math.min(18, Math.floor(days / 7) + 1);
+}
+
+/* The release anchor in force while a stream is being assembled, or null when
+   the desk is running in its classic time-machine mode. Set only by the stream
+   builders, around generation, so every slotTime() call made while building a
+   live week resolves against that week's real dates. */
+let releaseAnchor = null;
+
+/* Live release applies to the season currently being played, from Week 1 on,
+   and only up to the week the calendar has actually reached. Archive seasons,
+   the pre-Week-1 window and weeks the user has scrubbed ahead to all return
+   null and keep the existing behaviour untouched. */
+function releaseAnchorFor(week){
+  const wk = parseInt(week, 10);
+  if(!(wk > 0)) return null;
+  const season = Number(viewedSeasonYear() || 0);
+  if(!season || season !== Number(activeSeasonYear() || 0)) return null;
+  const liveWeek = calendarWeekNow(season);
+  if(liveWeek < 1 || wk > liveWeek) return null;
+  return { season, week: wk, live: wk === liveWeek };
+}
+
+/* A token that changes every time the wire crosses a slot boundary, so the
+   stream cache expires exactly when new copy becomes due and never in between.
+   Constant off the live calendar, where nothing is being held back. */
+function releaseWindowToken(week){
+  const anchor = releaseAnchorFor(week);
+  if(!anchor || !anchor.live) return 'static';
+  const now = Date.now();
+  let due = 0;
+  Object.keys(SLOTS).forEach(name=>{
+    const at = slotReleaseAt(name, anchor.week, anchor.season);
+    if(at != null && at <= now && at > due) due = at;
+  });
+  return 'rel' + due;
+}
+
+/* The moment this slot goes to air.
+
+   Under a live release anchor that is the slot's real date inside the anchored
+   week, which is what makes a Sunday recap a Sunday story and lets the gate
+   below hold it until Sunday actually arrives. With no anchor this falls back
+   to the original behaviour: the most recent moment the slot came around, never
+   in the future, so a Thursday primer read on Tuesday is six days old rather
+   than one day early. */
+function slotTime(slotName, offsetMinutes, anchorOverride){
+  const slot = SLOTS[slotName] || SLOTS.gameday;
+  const back = Math.max(0, offsetMinutes || 0) * MIN;
+  const anchor = anchorOverride !== undefined ? anchorOverride : releaseAnchor;
+  if(anchor){
+    const at = slotReleaseAt(slotName, anchor.week, anchor.season);
+    if(at != null) return at - back;
+  }
   const now = new Date();
   const d = new Date(now.getFullYear(), now.getMonth(), now.getDate(), slot.hour, 0, 0, 0);
   const shift = (d.getDay() - slot.dow + 7) % 7;
   d.setDate(d.getDate() - shift);
   if(d.getTime() > now.getTime()) d.setDate(d.getDate() - 7);
-  return d.getTime() - Math.max(0, offsetMinutes || 0) * MIN;
+  return d.getTime() - back;
 }
 
 /* Live copy shouldn't wait for Sunday night — while the ball is in the air it
@@ -9707,6 +9816,9 @@ function liveTime(offsetMinutes){
 }
 
 function stamp(at){
+  /* A story the release gate is holding as the floor is genuinely still ahead;
+     name the day it goes to air rather than backdating it to "1M AGO". */
+  if(at > Date.now()) return DAY_NAMES[new Date(at).getDay()];
   const diff = Math.max(0, Date.now() - at);
   if(diff < HOUR){
     const m = Math.max(1, Math.round(diff / MIN));
@@ -11461,7 +11573,11 @@ function getTimelineStream(week){
     return custom.map((a,i)=> adopt(a, i)).sort((a,b)=> b.at - a.at);
   }
 
-  const key = leagueScopeToken() + '|' + String(viewedSeasonYear()) + ':' + String(week) + ':' + custom.map(a=> a.id).join(',');
+  /* The release window is part of the cache identity: a page left open across
+     a slot boundary has to rebuild, or the day's scheduled drop would never
+     reach the wire. */
+  const releaseKey = releaseWindowToken(week);
+  const key = leagueScopeToken() + '|' + String(viewedSeasonYear()) + ':' + String(week) + ':' + releaseKey + ':' + custom.map(a=> a.id).join(',');
   if(streamCache.key === key && streamCache.list){
     let cachedCtx = null;
     try{ cachedCtx = weekContext(week); }catch(_){ cachedCtx = null; }
@@ -11504,6 +11620,13 @@ function getTimelineStream(week){
   const runners = pregameOnly
     ? [tlPlayoffBracket, tlPreseason, genPreviewPower, tlPrimer, tlRivalry, tlInjury, tlDraft]
     : [tlPlayoffBracket, tlPreseason, tlPlayoffPicture, tlGameDay, tlRecap, tlWaivers, tlPrimer, tlRivalry, tlInjury, tlDraft];
+  /* Every slotTime() call below — in the generators, in the legacy adopt()
+     pass, in the community fold-in — resolves against this week's real dates
+     while the anchor is in force. The generators are already individually
+     try/caught, and the anchor is cleared unconditionally below. */
+  const anchor = releaseAnchorFor(week);
+  const priorAnchor = releaseAnchor;
+  releaseAnchor = anchor;
   runners.forEach(gen=>{
     try{ events = events.concat(gen(ctx) || []); }
     catch(err){ console.error('[Timeline] generator failed', gen.name, err); }
@@ -11524,6 +11647,7 @@ function getTimelineStream(week){
   // Community copy is scoped to this exact season/week and can exist even
   // before the first live score posts.
   events = events.concat(custom.map((a,i)=> adopt(a, i)));
+  releaseAnchor = priorAnchor;
 
   /* Never let sparse archive metadata erase the transition lead. The normal
      generator gets one guarded retry; the final fallback is a complete State
@@ -11546,6 +11670,35 @@ function getTimelineStream(week){
   if(phase === 'draft' || phase === 'preseason'){
     const now = Date.now();
     events.forEach(e=>{ if(e.topic === 'draft') e.at = Math.max(e.at, now - (hash(e.id) % 600) * MIN); });
+  }
+
+  /* ---- SCHEDULED RELEASE GATE ----
+     On the week the live calendar is actually sitting on, a story is on the
+     wire only once its slot has gone to air. Sunday's finals are not readable
+     on Wednesday and the Tuesday long-form recap is not readable on Sunday
+     night; they arrive on their own days, exactly as a real desk publishes.
+
+     Three things are never held: community copy (the one desk the app does not
+     overrule), anything already stamped live rather than to a slot — the State
+     of the League lead, the bracket card — and, as a floor, the next story due
+     when the gate would otherwise leave the wire blank. Past weeks are entirely
+     released by definition and archive seasons never reach this branch at all,
+     so the time machine keeps every story it has always shown. */
+  if(anchor && anchor.live){
+    const now = Date.now();
+    const held = [];
+    const released = events.filter(e=>{
+      if(!e) return false;
+      if(e.custom || !(e.at > now)) return true;
+      held.push(e);
+      return false;
+    });
+    if(!released.some(e=> !e.custom) && held.length){
+      // Nothing has gone to air yet this week: promote only the next one due.
+      held.sort((a,b)=> a.at - b.at);
+      released.push(held[0]);
+    }
+    events = released;
   }
 
   const seen = {};
