@@ -2307,6 +2307,74 @@ function $(id){ return document.getElementById(id); }
 function selectedLeagueId(){ return LeagueData.leagueId(); }
 function leagueScopeToken(){ return LeagueData.scopeToken(); }
 
+/* History completion is separate from history presence. An empty in-memory
+   archive while ESPN/Sleeper is still loading (or after a network failure) is
+   not evidence that a league is new. The News Desk may classify season one
+   only after the active provider has completed an authoritative history probe. */
+window._fsnHistoryProbe = { provider:'', leagueId:'', status:'idle' };
+function historyRequestIsCurrent(leagueId, provider){
+  const requestedProvider = provider === 'sleeper' ? 'sleeper' : 'espn';
+  return LeagueData.activeProvider === requestedProvider &&
+    String(selectedLeagueId()) === String(leagueId || '').trim();
+}
+function setHistoryProbeState(provider, leagueId, status){
+  const requestedProvider = provider === 'sleeper' ? 'sleeper' : 'espn';
+  const requestedLeague = String(leagueId || '').trim();
+  if(status !== 'idle' && !historyRequestIsCurrent(requestedLeague, requestedProvider)) return false;
+  window._fsnHistoryProbe = {
+    provider:requestedProvider,
+    leagueId:requestedLeague,
+    status:String(status || 'idle'),
+  };
+  return true;
+}
+
+/* ---- INAUGURAL-SEASON PROBE ----
+   A first-year league has no predecessor, so every "defending champion",
+   "prior final" and "holds the ring" line the desk owns is a claim about games
+   that were never played. These answer the one question those paths need — is
+   there an archived season strictly before the viewed one? — and they live
+   here, at global scope in the first block, because the News Desk (block 4)
+   asks it today and the intel layer (block 3) and the UI (block 6) are the
+   obvious next callers. A copy nested inside any one IIFE is invisible to the
+   other five and would throw on every read from them.
+
+   The probe reads the raw archive payload only. The hydrator appends a row
+   solely for a season it actually got usable team data back for, so a row
+   dated before the viewed season is proof of real league history — which is
+   what keeps every Season 2+ path on its existing behaviour, untouched. */
+function priorArchiveSeasonYears(seasonYear){
+  const viewed = parseInt(seasonYear, 10) || 0;
+  const rows = Array.isArray(window._franchiseYearsData) ? window._franchiseYearsData : [];
+  const years = [];
+  rows.forEach(function(entry){
+    const year = parseInt(entry && entry.year, 10);
+    if(!Number.isFinite(year) || year <= 0) return;
+    if(viewed > 0 && year >= viewed) return;
+    const teams = entry && entry.leagueData && Array.isArray(entry.leagueData.teams)
+      ? entry.leagueData.teams : [];
+    if(teams.length) years.push(year);
+  });
+  return years.sort(function(a, b){ return a - b; });
+}
+
+/* True only when nothing at all precedes the viewed season. A thrown probe is
+   not evidence of a new league, so it degrades to false on purpose: showing a
+   multi-season league its normal transition copy is a harmless wrong answer,
+   telling one its history does not exist is not. */
+function isInauguralSeason(seasonYear){
+  try{
+    if(priorArchiveSeasonYears(seasonYear).length > 0) return false;
+    const probe = window._fsnHistoryProbe || {};
+    return probe.status === 'complete' &&
+      probe.provider === LeagueData.activeProvider &&
+      probe.leagueId === String(selectedLeagueId());
+  }catch(err){
+    console.error('[FSNScope] inaugural-season probe failed for season ' + seasonYear, err);
+    return false;
+  }
+}
+
 /* Renderers and week/season accessors that genuinely need the UI layer's
    closure cannot be hoisted out here, so the UI layer registers them instead.
    Callers in other blocks go through FSNBridge, which reports a missing or
@@ -2406,16 +2474,15 @@ window.LeagueData = (function(){
     },
 
     /* Every game for a given week, each side joined back to its full team
-       record. Falls back to the whole schedule when nothing matches the
-       requested matchupPeriodId — some leagues report scoringPeriodId and
-       matchupPeriodId a step apart. */
+       record. A missing week is an explicit empty state; substituting the full
+       season would mislabel every available matchup as the requested week. */
     getWeekMatchups(week){
       const sched = (store.espnData && store.espnData.schedule) || [];
       const teams = store.getTeams();
       const teamById = (id)=> teams.find(t=> t.id === id) || null;
 
       const inWeek = sched.filter(g=> !week || String(g.matchupPeriodId) === String(week));
-      const source = inWeek.length ? inWeek : sched;
+      const source = inWeek;
 
       /* The official playoff seed for one side of a bracket game. ESPN stamps
          it on the schedule entry itself once the bracket is generated, which is
@@ -2812,17 +2879,27 @@ function normalizeHistoryPayload(raw){
    endpoint. Requests stay sequential and use only the five lightweight views
    needed by the Record Book, keeping proxy payloads and gateway pressure low. */
 async function fetchAllTimeHistory(leagueId) {
+  const requestedLeagueId = String(leagueId || '').trim();
+  if(!historyRequestIsCurrent(requestedLeagueId, 'espn')){
+    return { yearsData:[], skipped:[], stale:true };
+  }
+  setHistoryProbeState('espn', requestedLeagueId, 'loading');
   const targetYears = [2025, 2024, 2023, 2022, 2021, 2020, 2019, 2018];
   const yearsData = [];
   const skipped = [];
+  let uncertainFailures = 0;
   const views = 'view=mTeam&view=mRoster&view=mMatchup&view=mMatchupScore&view=mSettings';
   const archiveDelay = (ms)=> new Promise(resolve=> setTimeout(resolve, ms));
 
   for (const year of targetYears) {
-    const url = `https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/${year}/segments/0/leagues/${leagueId}?${views}`;
+    const url = `https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/${year}/segments/0/leagues/${requestedLeagueId}?${views}`;
 
     try {
       const raw = await fetchLeagueDataViaProxies(url);
+      if(!historyRequestIsCurrent(requestedLeagueId, 'espn')){
+        console.warn('[FSN] Discarded stale ESPN history response for league ' + requestedLeagueId + '.');
+        return { yearsData:[], skipped, stale:true };
+      }
       const data = Array.isArray(raw) ? raw[0] : raw;
 
       if (data && Array.isArray(data.teams) && data.teams.length > 0) {
@@ -2833,11 +2910,23 @@ async function fetchAllTimeHistory(leagueId) {
       }
     } catch (err) {
       skipped.push(Number(year));
+      if(!/\bHTTP 404\b/.test(String(err && err.message || err))) uncertainFailures += 1;
       console.warn(`[FSN] Season ${year} fetch failed; continuing archive hydration:`, err);
+      if(!historyRequestIsCurrent(requestedLeagueId, 'espn')){
+        console.warn('[FSN] Stopped stale ESPN history hydration for league ' + requestedLeagueId + '.');
+        return { yearsData:[], skipped, stale:true };
+      }
     }
 
     if (year !== targetYears[targetYears.length - 1]) await archiveDelay(120);
   }
+
+  if(!historyRequestIsCurrent(requestedLeagueId, 'espn')){
+    console.warn('[FSN] Discarded completed stale ESPN history hydration for league ' + requestedLeagueId + '.');
+    return { yearsData:[], skipped, stale:true };
+  }
+
+  setHistoryProbeState('espn', requestedLeagueId, uncertainFailures === 0 ? 'complete' : 'failed');
 
   if (yearsData.length > 0) {
     const stats = computeLeagueHistoryStats(yearsData);
@@ -2856,9 +2945,18 @@ async function fetchAllTimeHistory(leagueId) {
     FSNBridge.call('renderRecordBook');
     FSNBridge.call('renderNews');
     FSNBridge.call('renderHomeStories');
+  } else if(uncertainFailures === 0) {
+    // A completed, empty archive is the only safe proof of a first season.
+    FSNBridge.call('renderNews');
+    FSNBridge.call('renderHomeStories');
   }
 
-  return { yearsData, skipped };
+  return {
+    yearsData,
+    skipped,
+    stale:false,
+    probeStatus:uncertainFailures === 0 ? 'complete' : 'failed',
+  };
 }
 
 /* ============================================================
@@ -2872,21 +2970,36 @@ async function fetchAllTimeHistory(leagueId) {
    coverage still lands.
 ============================================================ */
 async function fetchLeagueHistoryArchive(leagueId){
-  const historyUrl = buildLeagueHistoryUrl(leagueId);
+  const requestedLeagueId = String(leagueId || '').trim();
+  if(!historyRequestIsCurrent(requestedLeagueId, 'espn')){
+    return { yearsData:[], skipped:[], route:'stale', stale:true };
+  }
+  setHistoryProbeState('espn', requestedLeagueId, 'loading');
+  const historyUrl = buildLeagueHistoryUrl(requestedLeagueId);
   if(historyUrl){
     try{
       const raw = await fetchLeagueDataViaProxies(historyUrl);
+      if(!historyRequestIsCurrent(requestedLeagueId, 'espn')){
+        console.warn('[FSN] Discarded stale consolidated ESPN history for league ' + requestedLeagueId + '.');
+        return { yearsData:[], skipped:[], route:'stale', stale:true };
+      }
       const { yearsData, skipped } = normalizeHistoryPayload(raw);
       if(yearsData.length){
-        return { yearsData, skipped, route:'consolidated' };
+        setHistoryProbeState('espn', requestedLeagueId, 'complete');
+        return { yearsData, skipped, route:'consolidated', stale:false };
       }
       console.warn('[FSN] Consolidated leagueHistory route returned no usable seasons; falling back to sequential hydration.');
     }catch(err){
       console.warn('[FSN] Consolidated leagueHistory route failed; falling back to sequential hydration.', err);
     }
   }
-  const seq = await fetchAllTimeHistory(leagueId);
-  return { yearsData: seq.yearsData || [], skipped: seq.skipped || [], route:'sequential' };
+  const seq = await fetchAllTimeHistory(requestedLeagueId);
+  return {
+    yearsData:seq.yearsData || [],
+    skipped:seq.skipped || [],
+    route:'sequential',
+    stale:!!seq.stale,
+  };
 }
 
 /* Every counted game lives in exactly one h2h bucket, so summing the
@@ -11149,6 +11262,141 @@ function tlPlayoffBracket(ctx){
 }
 
 /* ============================================================
+   SEASON ONE — THE WELCOME DESK
+   A brand-new league has no champion to defend, no sacko on the clock and no
+   archive to quote. Every transition story below this one is written around a
+   title defense, and running them on an inaugural season is exactly what put a
+   placeholder crown on the board: tl() hands the narrative assembler a facts
+   object built from the first crest in the payload when a story supplies none,
+   the "sotl" family opener stamps "<team> holds the ring" in front of it, and a
+   league that has never played a game gets told who its dynasty is.
+
+   So season one gets its own desk rather than a degraded copy of season two's.
+   These three stories are hardcoded — no history reads, no champion lookup, no
+   ring, dynasty, drought or defending-champion language anywhere — and every
+   fact interpolated into them comes off the connected payload the reader is
+   already looking at, which makes them deterministic for a given league and
+   season without a single seeded draw. Both narrative locks are set so the
+   assembler cannot reintroduce title copy on the way out.
+
+   Additive by construction: nothing here runs unless isInauguralSeason() is
+   true, so the Season 2+ generators keep their existing output byte for byte.
+============================================================ */
+function inauguralWelcomeStories(ctx){
+  const season = Number(viewedSeasonYear() || new Date().getFullYear());
+  let rawTeams = [];
+  try{ rawTeams = LeagueData.getTeams(); }
+  catch(err){
+    console.warn('[NewsDesk] inaugural welcome desk could not read the team list for season ' + season + '; filing without the field.', err);
+    rawTeams = [];
+  }
+  const teams = Array.isArray(rawTeams) ? rawTeams.filter(Boolean) : [];
+  const teamCount = teams.length;
+
+  /* Every count in the copy is written to read correctly at zero, because a
+     payload can be connected before its team list resolves and "0 teams are
+     connected" is worse than a sentence that simply does not mention it. */
+  const fieldPhrase = teamCount ? '<b>' + teamCount + '</b> team' + (teamCount === 1 ? '' : 's') : 'every team in the league';
+  const fieldPlain  = teamCount ? String(teamCount) + ' team' + (teamCount === 1 ? '' : 's') : 'the field';
+  const countValue  = teamCount ? String(teamCount) : 'Pending';
+  const crest = teams[0] ? { name: teams[0].name, logo: teams[0].logo } : null;
+  const leagueLabel = esc(leagueDateline());
+  const inauguralDateline = leagueDateline() + ' · ' + season + ' INAUGURAL SEASON';
+  const roster = teams.map(function(t){ return esc(t.name); });
+  const rosterLine = roster.length
+    ? 'The opening field: <b>' + roster.join('</b>, <b>') + '</b>.'
+    : 'The opening field populates here the moment the league payload finishes resolving its rosters.';
+
+  const welcome = tl({
+    id: 'tl-inaugural-welcome-' + season,
+    kind:'sotl', topic:'breaking', at: liveTime(18),
+    metaTag:'WELCOME TO THE LEAGUE',
+    tag:'WELCOME TO THE LEAGUE', tone:'gold', priority: 340,
+    byline:'FSN Senior League Insider',
+    dateline: inauguralDateline,
+    crest: crest,
+    headlineLocked:true, narrativeLocked:true,
+    headline:'WELCOME TO THE LEAGUE: ' + season + ' IS SEASON ONE AND THE RECORD BOOK IS EMPTY',
+    dek:'No defending champion, no archive, no prior form. Every one of ' + fieldPlain + ' starts the year with the identical résumé.',
+    paragraphs:[
+      datelineTag() + ' <b>' + leagueLabel + '</b> opens its first season. There is no defending champion to introduce, ' +
+        'no title to defend and no archive to quote — <b>' + season + '</b> is year one, and every record this league will ever own is still unwritten.',
+      'That is not a missing feature, it is the entire appeal. ' + fieldPhrase + ' start from the same place: <b>0-0</b>, zero points scored, ' +
+        'zero points allowed, and exactly the same claim on the trophy. The first manager to put a number on the board owns the first entry in league history.',
+      'The desk does not invent a past this league has not lived. Rivalry ledgers, career totals, droughts and the all-time record book stay empty ' +
+        'until real games fill them, and they start filling on the opening Sunday. What happens this season becomes the history the ' + (season + 1) + ' preview gets to argue about.',
+    ],
+    quote:{ text:'Nobody in this league has ever won it. That is the only fair way to start.', who:'FSN SENIOR LEAGUE INSIDER' },
+    numbers:{ title:'Season One, By the Numbers', rows:[
+      { label:'Season', value:String(season), note:'Inaugural year' },
+      { label:'Teams connected', value:countValue, note:'All 0-0' },
+      { label:'Seasons on record', value:'0', note:'The archive opens with this year' },
+      { label:'Champions crowned', value:'None yet', note:'The first title is decided this season' },
+      { label:'All-time records', value:'Unclaimed', note:'Every mark in the book is available' },
+    ] },
+  });
+
+  const board = tl({
+    id: 'tl-inaugural-board-' + season,
+    kind:'preview', topic:'matchups', at: liveTime(34),
+    metaTag:'PRE-SEASON BOARD',
+    tag:'PRE-SEASON BOARD', tone:'cyan', priority: 320,
+    byline:'FSN Numbers Desk',
+    dateline: inauguralDateline,
+    crest: crest,
+    headlineLocked:true, narrativeLocked:true,
+    headline:'PRE-SEASON BOARD IS SET: ' + upper(fieldPlain) + ', ONE SCHEDULE, NO PRIOR FORM',
+    dek:'The Week 1 slate is loaded and every projection in it is a guess. There is no last season to check it against.',
+    paragraphs:[
+      datelineTag() + ' The board for <b>' + season + '</b> is set. ' + fieldPhrase + ' are connected, the schedule is loaded, ' +
+        'and the first slate in this league’s history is on the clock.',
+      'This is normally where the desk hands you prior form — who scored what last year, which roster fell apart in November, which matchup carries a grudge. ' +
+        'None of that exists yet. The power index, the expected-wins model and the luck delta all take played games as their input, and they publish their first ' +
+        'honest numbers the moment Week 1 scores post rather than guessing in the meantime.',
+      rosterLine,
+      'Until the first whistle every team on this board is exactly as good as it says it is. That stops being true in about a week.',
+    ],
+    numbers:{ title:'The Opening Field', rows: (roster.length
+      ? teams.slice(0, 14).map(function(t){ return { label: esc(t.name), value:'0-0', note:'0.0 points for · 0.0 against' }; })
+      : [{ label:'Rosters', value:'Pending', note:'Waiting on the connected league payload' }]
+    ), note: roster.length > 14 ? 'First 14 of ' + roster.length + ' teams. Every record in the league reads 0-0.' : 'Every record in the league reads 0-0.' },
+  });
+
+  const brief = tl({
+    id: 'tl-inaugural-brief-' + season,
+    kind:'preview', topic:'breaking', at: liveTime(52),
+    metaTag:'COMMISSIONER’S BRIEF',
+    tag:'COMMISSIONER’S BRIEF', tone:'gold', priority: 310,
+    byline:'FSN League Office',
+    dateline: inauguralDateline,
+    crest: crest,
+    headlineLocked:true, narrativeLocked:true,
+    headline:'THE INAUGURAL COMMISSIONER’S BRIEF: HOW YEAR ONE GETS SCORED',
+    dek:'Ground rules for a league with no precedent — what counts, what carries forward, and what this desk refuses to make up.',
+    paragraphs:[
+      datelineTag() + ' A first season needs a rulebook more than it needs a narrative, so here is the brief: everything printed from this point forward ' +
+        'is drawn from games this league actually plays.',
+      'Weekly results, scoring, waiver moves and lineup decisions enter the record as they happen. Standings, the power index and the playoff picture come ' +
+        'online as soon as there are results to rank. Anything that genuinely requires a prior season — a title defense, a career ledger, an all-time high, ' +
+        'a head-to-head series — stays marked unavailable instead of being filled with a placeholder.',
+      'The postseason at the end of this year produces this league’s first champion, and that result is what turns season one into the archive every future ' +
+        'preview reads from. Season two opens with a title to defend. Season one opens with ' + fieldPlain + ' and an argument. Set your lineup.',
+    ],
+    quote:{ text:'We do not print history that has not happened yet.', who:'FSN LEAGUE OFFICE' },
+    numbers:{ title:'What Is Live In Year One', rows:[
+      { label:'Weekly results', value:'Live', note:'Recorded from Week 1 forward' },
+      { label:'Standings & power index', value:'Live', note:'Publishes once the first scores post' },
+      { label:'Playoff picture', value:'Live', note:'Opens with the first seeding math' },
+      { label:'Record book', value:'Opens this season', note:'Every all-time mark is unclaimed' },
+      { label:'Head-to-head ledgers', value:'0-0', note:'Every meeting this year is a first meeting' },
+      { label:'Defending champion', value:'None', note:'The first title is decided in ' + season },
+    ] },
+  });
+
+  return [welcome, board, brief];
+}
+
+/* ============================================================
    AUGUST — THE STATE OF THE LEAGUE PRIMER
    The lead story of the pre-season: last year's champion is handed
    the crown, last year's sacko is handed the clock, and the Week 1
@@ -11160,6 +11408,13 @@ function tlPreseason(ctx){
   const phase = FSNIntel.seasonPhase(ctx.week);
   const inWindow = phase === 'preseason' || phase === 'draft' || ctx.week === 1;
   if(!inWindow) return [];
+
+  /* Season one has no predecessor to hand a crown to. Everything below this
+     line — the champion banner and the "archive pending" transition card
+     alike — is written around a title defense, and on an inaugural league both
+     end up asserting a prior final that never happened. The welcome desk is
+     the correct lead for that case; the Season 2+ paths below are unchanged. */
+  if(isInauguralSeason(viewedSeasonYear())) return inauguralWelcomeStories(ctx);
 
   const rep = FSNIntel.preseasonReport();
   if(!rep || !rep.champion || !rep.sacko){
@@ -11438,6 +11693,17 @@ LeagueData.subscribe(()=>{ streamCache = { key:null, list:null }; });
 
 function transitionStateFallback(ctx){
   const season = Number(viewedSeasonYear() || new Date().getFullYear());
+
+  /* The guaranteed banner below narrates a defending champion the archive has
+     not named yet ("somebody walked out of <prior> with the ring"). For a first
+     season nobody did, so serve the welcome lead instead of a crown nobody won. */
+  if(isInauguralSeason(season)){
+    const stories = inauguralWelcomeStories(ctx) || [];
+    if(stories[0]) return stories[0];
+    console.error('[NewsDesk] inaugural welcome desk returned no lead for season ' + season +
+      '; falling through to the prior-season transition banner.');
+  }
+
   const prior = season - 1;
   const rawTeams = LeagueData.getTeams();
   const teams = Array.isArray(rawTeams) ? rawTeams.filter(Boolean) : [];
@@ -11485,6 +11751,17 @@ function guaranteedTimelineFallback(week){
   const at=liveTime(12);
 
   if(transition){
+    /* Same rule at the last-resort layer: a first season has nothing to
+       transition from, so the emergency card must not fall back to a champion
+       banner with every row stamped "Archive pending". */
+    if(isInauguralSeason(season)){
+      let welcome=null;
+      try{ welcome=(inauguralWelcomeStories({ week:safeWeek }) || [])[0] || null; }
+      catch(err){ console.error('[NewsDesk] inaugural welcome fallback failed for season ' + season + ' week ' + safeWeek, err); }
+      if(welcome) return welcome;
+      console.error('[NewsDesk] inaugural welcome fallback produced no lead for season ' + season +
+        ' week ' + safeWeek + '; using the prior-season transition card.');
+    }
     const champ=rep && rep.champion;
     const sacko=rep && rep.sacko;
     const prior=Number(rep && rep.lastSeason && rep.lastSeason.year || season-1);
@@ -12257,6 +12534,7 @@ const ui = {
   seasonLoading: null,
   cloudHydrateSeq: 0,
   cloudLeagueId: '',
+  cloudUpdatedAt: '',
   cloudSyncing: false,
   rivalA: '', rivalB: '',
   activeLeagueKey: '',   // provider:id of the league currently resident in the stores
@@ -14303,7 +14581,17 @@ function formatCloudBytes(bytes){
 function cloudArchiveSignature(archive){
   const rows = Array.isArray(archive) ? archive : [];
   const years = rows.map(row=> Number(row && (row.year || (row.leagueData && row.leagueData.seasonId)) || 0)).join(',');
-  return rows.length + ':' + years + ':' + cloudJsonBytes(rows);
+  const serialized = JSON.stringify(rows);
+  let fnv = 2166136261;
+  let mix = 5381;
+  for(let i=0; i<serialized.length; i++){
+    const code = serialized.charCodeAt(i);
+    fnv = Math.imul(fnv ^ code, 16777619);
+    mix = Math.imul(mix, 33) ^ code;
+  }
+  const checksum = (fnv >>> 0).toString(16).padStart(8, '0') +
+    (mix >>> 0).toString(16).padStart(8, '0');
+  return rows.length + ':' + years + ':' + cloudJsonBytes(serialized) + ':' + checksum;
 }
 
 function yieldForArchiveProgress(){
@@ -14629,6 +14917,7 @@ async function hydrateLeagueFromCloud(league, options){
     });
     if(seq !== ui.cloudHydrateSeq || id !== String($('leagueIdInput').value || '').trim()) return null;
     if(response.status === 404){
+      ui.cloudUpdatedAt = '';
       const local = applyLocalLeagueFallback(id, season, 'no cloud record exists yet');
       if(local) return local;
       setCloudStatus('idle', 'No stored league record exists yet. Any authenticated member can save it after connecting.');
@@ -14638,6 +14927,7 @@ async function hydrateLeagueFromCloud(league, options){
     if(!response.ok) throw new Error(payload.error || ('League storage read failed (HTTP ' + response.status + ').'));
 
     const record = payload.record || payload;
+    ui.cloudUpdatedAt = String(record.updated_at || '');
     const applied = applyCloudRecord(record, id);
     cacheLeagueRecord(record);
     const stored = storedHistoryPayload(record);
@@ -14696,6 +14986,7 @@ async function syncLeagueToCloud(options){
     const body = {
       league_id:league,
       season_year:season,
+      expected_updated_at:ui.cloudUpdatedAt || null,
       history_json:historyJson,
     };
     return { historyJson, serialized:JSON.stringify(body) };
@@ -14761,6 +15052,7 @@ async function syncLeagueToCloud(options){
     }
 
     const record = payload.record || {};
+    ui.cloudUpdatedAt = String(record.updated_at || '');
     cacheLeagueRecord(record);
     window._fsnCloudHasCookies = !!record.has_cookies;
     // A partial success: history saved but cookie encryption was skipped. Log
@@ -14860,11 +15152,10 @@ function processMultiYearHistory(rawData, sourceLabel){
    as it hydrates. Returns true when a switch was detected and cleared. */
 function clearLeagueStateForSwitch(nextLeagueId, nextProvider){
   const next = String(nextLeagueId || '').trim();
-  if(!next) return false;
-  const nextKey = leagueCacheKey(nextProvider || ui.provider, next);
+  const nextKey = next ? leagueCacheKey(nextProvider || ui.provider, next) : '';
   const prevKey = String(ui.activeLeagueKey || '').trim();
   // First load, or a re-fetch of the exact same league/provider — nothing to wipe.
-  if(!prevKey || prevKey === nextKey) return false;
+  if(!prevKey || (next && prevKey === nextKey)) return false;
 
   // Multi-season archive + everything derived from the Record Book.
   window._franchiseYearsData = null;
@@ -14886,6 +15177,8 @@ function clearLeagueStateForSwitch(nextLeagueId, nextProvider){
   // any half-finished cloud hydration aimed at the previous league.
   ui.rivalA = ''; ui.rivalB = '';
   ui.cloudHydrateSeq = (ui.cloudHydrateSeq || 0) + 1;
+  ui.cloudUpdatedAt = '';
+  ui.activeLeagueKey = '';
 
   // The reader-view article lookup is keyed by article id; drop it so a
   // deep-linked story id from the previous league can't resolve after the swap.
@@ -14978,6 +15271,10 @@ async function fetchSleeperLeagueData(opts){
     if(!live || !live.leagueData || !live.leagueData.teams || !live.leagueData.teams.length){
       throw new Error('SLEEPER_NO_LEAGUE_DATA');
     }
+    if(!historyRequestIsCurrent(league, 'sleeper')){
+      console.warn('[Sleeper] Discarded stale live response for league ' + league + '.');
+      return false;
+    }
 
     const liveInfo = applyLiveLeaguePayload(league, live.leagueData, live.year);
     setConn('live');
@@ -15010,11 +15307,21 @@ async function fetchSleeperLeagueData(opts){
 
     // Background: walk previous_league_id for the full multi-year Record Book.
     (async ()=>{
+      setHistoryProbeState('sleeper', league, 'loading');
       try{
         const archive = await window.SleeperAdapter.fetchHistory(league, 12);
+        if(!historyRequestIsCurrent(league, 'sleeper')){
+          console.warn('[Sleeper] Discarded stale history response for league ' + league + '.');
+          return;
+        }
+        setHistoryProbeState('sleeper', league, 'complete');
         const years = (archive && archive.yearsData) || [];
         const pastSeasons = years.filter(y=> Number(y && y.year) !== Number(live.year));
-        if(!pastSeasons.length) return;
+        if(!pastSeasons.length){
+          safeRun('desk', renderDesk, ()=> renderScreenFallback('home'));
+          safeRun('news', renderNews, ()=> renderScreenFallback('news'));
+          return;
+        }
         applyLeagueHistory(withCurrentSeason(years), [], 'Full league history from Sleeper', { silent:true });
         renderWeekScrubbers();
         safeRun('matchups', renderMatchups, ()=> renderScreenFallback('matchups'));
@@ -15024,6 +15331,7 @@ async function fetchSleeperLeagueData(opts){
         if(!silent) toast('All-time Record Book loaded · ' + pastSeasons.length +
           ' past season' + (pastSeasons.length===1?'':'s'));
       }catch(histErr){
+        setHistoryProbeState('sleeper', league, 'failed');
         console.warn('[Sleeper] multi-year history hydration failed; live season stays connected.', histErr);
       }
     })();
@@ -15177,6 +15485,10 @@ async function fetchLeagueData(options){
     ) || candidates.find(v=> Array.isArray(v.teams) && v.teams.length);
 
     if(!liveData) throw new Error('NO_LIVE_LEAGUE_DATA');
+    if(!historyRequestIsCurrent(league, 'espn')){
+      console.warn('[ESPN live fetch] Discarded stale live response for league ' + league + '.');
+      return false;
+    }
 
     const liveInfo = applyLiveLeaguePayload(league, liveData, currentYear);
     setConn('live');
@@ -15237,9 +15549,14 @@ async function fetchLeagueData(options){
       (async ()=>{
         try{
           const archive = await fetchLeagueHistoryArchive(league);
+          if(!archive || archive.stale || !historyRequestIsCurrent(league, 'espn')) return;
           const years = (archive && archive.yearsData) || [];
           const pastSeasons = years.filter(y=> Number(y && y.year) !== currentYear);
-          if(!pastSeasons.length) return; // nothing beyond the live season to add
+          if(!pastSeasons.length){
+            safeRun('desk', renderDesk, ()=> renderScreenFallback('home'));
+            safeRun('news', renderNews, ()=> renderScreenFallback('news'));
+            return;
+          }
           applyLeagueHistory(
             withCurrentSeason(years),
             (archive && archive.skipped) || [],
@@ -15679,6 +15996,11 @@ $('leagueIdInput').addEventListener('input', ()=>{
   refreshHistoryUrlLink();
   clearTimeout($('leagueIdInput')._cloudTimer);
   const league = $('leagueIdInput').value.trim();
+  if(clearLeagueStateForSwitch(league, ui.provider)){
+    ui.sourceMode = 'none';
+    setHistoryProbeState(ui.provider, league, 'idle');
+    renderAll();
+  }
   $('leagueIdInput')._cloudTimer = setTimeout(()=> hydrateLeagueFromCloud(league, { silent:true }), 650);
 });
 
@@ -17067,22 +17389,13 @@ function renderNews(){
   }
 }
 
-/* The stream ages in place — restamp the visible metadata every 45 seconds so
-   "2m ago" doesn't sit there lying for an hour. */
+/* Rebuild the active News feed once a minute so newly released deterministic
+   stories and the crawl cross their release boundary on the same timer. */
 setInterval(()=>{
-  /* Keep the crawl repainted on the same cadence as the timeline metadata. */
   renderTicker();
   if(ui.screen !== 'news' || $('reader').dataset.open === 'true') return;
-  const list = ui.newsCache ? Object.keys(ui.newsCache).map(k=> ui.newsCache[k]) : [];
-  if(!list.length) return;
-  list.forEach(a=> NewsDesk.restamp(a));
-  document.querySelectorAll('#timelineFeed .tl-card').forEach(card=>{
-    const a = articleById(card.dataset.article);
-    if(!a) return;
-    const meta = card.querySelector('.tl-meta span:last-child');
-    if(meta) meta.textContent = a.meta || '';
-  });
-}, 45000);
+  safeRun('news', renderNews, ()=> renderScreenFallback('news'));
+}, 60000);
 
 /* ============================================================
    COMMUNITY STORY COMPOSER
