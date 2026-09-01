@@ -206,32 +206,65 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
 .stats-mode-toggle button{ min-height:42px; padding:8px; border-radius:9px; color:var(--dim);
   font-size:10.5px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; }
 .stats-mode-toggle button[data-active="true"]{ background:var(--cyan); color:#04121a; box-shadow:0 0 14px rgba(0,224,255,.18); }
-.standings-card{ max-width:100%; border:1px solid var(--line); border-radius:14px; overflow:hidden; background:#0d121a; }
-.analytics-table-wrap.standings-table-wrap{
-  max-width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch;
-  overscroll-behavior-x:contain; scrollbar-width:none;
+.standings-card-list{
+  display:grid; grid-template-columns:minmax(0,1fr); gap:12px;
+  width:100%; max-width:100%; min-width:0;
 }
-.analytics-table-wrap.standings-table-wrap::-webkit-scrollbar{ display:none; }
-.standings-table{ width:100%; min-width:720px; border-collapse:collapse; font-family:'JetBrains Mono',monospace; font-size:11px; }
-.standings-table th,.standings-table td{ padding:10px 9px; border-bottom:1px solid var(--line); text-align:right; white-space:nowrap; }
-.standings-table th{ color:var(--dim); font-size:9px; letter-spacing:.12em; text-transform:uppercase; }
-.standings-table th:first-child,.standings-table td:first-child{ text-align:left; position:sticky; left:0; background:#0d121a; }
-.standings-team{ display:flex; align-items:center; gap:8px; min-width:0; width:100%; }
-.standings-team .analytics-team-name{ min-width:0; flex:1 1 0%; max-width:100%; }
-@media (max-width:640px){
-  .analytics-table-wrap.standings-table-wrap{ overflow-x:hidden; }
-  .standings-table{ width:100%; min-width:0; table-layout:fixed; }
-  .standings-table th:nth-child(n+3),
-  .standings-table td:nth-child(n+3){ display:none; }
-  .standings-table th:first-child,
-  .standings-table td:first-child{
-    position:static; width:auto; min-width:0; max-width:none;
-  }
-  .standings-table th:nth-child(2),
-  .standings-table td:nth-child(2){
-    width:82px; min-width:82px; max-width:82px;
-    padding-left:6px; padding-right:12px; text-align:right;
-  }
+.standings-team-card{
+  width:100%; max-width:100%; min-width:0; padding:14px;
+  border:1px solid var(--line); border-radius:15px;
+  background:linear-gradient(155deg,#111824,#090d14);
+  position:relative; overflow:hidden;
+}
+.standings-team-card::before{
+  content:''; position:absolute; left:0; top:0; width:3px; height:100%;
+  background:var(--model-accent,var(--cyan));
+  box-shadow:0 0 14px var(--model-accent,var(--cyan));
+}
+.standings-team-card-head{
+  display:flex; align-items:center; gap:10px;
+  width:100%; max-width:100%; min-width:0; margin-bottom:12px;
+}
+.standings-team-rank{
+  flex:none; display:grid; place-items:center; width:28px; height:28px; border-radius:8px;
+  border:1px solid color-mix(in srgb,var(--model-accent,var(--cyan)) 40%,transparent);
+  color:var(--model-accent,var(--cyan)); background:#080c12;
+  font-family:'JetBrains Mono',monospace; font-size:10px; font-weight:900;
+}
+.standings-team-logo{
+  flex:none; width:34px; height:34px; display:grid; place-items:center; overflow:hidden;
+}
+.standings-team-identity{ flex:1 1 0%; min-width:0; max-width:100%; }
+.standings-team-name{
+  min-width:0; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  color:#fff; font-family:'Oswald',sans-serif; font-size:16px; font-weight:700;
+  line-height:1.2; letter-spacing:.025em;
+}
+.standings-team-subtitle{
+  margin-top:3px; color:var(--dim); font-family:'JetBrains Mono',monospace;
+  font-size:8px; font-weight:700; letter-spacing:.1em; text-transform:uppercase;
+}
+.standings-stats-grid{
+  display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px;
+  width:100%; max-width:100%; min-width:0;
+}
+.standings-stat{
+  min-width:0; padding:9px 10px; border:1px solid rgba(255,255,255,.065);
+  border-radius:10px; background:#080d12;
+}
+.standings-stat-label{
+  display:block; margin-bottom:5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  color:#647084; font-family:'JetBrains Mono',monospace; font-size:8px;
+  font-weight:700; letter-spacing:.1em; text-transform:uppercase;
+}
+.standings-stat-value{
+  display:block; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  color:var(--off); font-family:'JetBrains Mono',monospace; font-size:13px;
+  font-weight:900; line-height:1.15; font-variant-numeric:tabular-nums;
+}
+.standings-stat-value strong{ color:var(--cyan); font-weight:900; }
+@media (min-width:560px){
+  .standings-stats-grid{ grid-template-columns:repeat(3,minmax(0,1fr)); }
 }
 
 /* ---------- SCREENS ---------- */
@@ -13558,13 +13591,19 @@ function normalizedStandingsStreak(value){
 }
 function renderSeasonStandings(){
   let week=1;
-  try{ week=Math.max(1,Math.trunc(finiteStandingsNumber(effectiveWeek())) || 1); }catch(_){ week=1; }
+  try{
+    week=Math.max(1,Math.trunc(finiteStandingsNumber(effectiveWeek())) || 1);
+  }catch(err){
+    console.warn("[Standings] effective week could not be resolved",err);
+    week=1;
+  }
+
   let sourceRows=[];
   try{
     const computed=FSNIntel && typeof FSNIntel.standingsThrough === "function" ? FSNIntel.standingsThrough(week) : [];
     sourceRows=Array.isArray(computed) ? computed.filter(Boolean) : [];
   }catch(err){
-    console.warn("[Standings] cumulative table could not be computed",err);
+    console.warn("[Standings] cumulative table could not be computed for Week "+week,err);
     sourceRows=[];
   }
 
@@ -13573,8 +13612,13 @@ function renderSeasonStandings(){
     try{
       const rawTeams=LeagueData && typeof LeagueData.getTeams === "function" ? LeagueData.getTeams() : [];
       fallbackTeams=Array.isArray(rawTeams) ? rawTeams : [];
-    }catch(_){ fallbackTeams=[]; }
-    sourceRows=fallbackTeams.filter(function(team){ return team && typeof team === "object" && team.id != null; }).map(function(team){
+    }catch(err){
+      console.warn("[Standings] fallback teams could not be loaded for Week "+week,err);
+      fallbackTeams=[];
+    }
+    sourceRows=fallbackTeams.filter(function(team){
+      return team && typeof team === "object" && team.id != null;
+    }).map(function(team){
       const overall=team.record && team.record.overall && typeof team.record.overall === "object" ? team.record.overall : {};
       return {
         team:team,
@@ -13606,32 +13650,81 @@ function renderSeasonStandings(){
       const name=String(rawTeam.name || [rawTeam.location,rawTeam.nickname].filter(Boolean).join(" ") || rawTeam.abbrev || row.teamName || ("Team "+teamId));
       rows.push({
         team:{id:teamId,name:name,logo:String(rawTeam.logo || row.logo || "")},
-        wins:wins,losses:losses,ties:ties,pf:pf,pa:pa,
+        wins:wins,
+        losses:losses,
+        ties:ties,
+        pf:pf,
+        pa:pa,
         recordLabel:String(row.recordLabel || (typeof row.record === "string" ? row.record : "") || (wins+"-"+losses+(ties ? "-"+ties : "")))
       });
-    }catch(err){ console.warn("[Standings] skipped malformed team row",err); }
+    }catch(err){
+      console.warn("[Standings] skipped malformed team row for Week "+week,err);
+    }
   });
-  rows.sort(function(a,b){ return (b.wins-a.wins)||(b.ties-a.ties)||(b.pf-a.pf)||(a.pa-b.pa)||String(a.team.name).localeCompare(String(b.team.name)); });
-  if(!rows.length) return '<div class="analytics-empty">No valid team records are available for Week '+week+'.</div>';
 
-  const tableRows=rows.map(function(row,index){
+  rows.sort(function(a,b){
+    return (b.wins-a.wins)||(b.ties-a.ties)||(b.pf-a.pf)||(a.pa-b.pa)||String(a.team.name).localeCompare(String(b.team.name));
+  });
+  if(!rows.length){
+    return '<div class="analytics-empty">No valid team records are available for Week '+week+'.</div>';
+  }
+
+  const teamCards=rows.map(function(row,index){
     let rawStreak=null;
     try{
       rawStreak=FSNIntel && typeof FSNIntel.getStreakAsOfWeek === "function"
         ? FSNIntel.getStreakAsOfWeek(row.team.id,week)
         : null;
-    }catch(_){ rawStreak=null; }
+    }catch(err){
+      console.warn("[Standings] streak could not be computed for team "+row.team.id+" in Week "+week,err);
+      rawStreak=null;
+    }
+
     const streak=normalizedStandingsStreak(rawStreak);
-    const differential=finiteStandingsNumber(row.pf)-finiteStandingsNumber(row.pa);
+    const streakClass=streak.result==="W" ? "analytics-good" : (streak.result==="L" ? "analytics-bad" : "analytics-muted");
+    const games=Math.max(0,row.wins+row.losses+row.ties);
+    const ppg=games ? row.pf/games : 0;
+    const papg=games ? row.pa/games : 0;
     let teamMark="";
-    try{ teamMark=crest(row.team.name,row.team.logo,24); }
-    catch(_){ teamMark='<span class="analytics-rank" aria-hidden="true">TM</span>'; }
-    return '<tr>'+
-      '<td class="min-w-0" style="min-width:0;max-width:100%;overflow:hidden;"><span class="standings-team min-w-0 w-full" style="min-width:0;width:100%;max-width:100%;"><span class="analytics-rank">'+(index+1)+'</span>'+teamMark+'<span class="analytics-team-name min-w-0 flex-1 truncate" style="min-width:0;max-width:100%;">'+esc(row.team.name)+'</span></span></td>'+
-      '<td>'+esc(row.recordLabel)+'</td><td>'+row.wins+'</td><td>'+row.losses+'</td><td>'+row.ties+'</td>'+
-      '<td>'+n1(row.pf)+'</td><td>'+n1(row.pa)+'</td><td class="'+(differential>=0?"analytics-good":"analytics-bad")+'">'+(differential>=0?"+":"")+n1(differential)+'</td>'+
-      '<td class="'+(streak.result==="W"?"analytics-good":streak.result==="L"?"analytics-bad":"analytics-muted")+'">'+esc(streak.label)+'</td>'+
-      '</tr>';
+    try{
+      teamMark=crest(row.team.name,row.team.logo,34);
+    }catch(err){
+      console.warn("[Standings] crest could not be rendered for team "+row.team.id,err);
+      teamMark='<span class="analytics-model-num" aria-hidden="true">TM</span>';
+    }
+
+    return '<article class="standings-team-card" style="--model-accent:var(--cyan)" aria-label="'+esc(row.team.name)+' standings">'+
+      '<div class="standings-team-card-head">'+
+        '<span class="standings-team-rank" aria-label="Rank '+(index+1)+'">'+(index+1)+'</span>'+
+        '<span class="standings-team-logo" aria-hidden="true">'+teamMark+'</span>'+
+        '<span class="standings-team-identity">'+
+          '<span class="standings-team-name" title="'+esc(row.team.name)+'">'+esc(row.team.name)+'</span>'+
+          '<span class="standings-team-subtitle">Season position · Week '+week+'</span>'+
+        '</span>'+
+      '</div>'+
+      '<div class="standings-stats-grid">'+
+        '<div class="standings-stat">'+
+          '<span class="standings-stat-label">Record / WStreak</span>'+
+          '<span class="standings-stat-value"><strong>'+esc(row.recordLabel)+'</strong> <span class="'+streakClass+'">· '+esc(streak.label)+'</span></span>'+
+        '</div>'+
+        '<div class="standings-stat">'+
+          '<span class="standings-stat-label">PF</span>'+
+          '<span class="standings-stat-value">'+n1(row.pf)+'</span>'+
+        '</div>'+
+        '<div class="standings-stat">'+
+          '<span class="standings-stat-label">PA</span>'+
+          '<span class="standings-stat-value">'+n1(row.pa)+'</span>'+
+        '</div>'+
+        '<div class="standings-stat">'+
+          '<span class="standings-stat-label">PPG</span>'+
+          '<span class="standings-stat-value"><strong>'+n1(ppg)+'</strong></span>'+
+        '</div>'+
+        '<div class="standings-stat">'+
+          '<span class="standings-stat-label">PAPG</span>'+
+          '<span class="standings-stat-value">'+n1(papg)+'</span>'+
+        '</div>'+
+      '</div>'+
+    '</article>';
   }).join("");
 
   return '<div class="w-full max-w-full overflow-hidden" style="width:100%;max-width:100%;min-width:0;overflow:hidden;">'+
@@ -13639,10 +13732,8 @@ function renderSeasonStandings(){
       '<span class="analytics-status-chip"><b>'+rows.length+'</b> Teams</span>'+
       '<span class="analytics-status-chip"><b>Week '+week+'</b> Through</span>'+
     '</div>'+
-    '<div class="standings-card w-full max-w-full overflow-hidden" style="width:100%;max-width:100%;min-width:0;overflow:hidden;"><div class="analytics-table-wrap standings-table-wrap no-bar block w-full" style="display:block;width:100%;max-width:100%;min-width:0;" role="region" aria-label="Season standings table" tabindex="0"><table class="standings-table">'+
-      '<thead><tr><th>Team</th><th>Record</th><th>W</th><th>L</th><th>T</th><th>PF</th><th>PA</th><th>DIFF</th><th>Streak</th></tr></thead>'+
-      '<tbody>'+tableRows+'</tbody>'+
-    '</table></div></div></div>';
+    '<div class="standings-card-list" role="list" aria-label="Season standings">'+teamCards+'</div>'+
+  '</div>';
 }
 
 if($('statsModeToggle')) $('statsModeToggle').addEventListener('click', e=>{
