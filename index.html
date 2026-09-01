@@ -178,9 +178,9 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
   .tab-btn svg{ width:18px; height:18px; }
 }
 
-/* ---------- PLATFORM (ESPN / SLEEPER) TOGGLE ---------- */
+/* ---------- PLATFORM (ESPN / SLEEPER / YAHOO) TOGGLE ---------- */
 .provider-toggle{
-  display:grid; grid-template-columns:1fr 1fr; gap:6px;
+  display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px;
   padding:4px; border:1px solid var(--line); border-radius:11px; background:#0b0f16;
 }
 .provider-tab{
@@ -1931,11 +1931,26 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
             <div class="provider-toggle" role="tablist" aria-label="Fantasy platform">
               <button type="button" id="providerEspn" class="provider-tab is-active" role="tab" aria-selected="true" data-provider="espn">ESPN</button>
               <button type="button" id="providerSleeper" class="provider-tab" role="tab" aria-selected="false" data-provider="sleeper">Sleeper</button>
+              <button type="button" id="providerYahoo" class="provider-tab" role="tab" aria-selected="false" data-provider="yahoo">Yahoo</button>
+            </div>
+          </div>
+          <div id="yahooAuthPanel" class="card p-3 hidden" style="background:#0b0f16">
+            <div class="flex items-center justify-between gap-3">
+              <div class="min-w-0 flex-1">
+                <div class="label" style="margin-bottom:3px">Yahoo Account</div>
+                <p id="yahooAuthStatus" class="text-[11.5px] leading-relaxed" style="color:var(--dim)">Checking Yahoo login…</p>
+              </div>
+              <button id="yahooLoginBtn" type="button" class="btn-ghost" style="width:auto;padding:10px 12px">LOG IN</button>
+              <button id="yahooDisconnectBtn" type="button" class="btn-ghost hidden" style="width:auto;padding:10px 12px">LOG OUT</button>
+            </div>
+            <div id="yahooLeaguePicker" class="mt-3 hidden">
+              <label class="label" for="yahooLeagueSelect">Your Yahoo Leagues</label>
+              <select id="yahooLeagueSelect" class="field" aria-label="Choose a Yahoo fantasy football league"></select>
             </div>
           </div>
           <div>
             <div class="flex items-center justify-between gap-2">
-              <label class="label" for="leagueIdInput" style="margin-bottom:0">League ID</label>
+              <label id="leagueIdLabel" class="label" for="leagueIdInput" style="margin-bottom:0">League ID</label>
               <button type="button" class="onboard-link" data-onboard-step="league">Where do I find this?</button>
             </div>
             <input id="leagueIdInput" class="field mt-1.5" inputmode="numeric" autocomplete="off" placeholder="e.g. 123456789">
@@ -2327,6 +2342,9 @@ function $(id){ return document.getElementById(id); }
    term for every deterministic article generator. */
 function selectedLeagueId(){ return LeagueData.leagueId(); }
 function leagueScopeToken(){ return LeagueData.scopeToken(); }
+function normalizedLeagueProvider(provider){
+  return provider === 'sleeper' || provider === 'yahoo' ? provider : 'espn';
+}
 
 /* History completion is separate from history presence. An empty in-memory
    archive while ESPN/Sleeper is still loading (or after a network failure) is
@@ -2334,12 +2352,12 @@ function leagueScopeToken(){ return LeagueData.scopeToken(); }
    only after the active provider has completed an authoritative history probe. */
 window._fsnHistoryProbe = { provider:'', leagueId:'', status:'idle' };
 function historyRequestIsCurrent(leagueId, provider){
-  const requestedProvider = provider === 'sleeper' ? 'sleeper' : 'espn';
+  const requestedProvider = normalizedLeagueProvider(provider);
   return LeagueData.activeProvider === requestedProvider &&
     String(selectedLeagueId()) === String(leagueId || '').trim();
 }
 function setHistoryProbeState(provider, leagueId, status){
-  const requestedProvider = provider === 'sleeper' ? 'sleeper' : 'espn';
+  const requestedProvider = normalizedLeagueProvider(provider);
   const requestedLeague = String(leagueId || '').trim();
   if(status !== 'idle' && !historyRequestIsCurrent(requestedLeague, requestedProvider)) return false;
   window._fsnHistoryProbe = {
@@ -2453,7 +2471,7 @@ window.LeagueData = (function(){
     activeProvider: 'espn',
     /* Two providers can hand out the same numeric league id, so the provider
        is part of the token. The UI owns the selection and pushes it here. */
-    setActiveProvider(p){ store.activeProvider = (p === 'sleeper' ? 'sleeper' : 'espn'); },
+    setActiveProvider(p){ store.activeProvider = normalizedLeagueProvider(p); },
     leagueId(){
       const el = document.getElementById('leagueIdInput');
       return (el && el.value.trim()) || (store.meta && store.meta.leagueId) || 'league';
@@ -3706,6 +3724,431 @@ function featuredPlayoffGames(games, week){
   const nonConsolation = list.filter(g=> !isConsolationGame(g));
   return nonConsolation.length ? nonConsolation : list;
 }
+
+/* ============================================================================
+   YAHOO FANTASY SPORTS ADAPTER — GLOBAL, FIRST SCRIPT BLOCK
+
+   Yahoo's JSON format is a nested resource graph with numeric collection keys
+   and record fragments stored in arrays. This adapter is the only layer that
+   knows that shape. It reads authenticated payloads from the same-origin Yahoo
+   proxy and emits the ESPN-shaped season contract LeagueData already consumes:
+   teams / members / schedule / settings / status. No downstream analytics,
+   history, standings, or deterministic News Desk generator needs Yahoo logic.
+============================================================================ */
+window.YahooAdapter = (function(){
+'use strict';
+
+const YAHOO_MAX_WEEK = 18;
+
+async function yahooApi(params){
+  const query = new URLSearchParams(params || {});
+  const response = await fetch('/api/yahoo?' + query.toString(), {
+    method:'GET',
+    headers:{ Accept:'application/json' },
+    credentials:'same-origin',
+    cache:'no-store',
+  });
+  let payload = null;
+  try{ payload = await response.json(); }
+  catch(err){
+    console.error('[YahooAdapter] proxy returned non-JSON for ' + (params && params.resource || 'request'), err);
+    throw new Error('YAHOO_PROXY_INVALID_JSON');
+  }
+  if(!response.ok){
+    const error = new Error(String(payload && (payload.code || payload.error) || ('YAHOO_PROXY_HTTP_' + response.status)));
+    error.status = response.status;
+    throw error;
+  }
+  return payload;
+}
+
+function namedNodes(root, name){
+  const found = [];
+  const seen = new WeakSet();
+  function visit(value){
+    if(!value || typeof value !== 'object' || seen.has(value)) return;
+    seen.add(value);
+    if(Object.prototype.hasOwnProperty.call(value, name)) found.push(value[name]);
+    if(Array.isArray(value)) value.forEach(visit);
+    else Object.keys(value).forEach(key=> visit(value[key]));
+  }
+  visit(root);
+  return found;
+}
+
+function plainObject(value){
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+/* Yahoo represents one resource as an array of fragments, for example
+   [{league_key:...},{name:...},{standings:...}]. Merge only the record's own
+   fragments; nested collections stay intact for their dedicated parser. */
+function mergeFragments(value){
+  const out = {};
+  function absorb(fragment){
+    if(Array.isArray(fragment)){
+      fragment.forEach(absorb);
+      return;
+    }
+    if(!plainObject(fragment)) return;
+    const keys = Object.keys(fragment);
+    const numericWrapper = keys.length && keys.every(key=> /^\d+$/.test(key) || key === 'count');
+    if(numericWrapper){
+      keys.filter(key=> /^\d+$/.test(key)).sort((a,b)=> Number(a)-Number(b)).forEach(key=> absorb(fragment[key]));
+      return;
+    }
+    keys.forEach(key=>{
+      if(/^\d+$/.test(key) || key === 'count') return;
+      const next = fragment[key];
+      if(out[key] == null) out[key] = next;
+      else if(plainObject(out[key]) && plainObject(next)) out[key] = Object.assign({}, out[key], next);
+    });
+  }
+  absorb(value);
+  return out;
+}
+
+function finiteNumber(value){
+  if(value == null || value === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function truthyYahoo(value){
+  return value === true || value === 1 || value === '1' || String(value || '').toLowerCase() === 'true';
+}
+
+function normalizeYahooLeagueKey(value){
+  const raw = String(value || '').trim();
+  if(/^\d+\.l\.\d+$/.test(raw)) return raw;
+  const underscored = raw.match(/^(\d+)[_.](?:l[_.])?(\d+)$/i);
+  return underscored ? underscored[1] + '.l.' + underscored[2] : '';
+}
+
+function looksLikeYahooLeagueKey(value){
+  return /^\d{1,8}\.l\.\d{1,20}$/.test(String(value || '').trim());
+}
+
+function leagueRecord(node){
+  const record = mergeFragments(node);
+  const leagueKey = normalizeYahooLeagueKey(record.league_key);
+  return {
+    leagueKey,
+    leagueId:String(record.league_id || (leagueKey.split('.l.')[1] || '')),
+    name:String(record.name || 'Yahoo League'),
+    season:finiteNumber(record.season),
+    currentWeek:finiteNumber(record.current_week),
+    startWeek:finiteNumber(record.start_week),
+    endWeek:finiteNumber(record.end_week),
+    finished:truthyYahoo(record.is_finished),
+    gameCode:String(record.game_code || 'nfl').toLowerCase(),
+    renew:normalizeYahooLeagueKey(record.renew),
+    renewed:normalizeYahooLeagueKey(record.renewed),
+    raw:record,
+  };
+}
+
+function firstLeagueRecord(payload){
+  const records = namedNodes(payload, 'league').map(leagueRecord).filter(row=> row.leagueKey);
+  return records[0] || null;
+}
+
+function teamLogo(record){
+  if(record.logo_url) return String(record.logo_url);
+  const logos = namedNodes(record.team_logos || {}, 'team_logo').map(mergeFragments);
+  const hit = logos.find(row=> row && row.url);
+  return hit ? String(hit.url) : '';
+}
+
+function teamManager(record, teamKey){
+  const rows = namedNodes(record.managers || {}, 'manager').map(mergeFragments);
+  const manager = rows[0] || {};
+  const id = String(manager.guid || manager.manager_id || manager.email || ('manager-' + teamKey));
+  const name = String(manager.nickname || manager.name || manager.email || 'Yahoo Manager');
+  const parts = name.trim().split(/\s+/);
+  return {
+    id,
+    displayName:name,
+    firstName:parts[0] || name,
+    lastName:parts.slice(1).join(' '),
+  };
+}
+
+function teamRecord(node){
+  const record = mergeFragments(node);
+  const teamKey = String(record.team_key || '').trim();
+  const idFromKey = teamKey.match(/\.t\.(\d+)$/);
+  const teamId = finiteNumber(record.team_id) || (idFromKey ? Number(idFromKey[1]) : null);
+  if(!teamKey || !teamId) return null;
+  const standings = mergeFragments(record.team_standings || {});
+  const outcomes = mergeFragments(standings.outcome_totals || {});
+  const points = mergeFragments(record.team_points || {});
+  const projected = mergeFragments(record.team_projected_points || {});
+  return {
+    teamKey,
+    id:teamId,
+    name:String(record.name || ('Team ' + teamId)),
+    logo:teamLogo(record),
+    manager:teamManager(record, teamKey),
+    wins:finiteNumber(outcomes.wins),
+    losses:finiteNumber(outcomes.losses),
+    ties:finiteNumber(outcomes.ties),
+    rank:finiteNumber(standings.rank),
+    playoffSeed:finiteNumber(standings.playoff_seed),
+    pointsFor:finiteNumber(standings.points_for),
+    pointsAgainst:finiteNumber(standings.points_against),
+    weekScore:finiteNumber(points.total),
+    projectedScore:finiteNumber(projected.total),
+  };
+}
+
+function collectTeams(){
+  const byKey = {};
+  Array.prototype.slice.call(arguments).forEach(payload=>{
+    namedNodes(payload, 'team').forEach(node=>{
+      const parsed = teamRecord(node);
+      if(!parsed) return;
+      const prior = byKey[parsed.teamKey] || {};
+      const merged = Object.assign({}, prior);
+      Object.keys(parsed).forEach(key=>{
+        if(parsed[key] != null && parsed[key] !== '') merged[key] = parsed[key];
+      });
+      byKey[parsed.teamKey] = merged;
+    });
+  });
+  return byKey;
+}
+
+function matchupSchedule(scoreboardPayload, fallbackWeek){
+  const games = [];
+  namedNodes(scoreboardPayload, 'matchup').forEach(node=>{
+    const matchup = mergeFragments(node);
+    const teamNodes = namedNodes(matchup.teams || node, 'team');
+    const sidesByKey = {};
+    teamNodes.forEach(teamNode=>{
+      const parsed = teamRecord(teamNode);
+      if(parsed) sidesByKey[parsed.teamKey] = parsed;
+    });
+    const sides = Object.keys(sidesByKey).map(key=> sidesByKey[key]).slice(0,2);
+    if(sides.length < 2) return;
+    const week = finiteNumber(matchup.week) || finiteNumber(fallbackWeek) || 1;
+    const winnerKey = String(matchup.winner_team_key || '');
+    const tied = truthyYahoo(matchup.is_tied);
+    const homeScore = finiteNumber(sides[0].weekScore) || 0;
+    const awayScore = finiteNumber(sides[1].weekScore) || 0;
+    const status = String(matchup.status || '').toLowerCase();
+    const played = !!winnerKey || tied || /post|final|complete/.test(status) || homeScore > 0 || awayScore > 0;
+    let winner = 'UNDECIDED';
+    if(tied) winner = 'TIE';
+    else if(winnerKey) winner = winnerKey === sides[0].teamKey ? 'HOME' : 'AWAY';
+    else if(played) winner = homeScore > awayScore ? 'HOME' : (awayScore > homeScore ? 'AWAY' : 'TIE');
+    const playoff = truthyYahoo(matchup.is_playoffs);
+    const consolation = truthyYahoo(matchup.is_consolation);
+    games.push({
+      matchupPeriodId:week,
+      winner,
+      playoffTierType:playoff ? (consolation ? 'LOSERS_CONSOLATION_LADDER' : 'WINNERS_BRACKET') : 'NONE',
+      home:{
+        teamId:sides[0].id,
+        totalPoints:homeScore,
+        totalProjectedPoints:finiteNumber(sides[0].projectedScore) || 0,
+        rosterForCurrentScoringPeriod:null,
+      },
+      away:{
+        teamId:sides[1].id,
+        totalPoints:awayScore,
+        totalProjectedPoints:finiteNumber(sides[1].projectedScore) || 0,
+        rosterForCurrentScoringPeriod:null,
+      },
+      _yahoo:{ winnerTeamKey:winnerKey, status },
+    });
+  });
+  return games;
+}
+
+function normalizeDashboard(dashboard){
+  if(!dashboard || !dashboard.responses) throw new Error('YAHOO_DASHBOARD_MISSING');
+  const responses = dashboard.responses;
+  const league = firstLeagueRecord(responses.league);
+  if(!league) throw new Error('YAHOO_LEAGUE_METADATA_MISSING');
+  const scoreboards = Array.isArray(responses.scoreboards) ? responses.scoreboards : [];
+  const teamMap = collectTeams(
+    responses.teams,
+    responses.standings,
+    scoreboards.map(row=> row && row.payload)
+  );
+  const parsedTeams = Object.keys(teamMap).map(key=> teamMap[key]);
+  if(!parsedTeams.length) throw new Error('YAHOO_TEAMS_MISSING');
+
+  const memberById = {};
+  parsedTeams.forEach(team=>{ memberById[team.manager.id] = team.manager; });
+  const teams = parsedTeams.map(team=>{
+    const record = {
+      wins:Number(team.wins || 0),
+      losses:Number(team.losses || 0),
+      ties:Number(team.ties || 0),
+    };
+    return {
+      id:team.id,
+      location:team.name,
+      nickname:'',
+      name:team.name,
+      abbrev:team.name.replace(/[^A-Za-z]/g,'').slice(0,4).toUpperCase() || 'TM',
+      logo:team.logo || '',
+      primaryOwner:team.manager.id,
+      owners:[team.manager.id],
+      record:{ overall:record },
+      playoffSeed:team.playoffSeed || team.rank || null,
+      rankCalculatedFinal:league.finished ? (team.rank || null) : null,
+      _yahoo:{ teamKey:team.teamKey, pointsFor:team.pointsFor, pointsAgainst:team.pointsAgainst },
+    };
+  });
+
+  let schedule = [];
+  scoreboards.forEach(row=>{
+    if(row && row.payload) schedule = schedule.concat(matchupSchedule(row.payload, row.week));
+  });
+  schedule.sort((a,b)=> Number(a.matchupPeriodId)-Number(b.matchupPeriodId));
+
+  const activeWeek = Math.max(1, Math.min(YAHOO_MAX_WEEK,
+    finiteNumber(league.currentWeek) || finiteNumber(dashboard.through_week) || 1));
+  const season = finiteNumber(league.season) || new Date().getFullYear();
+  return {
+    seasonId:season,
+    scoringPeriodId:activeWeek,
+    status:{
+      isActive:!league.finished,
+      currentMatchupPeriod:activeWeek,
+      latestScoringPeriod:activeWeek,
+    },
+    settings:{ name:league.name },
+    members:Object.keys(memberById).map(id=> memberById[id]),
+    teams,
+    schedule,
+    _yahoo:{
+      leagueKey:league.leagueKey,
+      leagueId:league.leagueId,
+      renew:league.renew,
+      renewed:league.renewed,
+      startWeek:league.startWeek,
+      endWeek:league.endWeek,
+    },
+  };
+}
+
+async function fetchUserLeagues(){
+  const response = await yahooApi({ resource:'leagues' });
+  const byKey = {};
+  namedNodes(response && response.payload, 'league').map(leagueRecord).forEach(row=>{
+    if(row.leagueKey && (!row.gameCode || row.gameCode === 'nfl')) byKey[row.leagueKey] = row;
+  });
+  return Object.keys(byKey).map(key=> byKey[key]).sort((a,b)=>
+    (Number(b.season || 0) - Number(a.season || 0)) || a.name.localeCompare(b.name)
+  );
+}
+
+async function fetchLive(leagueKey){
+  let key = normalizeYahooLeagueKey(leagueKey);
+  let leagues = null;
+  if(!key){
+    leagues = await fetchUserLeagues();
+    key = leagues[0] && leagues[0].leagueKey;
+  }
+  if(!key) throw new Error('YAHOO_NO_FOOTBALL_LEAGUES');
+
+  const metadataResponse = await yahooApi({ resource:'league', league_key:key });
+  const metadata = firstLeagueRecord(metadataResponse && metadataResponse.payload);
+  if(!metadata) throw new Error('YAHOO_LEAGUE_METADATA_MISSING');
+  const throughWeek = Math.max(1, Math.min(YAHOO_MAX_WEEK,
+    finiteNumber(metadata.currentWeek) || finiteNumber(metadata.endWeek) || 1));
+  const dashboard = await yahooApi({
+    resource:'dashboard',
+    league_key:key,
+    through_week:String(throughWeek),
+  });
+  const leagueData = normalizeDashboard(dashboard);
+  return {
+    leagueKey:key,
+    leagueData,
+    year:Number(leagueData.seasonId),
+    week:Number(leagueData.scoringPeriodId || throughWeek),
+    leagues,
+  };
+}
+
+function historyCandidates(current, leagues, cap){
+  const byKey = {};
+  (leagues || []).forEach(row=>{ if(row && row.leagueKey) byKey[row.leagueKey] = row; });
+  const rows = [];
+  const seen = new Set();
+  let cursor = current && current.leagueKey;
+  while(cursor && byKey[cursor] && rows.length < cap && !seen.has(cursor)){
+    seen.add(cursor);
+    const row = byKey[cursor];
+    rows.push(row);
+    cursor = row.renew;
+  }
+  if(rows.length <= 1 && current){
+    const name = String(current.name || '').trim().toLowerCase();
+    (leagues || []).filter(row=>
+      String(row && row.name || '').trim().toLowerCase() === name &&
+      Number(row && row.season || 0) <= Number(current.season || 9999)
+    ).forEach(row=>{ if(!seen.has(row.leagueKey)){ seen.add(row.leagueKey); rows.push(row); } });
+  }
+  return rows.sort((a,b)=> Number(b.season || 0)-Number(a.season || 0)).slice(0, cap);
+}
+
+async function fetchHistory(leagueKey, options){
+  const opts = options || {};
+  const cap = Math.max(1, Math.min(20, Number(opts.maxSeasons || 12)));
+  const leagues = Array.isArray(opts.leagues) ? opts.leagues : await fetchUserLeagues();
+  const key = normalizeYahooLeagueKey(leagueKey);
+  const current = leagues.find(row=> row.leagueKey === key)
+    || (opts.currentLeagueData && opts.currentLeagueData._yahoo ? {
+      leagueKey:key,
+      name:opts.currentLeagueData.settings && opts.currentLeagueData.settings.name,
+      season:opts.currentLeagueData.seasonId,
+      renew:opts.currentLeagueData._yahoo.renew,
+      endWeek:opts.currentLeagueData._yahoo.endWeek,
+    } : null);
+  if(!current) throw new Error('YAHOO_HISTORY_LEAGUE_NOT_FOUND');
+
+  const candidates = historyCandidates(current, leagues, cap);
+  const yearsData = [];
+  const skipped = [];
+  for(const row of candidates){
+    if(row.leagueKey === key && opts.currentLeagueData){
+      yearsData.push({ year:Number(opts.currentLeagueData.seasonId), leagueData:opts.currentLeagueData });
+      continue;
+    }
+    try{
+      const throughWeek = Math.max(1, Math.min(YAHOO_MAX_WEEK,
+        finiteNumber(row.currentWeek) || finiteNumber(row.endWeek) || YAHOO_MAX_WEEK));
+      const dashboard = await yahooApi({
+        resource:'dashboard',
+        league_key:row.leagueKey,
+        through_week:String(throughWeek),
+      });
+      const leagueData = normalizeDashboard(dashboard);
+      yearsData.push({ year:Number(leagueData.seasonId), leagueData });
+    }catch(err){
+      console.warn('[YahooAdapter] history season failed for ' + row.leagueKey, err);
+      if(row.season) skipped.push(Number(row.season));
+    }
+  }
+  yearsData.sort((a,b)=> a.year-b.year);
+  return { yearsData, skipped, leagues };
+}
+
+return {
+  fetchLive,
+  fetchHistory,
+  fetchUserLeagues,
+  normalizeDashboard,
+  normalizeYahooLeagueKey,
+  looksLikeYahooLeagueKey,
+};
+})();
 </script>
 
 <script>
@@ -12544,7 +12987,7 @@ const ui = {
   franchiseModalId: null,
   week: null,
   currentWeek: null,
-  provider: 'espn',      // 'espn' | 'sleeper' — which fantasy host to read
+  provider: 'espn',      // 'espn' | 'sleeper' | 'yahoo' — fantasy host to read
   statsMode: 'standings',
   sourceMode: 'none',
   weekCacheKey: '',
@@ -14486,9 +14929,10 @@ function recordCard(tone, kicker, headline, subtext, owner, meta, logo, footnote
    SETUP — connection status, fetch, history, JSON fallbacks
 ============================================================ */
 function setConn(mode){
+  const liveProvider = normalizedLeagueProvider(ui.provider).toUpperCase();
   const map = {
     none:   { text:'● NO DATA SOURCE', color:'var(--dim)',   border:'rgba(255,255,255,.16)' },
-    live:    { text:'● LIVE ESPN DATA', color:'var(--green)', border:'rgba(57,255,140,.45)' },
+    live:    { text:'● LIVE ' + liveProvider + ' DATA', color:'var(--green)', border:'rgba(57,255,140,.45)' },
     history: { text:'● ARCHIVE SEASON', color:'var(--gold)',  border:'rgba(255,196,0,.45)' },
     manual:  { text:'● MANUAL DATA',    color:'var(--cyan)',  border:'rgba(0,224,255,.45)' },
     error:  { text:'● FETCH FAILED',   color:'var(--red)',   border:'rgba(255,45,85,.45)' },
@@ -14503,7 +14947,9 @@ function setConn(mode){
 function setFetchLoading(isLoading){
   $('fetchBtn').disabled = isLoading;
   $('fetchSpinner').classList.toggle('hidden', !isLoading);
-  $('fetchLabel').textContent = isLoading ? 'CONNECTING…' : 'FETCH LEAGUE DATA';
+  $('fetchLabel').textContent = isLoading
+    ? 'CONNECTING…'
+    : (ui.provider === 'yahoo' ? 'LOAD YAHOO LEAGUE' : 'FETCH LEAGUE DATA');
 }
 
 /* ============================================================
@@ -15388,11 +15834,164 @@ async function fetchSleeperLeagueData(opts){
   }
 }
 
+/* ============================================================
+   YAHOO LOAD PATH
+   OAuth tokens stay server-side; YahooAdapter reads the allowlisted proxy and
+   returns the same ESPN-shaped payload used by the existing render pipeline.
+============================================================ */
+function populateYahooLeaguePicker(leagues, selectedKey){
+  const picker = $('yahooLeaguePicker');
+  const select = $('yahooLeagueSelect');
+  const rows = Array.isArray(leagues) ? leagues.filter(row=> row && row.leagueKey) : [];
+  if(!picker || !select) return;
+  if(!rows.length){
+    picker.classList.add('hidden');
+    select.innerHTML = '';
+    return;
+  }
+  select.innerHTML = rows.map(row=>{
+    const label = (row.season ? row.season + ' · ' : '') + row.name;
+    return `<option value="${esc(row.leagueKey)}" ${row.leagueKey===selectedKey?'selected':''}>${esc(label)}</option>`;
+  }).join('');
+  picker.classList.remove('hidden');
+}
+
+async function fetchYahooLeagueData(opts){
+  const options = opts || {};
+  const silent = !!options.silent;
+  const navigate = options.navigate !== false;
+  const requested = String(options.leagueId || $('leagueIdInput').value || '').trim();
+  const requestedKey = window.YahooAdapter.normalizeYahooLeagueKey(requested);
+
+  if(requested && !requestedKey){
+    if(!silent) $('fetchStatus').textContent = 'Choose a Yahoo league from your account or enter a key like 449.l.12345.';
+    return false;
+  }
+  if(requestedKey) clearLeagueStateForSwitch(requestedKey, 'yahoo');
+  setFetchLoading(true);
+  hideHistoryBanner();
+  $('fetchStatus').style.color = 'var(--dim)';
+  $('fetchStatus').textContent = silent ? 'Restoring Yahoo season…' : 'Fetching your Yahoo league…';
+
+  let liveConnected = false;
+  try{
+    const live = await window.YahooAdapter.fetchLive(requestedKey);
+    const league = live && live.leagueKey;
+    if(!league || !live.leagueData || !live.leagueData.teams || !live.leagueData.teams.length){
+      throw new Error('YAHOO_NO_LEAGUE_DATA');
+    }
+    $('leagueIdInput').value = league;
+    clearLeagueStateForSwitch(league, 'yahoo');
+    if(!historyRequestIsCurrent(league, 'yahoo')){
+      console.warn('[YahooAdapter] discarded stale live response for league ' + league + '.');
+      return false;
+    }
+
+    const liveInfo = applyLiveLeaguePayload(league, live.leagueData, live.year);
+    setConn('live');
+    liveConnected = true;
+    populateYahooLeaguePicker(live.leagues, league);
+
+    try{
+      applyLeagueHistory(
+        withCurrentSeason([{ year:Number(live.year), leagueData:live.leagueData }]),
+        [],
+        'Current season (Yahoo)',
+        { silent:true }
+      );
+      renderWeekScrubbers();
+    }catch(seedErr){
+      console.warn('[YahooAdapter] live archive seeding failed; season stays connected.', seedErr);
+    }
+
+    $('fetchStatus').style.color = 'var(--green)';
+    $('fetchStatus').textContent =
+      `✓ Yahoo Season Connected · ${live.year} · ${live.leagueData.teams.length} teams · Week ${liveInfo.activeWeek}`;
+    try{ localStorage.setItem(SAVED_LEAGUE_ID_KEY, league); }catch(e){}
+    savePrefs();
+    registerSavedLeague(league, 'yahoo');
+    refreshYahooAuthStatus();
+    if(navigate) setScreen('home');
+
+    safeRun('desk', renderDesk, ()=> renderScreenFallback('home'));
+    safeRun('matchups', renderMatchups, ()=> renderScreenFallback('matchups'));
+    safeRun('analytics', renderAnalytics, ()=> renderScreenFallback('analytics'));
+    safeRun('recordbook', renderRecordBook, ()=> renderScreenFallback('recordbook'));
+    safeRun('news', renderNews, ()=> renderScreenFallback('news'));
+
+    (async ()=>{
+      setHistoryProbeState('yahoo', league, 'loading');
+      try{
+        const archive = await window.YahooAdapter.fetchHistory(league, {
+          maxSeasons:12,
+          leagues:live.leagues,
+          currentLeagueData:live.leagueData,
+        });
+        if(!historyRequestIsCurrent(league, 'yahoo')){
+          console.warn('[YahooAdapter] discarded stale history response for league ' + league + '.');
+          return;
+        }
+        setHistoryProbeState('yahoo', league, 'complete');
+        populateYahooLeaguePicker(archive && archive.leagues, league);
+        const years = archive && Array.isArray(archive.yearsData) ? archive.yearsData : [];
+        const pastSeasons = years.filter(row=> Number(row && row.year) !== Number(live.year));
+        if(!pastSeasons.length){
+          safeRun('desk', renderDesk, ()=> renderScreenFallback('home'));
+          safeRun('news', renderNews, ()=> renderScreenFallback('news'));
+          return;
+        }
+        applyLeagueHistory(
+          withCurrentSeason(years),
+          (archive && archive.skipped) || [],
+          'Full league history from Yahoo',
+          { silent:true }
+        );
+        renderWeekScrubbers();
+        safeRun('matchups', renderMatchups, ()=> renderScreenFallback('matchups'));
+        safeRun('analytics', renderAnalytics, ()=> renderScreenFallback('analytics'));
+        safeRun('recordbook', renderRecordBook, ()=> renderScreenFallback('recordbook'));
+        safeRun('news', renderNews, ()=> renderScreenFallback('news'));
+        if(!silent) toast('All-time Record Book loaded · ' + pastSeasons.length +
+          ' past season' + (pastSeasons.length===1?'':'s'));
+      }catch(histErr){
+        setHistoryProbeState('yahoo', league, 'failed');
+        console.warn('[YahooAdapter] multi-year history hydration failed; live season stays connected.', histErr);
+      }
+    })();
+
+    if(!silent) toast(`Yahoo league connected · Week ${liveInfo.activeWeek}`);
+    return true;
+  }catch(err){
+    console.error('[YahooAdapter] live fetch failed', err);
+    if(liveConnected){
+      console.warn('[YahooAdapter] post-connection step failed but season is connected; keeping success state.', err);
+      return true;
+    }
+    setConn('error');
+    const message = String(err && (err.message || err) || '');
+    $('fetchStatus').style.color = 'var(--red)';
+    if(/YAHOO_LOGIN_REQUIRED|YAHOO_REAUTH_REQUIRED|HTTP_401/.test(message)){
+      $('fetchStatus').textContent = 'Your Yahoo login expired or was revoked. Log in with Yahoo again to reconnect.';
+      refreshYahooAuthStatus();
+    } else if(/YAHOO_NO_FOOTBALL_LEAGUES/.test(message)){
+      $('fetchStatus').textContent = 'This Yahoo account has no fantasy football leagues available to the app.';
+    } else if(/YAHOO_TEAMS_MISSING|YAHOO_NO_LEAGUE_DATA/.test(message)){
+      $('fetchStatus').textContent = 'Yahoo found the league, but it has no teams or matchup data yet.';
+    } else {
+      $('fetchStatus').textContent = 'The Yahoo league could not be loaded (' + (message || 'unknown error') + '). Try logging in again, then retry.';
+    }
+    return false;
+  }finally{
+    setFetchLoading(false);
+  }
+}
+
 async function fetchLeagueData(options){
   const opts = options && typeof options === 'object' ? options : {};
   // Route to the Sleeper adapter when that platform is selected. The ESPN path
   // below is left entirely untouched.
   if(ui.provider === 'sleeper') return fetchSleeperLeagueData(opts);
+  if(ui.provider === 'yahoo') return fetchYahooLeagueData(opts);
 
   const silent = !!opts.silent;
   const navigate = opts.navigate !== false;
@@ -15648,12 +16247,12 @@ async function fetchLeagueData(options){
   }
 }
 /* ============================================================
-   PLATFORM SELECTION — ESPN vs Sleeper
+   PLATFORM SELECTION — ESPN vs Sleeper vs Yahoo
    The provider decides which adapter fetchLeagueData routes through and which
-   setup affordances are relevant (private-league cookies are ESPN-only).
+   setup affordances are relevant (cookies are ESPN-only; OAuth is Yahoo-only).
 ============================================================ */
 function setProvider(provider){
-  const next = provider === 'sleeper' ? 'sleeper' : 'espn';
+  const next = normalizedLeagueProvider(provider);
   ui.provider = next;
   /* The derived caches namespace themselves by provider + league id, and this
      is the one funnel every provider change runs through. `ui` is private to
@@ -15662,8 +16261,8 @@ function setProvider(provider){
      the old league's entries, and a republish here would fire a full re-render
      mid-switch. */
   LeagueData.setActiveProvider(next);
-  const espnTab = $('providerEspn'), sleeperTab = $('providerSleeper');
-  [['espn', espnTab], ['sleeper', sleeperTab]].forEach(([key, tab])=>{
+  const espnTab = $('providerEspn'), sleeperTab = $('providerSleeper'), yahooTab = $('providerYahoo');
+  [['espn', espnTab], ['sleeper', sleeperTab], ['yahoo', yahooTab]].forEach(([key, tab])=>{
     if(!tab) return;
     const on = key === next;
     tab.classList.toggle('is-active', on);
@@ -15672,23 +16271,101 @@ function setProvider(provider){
 
   const input = $('leagueIdInput');
   if(input){
-    input.placeholder = next === 'sleeper' ? 'e.g. 123456789012345678' : 'e.g. 123456789';
+    if(next === 'yahoo' && input.value && !window.YahooAdapter.looksLikeYahooLeagueKey(input.value)) input.value = '';
+    input.placeholder = next === 'sleeper'
+      ? 'e.g. 123456789012345678'
+      : (next === 'yahoo' ? 'e.g. 449.l.12345' : 'e.g. 123456789');
+    input.inputMode = next === 'yahoo' ? 'text' : 'numeric';
   }
   const heading = $('leagueSourceHeading');
-  if(heading) heading.textContent = next === 'sleeper' ? 'Connect League' : 'Connect League';
-  // Private-league cookies only apply to ESPN; Sleeper reads are always public.
+  if(heading) heading.textContent = 'Connect League';
+  const leagueLabel = $('leagueIdLabel');
+  if(leagueLabel) leagueLabel.textContent = next === 'yahoo' ? 'Yahoo League Key' : 'League ID';
+  // Private-league cookies only apply to ESPN. Yahoo credentials are held by
+  // the HttpOnly OAuth session and Sleeper reads are public.
   const privateCard = $('privateLeagueCard');
-  if(privateCard) privateCard.style.display = next === 'sleeper' ? 'none' : '';
+  if(privateCard) privateCard.style.display = next === 'espn' ? '' : 'none';
+  const yahooPanel = $('yahooAuthPanel');
+  if(yahooPanel) yahooPanel.classList.toggle('hidden', next !== 'yahoo');
+  if($('fetchLabel')) $('fetchLabel').textContent = next === 'yahoo' ? 'LOAD YAHOO LEAGUE' : 'FETCH LEAGUE DATA';
   const status = $('fetchStatus');
   if(status && ui.sourceMode !== 'live'){
     status.style.color = 'var(--dim)';
     status.textContent = next === 'sleeper'
       ? 'Enter your Sleeper League ID to load the live season (public, no cookies needed).'
-      : 'Enter your ESPN League ID to load the live 2026 season.';
+      : (next === 'yahoo'
+        ? 'Log in with Yahoo, then choose one of your fantasy football leagues.'
+        : 'Enter your ESPN League ID to load the live 2026 season.');
   }
+  refreshHistoryUrlLink();
 }
 if($('providerEspn')) $('providerEspn').addEventListener('click', ()=>{ setProvider('espn'); savePrefs(); });
 if($('providerSleeper')) $('providerSleeper').addEventListener('click', ()=>{ setProvider('sleeper'); savePrefs(); });
+if($('providerYahoo')) $('providerYahoo').addEventListener('click', async ()=>{
+  setProvider('yahoo');
+  savePrefs();
+  const connected = await refreshYahooAuthStatus();
+  if(connected === false) startYahooLogin();
+});
+
+function yahooReturnPath(){
+  return window.location.pathname + '?goto=setup&platform=yahoo';
+}
+function startYahooLogin(){
+  const returnTo = yahooReturnPath();
+  window.location.assign('/api/auth/yahoo?action=start&return_to=' + encodeURIComponent(returnTo));
+}
+async function refreshYahooAuthStatus(){
+  const status = $('yahooAuthStatus');
+  const login = $('yahooLoginBtn');
+  const logout = $('yahooDisconnectBtn');
+  if(status) status.textContent = 'Checking Yahoo login…';
+  try{
+    const response = await fetch('/api/auth/yahoo?action=status', {
+      headers:{ Accept:'application/json' }, credentials:'same-origin', cache:'no-store',
+    });
+    const payload = await response.json();
+    if(!response.ok) throw new Error(String(payload && payload.error || ('YAHOO_STATUS_HTTP_' + response.status)));
+    const connected = response.ok && !!payload.connected;
+    if(status){
+      status.innerHTML = connected
+        ? '<span style="color:var(--green)">CONNECTED</span> · OAuth tokens are encrypted server-side.'
+        : 'Not connected — log in to read your private Yahoo fantasy data.';
+    }
+    if(login) login.classList.toggle('hidden', connected);
+    if(logout) logout.classList.toggle('hidden', !connected);
+    return connected;
+  }catch(err){
+    console.error('[Yahoo OAuth UI] status check failed', err);
+    if(status) status.textContent = 'Yahoo login status is unavailable. Check the server configuration and retry.';
+    if(login) login.classList.remove('hidden');
+    if(logout) logout.classList.add('hidden');
+    return null;
+  }
+}
+if($('yahooLoginBtn')) $('yahooLoginBtn').addEventListener('click', startYahooLogin);
+if($('yahooDisconnectBtn')) $('yahooDisconnectBtn').addEventListener('click', async ()=>{
+  try{
+    const response = await fetch('/api/auth/yahoo?action=disconnect', {
+      method:'POST', headers:{ Accept:'application/json' }, credentials:'same-origin', cache:'no-store',
+    });
+    if(!response.ok) throw new Error('YAHOO_DISCONNECT_HTTP_' + response.status);
+    populateYahooLeaguePicker([], '');
+    await refreshYahooAuthStatus();
+    $('fetchStatus').textContent = 'Yahoo account disconnected from this browser.';
+  }catch(err){
+    console.error('[Yahoo OAuth UI] disconnect failed', err);
+    $('fetchStatus').style.color = 'var(--red)';
+    $('fetchStatus').textContent = 'Yahoo logout failed. Retry, or clear this site’s cookies.';
+  }
+});
+if($('yahooLeagueSelect')) $('yahooLeagueSelect').addEventListener('change', async event=>{
+  const league = String(event.target.value || '').trim();
+  if(!league) return;
+  $('leagueIdInput').value = league;
+  savePrefs();
+  await fetchYahooLeagueData({ leagueId:league });
+});
 
 $('fetchBtn').addEventListener('click', ()=> fetchLeagueData());
 
@@ -15696,6 +16373,17 @@ $('fetchBtn').addEventListener('click', ()=> fetchLeagueData());
 
 /* Keeps the history API link pointed at the current League ID. */
 function refreshHistoryUrlLink(){
+  if(ui.provider !== 'espn'){
+    const a = $('historyUrlLink');
+    if(!a) return;
+    a.removeAttribute('href');
+    a.textContent = ui.provider === 'yahoo'
+      ? 'Yahoo history loads automatically from your connected account.'
+      : 'Sleeper history loads automatically from prior league IDs.';
+    a.style.color = 'var(--dim)';
+    a.style.textDecoration = 'none';
+    return;
+  }
   const url = buildLeagueHistoryUrl($('leagueIdInput').value.trim());
   const a = $('historyUrlLink');
   if(!a) return;
@@ -15865,7 +16553,9 @@ dz.addEventListener('drop', (e)=>{
 function savedLeagues(){
   try{
     const value = JSON.parse(localStorage.getItem(SAVED_LEAGUES_KEY) || '[]');
-    return Array.isArray(value) ? value.filter(x=>x && x.id && (x.provider === 'espn' || x.provider === 'sleeper')) : [];
+    return Array.isArray(value) ? value.filter(x=>
+      x && x.id && (x.provider === 'espn' || x.provider === 'sleeper' || x.provider === 'yahoo')
+    ) : [];
   }catch(e){ return []; }
 }
 function leagueCacheKey(provider, id){ return (provider || 'espn') + ':' + String(id || '').trim(); }
@@ -15881,7 +16571,7 @@ function snapshotActiveLeague(){
 function registerSavedLeague(id, provider){
   const leagueId = String(id || '').trim();
   if(!leagueId) return;
-  const platform = provider === 'sleeper' ? 'sleeper' : 'espn';
+  const platform = normalizedLeagueProvider(provider);
   const list = savedLeagues().filter(x=>!(x.id === leagueId && x.provider === platform));
   const settings = LeagueData.espnData && LeagueData.espnData.settings;
   const name = settings && settings.name ? settings.name : (platform.toUpperCase() + ' · ' + leagueId);
@@ -15962,7 +16652,7 @@ function loadPrefs(){
   $('leagueIdInput').value = savedLeagueId || (saved && saved.leagueId) || '';
   $('seasonYear').value = (saved && saved.season) || String(uiActiveSeasonYear());
   $('weekNum').value = (saved && saved.week) || '';
-  if(saved && (saved.provider === 'sleeper' || saved.provider === 'espn')) setProvider(saved.provider);
+  if(saved && (saved.provider === 'sleeper' || saved.provider === 'espn' || saved.provider === 'yahoo')) setProvider(saved.provider);
   if(saved && (saved.statsMode === 'standings' || saved.statsMode === 'advanced')) ui.statsMode = saved.statsMode;
 try{ if($('espnS2Input'))   $('espnS2Input').value   = localStorage.getItem('fsn.espn.s2.v1')   || ''; }catch(e){}
   try{ if($('espnSwidInput')) $('espnSwidInput').value = localStorage.getItem('fsn.espn.swid.v1') || ''; }catch(e){}
@@ -16023,7 +16713,9 @@ $('leagueIdInput').addEventListener('input', ()=>{
     setHistoryProbeState(ui.provider, league, 'idle');
     renderAll();
   }
-  $('leagueIdInput')._cloudTimer = setTimeout(()=> hydrateLeagueFromCloud(league, { silent:true }), 650);
+  if(ui.provider === 'espn'){
+    $('leagueIdInput')._cloudTimer = setTimeout(()=> hydrateLeagueFromCloud(league, { silent:true }), 650);
+  }
 });
 
 if($('cloudSyncBtn')) $('cloudSyncBtn').addEventListener('click', ()=> syncLeagueToCloud());
@@ -17864,7 +18556,7 @@ function renderAll(){
 }
 
 /* ============================================================
-   DEEP LINK — honor ?goto=<screen>&platform=<espn|sleeper> so external
+   DEEP LINK — honor ?goto=<screen>&platform=<espn|sleeper|yahoo> so external
    entry points (chiefly the marketing landing page at the apex/www domain)
    can drop a visitor straight into the Setup connect flow. Everything here is
    optional and defensive: unknown values are ignored and the app behaves as a
@@ -17873,12 +18565,14 @@ function renderAll(){
 function applyDeepLink(){
   let params;
   try{ params = new URLSearchParams(window.location.search); }
-  catch(e){ return; }
+  catch(e){ return {}; }
 
   const platform = (params.get('platform') || '').toLowerCase();
-  if(platform === 'espn' || platform === 'sleeper'){
+  if(platform === 'espn' || platform === 'sleeper' || platform === 'yahoo'){
     try{ setProvider(platform); savePrefs(); }catch(e){}
   }
+  const yahooConnected = params.get('yahoo') === 'connected';
+  const yahooError = String(params.get('yahoo_error') || '');
 
   const target = (params.get('goto') || '').toLowerCase();
   const known = ['home','matchups','news','analytics','recordbook','setup'];
@@ -17889,9 +18583,10 @@ function applyDeepLink(){
 
   // Clean the query string so a refresh or share doesn't re-trigger the jump
   // and the URL stays tidy. Guarded for older/embedded browsers.
-  if((target || platform) && window.history && window.history.replaceState){
+  if((target || platform || yahooConnected || yahooError) && window.history && window.history.replaceState){
     try{ window.history.replaceState({}, document.title, window.location.pathname); }catch(e){}
   }
+  return { platform, yahooConnected, yahooError };
 }
 
 /* ============================================================
@@ -17908,14 +18603,27 @@ function bootApp(){
 
   // Deep-link entry from the marketing landing page (or any external link).
   // The apex/www landing site sends visitors here with ?goto=setup and an
-  // optional &platform=espn|sleeper so a "Connect ESPN/Sleeper" click lands
+  // optional &platform=espn|sleeper|yahoo so an external connect click lands
   // directly on the Setup screen with the right provider preselected. This is
   // additive: with no params the app boots to Home exactly as before.
-  applyDeepLink();
+  const deepLink = applyDeepLink();
 
   let savedLeagueId = '';
   try{ savedLeagueId = (localStorage.getItem(SAVED_LEAGUE_ID_KEY) || '').trim(); }catch(e){}
-  if(savedLeagueId){
+  if(ui.provider === 'yahoo'){
+    if(deepLink && deepLink.yahooError){
+      $('fetchStatus').style.color = 'var(--red)';
+      $('fetchStatus').textContent = 'Yahoo login was not completed (' + deepLink.yahooError + '). Tap Log In to try again.';
+      refreshYahooAuthStatus();
+      return;
+    }
+    refreshYahooAuthStatus().then(connected=>{
+      if(!connected) return;
+      const yahooLeague = window.YahooAdapter.normalizeYahooLeagueKey($('leagueIdInput').value);
+      fetchYahooLeagueData({ leagueId:yahooLeague, silent:true, navigate:false })
+        .catch(err=> console.warn('[YahooAdapter] silent league rehydration failed', err));
+    }).catch(err=> console.error('[Yahoo OAuth UI] boot status check failed', err));
+  } else if(savedLeagueId){
     // Fire-and-forget inside this page lifecycle: fetchLeagueData itself awaits
     // both concurrent network operations and repaints when hydration completes.
     fetchLeagueData({ leagueId:savedLeagueId, silent:true, navigate:false })
