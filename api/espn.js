@@ -131,7 +131,12 @@ module.exports = async function handler(req, res) {
 
     const body = await upstream.text();
 
-    res.setHeader('Cache-Control', 's-maxage=15, stale-while-revalidate=30');
+    // This response may have been fetched with per-request, encrypted stored,
+    // or deployment-wide ESPN credentials. Never allow an intermediary or the
+    // browser to reuse one member's private-league payload for another caller.
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
 
     // Parse and return the ESPN JSON payload. The leagueHistory route replies
     // with a top-level array, so we forward whatever JSON shape ESPN sends.
