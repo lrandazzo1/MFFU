@@ -2307,6 +2307,28 @@ function $(id){ return document.getElementById(id); }
 function selectedLeagueId(){ return LeagueData.leagueId(); }
 function leagueScopeToken(){ return LeagueData.scopeToken(); }
 
+/* History completion is separate from history presence. An empty in-memory
+   archive while ESPN/Sleeper is still loading (or after a network failure) is
+   not evidence that a league is new. The News Desk may classify season one
+   only after the active provider has completed an authoritative history probe. */
+window._fsnHistoryProbe = { provider:'', leagueId:'', status:'idle' };
+function historyRequestIsCurrent(leagueId, provider){
+  const requestedProvider = provider === 'sleeper' ? 'sleeper' : 'espn';
+  return LeagueData.activeProvider === requestedProvider &&
+    String(selectedLeagueId()) === String(leagueId || '').trim();
+}
+function setHistoryProbeState(provider, leagueId, status){
+  const requestedProvider = provider === 'sleeper' ? 'sleeper' : 'espn';
+  const requestedLeague = String(leagueId || '').trim();
+  if(status !== 'idle' && !historyRequestIsCurrent(requestedLeague, requestedProvider)) return false;
+  window._fsnHistoryProbe = {
+    provider:requestedProvider,
+    leagueId:requestedLeague,
+    status:String(status || 'idle'),
+  };
+  return true;
+}
+
 /* ---- INAUGURAL-SEASON PROBE ----
    A first-year league has no predecessor, so every "defending champion",
    "prior final" and "holds the ring" line the desk owns is a claim about games
@@ -2342,7 +2364,11 @@ function priorArchiveSeasonYears(seasonYear){
    telling one its history does not exist is not. */
 function isInauguralSeason(seasonYear){
   try{
-    return priorArchiveSeasonYears(seasonYear).length === 0;
+    if(priorArchiveSeasonYears(seasonYear).length > 0) return false;
+    const probe = window._fsnHistoryProbe || {};
+    return probe.status === 'complete' &&
+      probe.provider === LeagueData.activeProvider &&
+      probe.leagueId === String(selectedLeagueId());
   }catch(err){
     console.error('[FSNScope] inaugural-season probe failed for season ' + seasonYear, err);
     return false;
@@ -2448,16 +2474,15 @@ window.LeagueData = (function(){
     },
 
     /* Every game for a given week, each side joined back to its full team
-       record. Falls back to the whole schedule when nothing matches the
-       requested matchupPeriodId — some leagues report scoringPeriodId and
-       matchupPeriodId a step apart. */
+       record. A missing week is an explicit empty state; substituting the full
+       season would mislabel every available matchup as the requested week. */
     getWeekMatchups(week){
       const sched = (store.espnData && store.espnData.schedule) || [];
       const teams = store.getTeams();
       const teamById = (id)=> teams.find(t=> t.id === id) || null;
 
       const inWeek = sched.filter(g=> !week || String(g.matchupPeriodId) === String(week));
-      const source = inWeek.length ? inWeek : sched;
+      const source = inWeek;
 
       /* The official playoff seed for one side of a bracket game. ESPN stamps
          it on the schedule entry itself once the bracket is generated, which is
@@ -2854,17 +2879,27 @@ function normalizeHistoryPayload(raw){
    endpoint. Requests stay sequential and use only the five lightweight views
    needed by the Record Book, keeping proxy payloads and gateway pressure low. */
 async function fetchAllTimeHistory(leagueId) {
+  const requestedLeagueId = String(leagueId || '').trim();
+  if(!historyRequestIsCurrent(requestedLeagueId, 'espn')){
+    return { yearsData:[], skipped:[], stale:true };
+  }
+  setHistoryProbeState('espn', requestedLeagueId, 'loading');
   const targetYears = [2025, 2024, 2023, 2022, 2021, 2020, 2019, 2018];
   const yearsData = [];
   const skipped = [];
+  let uncertainFailures = 0;
   const views = 'view=mTeam&view=mRoster&view=mMatchup&view=mMatchupScore&view=mSettings';
   const archiveDelay = (ms)=> new Promise(resolve=> setTimeout(resolve, ms));
 
   for (const year of targetYears) {
-    const url = `https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/${year}/segments/0/leagues/${leagueId}?${views}`;
+    const url = `https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/${year}/segments/0/leagues/${requestedLeagueId}?${views}`;
 
     try {
       const raw = await fetchLeagueDataViaProxies(url);
+      if(!historyRequestIsCurrent(requestedLeagueId, 'espn')){
+        console.warn('[FSN] Discarded stale ESPN history response for league ' + requestedLeagueId + '.');
+        return { yearsData:[], skipped, stale:true };
+      }
       const data = Array.isArray(raw) ? raw[0] : raw;
 
       if (data && Array.isArray(data.teams) && data.teams.length > 0) {
@@ -2875,11 +2910,23 @@ async function fetchAllTimeHistory(leagueId) {
       }
     } catch (err) {
       skipped.push(Number(year));
+      if(!/\bHTTP 404\b/.test(String(err && err.message || err))) uncertainFailures += 1;
       console.warn(`[FSN] Season ${year} fetch failed; continuing archive hydration:`, err);
+      if(!historyRequestIsCurrent(requestedLeagueId, 'espn')){
+        console.warn('[FSN] Stopped stale ESPN history hydration for league ' + requestedLeagueId + '.');
+        return { yearsData:[], skipped, stale:true };
+      }
     }
 
     if (year !== targetYears[targetYears.length - 1]) await archiveDelay(120);
   }
+
+  if(!historyRequestIsCurrent(requestedLeagueId, 'espn')){
+    console.warn('[FSN] Discarded completed stale ESPN history hydration for league ' + requestedLeagueId + '.');
+    return { yearsData:[], skipped, stale:true };
+  }
+
+  setHistoryProbeState('espn', requestedLeagueId, uncertainFailures === 0 ? 'complete' : 'failed');
 
   if (yearsData.length > 0) {
     const stats = computeLeagueHistoryStats(yearsData);
@@ -2898,9 +2945,18 @@ async function fetchAllTimeHistory(leagueId) {
     FSNBridge.call('renderRecordBook');
     FSNBridge.call('renderNews');
     FSNBridge.call('renderHomeStories');
+  } else if(uncertainFailures === 0) {
+    // A completed, empty archive is the only safe proof of a first season.
+    FSNBridge.call('renderNews');
+    FSNBridge.call('renderHomeStories');
   }
 
-  return { yearsData, skipped };
+  return {
+    yearsData,
+    skipped,
+    stale:false,
+    probeStatus:uncertainFailures === 0 ? 'complete' : 'failed',
+  };
 }
 
 /* ============================================================
@@ -2914,21 +2970,36 @@ async function fetchAllTimeHistory(leagueId) {
    coverage still lands.
 ============================================================ */
 async function fetchLeagueHistoryArchive(leagueId){
-  const historyUrl = buildLeagueHistoryUrl(leagueId);
+  const requestedLeagueId = String(leagueId || '').trim();
+  if(!historyRequestIsCurrent(requestedLeagueId, 'espn')){
+    return { yearsData:[], skipped:[], route:'stale', stale:true };
+  }
+  setHistoryProbeState('espn', requestedLeagueId, 'loading');
+  const historyUrl = buildLeagueHistoryUrl(requestedLeagueId);
   if(historyUrl){
     try{
       const raw = await fetchLeagueDataViaProxies(historyUrl);
+      if(!historyRequestIsCurrent(requestedLeagueId, 'espn')){
+        console.warn('[FSN] Discarded stale consolidated ESPN history for league ' + requestedLeagueId + '.');
+        return { yearsData:[], skipped:[], route:'stale', stale:true };
+      }
       const { yearsData, skipped } = normalizeHistoryPayload(raw);
       if(yearsData.length){
-        return { yearsData, skipped, route:'consolidated' };
+        setHistoryProbeState('espn', requestedLeagueId, 'complete');
+        return { yearsData, skipped, route:'consolidated', stale:false };
       }
       console.warn('[FSN] Consolidated leagueHistory route returned no usable seasons; falling back to sequential hydration.');
     }catch(err){
       console.warn('[FSN] Consolidated leagueHistory route failed; falling back to sequential hydration.', err);
     }
   }
-  const seq = await fetchAllTimeHistory(leagueId);
-  return { yearsData: seq.yearsData || [], skipped: seq.skipped || [], route:'sequential' };
+  const seq = await fetchAllTimeHistory(requestedLeagueId);
+  return {
+    yearsData:seq.yearsData || [],
+    skipped:seq.skipped || [],
+    route:'sequential',
+    stale:!!seq.stale,
+  };
 }
 
 /* Every counted game lives in exactly one h2h bucket, so summing the
@@ -12463,6 +12534,7 @@ const ui = {
   seasonLoading: null,
   cloudHydrateSeq: 0,
   cloudLeagueId: '',
+  cloudUpdatedAt: '',
   cloudSyncing: false,
   rivalA: '', rivalB: '',
   activeLeagueKey: '',   // provider:id of the league currently resident in the stores
@@ -14509,7 +14581,17 @@ function formatCloudBytes(bytes){
 function cloudArchiveSignature(archive){
   const rows = Array.isArray(archive) ? archive : [];
   const years = rows.map(row=> Number(row && (row.year || (row.leagueData && row.leagueData.seasonId)) || 0)).join(',');
-  return rows.length + ':' + years + ':' + cloudJsonBytes(rows);
+  const serialized = JSON.stringify(rows);
+  let fnv = 2166136261;
+  let mix = 5381;
+  for(let i=0; i<serialized.length; i++){
+    const code = serialized.charCodeAt(i);
+    fnv = Math.imul(fnv ^ code, 16777619);
+    mix = Math.imul(mix, 33) ^ code;
+  }
+  const checksum = (fnv >>> 0).toString(16).padStart(8, '0') +
+    (mix >>> 0).toString(16).padStart(8, '0');
+  return rows.length + ':' + years + ':' + cloudJsonBytes(serialized) + ':' + checksum;
 }
 
 function yieldForArchiveProgress(){
@@ -14835,6 +14917,7 @@ async function hydrateLeagueFromCloud(league, options){
     });
     if(seq !== ui.cloudHydrateSeq || id !== String($('leagueIdInput').value || '').trim()) return null;
     if(response.status === 404){
+      ui.cloudUpdatedAt = '';
       const local = applyLocalLeagueFallback(id, season, 'no cloud record exists yet');
       if(local) return local;
       setCloudStatus('idle', 'No stored league record exists yet. Any authenticated member can save it after connecting.');
@@ -14844,6 +14927,7 @@ async function hydrateLeagueFromCloud(league, options){
     if(!response.ok) throw new Error(payload.error || ('League storage read failed (HTTP ' + response.status + ').'));
 
     const record = payload.record || payload;
+    ui.cloudUpdatedAt = String(record.updated_at || '');
     const applied = applyCloudRecord(record, id);
     cacheLeagueRecord(record);
     const stored = storedHistoryPayload(record);
@@ -14902,6 +14986,7 @@ async function syncLeagueToCloud(options){
     const body = {
       league_id:league,
       season_year:season,
+      expected_updated_at:ui.cloudUpdatedAt || null,
       history_json:historyJson,
     };
     return { historyJson, serialized:JSON.stringify(body) };
@@ -14967,6 +15052,7 @@ async function syncLeagueToCloud(options){
     }
 
     const record = payload.record || {};
+    ui.cloudUpdatedAt = String(record.updated_at || '');
     cacheLeagueRecord(record);
     window._fsnCloudHasCookies = !!record.has_cookies;
     // A partial success: history saved but cookie encryption was skipped. Log
@@ -15066,11 +15152,10 @@ function processMultiYearHistory(rawData, sourceLabel){
    as it hydrates. Returns true when a switch was detected and cleared. */
 function clearLeagueStateForSwitch(nextLeagueId, nextProvider){
   const next = String(nextLeagueId || '').trim();
-  if(!next) return false;
-  const nextKey = leagueCacheKey(nextProvider || ui.provider, next);
+  const nextKey = next ? leagueCacheKey(nextProvider || ui.provider, next) : '';
   const prevKey = String(ui.activeLeagueKey || '').trim();
   // First load, or a re-fetch of the exact same league/provider — nothing to wipe.
-  if(!prevKey || prevKey === nextKey) return false;
+  if(!prevKey || (next && prevKey === nextKey)) return false;
 
   // Multi-season archive + everything derived from the Record Book.
   window._franchiseYearsData = null;
@@ -15092,6 +15177,8 @@ function clearLeagueStateForSwitch(nextLeagueId, nextProvider){
   // any half-finished cloud hydration aimed at the previous league.
   ui.rivalA = ''; ui.rivalB = '';
   ui.cloudHydrateSeq = (ui.cloudHydrateSeq || 0) + 1;
+  ui.cloudUpdatedAt = '';
+  ui.activeLeagueKey = '';
 
   // The reader-view article lookup is keyed by article id; drop it so a
   // deep-linked story id from the previous league can't resolve after the swap.
@@ -15184,6 +15271,10 @@ async function fetchSleeperLeagueData(opts){
     if(!live || !live.leagueData || !live.leagueData.teams || !live.leagueData.teams.length){
       throw new Error('SLEEPER_NO_LEAGUE_DATA');
     }
+    if(!historyRequestIsCurrent(league, 'sleeper')){
+      console.warn('[Sleeper] Discarded stale live response for league ' + league + '.');
+      return false;
+    }
 
     const liveInfo = applyLiveLeaguePayload(league, live.leagueData, live.year);
     setConn('live');
@@ -15216,11 +15307,21 @@ async function fetchSleeperLeagueData(opts){
 
     // Background: walk previous_league_id for the full multi-year Record Book.
     (async ()=>{
+      setHistoryProbeState('sleeper', league, 'loading');
       try{
         const archive = await window.SleeperAdapter.fetchHistory(league, 12);
+        if(!historyRequestIsCurrent(league, 'sleeper')){
+          console.warn('[Sleeper] Discarded stale history response for league ' + league + '.');
+          return;
+        }
+        setHistoryProbeState('sleeper', league, 'complete');
         const years = (archive && archive.yearsData) || [];
         const pastSeasons = years.filter(y=> Number(y && y.year) !== Number(live.year));
-        if(!pastSeasons.length) return;
+        if(!pastSeasons.length){
+          safeRun('desk', renderDesk, ()=> renderScreenFallback('home'));
+          safeRun('news', renderNews, ()=> renderScreenFallback('news'));
+          return;
+        }
         applyLeagueHistory(withCurrentSeason(years), [], 'Full league history from Sleeper', { silent:true });
         renderWeekScrubbers();
         safeRun('matchups', renderMatchups, ()=> renderScreenFallback('matchups'));
@@ -15230,6 +15331,7 @@ async function fetchSleeperLeagueData(opts){
         if(!silent) toast('All-time Record Book loaded · ' + pastSeasons.length +
           ' past season' + (pastSeasons.length===1?'':'s'));
       }catch(histErr){
+        setHistoryProbeState('sleeper', league, 'failed');
         console.warn('[Sleeper] multi-year history hydration failed; live season stays connected.', histErr);
       }
     })();
@@ -15383,6 +15485,10 @@ async function fetchLeagueData(options){
     ) || candidates.find(v=> Array.isArray(v.teams) && v.teams.length);
 
     if(!liveData) throw new Error('NO_LIVE_LEAGUE_DATA');
+    if(!historyRequestIsCurrent(league, 'espn')){
+      console.warn('[ESPN live fetch] Discarded stale live response for league ' + league + '.');
+      return false;
+    }
 
     const liveInfo = applyLiveLeaguePayload(league, liveData, currentYear);
     setConn('live');
@@ -15443,9 +15549,14 @@ async function fetchLeagueData(options){
       (async ()=>{
         try{
           const archive = await fetchLeagueHistoryArchive(league);
+          if(!archive || archive.stale || !historyRequestIsCurrent(league, 'espn')) return;
           const years = (archive && archive.yearsData) || [];
           const pastSeasons = years.filter(y=> Number(y && y.year) !== currentYear);
-          if(!pastSeasons.length) return; // nothing beyond the live season to add
+          if(!pastSeasons.length){
+            safeRun('desk', renderDesk, ()=> renderScreenFallback('home'));
+            safeRun('news', renderNews, ()=> renderScreenFallback('news'));
+            return;
+          }
           applyLeagueHistory(
             withCurrentSeason(years),
             (archive && archive.skipped) || [],
@@ -15885,6 +15996,11 @@ $('leagueIdInput').addEventListener('input', ()=>{
   refreshHistoryUrlLink();
   clearTimeout($('leagueIdInput')._cloudTimer);
   const league = $('leagueIdInput').value.trim();
+  if(clearLeagueStateForSwitch(league, ui.provider)){
+    ui.sourceMode = 'none';
+    setHistoryProbeState(ui.provider, league, 'idle');
+    renderAll();
+  }
   $('leagueIdInput')._cloudTimer = setTimeout(()=> hydrateLeagueFromCloud(league, { silent:true }), 650);
 });
 
@@ -17273,22 +17389,13 @@ function renderNews(){
   }
 }
 
-/* The stream ages in place — restamp the visible metadata every 45 seconds so
-   "2m ago" doesn't sit there lying for an hour. */
+/* Rebuild the active News feed once a minute so newly released deterministic
+   stories and the crawl cross their release boundary on the same timer. */
 setInterval(()=>{
-  /* Keep the crawl repainted on the same cadence as the timeline metadata. */
   renderTicker();
   if(ui.screen !== 'news' || $('reader').dataset.open === 'true') return;
-  const list = ui.newsCache ? Object.keys(ui.newsCache).map(k=> ui.newsCache[k]) : [];
-  if(!list.length) return;
-  list.forEach(a=> NewsDesk.restamp(a));
-  document.querySelectorAll('#timelineFeed .tl-card').forEach(card=>{
-    const a = articleById(card.dataset.article);
-    if(!a) return;
-    const meta = card.querySelector('.tl-meta span:last-child');
-    if(meta) meta.textContent = a.meta || '';
-  });
-}, 45000);
+  safeRun('news', renderNews, ()=> renderScreenFallback('news'));
+}, 60000);
 
 /* ============================================================
    COMMUNITY STORY COMPOSER
