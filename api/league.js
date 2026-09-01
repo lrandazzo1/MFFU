@@ -14,6 +14,10 @@ const crypto = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 
 const MAX_BODY_BYTES = 8 * 1024 * 1024;
+const MAX_HISTORY_BYTES = 6 * 1024 * 1024;
+const MAX_ARCHIVE_SEASONS = 50;
+const MAX_ARCHIVE_TEAMS_PER_SEASON = 64;
+const MAX_ARCHIVE_GAMES_PER_SEASON = 5000;
 const ESPN_HOST = 'https://lm-api-reads.fantasy.espn.com';
 const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
@@ -207,23 +211,19 @@ async function verifyLeagueMember(leagueId, seasonYear, cookies) {
     if (!response.ok) continue;
     const payload = await response.json().catch(function () { return null; });
     const league = Array.isArray(payload) ? payload[0] : payload;
+    const memberIds = new Set();
+    const rememberMemberId = function (value) {
+      const id = String(value || '').replace(/^\{|\}$/g, '').toLowerCase();
+      if (id) memberIds.add(id);
+    };
     const members = league && Array.isArray(league.members) ? league.members : [];
-    const member = members.find(function (row) {
-      return String(row && row.id || '').replace(/^\{|\}$/g, '').toLowerCase() === targetSwid;
+    members.forEach(function (row) { rememberMemberId(row && row.id); });
+    const teams = league && Array.isArray(league.teams) ? league.teams : [];
+    teams.forEach(function (team) {
+      rememberMemberId(team && team.primaryOwner);
+      (team && Array.isArray(team.owners) ? team.owners : []).forEach(rememberMemberId);
     });
-    if (member) return { ok: true };
-
-    // Democratized cloud saves: any authenticated league member whose cookies
-    // can READ the private league may save — there is no commissioner-only
-    // gate. ESPN only returns real league content (teams / settings) to
-    // authorized members, so a readable league is itself proof of access. We
-    // no longer require the SWID to appear in the members array (some ESPN
-    // response variants omit it or list it under a differently formatted GUID).
-    const readableLeague = league && (
-      Array.isArray(league.teams) ||
-      (league.settings && typeof league.settings === 'object')
-    );
-    if (readableLeague) return { ok: true };
+    if (memberIds.has(targetSwid)) return { ok: true };
   }
 
   return {
@@ -235,41 +235,103 @@ async function verifyLeagueMember(leagueId, seasonYear, cookies) {
 
 const RETURNING_COLUMNS = 'league_id,season_year,history_json,cookies,updated_at';
 
-// Persist a league row without depending on a specific unique/exclusion
-// constraint existing on the table. We first try a native upsert (atomic, and
-// correct when the (league_id, season_year) primary key from schema.sql is
-// present). If the database has no matching constraint — Postgres error 42P10,
-// "there is no unique or exclusion constraint matching the ON CONFLICT
-// specification" — we fall back to an explicit existence check followed by an
-// UPDATE or INSERT. This keeps saves working on tables that were created
-// without the composite key.
-async function saveLeagueRow(client, row) {
-  const upsert = await client
-    .from('leagues')
-    .upsert(row, { onConflict: 'league_id,season_year' })
-    .select(RETURNING_COLUMNS)
-    .single();
+function archiveRows(historyJson) {
+  if (Array.isArray(historyJson)) return historyJson;
+  if (!historyJson || typeof historyJson !== 'object') return null;
+  const keys = ['yearsData', 'historicalArchive', 'archive'];
+  for (const key of keys) {
+    if (Object.prototype.hasOwnProperty.call(historyJson, key)) {
+      return Array.isArray(historyJson[key]) ? historyJson[key] : null;
+    }
+  }
+  return null;
+}
 
-  if (!upsert.error) return upsert.data;
+function validateHistoryJson(historyJson) {
+  if (!historyJson || typeof historyJson !== 'object') {
+    return 'history_json must be a JSON object or array.';
+  }
+  const bytes = Buffer.byteLength(JSON.stringify(historyJson), 'utf8');
+  if (bytes > MAX_HISTORY_BYTES) return 'history_json exceeds the 6 MB archive limit.';
 
-  const missingConstraint =
-    upsert.error.code === '42P10' ||
-    /no unique or exclusion constraint matching the on conflict/i.test(String(upsert.error.message || ''));
-  if (!missingConstraint) throw upsert.error;
+  const rows = archiveRows(historyJson);
+  if (!rows) {
+    return 'history_json must contain a yearsData, historicalArchive, or archive array.';
+  }
+  if (rows.length > MAX_ARCHIVE_SEASONS) return 'history_json contains too many seasons.';
 
-  console.warn('[api/league] ON CONFLICT unsupported (42P10); falling back to check-then-insert/update.');
+  const seenYears = new Set();
+  for (const row of rows) {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) {
+      return 'Every archive season must be a JSON object.';
+    }
+    const leagueData = row.leagueData && typeof row.leagueData === 'object'
+      ? row.leagueData
+      : row;
+    const year = Number(row.year || leagueData.seasonId || leagueData.season);
+    if (!Number.isInteger(year) || year < 1990 || year > activeFantasySeason() + 1) {
+      return 'Every archive season must have a valid season year.';
+    }
+    if (seenYears.has(year)) return 'history_json contains duplicate season years.';
+    seenYears.add(year);
+    if (leagueData.teams != null && !Array.isArray(leagueData.teams)) {
+      return 'Every archive season teams value must be an array.';
+    }
+    if (leagueData.schedule != null && !Array.isArray(leagueData.schedule)) {
+      return 'Every archive season schedule value must be an array.';
+    }
+    if (Array.isArray(leagueData.teams) && leagueData.teams.length > MAX_ARCHIVE_TEAMS_PER_SEASON) {
+      return 'An archive season contains too many teams.';
+    }
+    if (Array.isArray(leagueData.schedule) && leagueData.schedule.length > MAX_ARCHIVE_GAMES_PER_SEASON) {
+      return 'An archive season contains too many matchups.';
+    }
+  }
+  return '';
+}
 
-  // Does a row for this league_id + season_year already exist?
+function storageError(code, message, status, currentUpdatedAt) {
+  const error = new Error(message);
+  error.code = code;
+  error.status = status;
+  error.currentUpdatedAt = currentUpdatedAt || null;
+  return error;
+}
+
+// Existing rows use optimistic concurrency: the client must present the exact
+// updated_at value it most recently read, and the UPDATE repeats that check in
+// its WHERE clause. A stale tab therefore cannot overwrite a newer archive.
+async function saveLeagueRow(client, row, expectedUpdatedAt) {
   const existing = await client
     .from('leagues')
-    .select('league_id,season_year')
+    .select(RETURNING_COLUMNS)
     .eq('league_id', row.league_id)
     .eq('season_year', row.season_year)
-    .maybeSingle();
+    .limit(2);
   if (existing.error) throw existing.error;
 
-  if (existing.data) {
-    // Update in place, never touching the primary-key columns.
+  const matches = Array.isArray(existing.data) ? existing.data : [];
+  if (matches.length > 1) {
+    throw storageError(
+      'DUPLICATE_LEAGUE_ROWS',
+      'League storage contains duplicate rows for this league and season; repair the composite key before saving.',
+      503
+    );
+  }
+
+  if (matches.length === 1) {
+    const current = matches[0];
+    const currentUpdatedAt = String(current.updated_at || '');
+    if (!expectedUpdatedAt ||
+        new Date(expectedUpdatedAt).getTime() !== new Date(currentUpdatedAt).getTime()) {
+      throw storageError(
+        'VERSION_CONFLICT',
+        'The shared league archive changed after this browser loaded it. Reload the latest archive before saving again.',
+        409,
+        currentUpdatedAt
+      );
+    }
+
     const patch = {};
     Object.keys(row).forEach(function (key) {
       if (key !== 'league_id' && key !== 'season_year') patch[key] = row[key];
@@ -279,10 +341,27 @@ async function saveLeagueRow(client, row) {
       .update(patch)
       .eq('league_id', row.league_id)
       .eq('season_year', row.season_year)
+      .eq('updated_at', expectedUpdatedAt)
       .select(RETURNING_COLUMNS)
-      .single();
+      .maybeSingle();
     if (updated.error) throw updated.error;
+    if (!updated.data) {
+      throw storageError(
+        'VERSION_CONFLICT',
+        'The shared league archive changed while this save was in progress. Reload the latest archive before saving again.',
+        409,
+        currentUpdatedAt
+      );
+    }
     return updated.data;
+  }
+
+  if (expectedUpdatedAt) {
+    throw storageError(
+      'VERSION_CONFLICT',
+      'The shared league archive no longer matches the version loaded by this browser. Reload before saving again.',
+      409
+    );
   }
 
   const inserted = await client
@@ -378,8 +457,21 @@ async function handler(req, res) {
   const historyJson = body.history_json !== undefined
     ? body.history_json
     : (body.historicalArchive !== undefined ? body.historicalArchive : {});
-  if (historyJson === null || typeof historyJson !== 'object') {
-    return res.status(400).json({ error: 'history_json must be a JSON object or array.' });
+  const historyValidationError = validateHistoryJson(historyJson);
+  if (historyValidationError) {
+    return res.status(400).json({ error: historyValidationError });
+  }
+
+  const rawExpectedUpdatedAt = body.expected_updated_at !== undefined
+    ? body.expected_updated_at
+    : body.expectedUpdatedAt;
+  let expectedUpdatedAt = '';
+  if (rawExpectedUpdatedAt != null && String(rawExpectedUpdatedAt).trim()) {
+    const parsedExpected = new Date(String(rawExpectedUpdatedAt));
+    if (!Number.isFinite(parsedExpected.getTime())) {
+      return res.status(400).json({ error: 'expected_updated_at must be a valid timestamp or null.' });
+    }
+    expectedUpdatedAt = parsedExpected.toISOString();
   }
 
   const cookies = requestCookies(req, body);
@@ -412,12 +504,24 @@ async function handler(req, res) {
     // envelope never overwrites previously stored valid cookies with null.
     if (encryptedCookies) row.cookies = encryptedCookies;
 
-    const saved = await saveLeagueRow(client, row);
+    const saved = await saveLeagueRow(client, row, expectedUpdatedAt);
 
     const responseBody = { record: publicRecord(saved) };
     if (cookieWarning) responseBody.warning = cookieWarning;
     return res.status(200).json(responseBody);
   } catch (error) {
+    if (error && (error.status === 409 || error.status === 503)) {
+      console.warn('[api/league] guarded save rejected', {
+        code: error.code,
+        message: error.message,
+        current_updated_at: error.currentUpdatedAt,
+      });
+      return res.status(error.status).json({
+        error: error.message,
+        code: error.code,
+        current_updated_at: error.currentUpdatedAt,
+      });
+    }
     // Surface the EXACT database error (message / code / details / hint) so the
     // real cause — an RLS policy, a missing column, a constraint violation, a
     // connection failure — is visible in the response and server logs instead
