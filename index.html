@@ -218,6 +218,21 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
 .standings-table th:first-child,.standings-table td:first-child{ text-align:left; position:sticky; left:0; background:#0d121a; }
 .standings-team{ display:flex; align-items:center; gap:8px; min-width:0; width:100%; }
 .standings-team .analytics-team-name{ min-width:0; flex:1 1 0%; max-width:100%; }
+@media (max-width:640px){
+  .analytics-table-wrap.standings-table-wrap{ overflow-x:hidden; }
+  .standings-table{ width:100%; min-width:0; table-layout:fixed; }
+  .standings-table th:nth-child(n+3),
+  .standings-table td:nth-child(n+3){ display:none; }
+  .standings-table th:first-child,
+  .standings-table td:first-child{
+    position:static; width:auto; min-width:0; max-width:none;
+  }
+  .standings-table th:nth-child(2),
+  .standings-table td:nth-child(2){
+    width:82px; min-width:82px; max-width:82px;
+    padding-left:6px; padding-right:12px; text-align:right;
+  }
+}
 
 /* ---------- SCREENS ---------- */
 .screen{ display:none; animation:screenIn .22s ease both; }
@@ -13624,7 +13639,7 @@ function renderSeasonStandings(){
       '<span class="analytics-status-chip"><b>'+rows.length+'</b> Teams</span>'+
       '<span class="analytics-status-chip"><b>Week '+week+'</b> Through</span>'+
     '</div>'+
-    '<div class="standings-card w-full max-w-full overflow-hidden" style="width:100%;max-width:100%;min-width:0;overflow:hidden;"><div class="analytics-table-wrap standings-table-wrap no-bar block w-full overflow-x-auto" style="display:block;width:100%;max-width:100%;min-width:0;overflow-x:auto;-webkit-overflow-scrolling:touch;" role="region" aria-label="Season standings table" tabindex="0"><table class="standings-table">'+
+    '<div class="standings-card w-full max-w-full overflow-hidden" style="width:100%;max-width:100%;min-width:0;overflow:hidden;"><div class="analytics-table-wrap standings-table-wrap no-bar block w-full" style="display:block;width:100%;max-width:100%;min-width:0;" role="region" aria-label="Season standings table" tabindex="0"><table class="standings-table">'+
       '<thead><tr><th>Team</th><th>Record</th><th>W</th><th>L</th><th>T</th><th>PF</th><th>PA</th><th>DIFF</th><th>Streak</th></tr></thead>'+
       '<tbody>'+tableRows+'</tbody>'+
     '</table></div></div></div>';
