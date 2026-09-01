@@ -206,7 +206,12 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
 .stats-mode-toggle button{ min-height:42px; padding:8px; border-radius:9px; color:var(--dim);
   font-size:10.5px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; }
 .stats-mode-toggle button[data-active="true"]{ background:var(--cyan); color:#04121a; box-shadow:0 0 14px rgba(0,224,255,.18); }
-.standings-card{ border:1px solid var(--line); border-radius:14px; overflow:hidden; background:#0d121a; }
+.standings-card{ max-width:100%; border:1px solid var(--line); border-radius:14px; overflow:hidden; background:#0d121a; }
+.analytics-table-wrap.standings-table-wrap{
+  max-width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch;
+  overscroll-behavior-x:contain; scrollbar-width:none;
+}
+.analytics-table-wrap.standings-table-wrap::-webkit-scrollbar{ display:none; }
 .standings-table{ width:100%; min-width:720px; border-collapse:collapse; font-family:'JetBrains Mono',monospace; font-size:11px; }
 .standings-table th,.standings-table td{ padding:10px 9px; border-bottom:1px solid var(--line); text-align:right; white-space:nowrap; }
 .standings-table th{ color:var(--dim); font-size:9px; letter-spacing:.12em; text-transform:uppercase; }
@@ -13617,7 +13622,7 @@ function renderSeasonStandings(){
       '<span class="analytics-status-chip"><b>'+rows.length+'</b> Teams</span>'+
       '<span class="analytics-status-chip"><b>Week '+week+'</b> Through</span>'+
     '</div>'+
-    '<div class="standings-card"><div class="analytics-table-wrap no-bar"><table class="standings-table">'+
+    '<div class="standings-card"><div class="analytics-table-wrap standings-table-wrap no-bar" role="region" aria-label="Season standings table" tabindex="0"><table class="standings-table">'+
       '<thead><tr><th>Team</th><th>Record</th><th>W</th><th>L</th><th>T</th><th>PF</th><th>PA</th><th>DIFF</th><th>Streak</th></tr></thead>'+
       '<tbody>'+tableRows+'</tbody>'+
     '</table></div></div>';
