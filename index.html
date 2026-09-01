@@ -17325,45 +17325,167 @@ const ONBOARD_STEP_EL = {
   cookies: 'onboardStepCookies',
   history: 'onboardStepHistory',
 };
+
+function renderOnboardGuide(provider){
+  const modal = $('onboardModal');
+  const body = modal && modal.querySelector('.onboard-body');
+  if(!body) return;
+
+  const activePlatform = normalizedLeagueProvider(provider || ui.provider);
+  const guides = {
+    sleeper: {
+      intro: 'Sleeper uses an open API, so there are no cookies, OAuth permissions, or manual history files to manage.',
+      steps: `
+        <div class="onboard-step" id="onboardStepLeague">
+          <div class="onboard-step-head">
+            <span class="onboard-step-num">1</span>
+            <h3 class="onboard-step-title">Find Your Sleeper League ID</h3>
+          </div>
+          <div class="onboard-card">
+            <p><strong style="color:var(--off)">In the Sleeper app:</strong> Open your league, tap the League Settings icon <span aria-hidden="true">⚙️</span>, scroll to the bottom, and copy the League ID.</p>
+            <p><strong style="color:var(--off)">On the Sleeper website:</strong> Open your league and copy the long number after <a href="https://sleeper.com/leagues/" target="_blank" rel="noopener noreferrer" class="onboard-code">sleeper.com/leagues/</a><span class="onboard-code">&lt;ID&gt;</span> in the web address.</p>
+            <p>Paste that number into the <strong style="color:var(--off)">League ID</strong> box on Setup and tap <strong style="color:var(--off)">Fetch League Data</strong>.</p>
+            <div class="onboard-note">That is the only step. Sleeper's open API automatically handles rosters, matchups, standings, and available league history—no cookies or JSON uploads needed.</div>
+          </div>
+        </div>
+      `,
+    },
+    yahoo: {
+      intro: 'Yahoo connects securely through OAuth, so you never need to copy cookies or upload a history file.',
+      steps: `
+        <div class="onboard-step" id="onboardStepLeague">
+          <div class="onboard-step-head">
+            <span class="onboard-step-num">1</span>
+            <h3 class="onboard-step-title">Authenticate with Yahoo</h3>
+          </div>
+          <div class="onboard-card">
+            <p>Return to Setup and tap <strong style="color:var(--off)">Log in with Yahoo</strong>.</p>
+            <p>Yahoo will ask you to grant FSN secure, read-only access to your fantasy leagues. After authentication, choose your league and load it into the app.</p>
+            <div class="onboard-note">Yahoo handles authentication securely through OAuth. No manual cookies or JSON exports are required.</div>
+          </div>
+        </div>
+      `,
+    },
+    espn: {
+      intro: 'Start with your League ID. For a private league or automatic all-time history, complete Step 2. Step 3 is only an optional manual fallback.',
+      steps: `
+        <div class="onboard-step" id="onboardStepLeague">
+          <div class="onboard-step-head">
+            <span class="onboard-step-num">1</span>
+            <h3 class="onboard-step-title">Find Your League ID</h3>
+          </div>
+          <div class="onboard-card">
+            <p>Your League ID is a number ESPN assigns to your league. There are two easy ways to find it:</p>
+            <p><strong style="color:var(--off)">On a computer:</strong> Log in to ESPN Fantasy and open your league. In the browser address bar, find <span class="onboard-code">leagueId=57155288</span>. The number after <span class="onboard-code">leagueId=</span> is your League ID.</p>
+            <p><strong style="color:var(--off)">In the ESPN mobile app:</strong> Open your league, then tap <strong style="color:var(--off)">League</strong> → <strong style="color:var(--off)">League Info</strong> → <strong style="color:var(--off)">League ID</strong>.</p>
+            <p>Enter that number in the <strong style="color:var(--off)">League ID</strong> box on Setup and tap <strong style="color:var(--off)">Fetch League Data</strong>.</p>
+          </div>
+        </div>
+
+        <div class="onboard-step" id="onboardStepCookies">
+          <div class="onboard-step-head">
+            <span class="onboard-step-num">2</span>
+            <h3 class="onboard-step-title">Unlock Private Leagues &amp; All-Time History</h3>
+          </div>
+          <div class="onboard-card">
+            <p>Private ESPN leagues require two authentication cookies: <span class="onboard-code">espn_s2</span> and <span class="onboard-code">SWID</span>.</p>
+            <ol class="onboard-list">
+              <li>On a computer, open your ESPN Fantasy league in <strong style="color:var(--off)">Chrome</strong> or <strong style="color:var(--off)">Safari</strong> while logged in.</li>
+              <li>Press <span class="onboard-kbd">F12</span>, or right-click the page and select <strong style="color:var(--off)">Inspect</strong>.</li>
+              <li>Open the <strong style="color:var(--off)">Application</strong> tab in Chrome or the <strong style="color:var(--off)">Storage</strong> tab in Safari.</li>
+              <li>Expand <strong style="color:var(--off)">Cookies</strong> and select <span class="onboard-code">https://fantasy.espn.com</span>.</li>
+              <li>Copy the values named <span class="onboard-code">espn_s2</span> and <span class="onboard-code">SWID</span>.</li>
+              <li>Paste both values into the matching <strong style="color:var(--off)">Private League Access</strong> fields on Setup, then fetch the league again.</li>
+            </ol>
+            <div class="onboard-note">Providing both cookies unlocks the private league and automatically pulls up to 10 seasons into the Record Book. No JSON file upload is needed. Paste the SWID exactly as shown, including its curly braces.</div>
+          </div>
+        </div>
+
+        <div class="onboard-step" id="onboardStepHistory">
+          <div class="onboard-step-head">
+            <span class="onboard-step-num">3</span>
+            <h3 class="onboard-step-title">Add Historical Stats (.JSON) — Optional Fallback</h3>
+          </div>
+          <div class="onboard-card">
+            <p><strong style="color:var(--off)">If you provided both cookies in Step 2, skip this step entirely.</strong> Your available 10-year history is pulled automatically.</p>
+            <p>This manual option is only a fallback for public leagues whose members do not want to provide ESPN cookies.</p>
+            <ol class="onboard-list">
+              <li>Enter your League ID on Setup and open the ready-made <strong style="color:var(--off)">history export URL</strong> in the Historical Archive panel.</li>
+              <li>Press <span class="onboard-kbd">Ctrl</span>+<span class="onboard-kbd">S</span> on Windows or <span class="onboard-kbd">Cmd</span>+<span class="onboard-kbd">S</span> on Mac.</li>
+              <li>Save the page as a <span class="onboard-code">.json</span> file.</li>
+              <li>Return to Setup, open <strong style="color:var(--off)">Load Archive JSON</strong>, and select the saved file.</li>
+            </ol>
+            <div class="onboard-note">Use this fallback only when automatic cookie-authenticated history is unavailable or intentionally not enabled.</div>
+          </div>
+        </div>
+      `,
+    },
+  };
+
+  const guide = guides[activePlatform] || guides.espn;
+  body.innerHTML = `
+    <p class="onboard-intro">${guide.intro}</p>
+    ${guide.steps}
+    <button type="button" id="onboardDoneBtn" class="btn-primary mt-4">GOT IT — BACK TO SETUP</button>
+  `;
+}
+
 function openOnboard(step){
   const modal = $('onboardModal');
   if(!modal) return;
+
+  ui.onboardProvider = normalizedLeagueProvider(ui.provider);
+  renderOnboardGuide(ui.onboardProvider);
   modal.dataset.open = 'true';
   syncBodyScrollLock();
+
   const body = modal.querySelector('.onboard-body');
   if(body) body.scrollTop = 0;
-  // Deep-link to a specific step when a "how do I…?" link was used.
+
   const targetId = step && ONBOARD_STEP_EL[step];
   if(targetId){
     const target = $(targetId);
     if(target && body){
-      // Wait for the open animation to settle before scrolling into view.
       requestAnimationFrame(()=>{
         const top = target.offsetTop - 8;
         body.scrollTo ? body.scrollTo({ top, behavior:'smooth' }) : (body.scrollTop = top);
       });
     }
   }
-  setTimeout(()=>{ const c = $('onboardClose'); if(c) c.focus(); }, 0);
+
+  setTimeout(()=>{
+    const closeButton = $('onboardClose');
+    if(closeButton) closeButton.focus();
+  }, 0);
 }
+
 function closeOnboard(){
   const modal = $('onboardModal');
   if(!modal) return;
+
+  const previousPlatform = normalizedLeagueProvider(ui.onboardProvider || ui.provider);
   modal.dataset.open = 'false';
   syncBodyScrollLock();
+  setProvider(previousPlatform);
+  savePrefs();
+  setScreen('setup');
+  ui.onboardProvider = null;
 }
-if($('onboardOpenBtn')) $('onboardOpenBtn').addEventListener('click', ()=> openOnboard());
-if($('onboardClose'))   $('onboardClose').addEventListener('click', closeOnboard);
-if($('onboardDoneBtn')) $('onboardDoneBtn').addEventListener('click', closeOnboard);
-document.querySelectorAll('[data-onboard-step]').forEach((btn)=>{
-  btn.addEventListener('click', ()=> openOnboard(btn.getAttribute('data-onboard-step')));
-});
-document.addEventListener('keydown', (e)=>{
-  if(e.key === 'Escape' && $('onboardModal') && $('onboardModal').dataset.open === 'true'){
-    closeOnboard();
-  }
-});
 
+if($('onboardOpenBtn')) $('onboardOpenBtn').addEventListener('click', ()=> openOnboard());
+if($('onboardClose')) $('onboardClose').addEventListener('click', closeOnboard);
+if($('onboardModal')){
+  $('onboardModal').addEventListener('click', (event)=>{
+    if(event.target.closest('#onboardDoneBtn')) closeOnboard();
+  });
+}
+document.querySelectorAll('[data-onboard-step]').forEach((button)=>{
+  button.addEventListener('click', ()=> openOnboard(button.getAttribute('data-onboard-step')));
+});
+document.addEventListener('keydown', (event)=>{
+  const modal = $('onboardModal');
+  if(event.key === 'Escape' && modal && modal.dataset.open === 'true') closeOnboard();
+});
 
 
 /* ============================================================
