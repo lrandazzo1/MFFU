@@ -344,6 +344,84 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
 }
 .btn-ghost:active{ transform:scale(.98); }
 
+/* Synced / connected state for the League Cloud save button. Once storage is
+   confirmed, the action stops reading as an unsaved pending task. */
+.btn-ghost.is-synced{
+  background:rgba(16,185,129,.14);
+  border-color:rgba(16,185,129,.55);
+  color:#34d399;
+  box-shadow:0 6px 20px -10px rgba(16,185,129,.6);
+}
+.btn-ghost.is-synced:disabled{ opacity:1; }
+
+/* ---------- CREDENTIAL FIELDS (single-line, password-style) ---------- */
+.cred-row{ display:flex; align-items:stretch; gap:8px; }
+.cred-input-wrap{ position:relative; flex:1; min-width:0; }
+.cred-input-wrap .field{
+  padding-right:44px; font-size:13px; letter-spacing:.02em;
+  text-overflow:ellipsis;
+}
+.cred-reveal{
+  position:absolute; right:8px; top:50%; transform:translateY(-50%);
+  width:30px; height:30px; border-radius:8px; display:flex;
+  align-items:center; justify-content:center; color:var(--dim);
+  background:transparent; border:0;
+}
+.cred-reveal:active{ transform:translateY(-50%) scale(.92); }
+.cred-reveal svg{ width:17px; height:17px; stroke:currentColor; fill:none; stroke-width:1.7; }
+.cred-paste{
+  flex:none; padding:0 13px; border-radius:12px; white-space:nowrap;
+  background:#0f1420; border:1px solid var(--line-2); color:var(--off);
+  font-size:11px; font-weight:600; letter-spacing:.1em; text-transform:uppercase;
+  display:flex; align-items:center; gap:6px;
+}
+.cred-paste:active{ transform:scale(.96); }
+.cred-paste svg{ width:14px; height:14px; stroke:currentColor; fill:none; stroke-width:1.7; }
+.cred-valid{
+  display:flex; align-items:center; gap:6px; margin-top:6px;
+  font-size:11px; letter-spacing:.01em; min-height:15px; color:var(--dim);
+}
+.cred-valid[data-state="valid"]{ color:#34d399; }
+.cred-valid[data-state="invalid"]{ color:var(--gold); }
+.cred-valid[data-state="empty"]{ color:var(--dim); }
+.cred-valid .cred-tick{ font-weight:700; }
+
+/* Inline expandable "where do I find this?" help inside the setup cards. */
+.cred-help{ margin-top:2px; }
+.cred-help > summary{
+  list-style:none; cursor:pointer; display:flex; align-items:center; gap:7px;
+  font-size:11px; font-weight:600; letter-spacing:.02em; color:var(--cyan);
+  padding:2px 0;
+}
+.cred-help > summary::-webkit-details-marker{ display:none; }
+.cred-help > summary .cred-help-chevron{ transition:transform .18s ease; font-size:10px; }
+.cred-help[open] > summary .cred-help-chevron{ transform:rotate(90deg); }
+.cred-help-body{
+  margin-top:9px; padding:12px 13px; border-radius:11px;
+  background:rgba(0,224,255,.05); border:1px solid rgba(0,224,255,.16);
+}
+.cred-help-body p{ font-size:12px; line-height:1.6; color:var(--off); margin:0 0 8px; }
+.cred-help-body p:last-child{ margin-bottom:0; }
+.cred-help-body ol{ margin:0; padding:0; counter-reset:ch; display:flex; flex-direction:column; gap:7px; }
+.cred-help-body ol li{ position:relative; padding-left:24px; font-size:12px; line-height:1.55; color:var(--off); counter-increment:ch; }
+.cred-help-body ol li::before{
+  content:counter(ch); position:absolute; left:0; top:0;
+  width:17px; height:17px; border-radius:5px; display:flex; align-items:center; justify-content:center;
+  font-size:9.5px; font-weight:700; color:var(--cyan);
+  background:rgba(0,224,255,.1); border:1px solid rgba(0,224,255,.28);
+}
+
+/* ---------- VALUE-PROP SUBTITLE (why this step matters) ---------- */
+.value-prop{
+  display:flex; align-items:flex-start; gap:9px; margin:0 0 12px;
+  padding:11px 12px; border-radius:11px;
+  background:rgba(0,224,255,.06); border:1px solid rgba(0,224,255,.18);
+}
+.value-prop-icon{ flex:none; color:var(--cyan); font-size:16px; line-height:1.2; margin-top:1px; }
+.value-prop-text{ min-width:0; }
+.value-prop-title{ display:block; font-size:12.5px; font-weight:700; color:#eef2f8; letter-spacing:.01em; }
+.value-prop-sub{ display:block; font-size:11px; line-height:1.5; color:var(--dim); margin-top:3px; }
+
 /* ---------- DROPZONE ---------- */
 #dropzone{
   border:1.5px dashed var(--line-2); border-radius:14px;
@@ -484,13 +562,20 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
 }
 .franchise-card:active{ transform:scale(.992); }
 .franchise-card-inner{ padding:15px 15px 14px 18px; }
+.franchise-open-hint{
+  margin-top:12px; padding-top:11px; border-top:1px solid var(--line);
+  font-size:10px; font-weight:600; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--cyan); opacity:.8;
+}
 .franchise-card-top{ display:flex; align-items:center; gap:11px; min-width:0; }
 .franchise-rank{
   width:30px; height:30px; border-radius:9px; flex:none; display:grid; place-items:center;
   font-family:'Anton',Impact,sans-serif; font-size:15px; color:#536075;
   background:#090d13; border:1px solid var(--line);
 }
-.franchise-rank.is-top{ color:#171100; background:var(--gold); border-color:var(--gold); box-shadow:0 0 18px rgba(255,196,0,.25); }
+/* Rank #1 reads as an elegant gold-accented row, not a solid harsh block — a
+   gold border + glow + gold numeral keeps every leaderboard row the same shape. */
+.franchise-rank.is-top{ color:var(--gold); background:rgba(255,196,0,.1); border-color:var(--gold); box-shadow:0 0 16px rgba(255,196,0,.32); }
 .franchise-identity{ min-width:0; flex:1; }
 .franchise-team{ font-family:'Anton',Impact,sans-serif; font-size:17px; line-height:1.05; letter-spacing:.025em; text-transform:uppercase; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .franchise-manager{ margin-top:4px; color:var(--dim); font-size:11.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -580,6 +665,18 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
 .record-book-podium-value{ color:var(--off); font-family:'JetBrains Mono',monospace; font-size:11.5px; font-weight:800; text-align:right; white-space:nowrap; }
 .record-book-streak-grid{ display:grid; gap:12px; margin-top:12px; }
 
+/* Rivalry manager selectors — avatar preview beside each dropdown. */
+.rival-select{ position:relative; display:flex; align-items:center; gap:8px; }
+.rival-select-crest{ flex:none; display:flex; }
+.rival-select-crest .logo,.rival-select-crest .mono-badge{ width:26px; height:26px; border-radius:8px; }
+.rival-select .field{ flex:1; min-width:0; }
+/* Most-Played Rivalries rows — clickable affordance + hover state. */
+.rival-row{ transition:border-color .16s ease, background .16s ease, transform .1s ease; }
+.rival-row:hover{ border-color:var(--line-2); background:#0e131c; }
+.rival-row:active{ transform:scale(.994); }
+.rival-row-chevron{ color:var(--dim); font-size:13px; width:14px; text-align:center; transition:color .16s ease, transform .16s ease; }
+.rival-row:hover .rival-row-chevron{ color:var(--cyan); transform:translateX(2px); }
+
 /* Full-screen franchise dossier */
 #franchiseModal{
   position:fixed; inset:0; z-index:150; display:none; flex-direction:column; background:var(--ink);
@@ -595,10 +692,12 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
 .dossier-bar-inner{ display:flex; align-items:center; gap:9px; min-width:0; }
 .dossier-bar-title{ min-width:0; flex:1; }
 .dossier-shot-btn{
-  flex:none; padding:9px 10px; border-radius:9px; border:1px solid rgba(0,224,255,.34);
-  background:rgba(0,224,255,.08); color:var(--cyan); font-size:9px; font-weight:700;
-  letter-spacing:.12em; text-transform:uppercase; white-space:nowrap;
+  flex:none; padding:9px 12px; border-radius:9px; border:1px solid rgba(0,224,255,.34);
+  background:rgba(0,224,255,.08); color:var(--cyan); font-size:10px; font-weight:700;
+  letter-spacing:.1em; text-transform:uppercase; white-space:nowrap;
+  display:inline-flex; align-items:center; gap:6px;
 }
+.dossier-shot-btn svg{ width:14px; height:14px; stroke:currentColor; fill:none; stroke-width:1.8; flex:none; }
 /* Horizontal padding lives on .dossier-shell (px-4 sm:px-6) so the dossier
    column and the bar above it line up on any screen. */
 #franchiseModalBody{ flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:18px 0 calc(34px + env(safe-area-inset-bottom)); }
@@ -685,6 +784,8 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
 .dossier-h2h-card.nemesis{ border-color:rgba(255,45,85,.26); }
 .dossier-h2h-card.bunny{ border-color:rgba(57,255,140,.24); }
 .dossier-h2h-label{ font-size:9px; font-weight:800; letter-spacing:.16em; text-transform:uppercase; }
+.dossier-h2h-sub{ margin-top:3px; font-size:11px; font-weight:600; color:var(--off); letter-spacing:.01em; }
+.dossier-inprogress{ color:var(--cyan); font-size:.85em; font-weight:600; letter-spacing:.02em; }
 .dossier-h2h-name{ margin-top:6px; font-family:'Anton',Impact,sans-serif; font-size:20px; text-transform:uppercase; }
 .dossier-h2h-record{ margin-top:7px; font-family:'JetBrains Mono',monospace; color:var(--off); font-size:12px; }
 .dossier-share{ display:none; }
@@ -1327,12 +1428,14 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
 
 .tl-card{
   width:100%; text-align:left; display:block; border-radius:15px; overflow:hidden;
-  background:linear-gradient(158deg,var(--panel),#0b0f16);
-  border:1px solid var(--line);
+  background:linear-gradient(158deg,var(--panel-2),#0c111a);
+  border:1px solid var(--line-2);
+  box-shadow:0 8px 22px -16px rgba(0,0,0,.8);
   position:relative;
 }
+.tl-card:hover{ border-color:rgba(255,255,255,.22); }
 .tl-card:active{ transform:scale(.992); }
-.tl-card .rail{ position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--tl-accent,var(--cyan)); }
+.tl-card .rail{ position:absolute; left:0; top:0; bottom:0; width:4px; background:var(--tl-accent,var(--cyan)); }
 .tl-meta{
   display:flex; align-items:center; gap:7px;
   font-family:'JetBrains Mono',monospace; font-size:9.5px; font-weight:700;
@@ -1340,7 +1443,7 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
 }
 .tl-meta .sep{ color:#2f3a4b; }
 .tl-meta .now{ color:var(--red); }
-.tl-body{ padding:13px 14px 13px 16px; }
+.tl-body{ padding:15px 16px 15px 18px; }
 .tl-head{ display:flex; gap:11px; align-items:flex-start; }
 .tl-crest{
   width:46px; height:46px; border-radius:11px; flex:none; object-fit:cover;
@@ -1559,6 +1662,49 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
   padding:18px 12px; text-align:center; color:var(--dim); font-size:10.5px;
   line-height:1.55; border:1px dashed var(--line-2); border-radius:10px;
 }
+
+/* Plain-English tooltip trigger next to a model title. */
+.analytics-tip{
+  display:inline-flex; align-items:center; justify-content:center;
+  width:15px; height:15px; margin-left:7px; border-radius:50%; vertical-align:middle;
+  border:1px solid color-mix(in srgb,var(--model-accent,var(--cyan)) 55%,transparent);
+  color:var(--model-accent,var(--cyan)); background:#080c12;
+  font-family:'JetBrains Mono',monospace; font-size:8.5px; font-weight:900;
+  line-height:1; cursor:help; transform:translateY(-2px);
+}
+.analytics-tip.tip-open{ background:var(--model-accent,var(--cyan)); color:#04121a; }
+/* Floating tooltip bubble injected on tap for touch devices. */
+.analytics-tip-pop{
+  position:fixed; z-index:120; max-width:260px; padding:11px 13px; border-radius:11px;
+  background:#0c1119; border:1px solid var(--line-2);
+  box-shadow:0 18px 44px -18px rgba(0,0,0,.85);
+  color:var(--off); font-size:12px; line-height:1.55;
+}
+
+/* Collapsed single-line banner for an analytics model with no data yet. */
+.analytics-collapsed{
+  position:relative; overflow:hidden; border-radius:14px;
+  border:1px solid var(--line); background:#0b0f16;
+  padding:0; border-left:3px solid color-mix(in srgb,var(--model-accent,var(--cyan)) 60%,transparent);
+}
+.analytics-collapsed > summary{ list-style:none; cursor:pointer; }
+.analytics-collapsed > summary::-webkit-details-marker{ display:none; }
+.analytics-collapsed-head{
+  display:flex; align-items:center; gap:10px; padding:12px 14px;
+}
+.analytics-collapsed-title{
+  min-width:0; flex:1; color:#e7ebf2; font-family:'Anton',Impact,sans-serif;
+  font-size:13.5px; letter-spacing:.04em; text-transform:uppercase;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.analytics-collapsed-flag{
+  flex:none; font-size:8.5px; font-weight:700; letter-spacing:.12em; text-transform:uppercase;
+  color:var(--dim); padding:2px 8px; border-radius:999px; border:1px solid var(--line-2);
+}
+.analytics-collapsed-chev{ flex:none; color:var(--dim); font-size:9px; transition:transform .18s ease; }
+.analytics-collapsed[open] .analytics-collapsed-chev{ transform:rotate(90deg); }
+.analytics-collapsed-body{ padding:0 14px 14px; }
+.analytics-collapsed-body .analytics-model-copy{ margin:0 0 10px; }
 .analytics-gems{ display:grid; grid-template-columns:minmax(0,1fr); gap:8px; }
 .analytics-gem{
   display:grid; grid-template-columns:minmax(0,1fr) auto; gap:10px; align-items:center;
@@ -1702,9 +1848,10 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
     <div class="screen-shell max-w-6xl mx-auto w-full px-4 sm:px-6">
     <header class="px-4 pt-4 pb-3">
       <div class="flex items-start justify-between gap-3">
-        <div>
+        <div class="min-w-0">
           <div class="kicker text-[var(--cyan)]">Fantasy Sports Network</div>
-          <h1 class="font-display text-[27px] leading-none mt-1.5" id="homeLeagueName">MERGE</h1>
+          <h1 class="font-display text-[27px] leading-none mt-1.5 truncate" id="homeLeagueName">MERGE</h1>
+          <div class="text-[10.5px] text-[var(--dim)] mt-1.5 font-mono tabular truncate" id="homeLeagueMeta"></div>
         </div>
         <div class="text-right">
           <div id="homeWeekPill" class="pill pill-cyan">WEEK 1</div>
@@ -1786,8 +1933,10 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
       <div class="kicker text-[var(--cyan)]">Scoreboard</div>
       <h1 class="font-display text-[27px] leading-none mt-1.5">MATCHUPS</h1>
     </header>
-    <div id="matchupWeekScrubber" class="px-4 pb-3"></div>
-    <div class="px-4 space-y-3" id="matchupList"></div>
+    <div id="matchupWeekScrubber" class="px-4 pb-3 max-w-4xl mx-auto w-full"></div>
+    <!-- Desktop: two balanced columns so wide screens stop stretching a single
+         card across the whole viewport; mobile stays a single stack. -->
+    <div class="px-4 grid grid-cols-1 lg:grid-cols-2 gap-3 max-w-4xl lg:max-w-5xl mx-auto w-full" id="matchupList"></div>
     </div>
   </section>
 
@@ -1956,19 +2105,54 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
       <div class="card p-4" id="privateLeagueCard">
         <div class="section-head"><span class="bar" style="background:var(--gold)"></span><h2>Private League Access</h2></div>
         <p class="text-[11.5px] text-[var(--dim)] leading-relaxed mb-3">
-          Only needed if your league is set to <strong style="color:var(--off)">private</strong> on ESPN. Paste the two cookie values from your own logged-in browser and every fetch will read your league as you. The values are kept in this browser as a fallback. When any league member saves, the same-origin backend verifies that the cookies can read this league, encrypts them with AES-256-GCM, and stores only the encrypted envelope in Supabase.
+          Only needed if your league is set to <strong style="color:var(--off)">private</strong> on ESPN. Paste two values from your own logged-in browser and every fetch reads your league as you. They stay in this browser as a fallback, and member saves store only an AES-256 encrypted copy — never the raw values.
         </p>
+
+        <!-- Human-readable, expandable "where to find your cookies" helper -->
+        <details class="cred-help mb-3" id="cookieHelpDetails">
+          <summary><span class="cred-help-chevron" aria-hidden="true">▶</span>Where do I find these two values?</summary>
+          <div class="cred-help-body">
+            <p>These are called <span class="onboard-code">espn_s2</span> and <span class="onboard-code">SWID</span> — two harmless ID tokens ESPN already stored in your browser when you logged in. You're just copying them across.</p>
+            <ol>
+              <li>On a computer, open your ESPN Fantasy league while logged in.</li>
+              <li>Press <span class="onboard-kbd">F12</span> (or right-click → <strong style="color:var(--off)">Inspect</strong>).</li>
+              <li>Open the <strong style="color:var(--off)">Application</strong> tab → <strong style="color:var(--off)">Cookies</strong> → <span class="onboard-code">fantasy.espn.com</span>.</li>
+              <li>Copy the value next to <span class="onboard-code">espn_s2</span>, then <span class="onboard-code">SWID</span>, and paste each below.</li>
+            </ol>
+            <p style="margin-top:8px"><button type="button" class="onboard-link" data-onboard-step="cookies" style="padding:0">Open the full illustrated walkthrough →</button></p>
+          </div>
+        </details>
+
         <div class="space-y-3">
           <div>
-            <div class="flex items-center justify-between gap-2">
-              <label class="label" for="espnS2Input" style="margin-bottom:0">espn_s2 cookie</label>
-              <button type="button" class="onboard-link" data-onboard-step="cookies">How do I get this?</button>
+            <label class="label" for="espnS2Input" style="margin-bottom:6px">espn_s2 cookie</label>
+            <div class="cred-row">
+              <div class="cred-input-wrap">
+                <input id="espnS2Input" class="field" type="password" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="AEB… (long value)" aria-describedby="espnS2Valid">
+                <button type="button" class="cred-reveal" data-reveal="espnS2Input" aria-label="Show or hide value">
+                  <svg viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                </button>
+              </div>
+              <button type="button" class="cred-paste" data-paste="espnS2Input">
+                <svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg>Paste
+              </button>
             </div>
-            <textarea id="espnS2Input" class="field mt-1.5" rows="2" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="AEB… (long alphanumeric value)" style="font-size:11px; line-height:1.5;"></textarea>
+            <div class="cred-valid" id="espnS2Valid" data-state="empty" aria-live="polite"><span class="cred-tick" aria-hidden="true">•</span><span class="cred-valid-msg">Not set yet</span></div>
           </div>
           <div>
-            <label class="label" for="espnSwidInput">SWID cookie</label>
-            <input id="espnSwidInput" class="field" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="{XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}" style="font-size:11px;">
+            <label class="label" for="espnSwidInput" style="margin-bottom:6px">SWID cookie</label>
+            <div class="cred-row">
+              <div class="cred-input-wrap">
+                <input id="espnSwidInput" class="field" type="password" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="{XXXXXXXX-XXXX-…}" aria-describedby="espnSwidValid">
+                <button type="button" class="cred-reveal" data-reveal="espnSwidInput" aria-label="Show or hide value">
+                  <svg viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                </button>
+              </div>
+              <button type="button" class="cred-paste" data-paste="espnSwidInput">
+                <svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg>Paste
+              </button>
+            </div>
+            <div class="cred-valid" id="espnSwidValid" data-state="empty" aria-live="polite"><span class="cred-tick" aria-hidden="true">•</span><span class="cred-valid-msg">Not set yet</span></div>
           </div>
           <p id="espnAuthStatus" class="text-[11.5px] leading-relaxed" style="color:var(--dim)">Not set — anonymous reads (public leagues only).</p>
         </div>
@@ -1977,8 +2161,14 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
       <!-- HISTORICAL ARCHIVE / RECORD BOOK -->
       <div id="historyUploadPanel" class="card p-4 hidden">
         <div class="section-head"><span class="bar" style="background:var(--cyan)"></span><h2>Historical Archive &amp; Record Book</h2></div>
-        <div class="flex items-center justify-between gap-2 mb-2">
-          <p class="text-[10.5px] text-[var(--dim)] leading-relaxed">Unlocks the Record Book &amp; Rivalry Vault.</p>
+        <div class="value-prop">
+          <span class="value-prop-icon" aria-hidden="true">🏆</span>
+          <span class="value-prop-text">
+            <span class="value-prop-title">Unlock your league's 10-year history &amp; all-time records</span>
+            <span class="value-prop-sub">One-time upload lights up the Record Book, Rivalry Vault, and every all-time leaderboard. <strong style="color:var(--off)">Only one manager in the league ever needs to do this</strong> — everyone else loads it automatically by League ID.</span>
+          </span>
+        </div>
+        <div class="flex items-center justify-end gap-2 mb-2">
           <button type="button" class="onboard-link flex-none" data-onboard-step="history">How do I export this?</button>
         </div>
         <p class="text-[11.5px] text-[var(--dim)] leading-relaxed mb-3">
@@ -2082,7 +2272,10 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
         <div class="kicker text-[var(--cyan)]">The Record Book · Franchise Dossier</div>
         <div id="franchiseModalTitle" class="text-[11px] text-[var(--dim)] truncate mt-0.5">Stop it step burrow · Daniel Johnson</div>
       </div>
-      <button class="dossier-shot-btn" id="franchiseScreenshotBtn">Screenshot Resume</button>
+      <button class="dossier-shot-btn" id="franchiseScreenshotBtn">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11"></path><path d="M8 10l4 4 4-4"></path><path d="M5 20h14"></path></svg>
+        <span id="franchiseScreenshotLabel">Share Card</span>
+      </button>
     </div>
   </div>
   <div id="franchiseModalBody" class="no-bar"></div>
@@ -3319,6 +3512,10 @@ function computeLeagueHistoryStats(yearsData){
   const highestScores = scoreRecords.slice().sort((a,b)=> b.score - a.score).slice(0,3);
   const lowestScores = scoreRecords.filter(row=> row.score >= 40).sort((a,b)=> a.score - b.score).slice(0,3);
   const biggestBlowouts = blowoutRecords.slice().sort((a,b)=> b.margin - a.margin).slice(0,3);
+  // Additive companion board (new key, same source array): the tightest decided
+  // games ever, ascending by margin. Ties/zero-margin games are excluded so a
+  // "narrowest victory" is always an actual decided result.
+  const narrowestVictories = blowoutRecords.slice().filter(row=> row.margin > 0).sort((a,b)=> a.margin - b.margin).slice(0,3);
   const leagueAveragePpg = allGameScores.length
     ? allGameScores.reduce((sum, score)=> sum + score, 0) / allGameScores.length
     : 0;
@@ -3331,7 +3528,7 @@ function computeLeagueHistoryStats(yearsData){
       highestScore:highestScores[0] || highestScore,
       lowestScore:lowestScores[0] || lowestScore,
       biggestBlowout:biggestBlowouts[0] || biggestBlowout,
-      highestScores, lowestScores, biggestBlowouts,
+      highestScores, lowestScores, biggestBlowouts, narrowestVictories,
       longestWinStreak, longestLossStreak,
       careerPointsLeaderboard, careerPpgLeaderboard,
     },
@@ -13176,6 +13373,15 @@ function renderDesk(){
   }
 }
 
+/* Human-readable platform label for the league header context line. */
+function leaguePlatformLabel(){
+  try{
+    const p = (ui && ui.provider) || 'espn';
+    if(p === 'sleeper') return 'Sleeper';
+    return 'ESPN';
+  }catch(e){ return 'ESPN'; }
+}
+
 function renderHome(){
   const live = LeagueData.hasLive();
   $('homeNoData').classList.toggle('hidden', live);
@@ -13187,6 +13393,19 @@ function renderHome(){
   const games = LeagueData.getWeekMatchups(week);
 
   $('homeLeagueName').textContent = (d.settings && d.settings.name) ? d.settings.name.toUpperCase() : 'THE DESK';
+  // Structured context line — [X] Teams · [Platform] — so the raw league name
+  // is no longer floating without any grounding.
+  try{
+    const metaEl = $('homeLeagueMeta');
+    if(metaEl){
+      const teamCount = Array.isArray(d.teams) ? d.teams.length : 0;
+      const platform = leaguePlatformLabel();
+      const parts = [];
+      if(teamCount) parts.push(teamCount + ' Teams');
+      if(platform) parts.push(platform);
+      metaEl.textContent = parts.join(' · ');
+    }
+  }catch(err){ console.warn('[Home] league meta line failed', err); }
   const viewedYearHome = parseInt(($('seasonYear').value || '').trim(), 10) || uiActiveSeasonYear();
   const homeLabel = isPreseasonWeek1(week, viewedYearHome) ? 'PRESEASON' : 'WEEK ' + week;
   $('homeWeekPill').textContent = homeLabel;
@@ -13386,16 +13605,21 @@ function compactGameRow(g){
   const as = parseFloat(displayScore(g.awayScore, g.awayProjected, st)) || 0;
   const homeWins = hs >= as;
   const dim = 'text-[#5d6879]';
+  // Preseason (no scores yet) reads as a projected preview rather than a 0.0
+  // final; the score slots show "—" until kickoff.
+  const pre = st === 'pre';
+  const awayShown = pre && as === 0 ? '—' : as.toFixed(1);
+  const homeShown = pre && hs === 0 ? '—' : hs.toFixed(1);
   return `<div class="card px-3.5 py-2.5 flex items-center gap-2.5 ${gameHasActiveTeam(g) ? 'active-team-matchup' : ''}">
     <div class="flex-1 min-w-0 flex items-center gap-2">
       ${crest(g.awayTeam.name, g.awayTeam.logo, 26)}
-      <span class="text-[12px] font-semibold truncate ${homeWins && st!=='pre' ? dim : ''}">${esc(g.awayTeam.abbrev)}</span>
-      <span class="font-mono tabular text-[13px] font-bold ml-auto ${homeWins && st!=='pre' ? dim : 'text-[var(--cyan)]'}">${as.toFixed(1)}</span>
+      <span class="text-[12px] font-semibold truncate ${homeWins && st!=='pre' ? dim : ''}">${esc(g.awayTeam.name)}</span>
+      <span class="font-mono tabular text-[13px] font-bold ml-auto ${homeWins && st!=='pre' ? dim : 'text-[var(--cyan)]'}">${awayShown}</span>
     </div>
     <div class="text-[9px] ${st === 'pre' ? 'text-[var(--cyan)]' : 'text-[#39424f]'} tracking-widest">${st === 'pre' ? 'PROJ' : 'VS'}</div>
     <div class="flex-1 min-w-0 flex items-center gap-2">
-      <span class="font-mono tabular text-[13px] font-bold ${!homeWins && st!=='pre' ? dim : 'text-[var(--cyan)]'}">${hs.toFixed(1)}</span>
-      <span class="text-[12px] font-semibold truncate ${!homeWins && st!=='pre' ? dim : ''}">${esc(g.homeTeam.abbrev)}</span>
+      <span class="font-mono tabular text-[13px] font-bold ${!homeWins && st!=='pre' ? dim : 'text-[var(--cyan)]'}">${homeShown}</span>
+      <span class="text-[12px] font-semibold truncate ${!homeWins && st!=='pre' ? dim : ''}">${esc(g.homeTeam.name)}</span>
       ${crest(g.homeTeam.name, g.homeTeam.logo, 26)}
     </div>
   </div>`;
@@ -13451,11 +13675,19 @@ function matchupCard(g){
 
   const accent = st === 'live' ? 'accent-red' : (st === 'final' ? 'accent-cyan' : 'accent-gold');
 
+  // Before kickoff there is no margin to report — show the projected total (or a
+  // clean "SEASON OPENER" badge) instead of a hollow "0.0 MARGIN".
+  const marginBadge = st === 'pre'
+    ? ((hs + as) > 0
+        ? `<span class="font-mono tabular text-[10px] text-[var(--cyan)]">PROJ TOTAL ${(hs + as).toFixed(1)}</span>`
+        : `<span class="pill pill-cyan" style="padding:2px 8px">SEASON OPENER</span>`)
+    : `<span class="font-mono tabular text-[10px] text-[var(--dim)]">${margin.toFixed(1)} MARGIN</span>`;
+
   return `<div class="card card-accent ${accent} ${gameHasActiveTeam(g) ? 'active-team-matchup' : ''}">
     <div class="pl-4 pr-3.5 py-3.5">
       <div class="flex items-center justify-between mb-3">
         <div class="flex items-center gap-1.5">${statusPill}${playoff}</div>
-        <div class="font-mono tabular text-[10px] text-[var(--dim)]">${margin.toFixed(1)} MARGIN</div>
+        ${marginBadge}
       </div>
       ${matchupSide(g.awayTeam, as, !homeLeads, st, g.awayProjected, effectiveWeek())}
       <div class="h-px bg-[var(--line)] my-2.5"></div>
@@ -13481,9 +13713,9 @@ function matchupSide(team, score, leading, status, projected, week){
     ${crest(team.name, team.logo, 40)}
     <div class="min-w-0 flex-1">
       <div class="font-display text-[15px] leading-tight truncate ${leading ? '' : 'text-[var(--off)]'}">${esc(team.name.toUpperCase())}</div>
-      <div class="flex items-center gap-1.5 mt-0.5 flex-wrap">
-        <span class="text-[10.5px] text-[var(--dim)] truncate">${esc(team.owner || '—')}</span>
-        <span class="font-mono tabular text-[10px] text-[var(--dim)]">${esc(record)}</span>
+      <div class="flex items-center gap-1.5 mt-1 flex-wrap">
+        <span class="text-[12px] font-semibold text-[var(--off)] truncate">${esc(team.owner || '—')}</span>
+        <span class="font-mono tabular text-[11px] text-[var(--dim)]">${esc(record)}</span>
         ${streakChip}
       </div>
     </div>
@@ -13518,18 +13750,78 @@ function analyticsTable(rows, headers, cells){
   </table></div>`;
 }
 
-function analyticsModel(numberLabel, title, copy, accent, body, wide){
+function analyticsModel(numberLabel, title, copy, accent, body, wide, tip){
+  // Plain-English tooltip trigger — sits next to the model title and explains the
+  // stat in everyday language on hover/tap, replacing the textbook definition as
+  // the reader's first point of contact.
+  const tipBtn = tip
+    ? `<button type="button" class="analytics-tip" data-tip="${esc(tip)}" aria-label="${esc(tip)}" title="${esc(tip)}">i</button>`
+    : '';
+
+  // When a model has no data for the current week, collapse it into a single-line
+  // banner instead of a full-height blank card. Tapping expands the explanation.
+  const isEmpty = typeof body === 'string' && body.indexOf('analytics-empty') !== -1;
+  if(isEmpty){
+    return `<details class="analytics-model analytics-collapsed${wide ? ' analytics-wide' : ''}" style="--model-accent:${accent}">
+      <summary class="analytics-collapsed-head">
+        <span class="analytics-model-num">${numberLabel}</span>
+        <span class="analytics-collapsed-title">${esc(title)}</span>
+        <span class="analytics-collapsed-flag">No data yet</span>
+        <span class="analytics-collapsed-chev" aria-hidden="true">▶</span>
+      </summary>
+      <div class="analytics-collapsed-body">
+        <p class="analytics-model-copy">${esc(copy)}</p>
+        ${body}
+      </div>
+    </details>`;
+  }
+
   return `<article class="analytics-model${wide ? ' analytics-wide' : ''}" style="--model-accent:${accent}">
     <div class="analytics-model-head">
       <span class="analytics-model-num">${numberLabel}</span>
       <div class="min-w-0">
-        <h2 class="analytics-model-title">${esc(title)}</h2>
+        <h2 class="analytics-model-title">${esc(title)}${tipBtn}</h2>
         <p class="analytics-model-copy">${esc(copy)}</p>
       </div>
     </div>
     ${body}
   </article>`;
 }
+
+/* Touch-friendly plain-English tooltips. Desktop already gets the native title
+   tooltip on hover; a tap toggles a floating bubble next to the info icon. One
+   delegated listener covers every analytics model, present and future. */
+(function initAnalyticsTips(){
+  let pop = null;
+  function closeTip(){
+    if(pop && pop.parentNode) pop.parentNode.removeChild(pop);
+    pop = null;
+    document.querySelectorAll('.analytics-tip.tip-open').forEach(function(b){ b.classList.remove('tip-open'); });
+  }
+  document.addEventListener('click', function(ev){
+    const btn = ev.target.closest ? ev.target.closest('.analytics-tip') : null;
+    if(!btn){ if(pop) closeTip(); return; }
+    ev.preventDefault();
+    const wasOpen = btn.classList.contains('tip-open');
+    closeTip();
+    if(wasOpen) return;
+    try{
+      btn.classList.add('tip-open');
+      pop = document.createElement('div');
+      pop.className = 'analytics-tip-pop';
+      pop.textContent = btn.getAttribute('data-tip') || '';
+      document.body.appendChild(pop);
+      const r = btn.getBoundingClientRect();
+      const pw = Math.min(260, window.innerWidth - 24);
+      pop.style.width = pw + 'px';
+      let left = r.left + r.width/2 - pw/2;
+      left = Math.max(12, Math.min(left, window.innerWidth - pw - 12));
+      pop.style.left = left + 'px';
+      pop.style.top = (r.bottom + 8) + 'px';
+    }catch(err){ console.warn('[Analytics] tooltip pop failed', err); }
+  });
+  window.addEventListener('scroll', closeTip, true);
+})();
 
 function syncStatsModeToggle(){
   const root = $('statsModeToggle');
@@ -13773,12 +14065,12 @@ function renderAnalytics(){
     : '<div class="analytics-empty">No executed QB/RB/WR/TE waiver addition has posted measurable points in the loaded feed yet. K and D/ST are excluded by design.</div>';
 
   body.innerHTML = status + `<div class="analytics-grid">
-    ${analyticsModel('01','Adjusted Expected Wins','One expected win for beating that week’s league average; half for an exact tie. Luck Δ compares real wins with scoring quality.','var(--cyan)',expectedTable,false)}
-    ${analyticsModel('02','Lineup Efficiency & Bench Blunders','Actual legal starters divided by the best legal lineup. A blunder is a fatal swap or at least 10 recoverable bench points.','var(--gold)',lineupTable,false)}
-    ${analyticsModel('03','Scoring Consistency CV','Population standard deviation divided by average scoring. Lower CV means a steadier weekly floor.','var(--green)',consistencyTable,false)}
-    ${analyticsModel('04','Schedule Hardship','Opponent points per game compared with the league’s opponent-scoring baseline. Positive means a tougher draw.','#a78bfa',hardshipTable,false)}
-    ${analyticsModel('05','Heartbreak / Blowout Index','Blowout credit begins beyond 24 points; heartbreak pressure applies to losses of 12 or fewer. The signed index measures the excess margin.','var(--red)',marginTable,false)}
-    ${analyticsModel('06','Waiver Wire Gem Finder ROI','Points scored after an executed add divided by FAAB cost (free adds use a $1 floor). Skill positions only; K and D/ST excluded.','var(--cyan)',gemBody,true)}
+    ${analyticsModel('01','Adjusted Expected Wins','One expected win for beating that week’s league average; half for an exact tie. Luck Δ compares real wins with scoring quality.','var(--cyan)',expectedTable,false,'How many wins your scoring actually earned. Positive Luck Δ = you’ve won more than your points deserve; negative = unlucky.')}
+    ${analyticsModel('02','Lineup Efficiency & Bench Blunders','Actual legal starters divided by the best legal lineup. A blunder is a fatal swap or at least 10 recoverable bench points.','var(--gold)',lineupTable,false,'How close you get to your perfect lineup each week. 100% = you started your best possible team; blunders are points you left on the bench.')}
+    ${analyticsModel('03','Scoring Consistency CV','Population standard deviation divided by average scoring. Lower CV means a steadier weekly floor.','var(--green)',consistencyTable,false,'Measures week-to-week volatility. Lower % = steady, reliable floor; higher % = boom-or-bust.')}
+    ${analyticsModel('04','Schedule Hardship','Opponent points per game compared with the league’s opponent-scoring baseline. Positive means a tougher draw.','#a78bfa',hardshipTable,false,'How tough your opponents have been. Positive = you’ve faced hotter teams than average; negative = an easier road.')}
+    ${analyticsModel('05','Heartbreak / Blowout Index','Blowout credit begins beyond 24 points; heartbreak pressure applies to losses of 12 or fewer. The signed index measures the excess margin.','var(--red)',marginTable,true,'Rewards dominant wins and punishes gut-punch close losses. Positive = you win big; negative = you keep losing nail-biters.')}
+    ${analyticsModel('06','Waiver Wire Gem Finder ROI','Points scored after an executed add divided by FAAB cost (free adds use a $1 floor). Skill positions only; K and D/ST excluded.','var(--cyan)',gemBody,true,'Which pickups paid off most per dollar of FAAB spent. Higher = a bigger bargain off the wire.')}
   </div>`;
 }
 
@@ -13860,7 +14152,7 @@ function renderFranchises(){
           ${franchiseMetric('Career PAPG', r.careerPapg.toFixed(1), 'var(--off)')}
         </div>
 
-        ${franchiseTrendSvg(r, `franchise-trend-${i}`)}
+        <div class="franchise-open-hint">Open dossier for the full Finish Trend chart →</div>
       </div>
     </article>`;
   }).join('')}</div>`;
@@ -13997,8 +14289,10 @@ function dossierH2hCard(kind, entry){
   if(!entry) return `<div class="dossier-h2h-card ${kind}"><div class="dossier-h2h-label">${kind==='nemesis'?'Nemesis':'Bunny'}</div><div class="dossier-h2h-name">No Matchups</div><div class="dossier-h2h-record">Not enough head-to-head history</div></div>`;
   const info = managerLatestInfo(entry.manager.id);
   const pct = (entry.winPct * 100).toFixed(1);
+  const subtitle = kind === 'nemesis' ? 'The Matchup You Dread' : 'Your Favorite Matchup';
   return `<div class="dossier-h2h-card ${kind}">
     <div class="dossier-h2h-label" style="color:${kind==='nemesis'?'var(--red)':'var(--green)'}">${kind==='nemesis'?'Nemesis · Lowest Win Rate':'Bunny · Most Wins Against'}</div>
+    <div class="dossier-h2h-sub">${subtitle}</div>
     <div class="flex items-center gap-3 mt-3">
       ${crest(info.teamName || info.name, info.logo, 42)}
       <div class="min-w-0">
@@ -14150,11 +14444,21 @@ function openFranchiseModal(ownerId){
         <div class="dossier-table-wrap">
           <table class="dossier-table">
             <thead><tr><th>Season</th><th>Team Name</th><th>Record</th><th>PPG</th><th>PAPG</th><th>Seed</th><th>Playoff Result / Final Rank</th></tr></thead>
-            <tbody>${seasonRows.map(row=> `<tr>
-              <td data-label="Season">${row.year}</td><td data-label="Team Name" class="dossier-cell-team"><span class="dossier-cell-team-name">${esc(row.teamName)}</span></td><td data-label="Record">${esc(row.record)}</td>
+            <tbody>${seasonRows.map(row=>{
+              // A current-season row with no completed games reads as live rather
+              // than a blank "— — — —" line.
+              const inProgress = !row.games && Number(row.year) >= uiActiveSeasonYear();
+              const yearCell = inProgress
+                ? `${row.year} <span class="dossier-inprogress">(In Progress)</span>`
+                : `${row.year}`;
+              const resultCell = row.playoffResult
+                ? esc(row.playoffResult)
+                : (inProgress ? '<span class="dossier-inprogress">Season underway</span>' : '—');
+              return `<tr>
+              <td data-label="Season">${yearCell}</td><td data-label="Team Name" class="dossier-cell-team"><span class="dossier-cell-team-name">${esc(row.teamName)}</span></td><td data-label="Record">${esc(row.record)}</td>
               <td data-label="PPG">${row.games?row.ppg.toFixed(1):'—'}</td><td data-label="PAPG">${row.games?row.papg.toFixed(1):'—'}</td>
-              <td data-label="Seed">${row.seed?'#'+row.seed:'—'}</td><td data-label="Playoff Result / Final Rank" class="dossier-cell-result">${esc(row.playoffResult)}</td>
-            </tr>`).join('')}</tbody>
+              <td data-label="Seed">${row.seed?'#'+row.seed:'—'}</td><td data-label="Playoff Result / Final Rank" class="dossier-cell-result">${resultCell}</td>
+            </tr>`;}).join('')}</tbody>
           </table>
         </div>
       </section>
@@ -14199,7 +14503,7 @@ function openFranchiseModal(ownerId){
 
   ui.franchiseModalId = ownerId;
   $('franchiseModal').dataset.screenshot = 'false';
-  $('franchiseScreenshotBtn').textContent = 'Screenshot Resume';
+  setDossierShareLabel('Share Card');
   $('franchiseModal').dataset.open = 'true';
   $('franchiseModalBody').scrollTop = 0;
   syncBodyScrollLock();
@@ -14215,12 +14519,28 @@ function closeFranchiseModal(){
   syncBodyScrollLock();
 }
 
+// Update the dossier share button's label without clobbering its icon.
+function setDossierShareLabel(text){
+  const label = $('franchiseScreenshotLabel');
+  if(label){ label.textContent = text; return; }
+  const btn = $('franchiseScreenshotBtn');
+  if(btn) btn.textContent = text;
+}
+
 function toggleFranchiseScreenshot(){
   const modal = $('franchiseModal');
   const active = modal.dataset.screenshot !== 'true';
   modal.dataset.screenshot = String(active);
-  $('franchiseScreenshotBtn').textContent = active ? 'Full Dossier' : 'Screenshot Resume';
+  setDossierShareLabel(active ? 'Full Dossier' : 'Share Card');
   $('franchiseModalBody').scrollTop = 0;
+}
+
+/* Thousands-separated points with a single decimal, e.g. 1,954.0 — the standard
+   format for every all-time Points For figure in the Record Book & rivalries. */
+function fmtPoints(n){
+  const num = Number(n);
+  if(!Number.isFinite(num)) return '—';
+  return num.toLocaleString(undefined, { minimumFractionDigits:1, maximumFractionDigits:1 });
 }
 
 function statCell(label, value, color){
@@ -14253,17 +14573,25 @@ function renderRivalries(){
   const topRivalries = Object.values(hist.h2h)
     .slice().sort((x,y)=> y.meetings.length - x.meetings.length).slice(0,5);
 
+  const infoA0 = managerLatestInfo(ui.rivalA), infoB0 = managerLatestInfo(ui.rivalB);
+
   $('recordBookBody').innerHTML = `
     <div class="card p-4 mb-3">
       <div class="section-head"><span class="bar"></span><h2>Head to Head</h2></div>
       <div class="grid grid-cols-2 gap-2.5">
         <div>
           <label class="label" for="rivalA">Manager A</label>
-          <select id="rivalA" class="field" style="font-size:12.5px">${opts(ui.rivalA)}</select>
+          <div class="rival-select">
+            <span class="rival-select-crest" id="rivalAcrest">${crest(infoA0.teamName || infoA0.name, infoA0.logo, 26)}</span>
+            <select id="rivalA" class="field" style="font-size:12.5px">${opts(ui.rivalA)}</select>
+          </div>
         </div>
         <div>
           <label class="label" for="rivalB">Manager B</label>
-          <select id="rivalB" class="field" style="font-size:12.5px">${opts(ui.rivalB)}</select>
+          <div class="rival-select">
+            <span class="rival-select-crest" id="rivalBcrest">${crest(infoB0.teamName || infoB0.name, infoB0.logo, 26)}</span>
+            <select id="rivalB" class="field" style="font-size:12.5px">${opts(ui.rivalB)}</select>
+          </div>
         </div>
       </div>
     </div>
@@ -14273,19 +14601,31 @@ function renderRivalries(){
       <div class="space-y-1.5">
         ${topRivalries.map(rec=>{
           const A = managerLatestInfo(rec.a), B = managerLatestInfo(rec.b);
-          return `<button class="w-full text-left flex items-center gap-2 px-3 py-2.5 rounded-lg bg-[#0b0f16] border border-[var(--line)]"
+          return `<button class="rival-row w-full text-left flex items-center gap-2 px-3 py-2.5 rounded-lg bg-[#0b0f16] border border-[var(--line)]"
                    data-rival-a="${esc(rec.a)}" data-rival-b="${esc(rec.b)}">
+            ${crest(A.teamName || A.name, A.logo, 22)}
             <span class="text-[12px] font-semibold truncate flex-1">${esc(A.name)}</span>
             <span class="font-mono tabular text-[11.5px] font-bold text-[var(--cyan)]">${rec.winsA}–${rec.winsB}</span>
             <span class="text-[12px] font-semibold truncate flex-1 text-right">${esc(B.name)}</span>
+            ${crest(B.teamName || B.name, B.logo, 22)}
             <span class="font-mono tabular text-[9.5px] text-[var(--dim)] flex-none w-9 text-right">${rec.meetings.length}g</span>
+            <span class="rival-row-chevron flex-none" aria-hidden="true">→</span>
           </button>`;
         }).join('')}
       </div>
     </div>`;
 
-  $('rivalA').addEventListener('change', (e)=>{ ui.rivalA = e.target.value; renderRivalryResult(); });
-  $('rivalB').addEventListener('change', (e)=>{ ui.rivalB = e.target.value; renderRivalryResult(); });
+  // Keep the avatar previews beside each selector in sync with the choice.
+  const syncRivalCrest = (which)=>{
+    try{
+      const id = which === 'A' ? ui.rivalA : ui.rivalB;
+      const info = managerLatestInfo(id);
+      const host = $('rival' + which + 'crest');
+      if(host) host.innerHTML = crest(info.teamName || info.name, info.logo, 26);
+    }catch(err){ console.warn('[Rivalries] crest preview failed', err); }
+  };
+  $('rivalA').addEventListener('change', (e)=>{ ui.rivalA = e.target.value; syncRivalCrest('A'); renderRivalryResult(); });
+  $('rivalB').addEventListener('change', (e)=>{ ui.rivalB = e.target.value; syncRivalCrest('B'); renderRivalryResult(); });
 
   $('recordBookBody').querySelectorAll('[data-rival-a]').forEach(btn=>{
     btn.addEventListener('click', ()=>{
@@ -14343,9 +14683,9 @@ function renderRivalryResult(){
       </div>
 
       <div class="grid grid-cols-3 gap-2 mt-4">
-        ${statCell('PF (A)', h.pointsFor.toFixed(0), 'var(--cyan)')}
+        ${statCell('PF (A)', fmtPoints(h.pointsFor), 'var(--cyan)')}
         ${statCell('Diff', (h.diff >= 0 ? '+' : '') + h.diff.toFixed(1), h.diff >= 0 ? 'var(--green)' : 'var(--red)')}
-        ${statCell('PF (B)', h.pointsAgainst.toFixed(0), 'var(--cyan)')}
+        ${statCell('PF (B)', fmtPoints(h.pointsAgainst), 'var(--cyan)')}
       </div>
 
       ${streakName && h.streakCount > 1 ? `
@@ -14372,6 +14712,7 @@ function renderRecords(){
   const highest = r.highestScores || (r.highestScore ? [r.highestScore] : []);
   const lowest = r.lowestScores || (r.lowestScore ? [r.lowestScore] : []);
   const blowouts = r.biggestBlowouts || (r.biggestBlowout ? [r.biggestBlowout] : []);
+  const nailbiters = r.narrowestVictories || [];
 
   if(!ppgBoard.length && !pointsBoard.length && !highest.length && !lowest.length && !blowouts.length){
     $('recordBookBody').innerHTML = emptyState('NO RECORDS', 'The loaded seasons held no completed games to build records from.', null);
@@ -14402,6 +14743,7 @@ function renderRecords(){
       ${recordPodium('Highest Single-Game Scores', 'gold', highest, 'high')}
       ${recordPodium('Hall of Shame · Lowest Scores', 'red', lowest, 'low')}
       ${recordPodium('Biggest Blowouts', 'cyan', blowouts, 'blowout')}
+      ${recordPodium('Closest Nail-Biters', 'green', nailbiters, 'narrow')}
     </div>
 
     ${streakCards.length ? `<div class="record-book-streak-grid">${streakCards.join('')}</div>` : ''}
@@ -14436,25 +14778,30 @@ function careerLeaderboardPanel(title, subtitle, rows, mode){
 }
 
 function recordPodium(title, tone, rows, mode){
-  const colorMap = { gold:'var(--gold)', red:'var(--red)', cyan:'var(--cyan)' };
+  const colorMap = { gold:'var(--gold)', red:'var(--red)', cyan:'var(--cyan)', green:'var(--green)' };
   const color = colorMap[tone] || 'var(--cyan)';
+  // blowout and narrow share the same winner-centric shape.
+  const marginMode = mode === 'blowout' || mode === 'narrow';
   return `<section class="record-book-podium">
     <header class="record-book-podium-head">
       <div class="kicker" style="color:${color}">${esc(title)}</div>
     </header>
     <div class="record-book-podium-list">
       ${rows.slice(0,3).map((row,index)=>{
-        const ownerId = mode === 'blowout' ? row.winnerOwnerId : row.ownerId;
+        const ownerId = marginMode ? row.winnerOwnerId : row.ownerId;
         const info = managerLatestInfo(ownerId);
-        const teamName = mode === 'blowout' ? row.winnerTeamName : row.teamName;
-        const detail = mode === 'blowout'
-          ? `${row.winnerScore.toFixed(1)}–${row.loserScore.toFixed(1)} over ${row.loserTeamName}`
-          : `${row.year} · Week ${row.week}`;
-        const value = mode === 'blowout' ? `+${row.margin.toFixed(1)}` : `${row.score.toFixed(1)} PTS`;
+        const teamName = marginMode ? row.winnerTeamName : row.teamName;
+        // Manager attribution rides alongside the historical team name so the
+        // identity survives every team rename across the years.
+        const manager = info.name ? esc(info.name) : 'Unknown manager';
+        const detail = marginMode
+          ? `${manager} · ${row.winnerScore.toFixed(1)}–${row.loserScore.toFixed(1)} over ${esc(row.loserTeamName)} · ${row.year}`
+          : `${manager} · ${row.year} · Week ${row.week}`;
+        const value = marginMode ? `+${row.margin.toFixed(1)}` : `${row.score.toFixed(1)} PTS`;
         return `<div class="record-book-podium-row">
           <div class="record-book-podium-rank">${index+1}</div>
           ${crest(teamName || info.name, info.logo, 32)}
-          <div class="record-book-podium-copy"><strong>${esc(teamName || info.name)}</strong><span>${esc(detail)}</span></div>
+          <div class="record-book-podium-copy"><strong>${esc(teamName || info.name)}</strong><span>${detail}</span></div>
           <div class="record-book-podium-value" style="color:${index===0?color:'var(--off)'}">${esc(value)}</div>
         </div>`;
       }).join('') || `<div class="p-4 text-[11px] text-[var(--dim)]">No qualifying games.</div>`}
@@ -14518,6 +14865,26 @@ function setCloudStatus(state, message){
   const textEl = $('cloudSyncStatusText');
   if(shell) shell.dataset.state = state || 'idle';
   if(textEl) textEl.textContent = message || '';
+  updateCloudSyncButton(state);
+}
+
+/* Reflect connection state on the save button itself. When the league is
+   confirmed in the cloud it reads as "League Synced ✓" (emerald) rather than an
+   unsaved pending action; while uploading it shows progress; otherwise it
+   invites the first save. */
+function updateCloudSyncButton(state){
+  const btn = $('cloudSyncBtn');
+  if(!btn) return;
+  if(state === 'ready'){
+    btn.classList.add('is-synced');
+    btn.textContent = 'League Synced ✓';
+  } else if(state === 'syncing'){
+    btn.classList.remove('is-synced');
+    btn.textContent = 'Saving…';
+  } else {
+    btn.classList.remove('is-synced');
+    btn.textContent = 'SAVE LEAGUE DATA NOW';
+  }
 }
 
 function cloudSafeSettings(){
@@ -15967,6 +16334,7 @@ function loadPrefs(){
 try{ if($('espnS2Input'))   $('espnS2Input').value   = localStorage.getItem('fsn.espn.s2.v1')   || ''; }catch(e){}
   try{ if($('espnSwidInput')) $('espnSwidInput').value = localStorage.getItem('fsn.espn.swid.v1') || ''; }catch(e){}
   refreshEspnAuthStatus();
+  try{ if(typeof syncCredValidity === 'function') syncCredValidity(); }catch(e){}
   renderLeagueSwitcher();
 }
 
@@ -16041,12 +16409,56 @@ $('historyUnlockToggle').addEventListener('click', ()=>{
 
 /* Private-league ESPN cookies — persisted locally and sent only to same-origin
    /api/espn reads or encrypted /api/league member storage. */
+
+// Real-time format validation for the single-line credential fields. These are
+// shape checks only (they never verify the cookie against ESPN) so the reader
+// gets instant "looks right ✓" feedback while typing or pasting.
+function credLooksValid(kind, value){
+  const v = String(value || '').trim();
+  if(!v) return 'empty';
+  if(kind === 'swid'){
+    return /^\{?[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\}?$/.test(v)
+      ? 'valid' : 'invalid';
+  }
+  // espn_s2 is a long URL-encoded token; anything substantial with the right
+  // character set reads as well-formed.
+  return (v.length >= 60 && /^[A-Za-z0-9%._+/=-]+$/.test(v)) ? 'valid' : 'invalid';
+}
+function setCredValidity(boxId, kind, value){
+  const box = $(boxId);
+  if(!box) return;
+  const state = credLooksValid(kind, value);
+  const tick = box.querySelector('.cred-tick');
+  const msg = box.querySelector('.cred-valid-msg');
+  box.dataset.state = state;
+  const label = kind === 'swid' ? 'SWID' : 'espn_s2';
+  if(state === 'valid'){
+    if(tick) tick.textContent = '✓';
+    if(msg) msg.textContent = 'Valid ' + label + ' format';
+  } else if(state === 'invalid'){
+    if(tick) tick.textContent = '!';
+    if(msg) msg.textContent = kind === 'swid'
+      ? 'Doesn’t look like a SWID yet — expected {XXXXXXXX-XXXX-…}'
+      : 'That looks too short for an espn_s2 value';
+  } else {
+    if(tick) tick.textContent = '•';
+    if(msg) msg.textContent = 'Not set yet';
+  }
+}
+// Keep both indicators in sync with what is actually stored (called on boot and
+// after any programmatic change).
+function syncCredValidity(){
+  try{ setCredValidity('espnS2Valid', 's2', ($('espnS2Input') && $('espnS2Input').value) || ''); }catch(e){}
+  try{ setCredValidity('espnSwidValid', 'swid', ($('espnSwidInput') && $('espnSwidInput').value) || ''); }catch(e){}
+}
+
 if($('espnS2Input')){
   $('espnS2Input').addEventListener('input', ()=>{
     try{
       const v = $('espnS2Input').value.trim();
       if(v) localStorage.setItem('fsn.espn.s2.v1', v); else localStorage.removeItem('fsn.espn.s2.v1');
     }catch(e){}
+    setCredValidity('espnS2Valid', 's2', $('espnS2Input').value);
     refreshEspnAuthStatus();
   });
 }
@@ -16056,9 +16468,49 @@ if($('espnSwidInput')){
       const v = $('espnSwidInput').value.trim();
       if(v) localStorage.setItem('fsn.espn.swid.v1', v); else localStorage.removeItem('fsn.espn.swid.v1');
     }catch(e){}
+    setCredValidity('espnSwidValid', 'swid', $('espnSwidInput').value);
     refreshEspnAuthStatus();
   });
 }
+
+// "Paste" buttons — pull from the clipboard so a manager never has to fight the
+// mobile paste menu on a password field. Falls back gracefully where the async
+// clipboard API is unavailable (older/embedded browsers, denied permission).
+document.querySelectorAll('.cred-paste').forEach(function(btn){
+  btn.addEventListener('click', async function(){
+    const target = $(btn.dataset.paste);
+    if(!target) return;
+    try{
+      if(navigator.clipboard && navigator.clipboard.readText){
+        const text = await navigator.clipboard.readText();
+        target.value = String(text || '').trim();
+        target.dispatchEvent(new Event('input', { bubbles:true }));
+        target.focus();
+      } else {
+        target.focus();
+        toast('Long-press the field and choose Paste');
+      }
+    }catch(err){
+      console.warn('[Setup] clipboard paste unavailable', err);
+      target.focus();
+      toast('Clipboard blocked — long-press the field and choose Paste');
+    }
+  });
+});
+
+// Reveal/hide toggle for the password-style credential fields.
+document.querySelectorAll('.cred-reveal').forEach(function(btn){
+  btn.addEventListener('click', function(){
+    const target = $(btn.dataset.reveal);
+    if(!target) return;
+    const showing = target.type === 'text';
+    target.type = showing ? 'password' : 'text';
+    btn.setAttribute('aria-label', showing ? 'Show value' : 'Hide value');
+  });
+});
+
+// Prime the checkmarks with whatever is already stored on load.
+try{ syncCredValidity(); }catch(e){}
 
 /* ============================================================
    ONBOARDING GUIDE — "How do I connect my league?"
@@ -17306,8 +17758,12 @@ function renderTopicBar(list){
   list.forEach(a=>{
     if(a.topic) counts[a.topic] = (counts[a.topic] || 0) + 1;
   });
+  // Hide filter pills with a zero count so the bar never shows dead
+  // "Waivers (0)" chips. Always keep "all" and whichever topic is active (so the
+  // selected filter stays visible even when it momentarily empties).
   $('topicBar').innerHTML = NewsDesk.TOPICS.map(t=>{
     const n = counts[t.id] || 0;
+    if(n === 0 && t.id !== 'all' && t.id !== ui.topic) return '';
     return `<button class="topic-pill" data-topic="${esc(t.id)}" data-active="${t.id === ui.topic}">
       ${t.icon ? `<span>${t.icon}</span>` : ''}<span>${esc(t.label)}</span><span class="cnt">${n}</span>
     </button>`;
