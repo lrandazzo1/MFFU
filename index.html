@@ -5074,7 +5074,7 @@ function draft(){
           auto: !!p.autoDraftTypeId,
           bid: typeof p.bidAmount === 'number' && p.bidAmount > 0 ? p.bidAmount : null,
           /* Positive delta = the room let them slide (value). Negative = a reach. */
-          delta: (adp && overall) ? (adp - overall) : null,
+          delta: (adp && overall) ? (overall - adp) : null,
         };
       })
       .filter(p=> p.overall && p.playerId != null && Number(p.playerId) > 0 &&
@@ -5091,8 +5091,8 @@ function draft(){
     });
 
     const graded = picks.filter(p=> p.delta !== null && !p.keeper);
-    const reaches = graded.slice().sort((a,b)=> a.delta - b.delta);   // most negative first
-    const steals  = graded.slice().sort((a,b)=> b.delta - a.delta);   // most positive first
+    const reaches = graded.filter(p=> p.delta < 0).sort((a,b)=> a.delta - b.delta);   // most negative first
+    const steals  = graded.filter(p=> p.delta > 0).sort((a,b)=> b.delta - a.delta);   // most positive first
 
     return {
       done: !!detail.drafted || picks.length > 0,
