@@ -4854,6 +4854,17 @@ const INJURY_LABEL = {
 
 const n1 = (v)=> (Math.round((Number(v)||0) * 10) / 10).toFixed(1);
 
+/* One sign convention for every Draft Desk consumer. A positive value means
+   the player lasted beyond ADP (value/steal); a negative value means the room
+   paid ahead of ADP (reach/overpay). Invalid coordinates remain null so no
+   headline or leaderboard can manufacture a draft claim. */
+function draftValueDelta(pick, adp){
+  const selected = Number(pick);
+  const market = Number(adp);
+  if(!Number.isFinite(selected) || !Number.isFinite(market) || selected <= 0 || market <= 0) return null;
+  return selected - market;
+}
+
 /* ============================================================
    PLAYER INDEX
    ESPN scatters player objects across three places depending on
@@ -5074,7 +5085,7 @@ function draft(){
           auto: !!p.autoDraftTypeId,
           bid: typeof p.bidAmount === 'number' && p.bidAmount > 0 ? p.bidAmount : null,
           /* Positive delta = the room let them slide (value). Negative = a reach. */
-          delta: (adp && overall) ? (overall - adp) : null,
+          delta: draftValueDelta(overall, adp),
         };
       })
       .filter(p=> p.overall && p.playerId != null && Number(p.playerId) > 0 &&
@@ -5321,7 +5332,10 @@ function standingsThrough(week){
       r.recordLabel = r.wins + '-' + r.losses + (r.ties ? '-' + r.ties : '');
       r.pfIndex = Math.max(0, Math.min(100, (r.pf / maxPf) * 100));
       try{ r.rosterEfficiency = lineupEfficiencyThrough(week, r.team.id); }
-      catch(err){ r.rosterEfficiency = null; }
+      catch(err){
+        console.error('[FSNIntel] lineup efficiency failed for power index team ' + r.team.id + ' through Week ' + week, err);
+        r.rosterEfficiency = null;
+      }
       /* FSN Power Index: 60% scoring/lineup quality, 40% actual wins.
          When ESPN does not expose historical lineup detail, PF carries the
          full performance side rather than inventing a zero efficiency score. */
@@ -6242,7 +6256,7 @@ return {
   injuries, stashCandidates,
   startersFor, startingQB,
   seasonPhase, teamOf, preseasonReport, playoffPicture,
-  PRO_TEAMS, n1,
+  PRO_TEAMS, n1, draftValueDelta,
 };
 })();
 </script>
@@ -8841,6 +8855,18 @@ function ppgComparisonClause(champPpg, sackoPpg){
 /* Postgame context is calculated once and carried as structured facts. These
    helpers read only the already-hydrated week and Record Book snapshots; they
    never mutate either source or alter the deterministic seed. */
+function gameSubjectKey(game){
+  if(!game || !game.homeTeam || !game.awayTeam) return '';
+  return [String(game.homeTeam.id), String(game.awayTeam.id)].sort().join('__');
+}
+
+function isChampionshipFinalGame(ctx, game){
+  const raw = game && game.raw || {};
+  const explicitlyFlagged = game && game.isChampionship === true || raw.isChampionship === true;
+  return !!(explicitlyFlagged || Number(ctx && ctx.week) === 17 ||
+    (ctx && ctx.playoffFinalRound && isChampionshipGame(game)));
+}
+
 function matchupMarginBenchmark(ctx, side){
   const decided = ((ctx && ctx.scored) || []).filter(s=> s && s.winner && s.loser);
   const valid = decided.filter(s=> Number.isFinite(Number(s.margin)));
@@ -8857,17 +8883,35 @@ function matchupMarginBenchmark(ctx, side){
     return null;
   }
   const margins = valid.map(s=> Math.abs(Number(s.margin)));
+  const ordered = margins.slice().sort((a,b)=> a-b);
+  const midpoint = Math.floor(ordered.length / 2);
+  const leagueMedian = ordered.length % 2
+    ? ordered[midpoint]
+    : (ordered[midpoint - 1] + ordered[midpoint]) / 2;
   const leagueAverage = margins.reduce((sum,value)=> sum + value, 0) / margins.length;
   const otherMargins = valid.filter(s=> s !== side).map(s=> Math.abs(Number(s.margin)));
   const closest = valid.slice().sort((a,b)=> Math.abs(Number(a.margin)) - Math.abs(Number(b.margin)));
   const rank = closest.indexOf(side) + 1;
   return {
     leagueAverage,
+    leagueMedian,
     otherAverage:otherMargins.length ? otherMargins.reduce((sum,value)=> sum + value, 0) / otherMargins.length : null,
     differenceFromAverage:Math.abs(margin) - leagueAverage,
+    differenceFromMedian:Math.abs(margin) - leagueMedian,
     closestRank:rank > 0 ? rank : null,
     totalGames:valid.length,
   };
+}
+
+function heartbreakProtocolSentence(facts){
+  const margin = Number(facts && facts.margin);
+  if(!facts || !facts.isPlayoff || !Number.isFinite(margin) || margin <= 0 || margin >= 1) return '';
+  const tenths = Math.max(1, Math.round(Math.abs(margin) * 10));
+  const yardScale = tenths === 1 ? 'a single credited yard' : `${tenths} credited yards`;
+  return `<b>Heartbreak Protocol:</b> the official gap is <b>${Math.abs(margin).toFixed(1)}</b> points — ` +
+    `only ${tenths} scoring tenth${tenths === 1 ? '' : 's'}, the common decimal-yardage equivalent of ${yardScale}. ` +
+    `A quarterback kneel-down can live on that scale. Until Wednesday morning stat corrections clear, ` +
+    `<b>${esc(facts.winner && facts.winner.name)}</b> owns the result and <b>${esc(facts.loser && facts.loser.name)}</b> owns a live appeal threat.`;
 }
 
 function postgameSeriesLedger(facts){
@@ -8959,8 +9003,13 @@ function marginBenchmarkSentence(benchmark, margin){
   const rank = benchmark.closestRank
     ? ` It ranked <b>No. ${benchmark.closestRank}</b> of ${benchmark.totalGames} from closest to widest.`
     : '';
-  return `The league's Week ${benchmark.week || ''} average final margin was <b>${n1(benchmark.leagueAverage)}</b>. ` +
-    `This <b>${n1(margin)}</b>-point finish landed ${comparison} that baseline.${rank}`;
+  const medianDelta = Number(benchmark.differenceFromMedian);
+  const medianRead = medianDelta === 0
+    ? 'exactly on'
+    : `<b>${n1(Math.abs(medianDelta))}</b> points ${medianDelta < 0 ? 'tighter than' : 'wider than'}`;
+  return `The league's Week ${benchmark.week || ''} median final margin was <b>${n1(benchmark.leagueMedian)}</b> ` +
+    `(average <b>${n1(benchmark.leagueAverage)}</b>). This <b>${n1(margin)}</b>-point finish landed ${medianRead} the median ` +
+    `and ${comparison} the average baseline.${rank}`;
 }
 
 function seriesLedgerSentence(series, winner, loser){
@@ -9029,6 +9078,9 @@ function matrixFacts(ctx, side){
     PPG_COMPARISON:ppgComparisonClause(champPpg, sackoPpg),
     winnerTop:wp, loserTop:lp, loserBench:bench, loserWorstStarter:worst, benchSwing:swing,
     rivalry,
+    gameSubjectKey:gameSubjectKey(side.game),
+    isPlayoff:isPlayoffGame(side.game),
+    isChampionship:isChampionshipFinalGame(ctx, side.game),
     marginBenchmark:matchupMarginBenchmark(ctx, side),
     lineupAudit:matchupLineupAudit(side),
   };
@@ -9092,9 +9144,11 @@ function assembleDeterministicStory(ctx, category, ordinal, facts, overrides){
     winner, loser, margin:facts.margin,
   });
   const seriesLine = seriesLedgerSentence(facts.postgameSeries, winner, loser);
+  const heartbreakLine = heartbreakProtocolSentence(facts);
   if(benchmarkLine) context += benchmarkLine + ' ';
   if(lineupLine) context += lineupLine + ' ';
   if(seriesLine) context += seriesLine + ' ';
+  if(heartbreakLine) context += heartbreakLine + ' ';
 
   const phase = seasonToneBucket(ctx.week);
   const phaseLine = PHASE_OUTROS[phase][hash(selectedLeagueId() + ':' + viewedSeasonYear() + ':' + ctx.week + ':' + category + ':' + ordinal) % PHASE_OUTROS[phase].length];
@@ -9155,6 +9209,8 @@ function assembleDeterministicStory(ctx, category, ordinal, facts, overrides){
         : []),
     ]},
     facts, matrixCategory:category, engine:'deterministic-matrix',
+    articleType:o.articleType || `matchup_recap_${facts.gameSubjectKey || o.id}`,
+    gameSubjectKey:facts.gameSubjectKey || '',
   });
 }
 
@@ -9189,6 +9245,10 @@ function genCombinatorialRecaps(ctx){
   let competitiveFiled = 0;
 
   decided.forEach((s, gameIdx)=>{
+    /* The championship final has a dedicated crown recap whose only outcome
+       labels are Champion and Runner-Up. Do not also file a generic margin
+       recap that would reduce the title game to ordinary weekly furniture. */
+    if(isChampionshipFinalGame(ctx, s.game)) return;
     const tier = marginTier(s.margin);
     const category = tier.key;
     if(category === 'competitive'){
@@ -9594,8 +9654,30 @@ function rankOf(ctx, score){
    Every generator returns this exact shape; the reader and the
    feed rows only ever know about this shape.
 ============================================================ */
+function articleTypeToken(value){
+  const token = String(value == null ? '' : value)
+    .trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '');
+  return token || 'newsdesk';
+}
+function deterministicArticleKey(leagueId, season, week, type){
+  const articleType = articleTypeToken(type);
+  return `${leagueId}_${season}_week${week}_${articleType}`;
+}
+function ensureArticleIdentity(a, fallbackType){
+  if(!a) return a;
+  const week = a.week != null ? Number(a.week) : Number(effectiveWeek() || 0);
+  const season = a.season != null ? Number(a.season) : Number(viewedSeasonYear() || 0);
+  const leagueId = String(a.leagueId || selectedLeagueId() || 'league');
+  const articleType = articleTypeToken(a.articleType || fallbackType || a.id || a.kind);
+  a.week = week;
+  a.season = season;
+  a.leagueId = leagueId;
+  a.articleType = articleType;
+  a.articleKey = deterministicArticleKey(leagueId, season, week, articleType);
+  return a;
+}
 function article(o){
-  return {
+  const built = {
     id: o.id,
     kind: o.kind,
     tag: o.tag,
@@ -9627,7 +9709,12 @@ function article(o){
     facts: o.facts || null,             // structured grounding for deterministic desks
     matrixCategory: o.matrixCategory || null,
     engine: o.engine || 'deterministic',
+    articleType: articleTypeToken(o.articleType || o.id || o.kind),
+    articleKey: null,
+    gameSubjectKey: o.gameSubjectKey || null,
+    excludedGameSubjectKey: o.excludedGameSubjectKey || null,
   };
+  return ensureArticleIdentity(built, built.articleType);
 }
 
 /* ============================================================================
@@ -10516,18 +10603,24 @@ function genMatchupPreviews(ctx){
 function genPreviewPower(ctx){
   if(ctx.anyScored) return [];
   let table = [];
-  try{ table = FSNIntel.powerRankings(ctx.week) || []; }catch(_){ table = []; }
+  try{ table = FSNIntel.powerRankings(ctx.week) || []; }
+  catch(err){ console.error('[NewsDesk] preview Power Index failed for Week ' + ctx.week, err); table = []; }
   if(!table.length) return [];
   const top = table[0];
   const bottom = table[table.length - 1];
   const seed = 'prevpr' + ctx.week + top.team.id;
-  const rankRows = table.slice(0, Math.min(table.length, 12)).map(r=>({
-    label: `${r.rank}. ${esc(r.team.name)} <span style="color:#5d6879">(${esc(r.recordLabel)})</span>`,
-    value: (r.delta > 0 ? '▲' + r.delta : r.delta < 0 ? '▼' + Math.abs(r.delta) : '—'),
-    note: `${n1(r.pf)} PF · ${n1(r.avg)} per week${r.rosterEfficiency == null ? '' : ' · ' + n1(r.rosterEfficiency) + '% lineup efficiency'}`,
-  }));
+  const rankRows = table.slice(0, Math.min(table.length, 12)).map(r=>{
+    const audit = powerIndexAudit(r, Math.max(0, ctx.week - 1));
+    return {
+      label: `${r.rank}. ${esc(r.team.name)} <span style="color:#5d6879">(${esc(r.recordLabel)})</span>`,
+      value: (r.delta > 0 ? '▲' + r.delta : r.delta < 0 ? '▼' + Math.abs(r.delta) : '—'),
+      note: `${n1(audit.actualWins)} W vs ${audit.expectedWins == null ? 'unavailable xW' : n1(audit.expectedWins) + ' xW (' + signedNumber(audit.winDelta) + ')'}` +
+        ` · ${audit.efficiency == null ? 'lineup efficiency unavailable' : n1(audit.efficiency) + '% lineup efficiency'}`,
+    };
+  });
   return [tl({
     id: 'tl-power-' + ctx.week,
+    articleType:'fsn_power_index',
     kind: 'power', topic: 'power', slot: 'primer', offset: (hash(seed) % 90),
     metaTag: 'FSN POWER INDEX', tag: 'FSN POWER INDEX', tone: 'cyan', priority: 78,
     byline: 'FSN Numbers Desk', narrativeLocked: true,
@@ -10536,11 +10629,14 @@ function genPreviewPower(ctx){
     dek: `Model-Driven Power Rankings ahead of Week ${ctx.week}. The board rewards scoring strength and lineup efficiency, not just the win column.`,
     paragraphs: [
       `${datelineTag()} Before a single Week ${ctx.week} snap, the FSN Power Index already has an opinion — and it is not a gentle one. <b>${esc(top.team.name)}</b> (${esc(top.recordLabel)}, ${n1(top.pf)} PF) sits at No. 1, the team everyone else has to measure themselves against this week.`,
-      `The model weights scoring force and lineup efficiency over a shiny record on purpose: it is built to expose the lucky and reward the genuinely dangerous. That is why the board and the standings do not always agree — and why the gap between them is where this week's arguments start.`,
+      `Every movement row carries the same receipts: actual wins minus all-play expected wins, plus verified lineup efficiency. A rise without those two numbers is noise, so the desk prints unavailable when the underlying sample is not there.`,
+      powerMovementSentence(table.find(r=> r.delta > 0), Math.max(0, ctx.week - 1), 'up') || `No verified riser is on this pregame board.`,
+      powerMovementSentence(table.find(r=> r.delta < 0), Math.max(0, ctx.week - 1), 'down') || `No verified faller is on this pregame board.`,
       `At the other end, <b>${esc(bottom.team.name)}</b> anchors the board at No. ${table.length} with <b>${n1(bottom.pf)}</b> points on the season. The schedule does not care about reputation, and Week ${ctx.week} is another chance to climb or another week of proving the ranking right.`,
     ],
     numbers: { title: 'FSN Power Index · Week ' + ctx.week, rows: rankRows,
       note: 'FSN Power Index weights 60% points-for & roster efficiency against 40% win record to expose lucky records and identify real contenders.' },
+    headlineLocked:true,
   })];
 }
 
@@ -10876,6 +10972,43 @@ function restamp(a){
   return a;
 }
 
+function historicalScoreContext(team, score, ctx){
+  const hist = LeagueData.leagueHistory || {};
+  const log = Array.isArray(hist.gameLog) ? hist.gameLog : [];
+  const ownerId = team && team.ownerId;
+  const year = Number(viewedSeasonYear() || 0);
+  const week = Number(ctx && ctx.week || 0);
+  const current = Number(score);
+  if(!Number.isFinite(current) || current <= 0 || !year || !week) return null;
+  const leagueScores = [];
+  const franchiseScores = [];
+  log.filter(game=> archiveBefore(game, year, week)).forEach(game=>{
+    const scoreA = Number(game && game.scoreA), scoreB = Number(game && game.scoreB);
+    if(Number.isFinite(scoreA) && scoreA > 0) leagueScores.push(scoreA);
+    if(Number.isFinite(scoreB) && scoreB > 0) leagueScores.push(scoreB);
+    if(ownerId && String(game && game.ownerA) === String(ownerId) && Number.isFinite(scoreA) && scoreA > 0) franchiseScores.push(scoreA);
+    if(ownerId && String(game && game.ownerB) === String(ownerId) && Number.isFinite(scoreB) && scoreB > 0) franchiseScores.push(scoreB);
+  });
+  const priorHigh = franchiseScores.length ? Math.max(...franchiseScores) : null;
+  const population = leagueScores.concat([current]);
+  return {
+    priorHigh,
+    franchiseGames:franchiseScores.length,
+    leagueGames:population.length,
+    percentile:population.filter(value=> value <= current).length / population.length * 100,
+    recordStatus:priorHigh == null ? 'first-recorded' : current > priorHigh ? 'new' : Math.abs(current-priorHigh) < 0.001 ? 'tied' : 'below',
+  };
+}
+
+function bottomBoardDiagnosis(ctx, team){
+  const row = ((ctx && ctx.lineupBoard) || []).find(item=> item && item.team && String(item.team.id) === String(team && team.id));
+  if(!row) return { classification:'UNRESOLVED', row:null };
+  const wasted = Number(row.wasted || 0);
+  const efficiency = Number(row.efficiency);
+  const structural = wasted >= 10 || (Number.isFinite(efficiency) && efficiency < 85);
+  return { classification:structural ? 'STRUCTURAL LINEUP FAILURE' : 'TEAM-WIDE FLOOR COLLAPSE', row };
+}
+
 /* ============================================================
    SUNDAY / MONDAY — GAME DAY
 ============================================================ */
@@ -10892,8 +11025,22 @@ function tlGameDay(ctx){
     const s = ctx.highSide.score;
     const seed = 'tlhigh' + ctx.week + t.id;
     const over = s - ctx.avg;
+    const history = historicalScoreContext(t, s, ctx);
+    const recordLine = !history
+      ? `The loaded Record Book cannot place this score against a verified franchise baseline, so the desk is not inventing one.`
+      : history.recordStatus === 'new'
+        ? `This is a <b>new franchise scoring record</b>, clearing the prior high of <b>${n1(history.priorHigh)}</b> across ${history.franchiseGames} earlier recorded games.`
+        : history.recordStatus === 'tied'
+          ? `This <b>ties the franchise scoring record</b> of ${n1(history.priorHigh)} across ${history.franchiseGames} earlier recorded games.`
+          : history.recordStatus === 'first-recorded'
+            ? `This is the first score attached to this franchise in the loaded Record Book; it establishes the baseline instead of borrowing one.`
+            : `The franchise record remains <b>${n1(history.priorHigh)}</b>; this eruption finished <b>${n1(history.priorHigh-s)}</b> points short of it.`;
+    const percentileLine = history && history.percentile != null
+      ? `Against <b>${history.leagueGames}</b> verified league scores through this final, ${n1(s)} lands in the <b>${n1(history.percentile)}th percentile</b>.`
+      : `A league-history percentile is unavailable because the loaded Record Book contains no comparable score population.`;
     out.push(tl({
       id: 'tl-high-' + ctx.week,
+      articleType:'week_high',
       kind:'roast', topic:'breaking',
       slot: base || 'gameday',
       at: anyLive ? liveTime(6 + (hash(seed) % 40)) : null,
@@ -10921,12 +11068,10 @@ function tlGameDay(ctx){
       })(),
       paragraphs: [
         `${datelineTag()} <b>${esc(t.name)}</b> put <b>${n1(s)}</b> on the board in Week ${ctx.week}, ` +
-        `<b>${esc(pointDifferenceClause(s, ctx.avg))}</b> a league average of ${n1(ctx.avg)}. ` +
-        pick(['It was not close. It was not interesting. It was a formality by the second quarter.',
-              'The scoreboard stopped being a competition and started being a receipt.',
-              'Every other manager spent the afternoon watching a different sport.'], seed),
-        `The gap between this and the week's low score — <b>${n1(ctx.low)}</b> — is ${n1(s - ctx.low)} points, ` +
-        `which is roughly ${pick(['two full starting lineups','a bye week and a half','an entire bench'], seed + '2')} of difference.`,
+        `<b>${esc(pointDifferenceClause(s, ctx.avg))}</b> a league average of ${n1(ctx.avg)}. The scoreboard stopped being a competition and started being a receipt.`,
+        recordLine,
+        percentileLine,
+        `The gap from the week's high to its low — <b>${n1(ctx.low)}</b> — was <b>${n1(s - ctx.low)}</b> points. That is the exact spread of this slate, not a metaphor dressed up as math.`,
       ],
       quote: (()=>{
         const side = ctx.scored.find(x=> x.winner && String(x.winner.id) === String(t.id));
@@ -10941,7 +11086,11 @@ function tlGameDay(ctx){
         { label:'League average', value: n1(ctx.avg) },
         { label:'Margin over the field', value: '+' + n1(over) },
         { label:'Gap to the week low', value: n1(s - ctx.low) },
-      ], note:'Live from the Week ' + ctx.week + ' box scores.' },
+        ...(history && history.priorHigh != null ? [{ label:'Prior franchise high', value:n1(history.priorHigh) }] : []),
+        ...(history && history.percentile != null ? [{ label:'League-history percentile', value:n1(history.percentile) + 'th', note:history.leagueGames + ' verified scores including this final' }] : []),
+      ], note:'Current score from the Week ' + ctx.week + ' box score; historical comparisons use only loaded Record Book results through this final.' },
+      narrativeLocked:true,
+      headlineLocked:true,
     }));
   }
 
@@ -10950,8 +11099,16 @@ function tlGameDay(ctx){
     const t = ctx.lowSide.team;
     const s = ctx.lowSide.score;
     const seed = 'tllow' + ctx.week + t.id;
+    const diagnosis = bottomBoardDiagnosis(ctx, t);
+    const lineup = diagnosis.row;
+    const failureLine = !lineup
+      ? `The verdict is <b>UNRESOLVED</b>: the team total is verified, but the slot-level roster feed is incomplete, so the desk will not manufacture bench blame.`
+      : diagnosis.classification === 'STRUCTURAL LINEUP FAILURE'
+        ? `This grades as <b>STRUCTURAL LINEUP FAILURE</b>, not random cruelty: the submitted card was <b>${n1(lineup.efficiency)}%</b> efficient and left <b>${n1(lineup.wasted)}</b> recoverable points unused.`
+        : `This grades as a <b>TEAM-WIDE FLOOR COLLAPSE</b>, not a start/sit scandal: the card was <b>${n1(lineup.efficiency)}%</b> efficient with only <b>${n1(lineup.wasted)}</b> recoverable bench points left unused.`;
     out.push(tl({
       id: 'tl-low-' + ctx.week,
+      articleType:'bottom_of_the_board',
       kind:'roast', topic:'breaking',
       slot: base || 'gameday',
       at: anyLive ? liveTime(11 + (hash(seed) % 50)) : null,
@@ -10974,17 +11131,24 @@ function tlGameDay(ctx){
       paragraphs: [
         `${datelineTag()} <b>${esc(t.name)}</b> finished the week's scoring with <b>${n1(s)} points</b> — ` +
         `The league average finished <b>${esc(pointDifferenceClause(ctx.avg, s))}</b> ${esc(t.name)}, while the week's high finished <b>${esc(pointDifferenceClause(ctx.high, s))}</b> ${esc(t.name)}.`,
-        pick([
-          'There is no injury excuse large enough to cover this. The desk checked.',
-          'This is the kind of week that gets brought up at the draft. Every year. Forever.',
-          'Nine starters. One of them scored. The math writes itself.',
-        ], seed),
+        failureLine,
+        lineup && lineup.swaps && lineup.swaps[0]
+          ? `The clearest casualty was <b>${esc(lineup.swaps[0].in.name)}</b> on the bench over <b>${esc(lineup.swaps[0].out.name)}</b> in the ${esc(lineup.swaps[0].out.slotLabel || lineup.swaps[0].out.pos || 'starting')} slot, a verified <b>${n1(lineup.swaps[0].gain)}</b>-point swing.`
+          : `No legal bench-for-starter swap with a verified positive gain is present in the loaded lineup card.`,
+        `The bottom line is still filthy: <b>${n1(ctx.avg-s)}</b> points below the league average and <b>${n1(ctx.high-s)}</b> behind the weekly ceiling. The diagnosis comes from the bench audit; the humiliation comes from the board.`,
       ],
       numbers: { title:'By the Numbers', rows:[
         { label:'Week ' + ctx.week + ' score', value: n1(s) + ' pts' },
         { label:'Vs. league average', value: pointDifferenceClause(s, ctx.avg) },
         { label:'Vs. week high', value: pointDifferenceClause(s, ctx.high) },
-      ], note:'The Sacko race runs through weeks like this one.' },
+        { label:'Failure classification', value:diagnosis.classification },
+        ...(lineup ? [
+          { label:'Lineup efficiency', value:n1(lineup.efficiency) + '%' },
+          { label:'Unused bench value', value:n1(lineup.wasted) + ' pts' },
+        ] : []),
+      ], note:'Classification is derived from verified optimal-lineup math; missing slot data is reported as unresolved.' },
+      narrativeLocked:true,
+      headlineLocked:true,
     }));
   }
 
@@ -10996,6 +11160,69 @@ function tlGameDay(ctx){
 ============================================================ */
 const RISER_WORDS = ['SURGING','KICKING THE DOOR IN','FOR REAL NOW','IMPOSSIBLE TO IGNORE'];
 const FALLER_WORDS = ['IN FREEFALL','COOKED','OUT OF EXCUSES','SLIDING FAST'];
+
+function powerIndexAudit(row, week){
+  const expected = allPlayExpectedWins(row && row.team && row.team.id, week);
+  const actualWins = Number(row && row.wins || 0) + Number(row && row.ties || 0) * 0.5;
+  const expectedWins = expected && expected.samples ? Number(expected.expected) : null;
+  return {
+    actualWins,
+    expectedWins,
+    winDelta:expectedWins == null ? null : actualWins - expectedWins,
+    efficiency:Number.isFinite(Number(row && row.rosterEfficiency)) ? Number(row.rosterEfficiency) : null,
+  };
+}
+function signedNumber(value){
+  const number = Number(value);
+  return Number.isFinite(number) ? (number >= 0 ? '+' : '') + n1(number) : 'Unavailable';
+}
+function powerMovementSentence(row, week, direction){
+  if(!row) return '';
+  const audit = powerIndexAudit(row, week);
+  const move = direction === 'up'
+    ? `up <b>${row.delta}</b> spot${row.delta === 1 ? '' : 's'} to No. ${row.rank}`
+    : `down <b>${Math.abs(row.delta)}</b> spot${Math.abs(row.delta) === 1 ? '' : 's'} to No. ${row.rank}`;
+  const wins = audit.expectedWins == null
+    ? `<b>${n1(audit.actualWins)}</b> actual wins; expected wins are unavailable because no all-play sample resolved`
+    : `<b>${n1(audit.actualWins)}</b> actual wins against <b>${n1(audit.expectedWins)}</b> expected, a <b>${signedNumber(audit.winDelta)}</b> result-over-expectation delta`;
+  const efficiency = audit.efficiency == null
+    ? `lineup efficiency unavailable from the loaded slot cards`
+    : `<b>${n1(audit.efficiency)}%</b> lineup efficiency`;
+  return `<b>${esc(row.team.name)}</b> moved ${move} at ${n1(row.avg)} PPG: ${wins}, with ${efficiency}.`;
+}
+
+function redemptionClockFacts(ctx, row, table){
+  let picture = null;
+  try{ picture = FSNIntel.playoffPicture(ctx.week); }
+  catch(err){ console.error('[NewsDesk] Redemption Clock playoff picture failed for Week ' + ctx.week, err); }
+  const own = picture && picture.rows
+    ? picture.rows.find(item=> String(item.team.id) === String(row.team.id))
+    : null;
+  const cutoff = picture && picture.cutoff || null;
+  const remaining = own ? Number(own.remainingGames || 0) : Math.max(0, Number(picture && picture.regularSeasonEnd || ctx.week) - Number(ctx.week));
+  const scoringDeficit = cutoff ? Math.max(0, Number(cutoff.pf || 0) - Number(row.pf || 0)) : null;
+  const cutoffPpg = cutoff && Number.isFinite(Number(cutoff.ppg)) ? Number(cutoff.ppg) : null;
+  const requiredPpg = remaining > 0 && cutoffPpg != null && scoringDeficit != null
+    ? cutoffPpg + scoringDeficit / remaining
+    : null;
+  const ppgGap = requiredPpg == null ? null : Math.max(0, requiredPpg - Number(row.avg || 0));
+  const historicalPpg = row.team && row.team.ownerId
+    ? careerPpgThrough(row.team.ownerId, Number(viewedSeasonYear() || 0), Number(ctx.week || 0))
+    : 0;
+
+  const schedule = LeagueData.espnData && Array.isArray(LeagueData.espnData.schedule) ? LeagueData.espnData.schedule : [];
+  const opponentIds = [];
+  schedule.forEach(game=>{
+    const gameWeek = Number(game && game.matchupPeriodId || 0);
+    if(!game || !game.home || !game.away || gameWeek <= ctx.week || (picture && gameWeek > picture.regularSeasonEnd)) return;
+    if(String(game.home.teamId) === String(row.team.id)) opponentIds.push(String(game.away.teamId));
+    else if(String(game.away.teamId) === String(row.team.id)) opponentIds.push(String(game.home.teamId));
+  });
+  const opponentPpgs = opponentIds.map(id=> table.find(item=> String(item.team.id) === id)).filter(Boolean).map(item=> Number(item.avg)).filter(Number.isFinite);
+  const schedulePpg = opponentPpgs.length ? opponentPpgs.reduce((sum,value)=> sum + value, 0) / opponentPpgs.length : null;
+  const leaguePpg = table.length ? table.reduce((sum,item)=> sum + Number(item.avg || 0), 0) / table.length : null;
+  return { picture, own, cutoff, remaining, scoringDeficit, cutoffPpg, requiredPpg, ppgGap, historicalPpg, schedulePpg, leaguePpg, opponentCount:opponentPpgs.length };
+}
 
 function tlRecap(ctx){
   const out = [];
@@ -11012,18 +11239,21 @@ function tlRecap(ctx){
   const seed = 'pr' + ctx.week + top.team.id;
 
   const rankRows = table.slice(0, Math.min(table.length, 12)).map(r=>{
+    const audit = powerIndexAudit(r, ctx.week);
     const badge = r.indexBadge
       ? ` <span style="color:${r.indexBadge === 'PRESEASON CAPITAL' ? 'var(--gold)' : 'var(--cyan)'};font-weight:700">[${esc(r.indexBadge)}]</span>`
       : '';
     return {
       label: `${r.rank}. ${esc(r.team.name)} <span style="color:#5d6879">(${esc(r.recordLabel)})</span>${badge}`,
       value: (r.delta > 0 ? '▲' + r.delta : r.delta < 0 ? '▼' + Math.abs(r.delta) : '—'),
-      note: `${n1(r.pf)} PF · ${n1(r.avg)} per week${r.rosterEfficiency == null ? '' : ' · ' + n1(r.rosterEfficiency) + '% lineup efficiency'}`,
+      note: `${n1(r.pf)} PF · ${n1(audit.actualWins)} W vs ${audit.expectedWins == null ? 'unavailable xW' : n1(audit.expectedWins) + ' xW (' + signedNumber(audit.winDelta) + ')'}` +
+        ` · ${audit.efficiency == null ? 'lineup efficiency unavailable' : n1(audit.efficiency) + '% lineup efficiency'}`,
     };
   });
 
   out.push(tl({
     id: 'tl-power-' + ctx.week,
+    articleType:'fsn_power_index',
     kind:'power', topic:'power', slot:'recap', offset: (hash(seed) % 90),
     metaTag:'FSN POWER INDEX',
     tag:'FSN POWER INDEX', tone:'cyan', priority: 80,
@@ -11037,8 +11267,7 @@ function tlRecap(ctx){
       `${pick(['and the case against them is thin.','which is starting to feel less like a hot streak and more like a tier.','on merit, not vibes.'], seed)}`,
 
       riser
-        ? `<b>${esc(riser.team.name)}</b> is the week's biggest mover, up <b>${riser.delta}</b> spot${riser.delta === 1 ? '' : 's'} to No. ${riser.rank} ` +
-          `on the back of ${n1(riser.avg)} points a week. ${faller ? `The other direction belongs to <b>${esc(faller.team.name)}</b>, down ${Math.abs(faller.delta)} to No. ${faller.rank} — ${pick(FALLER_WORDS, seed + 'f').toLowerCase()}, and the schedule does not get kinder.` : ''}`
+        ? powerMovementSentence(riser, ctx.week, 'up') + (faller ? ' ' + powerMovementSentence(faller, ctx.week, 'down') : '')
         : `Nobody moved more than a spot. That is either parity or a league too scared to lose.`,
 
       `The bottom of the board is where the season is actually being decided. ` +
@@ -11047,6 +11276,8 @@ function tlRecap(ctx){
     numbers: { title:'FSN Power Index · Week ' + ctx.week, rows: rankRows,
       note:'FSN Power Index weights 60% points-for & roster efficiency against 40% win record to expose lucky records and identify real contenders.' +
         (ctx.week <= 3 ? ' PRESEASON CAPITAL is used only as an early tie-break signal when model scores are effectively even.' : '') },
+    narrativeLocked:true,
+    headlineLocked:true,
   }));
 
   /* ---- BOTTOM-BOARD WATCH ----
@@ -11064,8 +11295,14 @@ function tlRecap(ctx){
     const mathematicallyBuried = !!(last.eliminated || last.sackoLocked);
     const early = ctx.week < SACKO_MIN_WEEK && !mathematicallyBuried;
     const pressureTag = earlySeasonPressureTag(last, ctx.week);
+    const redemption = early ? redemptionClockFacts(ctx, last, table) : null;
+    const historicalGap = redemption && redemption.historicalPpg > 0 ? Number(last.avg) - redemption.historicalPpg : null;
+    const scheduleDelta = redemption && redemption.schedulePpg != null && redemption.leaguePpg != null
+      ? redemption.schedulePpg - redemption.leaguePpg
+      : null;
     out.push(tl({
       id: 'tl-sacko-' + ctx.week,
+      articleType:early ? 'redemption_clock' : 'sacko_watch',
       kind:'sacko', topic:'power', slot:'recap', offset: 40 + (hash(sseed) % 120),
       metaTag: early ? pressureTag : 'SACKO WATCH',
       tag: early ? pressureTag : 'SACKO WATCH', tone:'red', priority: 66,
@@ -11076,16 +11313,22 @@ function tlRecap(ctx){
         ? `${pressureTag}: ${esc(upper(last.team.name))} SITS AT THE BOTTOM OF THE WEEK ${ctx.week} MODEL`
         : esc(upper(auxiliaryCopy(ctx, 'sacko', 0, {LAST:last.team.name, WEEK:ctx.week}).headline)),
       dek: early
-        ? `${esc(last.recordLabel)}, ${n1(last.pf)} points — an early sample that calls for a rotation check, not a September verdict.`
+        ? `${esc(last.recordLabel)}, ${n1(last.pf)} points, and ${redemption && redemption.requiredPpg != null ? n1(redemption.requiredPpg) + ' PPG now required to match the cut-line scoring pace.' : 'the cut-line scoring target unresolved from the loaded schedule.'}`
         : `${esc(last.recordLabel)}, ${n1(last.pf)} points, and ${secondLast ? `${esc(pointDifferenceClause(secondLast.pf, last.pf))} ${esc(last.team.name)}.` : 'nobody below them.'}`,
       paragraphs: early ? [
         `${datelineTag()} Through Week ${ctx.week}, <b>${esc(last.team.name)}</b> is No. ${table.length} in the model at <b>${esc(last.recordLabel)}</b> with <b>${n1(last.pf)}</b> points — ${n1(last.avg)} a week.`,
-        secondLast
-          ? `<b>${esc(secondLast.team.name)}</b> is the next team up, separated by <b>${n1(Math.abs(last.pf - secondLast.pf))}</b> points-for. At this stage, one strong Sunday can reorder the entire bottom half.`
-          : `The sample is still tiny. The useful question is which lineup and roster decisions can change the next result.`,
-        last.wins > 0
-          ? `A win is already on the board, so this is a <b>${pressureTag}</b>, not a declaration that the season is headed anywhere permanent.`
-          : `The win column is still empty, which earns a <b>${pressureTag}</b>. The calendar still leaves plenty of room for the roster to answer it.`,
+        historicalGap == null
+          ? `The loaded Record Book does not expose a prior scoring sample for this manager, so the desk refuses to fake a career baseline.`
+          : `The current <b>${n1(last.avg)} PPG</b> pace is <b>${n1(Math.abs(historicalGap))}</b> points per week ${historicalGap < 0 ? 'below' : 'above'} this manager's verified historical rate of <b>${n1(redemption.historicalPpg)}</b>. The deficit is current form measured against the manager's own past, not a pity label.`,
+        redemption && redemption.cutoff
+          ? `The playoff cut line belongs to <b>${esc(redemption.cutoff.team.name)}</b> at ${n1(redemption.cutoff.pf)} PF. That leaves a <b>${n1(redemption.scoringDeficit)}</b>-point scoring deficit with <b>${redemption.remaining}</b> regular-season game${redemption.remaining === 1 ? '' : 's'} remaining.`
+          : `The connected schedule has not resolved a verified playoff cut line, so record-gap language stays off the page.`,
+        redemption && redemption.requiredPpg != null
+          ? `Holding the current cut-line team at its verified <b>${n1(redemption.cutoffPpg)} PPG</b> pace, <b>${esc(last.team.name)}</b> must average <b>${n1(redemption.requiredPpg)} PPG</b> the rest of the way — an exact lift of <b>${n1(redemption.ppgGap)} points per week</b> from its current rate — to erase the scoring gap. That is the redemption number; wins still have to follow.`
+          : `The exact rest-of-season PPG requirement is unavailable because the remaining schedule or cut-line scoring rate did not resolve.`,
+        scheduleDelta == null
+          ? `Remaining-schedule strength is unavailable from the loaded matchups, and the desk will not substitute reputation for opponent scoring data.`
+          : `The remaining opponents are running at <b>${n1(redemption.schedulePpg)} PPG</b> across ${redemption.opponentCount} scheduled matchup${redemption.opponentCount === 1 ? '' : 's'}, <b>${n1(Math.abs(scheduleDelta))}</b> ${scheduleDelta > 0 ? 'above' : 'below'} the league pace. The road back is ${scheduleDelta > 0 ? 'uphill and fully lit' : 'soft enough to exploit, if this roster finally does it'}.`,
       ] : [
         `${datelineTag()} Somebody has to finish last, and through Week ${ctx.week} it is ` +
         `<b>${esc(last.team.name)}</b> at <b>${esc(last.recordLabel)}</b> with <b>${n1(last.pf)}</b> points — ${n1(last.avg)} a week.`,
@@ -11099,9 +11342,18 @@ function tlRecap(ctx){
           'Every league needs a floor. This is the floor.',
         ], sseed),
       ],
-      numbers: { title: early ? 'Early Bottom Board' : 'Sacko Race', rows: table.slice(-3).map(r=>({
-        label: `${r.rank}. ${esc(r.team.name)}`, value: n1(r.pf), note: r.recordLabel + ' · ' + n1(r.avg) + ' per week',
-      })), note:(early ? 'Bottom three by FSN Power Index through Week ' : 'Bottom three by power rating through Week ') + ctx.week + '.' },
+      numbers: early ? { title:'Redemption Clock · Verified Gap', rows:[
+        { label:'Current scoring pace', value:n1(last.avg) + ' PPG', note:last.recordLabel },
+        { label:'Historical manager pace', value:redemption && redemption.historicalPpg > 0 ? n1(redemption.historicalPpg) + ' PPG' : 'Unavailable' },
+        { label:'Points behind cut line', value:redemption && redemption.scoringDeficit != null ? n1(redemption.scoringDeficit) : 'Unavailable' },
+        { label:'Required rest-of-season pace', value:redemption && redemption.requiredPpg != null ? n1(redemption.requiredPpg) + ' PPG' : 'Unavailable' },
+        { label:'Exact weekly lift needed', value:redemption && redemption.ppgGap != null ? '+' + n1(redemption.ppgGap) + ' PPG' : 'Unavailable' },
+        { label:'Remaining opponent pace', value:redemption && redemption.schedulePpg != null ? n1(redemption.schedulePpg) + ' PPG' : 'Unavailable', note:redemption ? redemption.opponentCount + ' scheduled opponents' : '' },
+      ], note:'Required pace holds the current playoff cut-line team at its verified scoring rate; it is a scoring benchmark, not a clinch guarantee.' } : { title:'Sacko Race', rows:table.slice(-3).map(r=>({
+        label:`${r.rank}. ${esc(r.team.name)}`, value:n1(r.pf), note:r.recordLabel + ' · ' + n1(r.avg) + ' per week',
+      })), note:'Bottom three by power rating through Week ' + ctx.week + '.' },
+      narrativeLocked:true,
+      headlineLocked:true,
     }));
   }
 
@@ -11166,8 +11418,10 @@ function tlRecap(ctx){
         : `<b>${esc(tight.winner.name)}</b> created real separation, and the weekly baseline shows exactly how much of it exceeded an ordinary final.`;
     out.push(tl({
       id: 'tl-debrief-' + ctx.week,
+      articleType:'deep_dive_spotlight',
+      gameSubjectKey:tightFacts.gameSubjectKey,
       kind:'debrief', topic:'matchups', slot:'recap', offset: 90 + (hash(dseed) % 150),
-      metaTag:'DEBRIEF',
+      metaTag:'BY THE NUMBERS',
       tag: exactMarginTag(tight.margin, 'tl-debrief-' + ctx.week), tone: dTier.tone, priority: 62,
       byline:'FSN Senior League Insider',
       crest:{ name: tight.winner.name, logo: tight.winner.logo },
@@ -11180,14 +11434,53 @@ function tlRecap(ctx){
         benchmarkLine,
         lineupLine || playerLine,
         historyLine,
+        heartbreakProtocolSentence(tightFacts),
         recordLine + ' ' + consequenceLine,
-      ],
+      ].filter(Boolean),
       quote: { text:dCopy.quote, who:upper(managerLabel(tight.winner)) },
-      numbers: { title:'Week ' + ctx.week + ' Margins', rows: decided.slice().sort((a,b)=> a.margin - b.margin).slice(0,4).map(d=>({
-        label: `${esc(d.winner.name)} over ${esc(d.loser.name)}`, value: n1(d.margin),
-      })), note:`Closest finishes first. Week ${ctx.week} league-average margin: ${n1(tightFacts.marginBenchmark && tightFacts.marginBenchmark.leagueAverage)}. Tier bands: nail-biter under ${n1(NAILBITER_MARGIN)}, one-score through ${n1(ONE_SCORE_MARGIN)}, competitive through ${n1(COMPETITIVE_MARGIN)}, blowout beyond.` },
+      numbers: { title:'By the Numbers · Week ' + ctx.week + ' Deep Dive', rows:[
+        { label:'Final', value:n1(tight.winnerScore) + '–' + n1(tight.loserScore) },
+        { label:'Exact margin', value:tight.margin.toFixed(1) },
+        { label:'League median margin', value:n1(tightFacts.marginBenchmark && tightFacts.marginBenchmark.leagueMedian) },
+        { label:'Loser lineup efficiency', value:tightFacts.lineupAudit && tightFacts.lineupAudit.loserEfficiency != null ? n1(tightFacts.lineupAudit.loserEfficiency) + '%' : 'Unavailable' },
+        { label:'All-time series', value:tightFacts.postgameSeries ? tightFacts.postgameSeries.winnerRecord : 'First recorded meeting' },
+      ], note:'This game is the individual deep-dive subject. The separate WEEK MARGINS filing uses a league-wide parity lead.' },
       facts:tightFacts,
       narrativeLocked:true,
+      headlineLocked:true,
+    }));
+
+    /* Subject collision guard: this is a league-wide distribution story. The
+       tight game above is never reused as this filing's headline or lead. */
+    const margins = decided.map(game=> Number(game.margin)).filter(Number.isFinite).sort((a,b)=> a-b);
+    const marginMedian = tightFacts.marginBenchmark && tightFacts.marginBenchmark.leagueMedian;
+    const marginAverage = margins.length ? margins.reduce((sum,value)=> sum + value, 0) / margins.length : 0;
+    const oneScoreCount = margins.filter(value=> value <= ONE_SCORE_MARGIN).length;
+    const blowoutCount = margins.filter(value=> isBlowoutMargin(value)).length;
+    const parityLabel = oneScoreCount >= Math.ceil(margins.length / 2) ? 'ONE-SCORE PRESSURE' : blowoutCount >= Math.ceil(margins.length / 2) ? 'SEPARATION WEEK' : 'SPLIT PERSONALITY';
+    out.push(tl({
+      id:'tl-week-margins-' + ctx.week,
+      articleType:'weekly_margins',
+      excludedGameSubjectKey:tightFacts.gameSubjectKey,
+      kind:'debrief', topic:'matchups', slot:'recap', offset:120 + (hash('week-margins' + ctx.week) % 120),
+      metaTag:'WEEK MARGINS', tag:'WEEK MARGINS', tone:'white', priority:61,
+      byline:'FSN Numbers Desk',
+      headline:`WEEK ${ctx.week} PARITY AUDIT: ${parityLabel} OWNS THE BOARD`,
+      dek:`${margins.length} finals produced a ${n1(marginMedian)}-point median margin and a ${n1(marginAverage)}-point average. This is the shape of the whole slate, not a second recap of one game.`,
+      paragraphs:[
+        `${datelineTag()} Week ${ctx.week} produced <b>${margins.length}</b> verified finals. The middle of that distribution landed at <b>${n1(marginMedian)}</b> points, the mean landed at <b>${n1(marginAverage)}</b>, and the full spread ran from <b>${n1(margins[0])}</b> to <b>${n1(margins[margins.length-1])}</b>.`,
+        `<b>${oneScoreCount}</b> game${oneScoreCount === 1 ? '' : 's'} finished inside the ${n1(ONE_SCORE_MARGIN)}-point one-score band; <b>${blowoutCount}</b> crossed the ${n1(COMPETITIVE_MARGIN)}-point blowout line. That ratio is the parity story.`,
+        `The BY THE NUMBERS desk owns the individual close-game autopsy. WEEK MARGINS keeps that matchup out of its headline and lead, then asks the league-wide question: was this slate compressed, fractured, or simply cruel at both ends?`,
+      ],
+      numbers:{ title:'Week ' + ctx.week + ' Margin Distribution', rows:[
+        { label:'Median final margin', value:n1(marginMedian) },
+        { label:'Average final margin', value:n1(marginAverage) },
+        { label:'One-score finals', value:String(oneScoreCount), note:Math.round(oneScoreCount / margins.length * 100) + '% of finals' },
+        { label:'Blowouts', value:String(blowoutCount), note:Math.round(blowoutCount / margins.length * 100) + '% of finals' },
+        { label:'Tightest-to-widest range', value:n1(margins[0]) + '–' + n1(margins[margins.length-1]) },
+      ], note:'League-wide distribution only; the deep-dive subject is intentionally excluded from this article\'s headline and lead.' },
+      narrativeLocked:true,
+      headlineLocked:true,
     }));
 
     /* The other end of the same board — a debrief desk that only covers the
@@ -11208,6 +11501,8 @@ function tlRecap(ctx){
         : `The verified team totals establish the separation; the loaded feed does not expose a complete player-level card for a defensible slot claim.`;
       out.push(tl({
         id: 'tl-blowout-' + ctx.week,
+        articleType:'blowout_debrief',
+        gameSubjectKey:blowoutFacts.gameSubjectKey,
         kind:'debrief', topic:'matchups', slot:'recap', offset: 140 + (hash(bseed) % 160),
         metaTag:'DEBRIEF',
         tag: exactMarginTag(blowout.margin, 'tl-blowout-' + ctx.week), tone:'gold', priority: 60,
@@ -11218,7 +11513,8 @@ function tlRecap(ctx){
         paragraphs: [
           `${datelineTag()} <b>${esc(blowout.winner.name)}</b> ${n1(blowout.winnerScore)}, ` +
           `<b>${esc(blowout.loser.name)}</b> ${n1(blowout.loserScore)}. A <b>${n1(blowout.margin)}</b>-point margin in a week where the average game finished by ` +
-          `<b>${n1(blowoutFacts.marginBenchmark && blowoutFacts.marginBenchmark.leagueAverage)}</b>.`,
+          `<b>${n1(blowoutFacts.marginBenchmark && blowoutFacts.marginBenchmark.leagueAverage)}</b> and the median finished by ` +
+          `<b>${n1(blowoutFacts.marginBenchmark && blowoutFacts.marginBenchmark.leagueMedian)}</b>.`,
           scheduleLine,
           blowoutLineup || blowoutPlayerLine,
           blowoutSeries,
@@ -11234,6 +11530,7 @@ function tlRecap(ctx){
         })), note:`Widest margins first. Week ${ctx.week} league-average margin: ${n1(blowoutFacts.marginBenchmark && blowoutFacts.marginBenchmark.leagueAverage)}.` },
         facts:blowoutFacts,
         narrativeLocked:true,
+        headlineLocked:true,
       }));
     }
   }
@@ -11356,6 +11653,60 @@ function tlWaivers(ctx){
 /* ============================================================
    THURSDAY — TNF PRIMER + MATCHUP OF THE WEEK
 ============================================================ */
+function shortWeekProTeams(ctx){
+  const d = LeagueData.espnData || {};
+  const settings = d.settings || {};
+  const week = Number(ctx && ctx.week || 0);
+  const candidates = [
+    d.proGamesByScoringPeriod && d.proGamesByScoringPeriod[week],
+    d.proTeamSchedules && d.proTeamSchedules[week],
+    settings.proGamesByScoringPeriod && settings.proGamesByScoringPeriod[week],
+    settings.proTeamSchedules && settings.proTeamSchedules[week],
+  ].filter(Boolean).flatMap(value=> Array.isArray(value) ? value : Object.values(value || {}));
+  const teams = new Set();
+  candidates.forEach(game=>{
+    const stamp = game && (game.date || game.startDate || game.kickoff || game.startTime);
+    if(!stamp) return;
+    const date = new Date(stamp);
+    if(!Number.isFinite(date.getTime())) return;
+    const weekday = new Intl.DateTimeFormat('en-US', { weekday:'short', timeZone:'America/New_York' }).format(date);
+    if(weekday !== 'Thu') return;
+    ['homeTeam','awayTeam','home','away','homeProTeam','awayProTeam'].forEach(key=>{
+      const item = game[key];
+      if(item == null) return;
+      if(typeof item === 'string' || typeof item === 'number') teams.add(String(item).toUpperCase());
+      else [item.abbrev,item.abbreviation,item.name,item.id,item.proTeamId].filter(value=> value != null).forEach(value=> teams.add(String(value).toUpperCase()));
+    });
+    ['homeTeamId','awayTeamId','homeProTeamId','awayProTeamId'].forEach(key=>{
+      if(game[key] != null) teams.add(String(game[key]).toUpperCase());
+    });
+  });
+  return { teams, metadataAvailable:candidates.length > 0 };
+}
+
+function shortWeekStarters(ctx, team, shortWeek){
+  if(!team || !shortWeek || !shortWeek.teams.size) return [];
+  return (FSNIntel.startersFor(ctx.week, team.id) || []).filter(player=>
+    player && player.proTeam && shortWeek.teams.has(String(player.proTeam).toUpperCase()));
+}
+
+function projectedSwingPosition(ctx, teamA, teamB){
+  const totals = team=>{
+    const byPos = {};
+    (FSNIntel.startersFor(ctx.week, team.id) || []).forEach(player=>{
+      const baseline = playerScoringBaseline(player.id, Math.max(0, Number(ctx.week) - 1));
+      if(!player.pos || !baseline) return;
+      byPos[player.pos] = (byPos[player.pos] || 0) + baseline.ppg;
+    });
+    return byPos;
+  };
+  const a = totals(teamA), b = totals(teamB);
+  const positions = Array.from(new Set(Object.keys(a).concat(Object.keys(b))));
+  const rows = positions.map(pos=>({ pos, a:Number(a[pos] || 0), b:Number(b[pos] || 0), gap:Math.abs(Number(a[pos] || 0)-Number(b[pos] || 0)) }))
+    .filter(row=> row.a > 0 && row.b > 0).sort((x,y)=> y.gap-x.gap || x.pos.localeCompare(y.pos));
+  return rows[0] || null;
+}
+
 function tlPrimer(ctx){
   const out = [];
   /* Matchup of the Week never comes out of the consolation ladder. In a
@@ -11385,7 +11736,15 @@ function tlPrimer(ctx){
     if(LeagueData.hasHistory() && A.ownerId && B.ownerId && window.getH2H){
       recordbook = window.getH2H(A.ownerId, B.ownerId);
     }
-  }catch(e){}
+  }catch(err){ console.error('[NewsDesk] Matchup of the Week Record Book lookup failed for Week ' + ctx.week, err); }
+
+  const shortWeek = shortWeekProTeams(ctx);
+  const thursdayA = shortWeekStarters(ctx, A, shortWeek);
+  const thursdayB = shortWeekStarters(ctx, B, shortWeek);
+  const swing = projectedSwingPosition(ctx, A, B);
+  const seriesLeader = recordbook && recordbook.meetingCount && recordbook.winsFor !== recordbook.winsAgainst
+    ? (recordbook.winsFor > recordbook.winsAgainst ? A : B)
+    : null;
 
   const rows = [
     { label: esc(A.name) + ' win probability', value: Math.round(probA) + '%' },
@@ -11397,15 +11756,22 @@ function tlPrimer(ctx){
   rows.push({ label: esc(B.name) + ' record', value: esc(recordB) });
   if(recordbook && recordbook.meetingCount){
     rows.push({ label:'All-time series', value: recordbook.winsFor + '-' + recordbook.winsAgainst + (recordbook.ties ? '-' + recordbook.ties : ''),
-      note: esc(A.name) + ' leads the ledger by ' + n1(Math.abs(recordbook.diff)) + ' career points against this opponent.' });
+      note:(seriesLeader ? esc(seriesLeader.name) + ' leads the win ledger. ' : 'The win ledger is even. ') +
+        (Number.isFinite(recordbook.diff) ? esc(recordbook.diff >= 0 ? A.name : B.name) + ' holds a ' + n1(Math.abs(recordbook.diff)) + '-point career scoring edge.' : '') });
     if(recordbook.lastMeeting){
       rows.push({ label:'Last meeting', value: n1(recordbook.lastMeeting.scoreFor) + ' – ' + n1(recordbook.lastMeeting.scoreAgainst),
         note: recordbook.lastMeeting.year + ' · Week ' + recordbook.lastMeeting.week });
     }
   }
+  rows.push({ label:'Thursday starters', value:String(thursdayA.length + thursdayB.length),
+    note:shortWeek.metadataAvailable ? esc(A.name) + ' ' + thursdayA.length + ' · ' + esc(B.name) + ' ' + thursdayB.length : 'NFL kickoff metadata unavailable in the loaded payload.' });
+  rows.push({ label:'Projected swing position', value:swing ? esc(swing.pos) : 'Unavailable',
+    note:swing ? esc(swing.a >= swing.b ? A.name : B.name) + ' by ' + n1(swing.gap) + ' verified PPG' : 'Prior-week player scoring samples did not resolve both sides.' });
 
   out.push(tl({
     id: 'tl-motw-' + ctx.week,
+    articleType:'matchup_of_the_week',
+    gameSubjectKey:gameSubjectKey(g),
     kind:'motw', topic:'matchups', slot:'primer', offset: (hash(seed) % 80),
     metaTag: ctx.playoffWeek ? `${ctx.playoffRound} · MATCHUP OF THE WEEK` : 'MATCHUP OF THE WEEK',
     tag: ctx.playoffWeek ? `${ctx.playoffRound} MATCHUP` : 'MATCHUP OF THE WEEK', tone:'gold', priority: 74,
@@ -11433,41 +11799,52 @@ function tlPrimer(ctx){
 
       recordbook && recordbook.meetingCount
         ? `The Record Book says these two have met <b>${recordbook.meetingCount}</b> times, with <b>${esc(A.name)}</b> holding a ` +
-          `<b>${recordbook.winsFor}-${recordbook.winsAgainst}${recordbook.ties ? '-' + recordbook.ties : ''}</b> edge` +
+          `<b>${recordbook.winsFor}-${recordbook.winsAgainst}${recordbook.ties ? '-' + recordbook.ties : ''}</b> line from its side of the ledger` +
           `${recordbook.streakCount > 1 ? ` and the current streak sitting at ${recordbook.streakCount} straight` : ''}. ` +
           `${recordbook.lastMeeting ? `The last one finished ${n1(recordbook.lastMeeting.scoreFor)}–${n1(recordbook.lastMeeting.scoreAgainst)}.` : ''}`
         : `There is no history to lean on here — load the Record Book and the desk will pull the all-time series into this preview.`,
 
-      `Thursday night is where this one starts leaking points. Check who you have playing, then check again after the inactives.`,
+      shortWeek.metadataAvailable
+        ? `The short-week exposure is exact: <b>${thursdayA.length}</b> ${esc(A.name)} starter${thursdayA.length === 1 ? '' : 's'} and <b>${thursdayB.length}</b> ${esc(B.name)} starter${thursdayB.length === 1 ? '' : 's'} are tied to verified Thursday games${thursdayA.length + thursdayB.length ? ` — <b>${thursdayA.concat(thursdayB).map(player=> esc(player.name)).join('</b>, <b>')}</b>` : ''}.`
+        : `The loaded league payload does not include NFL kickoff metadata, so the desk will not guess which starters play Thursday.`,
+      swing
+        ? `The largest verified positional swing is <b>${esc(swing.pos)}</b>: ${esc(swing.a >= swing.b ? A.name : B.name)} holds a <b>${n1(swing.gap)} PPG</b> edge from player scoring samples through Week ${Math.max(0, ctx.week-1)}.`
+        : `A projected swing position is unavailable because both starting cards do not carry comparable prior-week scoring samples.`,
     ],
     numbers: { title:'Tale of the Tape', rows, note:'Win probability from power rating, scoring average and the all-time series.' },
+    narrativeLocked:true,
+    headlineLocked:true,
   }));
 
   /* ---- TNF START / SIT WARNINGS ---- */
-  const inj = FSNIntel.injuries().filter(i=> i.starter).slice(0, 5);
-  if(inj.length){
+  const thursdayPlayers = thursdayA.concat(thursdayB);
+  const injuryByPlayer = new Map(FSNIntel.injuries().map(item=> [String(item.player.id), item]));
+  if(thursdayPlayers.length){
+    const warnings = thursdayPlayers.map(player=>({ player, injury:injuryByPlayer.get(String(player.id)) || null, team:String(player.teamId) === String(A.id) ? A : B }));
     const seed2 = 'tnf' + ctx.week;
     out.push(tl({
       id: 'tl-tnf-' + ctx.week,
+      articleType:'thursday_warning',
+      gameSubjectKey:gameSubjectKey(g),
       kind:'startsit', topic:'matchups', slot:'primer', offset: 30 + (hash(seed2) % 100),
       metaTag:'START / SIT',
       tag:'THURSDAY WARNING', tone:'red', priority: 58,
       byline:'FSN Sideline Reporter',
-      crest: inj[0].team ? { name: inj[0].team.name, logo: inj[0].team.logo } : null,
-      headline: `THURSDAY WARNING: ${inj.length} STARTER${inj.length === 1 ? '' : 'S'} IN THIS LEAGUE ARE NOT LOCKED IN`,
-      dek: `Lineups lock at kickoff. ${esc(inj[0].player.name)} is ${esc(inj[0].label)} and still in a starting slot.`,
+      crest:{ name:warnings[0].team.name, logo:warnings[0].team.logo },
+      headline: `THURSDAY WARNING: ${warnings.length} SHORT-WEEK STARTER${warnings.length === 1 ? '' : 'S'} HIT THE CLOCK EARLY`,
+      dek: `${esc(warnings[0].player.name)} leads a verified Thursday exposure list; ${warnings.filter(row=> row.injury).length} also carry an injury designation.`,
       paragraphs: [
-        `${datelineTag()} The Thursday sweep of this league's active lineups found <b>${inj.length}</b> ` +
-        `player${inj.length === 1 ? '' : 's'} carrying a designation while sitting in a starting slot. ` +
-        `Top of the list: <b>${esc(inj[0].player.name)}</b>${inj[0].player.pos ? ` (${esc(inj[0].player.pos)}${inj[0].player.proTeam ? ', ' + esc(inj[0].player.proTeam) : ''})` : ''}, listed <b>${esc(inj[0].label)}</b>` +
-        `${inj[0].team ? `, started by <b>${esc(inj[0].team.name)}</b>` : ''}.`,
-        `A locked lineup with an inactive in it is the single most avoidable loss in fantasy football, and this league produces one almost every week.`,
+        `${datelineTag()} The verified NFL schedule puts <b>${warnings.length}</b> active fantasy starter${warnings.length === 1 ? '' : 's'} into the short-week Thursday window. Once that game kicks, those slots are concrete.`,
+        `<b>${warnings.filter(row=> row.injury).length}</b> of those starters carry an injury designation. ${warnings.filter(row=> row.injury).length ? `The first is <b>${esc(warnings.find(row=> row.injury).player.name)}</b>, listed <b>${esc(warnings.find(row=> row.injury).injury.label)}</b>.` : `None is designated in the loaded roster feed, but the early lock still changes the decision clock.`}`,
+        swing ? `The same matchup's largest projected positional swing sits at <b>${esc(swing.pos)}</b>, a <b>${n1(swing.gap)} PPG</b> separation. Thursday exposure can move that edge before Sunday gets a vote.` : `The prior scoring sample does not support a positional swing claim, so the warning stays tied to verified kickoff exposure.`,
       ],
-      numbers: { title:'On the Report', rows: inj.map(i=>({
-        label: esc(i.player.name) + (i.player.pos ? ' · ' + esc(i.player.pos) : ''),
-        value: i.label,
-        note: i.team ? esc(i.team.name) : '',
-      })), note:'Pulled from the live roster feed. Statuses move fast on Friday.' },
+      numbers: { title:'Short-Week Starters', rows:warnings.map(row=>({
+        label:esc(row.player.name) + (row.player.pos ? ' · ' + esc(row.player.pos) : ''),
+        value:row.injury ? row.injury.label : 'ACTIVE',
+        note:esc(row.team.name) + ' · ' + esc(row.player.proTeam || 'Thursday'),
+      })), note:'Starter slots come from the fantasy matchup; Thursday assignment comes from NFL kickoff metadata in the loaded payload.' },
+      narrativeLocked:true,
+      headlineLocked:true,
     }));
   }
 
@@ -11598,44 +11975,100 @@ function tlRivalry(ctx){
 /* ============================================================
    SATURDAY — THE INJURY WIRE
 ============================================================ */
+function playerScoringBaseline(playerId, throughWeek){
+  const schedule = LeagueData.espnData && Array.isArray(LeagueData.espnData.schedule) ? LeagueData.espnData.schedule : [];
+  let points = 0, games = 0;
+  schedule.forEach(game=>{
+    const week = Number(game && game.matchupPeriodId || 0);
+    if(!week || week > throughWeek) return;
+    ['home','away'].forEach(sideKey=>{
+      const side = game && game[sideKey];
+      const roster = side && (side.rosterForCurrentScoringPeriod || side.rosterForMatchupPeriod);
+      const entries = roster && Array.isArray(roster.entries) ? roster.entries : [];
+      entries.forEach(entry=>{
+        const ppe = entry && entry.playerPoolEntry;
+        const player = ppe && ppe.player;
+        const id = player && player.id != null ? player.id : ppe && ppe.id;
+        if(String(id) !== String(playerId)) return;
+        const value = typeof entry.appliedStatTotal === 'number' ? entry.appliedStatTotal
+          : typeof ppe.appliedStatTotal === 'number' ? ppe.appliedStatTotal : null;
+        if(Number.isFinite(Number(value))){ points += Number(value); games += 1; }
+      });
+    });
+  });
+  return games ? { ppg:points / games, games } : null;
+}
+
+function injuryReplacementAudit(ctx, injury){
+  const player = injury && injury.player;
+  const pool = Object.values(FSNIntel.players() || {});
+  const candidates = pool.filter(candidate=>
+    candidate && candidate.teamId != null && player &&
+    String(candidate.teamId) === String(player.teamId) && String(candidate.id) !== String(player.id) &&
+    candidate.bench && candidate.pos === player.pos &&
+    (candidate.injury === 'ACTIVE' || candidate.injury === 'NORMAL'));
+  const scored = candidates.map(candidate=>({
+    player:candidate,
+    baseline:playerScoringBaseline(candidate.id, Math.max(0, Number(ctx.week) - 1)),
+  })).sort((a,b)=>
+    Number(!!b.baseline) - Number(!!a.baseline) ||
+    Number(b.baseline && b.baseline.ppg || 0) - Number(a.baseline && a.baseline.ppg || 0) ||
+    Number(a.player.adp || Number.MAX_SAFE_INTEGER) - Number(b.player.adp || Number.MAX_SAFE_INTEGER));
+  const replacement = scored[0] || null;
+  const starterBaseline = player ? playerScoringBaseline(player.id, Math.max(0, Number(ctx.week) - 1)) : null;
+  const dropoff = starterBaseline && replacement && replacement.baseline
+    ? Math.max(0, starterBaseline.ppg - replacement.baseline.ppg)
+    : null;
+  return { injury, starterBaseline, replacement, dropoff, waiverDependent:!replacement };
+}
+
 function tlInjury(ctx){
   const list = FSNIntel.injuries();
   if(!list.length) return [];
   const top = list.slice(0, 8);
   const seed = 'inj' + ctx.week;
-  const stashes = FSNIntel.stashCandidates(4);
 
   const counts = { OUT:0, DOUBTFUL:0, QUESTIONABLE:0, IR:0 };
   list.forEach(i=> { if(counts[i.label] !== undefined) counts[i.label]++; });
 
+  const starterAudits = list.filter(item=> item.starter).map(item=> injuryReplacementAudit(ctx, item));
+  const featuredAudits = (starterAudits.length ? starterAudits : top.map(item=> injuryReplacementAudit(ctx, item))).slice(0, 8);
+  const waiverCount = starterAudits.filter(audit=> audit.waiverDependent).length;
+  const waiverRate = starterAudits.length ? waiverCount / starterAudits.length * 100 : 0;
+  const leadAudit = featuredAudits[0] || null;
+  const leadReplacement = leadAudit && leadAudit.replacement;
+
   return [tl({
     id: 'tl-injury-' + ctx.week,
+    articleType:'injury_wire',
     kind:'injury', topic:'breaking', slot:'injury', offset: (hash(seed) % 90),
     metaTag:'INJURY WIRE',
     tag:'INJURY WIRE', tone:'red', priority: 68,
     byline:'FSN Sideline Reporter',
     crest: top[0].team ? { name: top[0].team.name, logo: top[0].team.logo } : null,
     headline: `INJURY WIRE: ${counts.OUT + counts.IR} OUT, ${counts.QUESTIONABLE} QUESTIONABLE ACROSS THE LEAGUE`,
-    dek: `${esc(top[0].player.name)} headlines a report that is going to ruin somebody's Sunday.`,
+    dek: `${esc(top[0].player.name)} headlines a bench-by-bench replacement audit with ${starterAudits.length} affected starter${starterAudits.length === 1 ? '' : 's'} and a ${n1(waiverRate)}% waiver-dependency rate.`,
     paragraphs: [
       `${datelineTag()} The Saturday sweep across every roster in this league returned ` +
       `<b>${list.length}</b> players carrying a designation: <b>${counts.OUT + counts.IR}</b> ruled out, ` +
       `<b>${counts.DOUBTFUL}</b> doubtful and <b>${counts.QUESTIONABLE}</b> questionable.`,
       `<b>${esc(top[0].player.name)}</b>${top[0].player.pos ? ` (${esc(top[0].player.pos)}${top[0].player.proTeam ? ', ' + esc(top[0].player.proTeam) : ''})` : ''} is listed <b>${esc(top[0].label)}</b>` +
       `${top[0].team ? ` on <b>${esc(top[0].team.name)}</b>` : ''}${top[0].starter ? ' and is currently in a starting slot' : ''}. ` +
-      pick(['That is a Sunday-morning decision nobody wants to make.',
-            'Waiting on a beat writer to save your week is not a strategy.',
-            'The safe move is the boring move. Take the boring move.'], seed),
-      stashes.length
-        ? `If the report holds, the bench is where the week gets saved. The most valuable stashes currently sitting inactive in this league: ` +
-          `<b>${stashes.map(s=> esc(s.name)).join('</b>, <b>')}</b>.`
-        : `There is nothing worth stashing on these benches. That is its own kind of injury report.`,
+      (leadReplacement
+        ? `The direct same-position bench replacement is <b>${esc(leadReplacement.player.name)}</b>${leadAudit.dropoff == null ? '; the prior-week scoring sample is incomplete, so no fake drop-off is printed' : `, projecting a verified baseline drop of <b>${n1(leadAudit.dropoff)} PPG</b>`}.`
+        : `The roster exposes no healthy same-position bench replacement, making this team waiver-dependent.`),
+      starterAudits.length
+        ? `<b>${waiverCount}</b> of ${starterAudits.length} injured starters have no healthy same-position replacement on their actual bench — a <b>${n1(waiverRate)}%</b> waiver-dependency rate. That is roster construction under stress, measured instead of guessed.`
+        : `No designated player is currently marked as a starter in the loaded Week ${ctx.week} slot cards; waiver dependency therefore stays at a verified 0 of 0 rather than being inferred.`,
+      `Each replacement below comes from the affected fantasy roster's bench. Expected PPG uses only that player's scored appearances through Week ${Math.max(0, ctx.week-1)}; when either side of the comparison is missing, the drop-off is marked unavailable.`,
     ],
-    numbers: { title:'The Report', rows: top.map(i=>({
-      label: esc(i.player.name) + (i.player.pos ? ' · ' + esc(i.player.pos) : '') + (i.starter ? ' <span style="color:var(--red)">STARTING</span>' : ''),
-      value: i.label,
-      note: i.team ? esc(i.team.name) : '',
-    })), note:'Statuses come straight from the ESPN roster feed and change through Sunday morning.' },
+    numbers: { title:'Bench Replacement Audit', rows: featuredAudits.map(audit=>({
+      label: esc(audit.injury.player.name) + (audit.injury.player.pos ? ' · ' + esc(audit.injury.player.pos) : '') + (audit.injury.starter ? ' <span style="color:var(--red)">STARTING</span>' : ''),
+      value:audit.replacement ? esc(audit.replacement.player.name) : 'WAIVER REQUIRED',
+      note:(audit.injury.team ? esc(audit.injury.team.name) + ' · ' : '') + audit.injury.label + ' · expected drop: ' + (audit.dropoff == null ? 'Unavailable' : n1(audit.dropoff) + ' PPG'),
+    })).concat([{ label:'Waiver dependency', value:n1(waiverRate) + '%', note:waiverCount + ' of ' + starterAudits.length + ' injured starters' }]), note:'Statuses come from the ESPN roster feed; replacements are verified healthy same-position players on the affected bench.' },
+    narrativeLocked:true,
+    headlineLocked:true,
   })];
 }
 
@@ -11914,6 +12347,7 @@ function bracketRowOf(ctx, game){
   const seedOf = (team)=> team && team.playoffSeed ? Number(team.playoffSeed) : null;
   const winner = !played || hs === as ? null : (hs > as ? game.homeTeam : game.awayTeam);
   return {
+    game,
     bracket: playoffBracketOf(game),
     status: decided ? 'FINAL' : (played ? 'LIVE' : 'UPCOMING'),
     played, decided,
@@ -11921,6 +12355,7 @@ function bracketRowOf(ctx, game){
     home:{ name:game.homeTeam.name, logo:game.homeTeam.logo, seed:seedOf(game.homeTeam), record:game.homeTeam.record, score:hs, won: winner === game.homeTeam },
     away:{ name:game.awayTeam.name, logo:game.awayTeam.logo, seed:seedOf(game.awayTeam), record:game.awayTeam.record, score:as, won: winner === game.awayTeam },
     winner, loser: !winner ? null : (winner === game.homeTeam ? game.awayTeam : game.homeTeam),
+    isChampionshipFinal:isChampionshipFinalGame(ctx, game),
   };
 }
 
@@ -11976,6 +12411,167 @@ function bracketMatchupSentence(row){
   return `${seed(row.away)}<b>${esc(row.away.name)}</b> (${esc(row.away.record || '—')}) at ${seed(row.home)}<b>${esc(row.home.name)}</b> (${esc(row.home.record || '—')})`;
 }
 
+function seasonJourneyForTeam(ctx, team){
+  const schedule = LeagueData.espnData && Array.isArray(LeagueData.espnData.schedule) ? LeagueData.espnData.schedule : [];
+  const regular = [];
+  schedule.forEach(game=>{
+    if(!game || !game.home || !game.away || String(game.playoffTierType || 'NONE').toUpperCase() !== 'NONE') return;
+    const week = Number(game.matchupPeriodId || 0);
+    if(!week || week >= Number(ctx.week)) return;
+    const home = String(game.home.teamId) === String(team.id);
+    const away = String(game.away.teamId) === String(team.id);
+    if(!home && !away) return;
+    const teamScore = Number((home ? game.home : game.away).totalPoints || 0);
+    const opponentScore = Number((home ? game.away : game.home).totalPoints || 0);
+    if(teamScore <= 0 && opponentScore <= 0) return;
+    regular.push({ week, game, side:home ? game.home : game.away, teamScore, opponentScore,
+      result:teamScore > opponentScore ? 'W' : teamScore < opponentScore ? 'L' : 'T' });
+  });
+  regular.sort((a,b)=> a.week-b.week);
+  const losses = regular.filter(row=> row.result === 'L').sort((a,b)=> a.teamScore-b.teamScore || a.week-b.week);
+  const wins = regular.filter(row=> row.result === 'W').sort((a,b)=> b.teamScore-a.teamScore || a.week-b.week);
+  const turningPoint = losses[0] || wins[0] || regular[0] || null;
+  const after = turningPoint ? regular.filter(row=> row.week > turningPoint.week) : [];
+  const record = regular.reduce((memo,row)=>{ memo[row.result] += 1; return memo; }, { W:0, L:0, T:0 });
+  const points = regular.reduce((sum,row)=> sum+row.teamScore, 0);
+  const rebound = after.reduce((memo,row)=>{ memo[row.result] += 1; return memo; }, { W:0, L:0, T:0 });
+  const playoffPath = [];
+  schedule.forEach(game=>{
+    if(!game || !game.home || !game.away || String(game.playoffTierType || '').toUpperCase() !== 'WINNERS_BRACKET') return;
+    const week = Number(game.matchupPeriodId || 0);
+    if(!week || week > Number(ctx.week)) return;
+    const home = String(game.home.teamId) === String(team.id);
+    const away = String(game.away.teamId) === String(team.id);
+    if(!home && !away) return;
+    const teamScore = Number((home ? game.home : game.away).totalPoints || 0);
+    const opponentScore = Number((home ? game.away : game.home).totalPoints || 0);
+    if(teamScore <= 0 && opponentScore <= 0) return;
+    playoffPath.push({ week, teamScore, opponentScore, result:teamScore > opponentScore ? 'W' : teamScore < opponentScore ? 'L' : 'T' });
+  });
+  return { regular, turningPoint, rebound, record, ppg:regular.length ? points/regular.length : null, playoffPath };
+}
+
+function rosterEngineForTeam(ctx, team, journey){
+  const totals = new Map();
+  (journey && journey.regular || []).filter(row=> row.result === 'W').forEach(row=>{
+    const roster = row.side && (row.side.rosterForMatchupPeriod || row.side.rosterForCurrentScoringPeriod);
+    const entries = roster && Array.isArray(roster.entries) ? roster.entries : [];
+    entries.filter(entry=> !BENCH_SLOTS[entry.lineupSlotId]).forEach(entry=>{
+      const ppe = entry.playerPoolEntry || {};
+      const player = ppe.player || {};
+      const id = player.id != null ? player.id : ppe.id;
+      const points = typeof entry.appliedStatTotal === 'number' ? entry.appliedStatTotal
+        : typeof ppe.appliedStatTotal === 'number' ? ppe.appliedStatTotal : null;
+      if(id == null || !Number.isFinite(Number(points))) return;
+      const row = totals.get(String(id)) || { name:player.fullName || player.lastName || 'Unnamed Player', points:0, starts:0 };
+      row.points += Number(points); row.starts += 1; totals.set(String(id), row);
+    });
+  });
+  const ranked = Array.from(totals.values()).map(row=> Object.assign(row, { ppg:row.starts ? row.points/row.starts : 0 }))
+    .sort((a,b)=> b.ppg-a.ppg || b.points-a.points || a.name.localeCompare(b.name));
+  return ranked[0] || null;
+}
+
+function titleHistoryForTeam(ctx, team){
+  const hist = LeagueData.leagueHistory || {};
+  const log = Array.isArray(hist.gameLog) ? hist.gameLog : [];
+  const ownerId = team && team.ownerId;
+  let wins = 0, losses = 0, ties = 0;
+  log.filter(game=> archiveBefore(game, Number(viewedSeasonYear() || 0), Number(ctx.week || 0)) &&
+    (game.isPlayoff === true || String(game.playoffTierType || '').toUpperCase() === 'WINNERS_BRACKET')).forEach(game=>{
+      if(String(game.ownerA) !== String(ownerId) && String(game.ownerB) !== String(ownerId)) return;
+      if(!game.winnerOwnerId) ties += 1;
+      else if(String(game.winnerOwnerId) === String(ownerId)) wins += 1;
+      else losses += 1;
+    });
+  let resume = null;
+  try{ resume = ownerId ? computeFranchiseResume(ownerId) : null; }
+  catch(err){ console.error('[NewsDesk] title dossier franchise resume failed for ' + (team && team.name || 'unknown team'), err); }
+  let recordBookLoaded = false;
+  try{ recordBookLoaded = !!LeagueData.hasHistory(); }
+  catch(err){ console.error('[NewsDesk] title dossier Record Book availability check failed for ' + (team && team.name || 'unknown team'), err); }
+  const appearances = resume && Array.isArray(resume.seasonHistory)
+    ? resume.seasonHistory.filter(row=> Number(row.year) < Number(viewedSeasonYear()) &&
+        (Number(row.finalRank) === 1 || Number(row.finalRank) === 2))
+    : [];
+  const titles = appearances.filter(row=> Number(row.finalRank) === 1).length;
+  const available = !!(recordBookLoaded && ownerId);
+  return { available, wins, losses, ties, record:available ? wins + '-' + losses + (ties ? '-' + ties : '') : 'Unavailable',
+    appearances:available ? appearances.length : null, titles:available ? titles : null,
+    identity:!available ? 'history unresolved' : titles > 0 ? 'legacy champion' : appearances.length > 0 ? 'ringless returner' : 'first-time Cinderella' };
+}
+
+function titleDossierArticle(ctx, game, team, ordinal){
+  const journey = seasonJourneyForTeam(ctx, team);
+  const engine = rosterEngineForTeam(ctx, team, journey);
+  const history = titleHistoryForTeam(ctx, team);
+  const turn = journey.turningPoint;
+  const keyStat = engine ? `${upper(engine.name)} AT ${n1(engine.ppg)} PPG IN WINS` : `${journey.ppg == null ? 'UNRESOLVED' : n1(journey.ppg) + ' TEAM PPG'}`;
+  const playoffPath = journey.playoffPath.length
+    ? journey.playoffPath.map(row=> `Week ${row.week} ${row.result} ${n1(row.teamScore)}–${n1(row.opponentScore)}`).join('; ')
+    : 'No earlier winners-bracket final is present in the loaded schedule';
+  return tl({
+    id:`tl-title-dossier-${viewedSeasonYear()}-${team.id}`,
+    articleType:'title_dossier_' + team.id,
+    kind:'title-dossier', topic:'matchups', slot:'primer', at:liveTime(5 + ordinal * 2),
+    metaTag:'THE ROAD TO THE RING', tag:'THE TITLE DOSSIER', tone:'gold', priority:380-ordinal,
+    byline:'FSN Senior League Insider', crest:{ name:team.name, logo:team.logo }, teamId:team.id,
+    headline:`${esc(upper(team.name))} BUILT THIS RUN ON ${esc(keyStat)} – THE TITLE DOSSIER`,
+    dek:`The turning point, the player engine and the Record Book history behind one side of the ${viewedSeasonYear()} championship.`,
+    paragraphs:[
+      turn
+        ? `<b>The Turning Point:</b> Week <b>${turn.week}</b> delivered a ${turn.result === 'L' ? 'lowest-scoring loss' : 'highest-scoring win'} at <b>${n1(turn.teamScore)}–${n1(turn.opponentScore)}</b>. From the next regular-season week forward, ${esc(team.name)} went <b>${journey.rebound.W}-${journey.rebound.L}${journey.rebound.T ? '-' + journey.rebound.T : ''}</b>.`
+        : `<b>The Turning Point:</b> unavailable; the connected schedule contains no completed regular-season game for this finalist.`,
+      engine
+        ? `<b>The Roster Engine:</b> this roster does not build its winning weeks without <b>${esc(engine.name)}</b> averaging <b>${n1(engine.ppg)} points</b> across ${engine.starts} verified start${engine.starts === 1 ? '' : 's'} in regular-season victories.`
+        : `<b>The Roster Engine:</b> unavailable; completed winning lineups do not expose enough player-level scoring to name a carrier honestly.`,
+      history.available
+        ? `<b>The Matchup History:</b> the Supabase Record Book gives this franchise an all-time playoff line of <b>${history.record}</b>, <b>${history.appearances}</b> prior championship appearance${history.appearances === 1 ? '' : 's'} and <b>${history.titles}</b> title${history.titles === 1 ? '' : 's'}. That makes this run a <b>${history.identity}</b> file, not a costume the desk picked for effect.`
+        : `<b>The Matchup History:</b> unavailable. The Supabase Record Book is not hydrated for this owner, so the desk will not label the finalist a dynasty or a Cinderella without evidence.`,
+      `<b>The Road:</b> ${esc(team.name)} reached the final at <b>${journey.record.W}-${journey.record.L}${journey.record.T ? '-' + journey.record.T : ''}</b> and ${journey.ppg == null ? 'an unavailable scoring pace' : '<b>' + n1(journey.ppg) + ' PPG</b>'}. Winners-bracket path: ${esc(playoffPath)}.`,
+    ],
+    numbers:{ title:'Road to the Ring', rows:[
+      { label:'Regular-season record', value:journey.record.W + '-' + journey.record.L + (journey.record.T ? '-' + journey.record.T : '') },
+      { label:'Regular-season pace', value:journey.ppg == null ? 'Unavailable' : n1(journey.ppg) + ' PPG' },
+      { label:'Turning point', value:turn ? 'Week ' + turn.week : 'Unavailable' },
+      { label:'Roster engine', value:engine ? esc(engine.name) : 'Unavailable', note:engine ? n1(engine.ppg) + ' PPG in wins' : '' },
+      { label:'All-time playoff record', value:history.record },
+      { label:'Past title appearances', value:history.appearances == null ? 'Unavailable' : String(history.appearances), note:history.titles == null ? 'Record Book unavailable' : history.titles + ' championships' },
+    ], note:'Regular-season and lineup facts come from the loaded ESPN schedule; legacy facts come from the Supabase Record Book.' },
+    narrativeLocked:true, headlineLocked:true,
+  });
+}
+
+function championshipRecapArticle(ctx, row){
+  if(!row || !row.decided || !row.winner || !row.loser) return null;
+  const championJourney = seasonJourneyForTeam(ctx, row.winner);
+  const runnerJourney = seasonJourneyForTeam(ctx, row.loser);
+  const facts = { isPlayoff:true, margin:row.margin, winner:row.winner, loser:row.loser };
+  const year = Number(viewedSeasonYear() || 2026);
+  return tl({
+    id:`tl-championship-recap-${year}`,
+    articleType:'championship_recap', gameSubjectKey:gameSubjectKey(row.game),
+    kind:'championship', topic:'breaking', slot:'gameday', at:liveTime(1),
+    metaTag:'CHAMPIONSHIP CROWNED', tag:'TITLE DECIDED', tone:'gold', priority:500,
+    byline:'FSN Senior League Insider', crest:{ name:row.winner.name, logo:row.winner.logo },
+    headline:`CHAMPIONSHIP CROWNED: ${esc(upper(row.winner.name))} IS THE ${year} CHAMPION`,
+    dek:`${esc(row.winner.name)} defeated ${esc(row.loser.name)} ${n1(Math.max(row.home.score,row.away.score))}–${n1(Math.min(row.home.score,row.away.score))}. The title is final and the runner-up is named.`,
+    paragraphs:[
+      `${datelineTag()} <b>${esc(row.winner.name)}</b> is the <b>${year} Champion</b>. The final closed at <b>${n1(Math.max(row.home.score,row.away.score))}–${n1(Math.min(row.home.score,row.away.score))}</b>, an exact <b>${row.margin.toFixed(1)}</b>-point decision over <b>${esc(row.loser.name)}</b>, the <b>Runner-Up</b>. No advancing tag. No elimination euphemism. The ring has an owner.`,
+      `${esc(row.winner.name)} built the multi-month run at <b>${championJourney.record.W}-${championJourney.record.L}${championJourney.record.T ? '-' + championJourney.record.T : ''}</b> and ${championJourney.ppg == null ? 'an unavailable regular-season pace' : '<b>' + n1(championJourney.ppg) + ' PPG</b>'}, then posted ${championJourney.playoffPath.map(item=> item.result).join('–') || 'no separately resolved prior playoff result'} through the winners bracket.`,
+      `${esc(row.loser.name)} reached the same last stage at <b>${runnerJourney.record.W}-${runnerJourney.record.L}${runnerJourney.record.T ? '-' + runnerJourney.record.T : ''}</b> and ${runnerJourney.ppg == null ? 'an unavailable regular-season pace' : '<b>' + n1(runnerJourney.ppg) + ' PPG</b>'}. That journey is complete too: months of work, one final, one line short of the crown.`,
+      heartbreakProtocolSentence(facts),
+      `The dossiers preserve how both finalists got here. This filing preserves what happened when they arrived: <b>${esc(row.winner.name)}</b> won the league, and <b>${esc(row.loser.name)}</b> finished second.`,
+    ].filter(Boolean),
+    numbers:{ title:'Title Decided', rows:[
+      { label:`${year} Champion`, value:esc(row.winner.name), note:n1(Math.max(row.home.score,row.away.score)) + ' points' },
+      { label:'Runner-Up', value:esc(row.loser.name), note:n1(Math.min(row.home.score,row.away.score)) + ' points' },
+      { label:'Championship margin', value:row.margin.toFixed(1), note:row.margin < 1 ? 'Heartbreak Protocol active' : 'Final' },
+    ], note:'Final score and designation read from the championship matchup; no Advancing or Eliminated labels are rendered.' },
+    narrativeLocked:true, headlineLocked:true,
+  });
+}
+
 function tlPlayoffBracket(ctx){
   if(!ctx.playoffWeek) return [];
   const title  = ctx.championshipGames || [];
@@ -11991,6 +12587,15 @@ function tlPlayoffBracket(ctx){
   const toiletRows = bracketRowsOf(ctx, toilet);
   const consolationRows = bracketRowsOf(ctx, consolation);
   const prior = priorRoundRowsOf(ctx);
+  const championshipFinal = titleRows.find(row=> row.isChampionshipFinal) || null;
+
+  /* The two franchise dossiers are constructed before the crown recap. Their
+     distinct article types make them standalone feed rows and deterministic
+     upsert targets rather than paragraphs buried inside the final. */
+  if(championshipFinal){
+    out.push(titleDossierArticle(ctx, championshipFinal.game, championshipFinal.game.awayTeam, 0));
+    out.push(titleDossierArticle(ctx, championshipFinal.game, championshipFinal.game.homeTeam, 1));
+  }
 
   /* Preview vs. in-progress: the bracket leads either way, but the copy and
      the tag have to stop calling a finished round a preview. */
@@ -11998,7 +12603,8 @@ function tlPlayoffBracket(ctx){
   const anyPlayed = live.some(r=> r.played);
   const allFinal  = live.length > 0 && live.every(r=> r.decided);
   const preview   = !anyPlayed;
-  const stateTag  = preview ? 'PREVIEW' : (allFinal ? 'FINAL' : 'LIVE');
+  const championshipDecided = !!(championshipFinal && championshipFinal.decided);
+  const stateTag  = championshipDecided ? 'CHAMPIONSHIP CROWNED' : (preview ? 'PREVIEW' : (allFinal ? 'FINAL' : 'LIVE'));
 
   /* The ACTIVE Championship Bracket game is the lead. Everything else on the
      board — settled title games, the Toilet Bowl, and the 5th-place
@@ -12050,7 +12656,7 @@ function tlPlayoffBracket(ctx){
     rows.push({
       label: `Championship · ${esc(r.away.name)} at ${esc(r.home.name)}`,
       value: r.played ? `${n1(r.away.score)} – ${n1(r.home.score)}` : r.status,
-      note: r.played ? `${r.status} · ${n1(r.margin)} point margin` : 'Title bracket · winner advances',
+      note: r.played ? `${r.status} · ${n1(r.margin)} point margin` : (r.isChampionshipFinal ? 'Title game · Champion / Runner-Up' : 'Title bracket · winner advances'),
     });
   });
   toiletRows.forEach(r=>{
@@ -12070,14 +12676,17 @@ function tlPlayoffBracket(ctx){
 
   out.push(tl({
     id:`tl-playoff-bracket-${year}-${ctx.week}`,
+    articleType:'playoff_bracket',
     kind:'playoff-bracket', topic:'matchups', slot:'primer',
     at: liveTime(2),
-    metaTag:`${round} · BRACKET`,
-    tag:`${round} ${stateTag}`, tone:'gold', priority: 400,
+    metaTag:championshipDecided ? 'CHAMPIONSHIP CROWNED' : `${round} · BRACKET`,
+    tag:championshipDecided ? 'TITLE DECIDED' : `${round} ${stateTag}`, tone:'gold', priority: 400,
     byline:'FSN Playoff Desk',
     dateline:`${leagueDateline()} · WEEK ${ctx.week} POSTSEASON`,
     crest: leadTitleRow ? { name:leadTitleRow.home.name, logo:leadTitleRow.home.logo } : null,
-    headline: leadTitleRow
+    headline: championshipDecided
+      ? `TITLE DECIDED: ${esc(upper(championshipFinal.winner.name))} IS THE ${year} CHAMPION`
+      : leadTitleRow
       ? esc(upper(`${round}: ${leadSeeds.length === 2 ? leadSeeds.join(' VS ') : leadTitleRow.away.name + ' VS ' + leadTitleRow.home.name}`))
       : (preview
           ? `${round}: THE BRACKET IS SET FOR WEEK ${ctx.week}`
@@ -12088,7 +12697,8 @@ function tlPlayoffBracket(ctx){
          `${activeTitleRows.length ? ` (${activeTitleRows.length} still live)` : ''} and ` +
          `${toiletRows.length} Toilet Bowl game${toiletRows.length === 1 ? '' : 's'} share the Week ${ctx.week} board` +
          `${consolationRows.length ? `; the ${consolationRows.length} consolation-ladder placement game${consolationRows.length === 1 ? ' is' : 's are'} excluded from the featured slot` : ''}. ` +
-         (ctx.playoffFinalRound ? 'The ring and the Sacko are both decided here.' : 'Winners move on; losers are done chasing hardware.'),
+         (championshipDecided ? ` ${esc(championshipFinal.winner.name)} is the ${year} Champion; ${esc(championshipFinal.loser.name)} is the Runner-Up.` :
+          ctx.playoffFinalRound ? 'The ring and the Sacko are both decided here.' : 'Winners move on; losers are done chasing hardware.'),
     paragraphs: [
       `${datelineTag()} <b>Championship Bracket:</b> ${titleCopy}`,
       `<b>What the last round did:</b> ${priorCopy}`,
@@ -12107,10 +12717,16 @@ function tlPlayoffBracket(ctx){
         toilet: toiletRows,
         consolation: consolationRows,
         prior,
+        isChampionshipFinal:!!championshipFinal,
       },
       note:'Read straight off the live schedule. Consolation-ladder placement games are listed but never promoted to the featured matchup.',
     },
+    narrativeLocked:true,
+    headlineLocked:true,
   }));
+
+  const crown = championshipRecapArticle(ctx, championshipFinal);
+  if(crown) out.push(crown);
 
   /* ---- UPSET ALERTS ----
      A lower seed knocking out a higher one is the only thing a bracket owes
@@ -12119,6 +12735,7 @@ function tlPlayoffBracket(ctx){
   const upsetSources = [];
   live.forEach(r=>{
     if(!r.decided || !r.winner || !r.loser) return;
+    if(r.isChampionshipFinal) return;
     const ws = r.home.won ? r.home.seed : r.away.seed;
     const ls = r.home.won ? r.away.seed : r.home.seed;
     if(!ws || !ls || ws <= ls) return;
@@ -12146,6 +12763,7 @@ function tlPlayoffBracket(ctx){
     const useed = `upset:${year}:${u.week}:${u.winnerName}:${u.loserName}`;
     out.push(tl({
       id:`tl-playoff-upset-${year}-${u.week}-${i}`,
+      articleType:`playoff_upset_${u.week}_${i}`,
       kind:'playoff-upset', topic:'breaking', slot:'gameday',
       at: liveTime(14 + (hash(useed) % 50)),
       metaTag:'UPSET ALERT',
@@ -12170,6 +12788,8 @@ function tlPlayoffBracket(ctx){
         ],
         note:'Seeds read off the league’s final regular-season standings.',
       },
+      narrativeLocked:true,
+      headlineLocked:true,
     }));
   });
 
@@ -12584,6 +13204,7 @@ const LEGACY_META = {
 };
 
 function adopt(a, seedIdx){
+  ensureArticleIdentity(a, a && (a.articleType || a.id || a.kind));
   if(a.at) return a;
   const slot = LEGACY_SLOT[a.kind] || 'gameday';
   const offset = (hash(a.id) % 200) + seedIdx * 7;
@@ -12605,6 +13226,49 @@ const PLAYOFF_SUPPRESSED_KINDS = {
 
 let streamCache = { key:null, list:null };
 LeagueData.subscribe(()=>{ streamCache = { key:null, list:null }; });
+
+/* The News Desk has no article table and may not mutate the verified Supabase
+   schema. This scoped row store therefore provides the same deterministic
+   upsert semantics in memory: one league/season/week/topic key is replaced on
+   refresh, never appended as a second feed row. */
+const generatedArticleRows = new Map();
+function normalizedArticleText(value){
+  return String(value || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+}
+function articleLead(a){
+  return a && Array.isArray(a.paragraphs) && a.paragraphs.length ? a.paragraphs[0] : '';
+}
+function upsertDeterministicArticleRows(events){
+  const keys = [];
+  const seenKeys = new Set();
+  const subjects = new Map();
+  (events || []).forEach((event, index)=>{
+    if(!event) return;
+    const a = ensureArticleIdentity(event, event.articleType || event.id || event.kind || ('event_' + index));
+    if(seenKeys.has(a.articleKey)) return;
+
+    if(!a.custom && a.gameSubjectKey){
+      const subject = String(a.gameSubjectKey);
+      const prior = subjects.get(subject);
+      if(prior){
+        const sameHeadline = normalizedArticleText(prior.headline) === normalizedArticleText(a.headline);
+        const sameLead = normalizedArticleText(articleLead(prior)) === normalizedArticleText(articleLead(a));
+        if(sameHeadline || sameLead){
+          console.warn('[NewsDesk] suppressed same-game feed collision for ' + a.articleKey +
+            ' against ' + prior.articleKey, new Error('Duplicate headline or lead for game subject ' + subject));
+          return;
+        }
+      } else {
+        subjects.set(subject, a);
+      }
+    }
+
+    seenKeys.add(a.articleKey);
+    generatedArticleRows.set(a.articleKey, a);
+    keys.push(a.articleKey);
+  });
+  return keys.map(key=> generatedArticleRows.get(key)).filter(Boolean);
+}
 
 function transitionStateFallback(ctx){
   const season = Number(viewedSeasonYear() || new Date().getFullYear());
@@ -12762,7 +13426,7 @@ function guaranteedTimelineFallback(week){
 function getTimelineStream(week){
   const custom = scopedCustom(week);
   if(!LeagueData.hasLive()){
-    return custom.map((a,i)=> adopt(a, i)).sort((a,b)=> b.at - a.at);
+    return upsertDeterministicArticleRows(custom.map((a,i)=> adopt(a, i))).sort((a,b)=> b.at - a.at);
   }
 
   /* The release window is part of the cache identity: a page left open across
@@ -12772,8 +13436,12 @@ function getTimelineStream(week){
   const key = leagueScopeToken() + '|' + String(viewedSeasonYear()) + ':' + String(week) + ':' + releaseKey + ':' + custom.map(a=> a.id).join(',');
   if(streamCache.key === key && streamCache.list){
     let cachedCtx = null;
-    try{ cachedCtx = weekContext(week); }catch(_){ cachedCtx = null; }
-    streamCache.list.forEach(a=>{ try{ restamp(a); if(cachedCtx) applySeasonTone(a, cachedCtx); }catch(_){} });
+    try{ cachedCtx = weekContext(week); }
+    catch(err){ console.error('[Timeline] cached weekContext refresh failed for Week ' + week, err); cachedCtx = null; }
+    streamCache.list.forEach(a=>{
+      try{ restamp(a); if(cachedCtx) applySeasonTone(a, cachedCtx); }
+      catch(err){ console.error('[Timeline] cached article refresh failed for ' + (a && a.articleKey || 'unknown article'), err); }
+    });
     return streamCache.list;
   }
 
@@ -12893,12 +13561,7 @@ function getTimelineStream(week){
     events = released;
   }
 
-  const seen = {};
-  let list = events.filter(e=>{
-    if(!e || seen[e.id]) return false;
-    seen[e.id] = true;
-    return true;
-  }).sort((a,b)=> b.at - a.at);
+  let list = upsertDeterministicArticleRows(events).sort((a,b)=> b.at - a.at);
 
   /* ---- POSTSEASON NEWS FILTER ----
      Once the bracket is running, a Week 16 power-ranking table and a
@@ -12923,6 +13586,17 @@ function getTimelineStream(week){
      its existing relative position below them. */
   list.sort((a,b)=> (Number(!!b.custom) - Number(!!a.custom)) || (b.at - a.at));
 
+  /* A decided title is the platform lead. Before the final resolves, the live
+     bracket retains that slot. Dossiers remain immediately below as separate
+     filings because their construction happened before the crown recap. */
+  if(ctx.playoffWeek){
+    const postseasonLead = list.findIndex(a=> a && (a.kind === 'championship' || a.kind === 'playoff-bracket'));
+    if(postseasonLead > 0){
+      const lead = list.splice(postseasonLead, 1)[0];
+      list.unshift(lead);
+    }
+  }
+
   /* In preseason and Week 1 the transition banner is the desk lead. Generate
      it even with zero scores, then hoist it after all timestamp/community
      sorting so the lifecycle cannot demote it to a hidden feed row. */
@@ -12934,7 +13608,10 @@ function getTimelineStream(week){
     }
   }
 
-  list.forEach(a=>{ try{ restamp(a); applySeasonTone(a, ctx); }catch(_){ /* per-card polish is non-fatal */ } });
+  list.forEach(a=>{
+    try{ restamp(a); applySeasonTone(a, ctx); }
+    catch(err){ console.error('[Timeline] per-card polish failed for ' + (a && a.articleKey || 'unknown article'), err); }
+  });
   streamCache = { key, list };
   return list;
 }
@@ -12978,6 +13655,7 @@ function generate(week){
     catch(err){ console.error('[NewsDesk] generator failed', err); }
   });
   stories.forEach(a=> applySeasonTone(a, ctx));
+  stories = upsertDeterministicArticleRows(stories);
   genCache = { key, list: stories };
   return stories;
 }
@@ -12985,7 +13663,7 @@ function generate(week){
 function all(week){
   const custom = scopedCustom(week);
   const generated = generate(week);
-  return custom.concat(generated).sort((a,b)=> b.priority - a.priority);
+  return upsertDeterministicArticleRows(custom.concat(generated)).sort((a,b)=> b.priority - a.priority);
 }
 
 /* Plain-text rendering for copy / share — the article without the markup. */
@@ -14188,12 +14866,14 @@ function renderHome(){
       ? 'MARQUEE MATCHUP'
       : (MATCHUP_FLAVOR[marginCategory(margin)] || marginTierLabel(margin));
     const bracketOf = playoffBracketOf(g);
+    const isTitleGame = bracketOf === 'championship' &&
+      (Number(week) === 17 || g.isChampionship === true || g.raw && g.raw.isChampionship === true);
     const bracketLabel = playoffWeek
       ? `${motwRound} · ${bracketOf === 'toilet' ? 'TOILET BOWL' : 'CHAMPIONSHIP BRACKET'}`
       : '';
     const centerStat = pregameWeek
       ? (bestTotal > 0 ? `PROJECTED TOTAL ${bestTotal.toFixed(1)}` : 'PROJECTIONS PENDING')
-      : `${margin.toFixed(1)} PT MARGIN`;
+      : `${margin.toFixed(1)} MARGIN`;
 
     $('motwCard').innerHTML = `
       <div class="pl-5 pr-4 py-4">
@@ -14214,7 +14894,9 @@ function renderHome(){
           ${playoffWeek
             ? `${bracketOf === 'toilet'
                  ? 'The Sacko is decided here — the loser owns it for a calendar year.'
-                 : 'Championship Bracket. The loser is out of the title picture for good.'}
+                 : (isTitleGame
+                    ? (st === 'final' ? 'Title decided. The winner is Champion; the other finalist is Runner-Up.' : 'Championship game. The final designations are Champion and Runner-Up.')
+                    : 'Championship Bracket. The loser is out of the title picture for good.')}
                ${pregameWeek
                  ? `Projected combined total <b class="text-[var(--off)] font-mono tabular">${bestTotal > 0 ? bestTotal.toFixed(1) : '—'}</b>.`
                  : `Combined <b class="text-[var(--off)] font-mono tabular">${bestTotal.toFixed(1)}</b> points.`}`
@@ -17938,7 +18620,7 @@ function livePlayoffBracketHtml(board){
             <span class="pb-team">${esc(r.winnerName)}</span>
           </div>
           <div class="pb-record">def. ${esc(r.loserName)} · ${n1(r.winnerScore)}–${n1(r.loserScore)}</div>
-          <span class="pb-status ${r.upset ? '' : 'hunt'}">${r.upset ? 'UPSET' : (r.bracket === 'championship' ? 'ADVANCED' : 'TOILET BOWL')}</span>
+          <span class="pb-status ${r.upset ? '' : 'hunt'}">${r.upset ? 'UPSET' : (r.bracket === 'championship' ? (board.isChampionshipFinal ? 'FINALIST' : 'ADVANCED') : 'TOILET BOWL')}</span>
         </div>`).join('')}</div>
       </section>`
     : '';
