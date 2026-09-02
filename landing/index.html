@@ -248,6 +248,35 @@ footer{ border-top:1px solid var(--line); padding:34px 0 46px; color:var(--dim);
 .wl-form .btn{ flex:0 0 auto; }
 .wl-note{ color:var(--dim); font-size:12.5px; font-family:'JetBrains Mono',monospace; margin-top:14px; letter-spacing:.02em; }
 
+/* ---------- waitlist platform selector ---------- */
+.platform-picker{ margin-top:20px; }
+.platform-label{
+  display:block; color:var(--dim); font-family:'JetBrains Mono',monospace;
+  font-size:11px; letter-spacing:.12em; text-transform:uppercase; margin-bottom:9px;
+}
+.platform-options{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
+.platform-option{
+  min-width:0; border:1px solid var(--line-2); border-radius:10px;
+  background:var(--ink); color:var(--off); padding:11px 9px;
+  font-family:'Oswald',sans-serif; font-size:13px; font-weight:600;
+  letter-spacing:.03em; cursor:pointer; transition:border-color .12s ease, color .12s ease, background .12s ease;
+}
+.platform-option:hover{ border-color:rgba(0,224,255,.55); color:#fff; }
+.platform-option[aria-pressed="true"]{
+  border-color:var(--cyan); color:#fff; background:rgba(0,224,255,.09);
+  box-shadow:0 0 0 2px rgba(0,224,255,.08);
+}
+.platform-option-yahoo{ display:flex; flex-direction:column; align-items:center; gap:4px; }
+.platform-badge{
+  color:var(--cyan); border:1px solid rgba(0,224,255,.38); border-radius:999px;
+  padding:1px 6px; font-family:'JetBrains Mono',monospace; font-size:8.5px;
+  line-height:1.4; letter-spacing:.08em; text-transform:uppercase;
+}
+.platform-helper{
+  color:var(--off); border-left:2px solid var(--cyan); margin-top:12px;
+  padding-left:11px; font-size:13px; font-weight:300; line-height:1.5;
+}
+
 /* ---------- optional pre-collection fields ---------- */
 .wl-optional{ margin-top:16px; border:1px solid var(--line); border-radius:12px; background:rgba(255,255,255,.02); }
 .wl-optional > summary{
@@ -284,12 +313,55 @@ footer{ border-top:1px solid var(--line); padding:34px 0 46px; color:var(--dim);
 .wl-success .check{ font-size:34px; }
 .wl-success h2{ margin-top:8px; }
 
+/* ---------- screenshot showcase ---------- */
+.showcase{ margin-top:46px; display:flex; flex-direction:column; gap:60px; }
+.showcase-row{ display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:44px; align-items:center; }
+.showcase-row.reverse .showcase-media{ order:2; }
+.showcase-media{ display:flex; justify-content:center; align-items:flex-start; gap:22px; }
+.showcase-copy .tag-line{ font-family:'JetBrains Mono',monospace; color:var(--cyan); font-size:12px; letter-spacing:.18em; text-transform:uppercase; }
+.showcase-copy h3{ font-family:'Anton',sans-serif; font-size:clamp(24px,3.4vw,34px); text-transform:uppercase; margin-top:10px; line-height:1.02; }
+.showcase-copy p{ color:var(--off); font-weight:300; margin-top:12px; font-size:15.5px; max-width:440px; }
+.showcase-copy ul{ list-style:none; margin-top:16px; display:flex; flex-direction:column; gap:9px; }
+.showcase-copy li{ color:var(--dim); font-size:14px; display:flex; gap:10px; align-items:flex-start; line-height:1.45; }
+.showcase-copy li::before{ content:"▹"; color:var(--cyan); }
+
+/* phone frame */
+.device{
+  position:relative; width:100%; max-width:266px; flex:0 0 auto;
+  border:1px solid var(--line-2); border-radius:36px; padding:10px;
+  background:linear-gradient(160deg,#1c2231,#0d1017);
+  box-shadow:0 30px 70px rgba(0,0,0,.5);
+}
+.device::before{
+  content:""; position:absolute; top:17px; left:50%; transform:translateX(-50%);
+  width:104px; height:6px; border-radius:6px; background:rgba(255,255,255,.16); z-index:2;
+}
+.device-screen{
+  position:relative; border-radius:27px; overflow:hidden;
+  background:linear-gradient(180deg,var(--panel),var(--ink));
+  aspect-ratio:1080/2340; display:grid; place-items:center;
+}
+.device-screen .shot{ width:100%; height:100%; object-fit:cover; object-position:top center; display:block; }
+.device-screen .shot-fallback{
+  position:absolute; inset:0; display:none; place-items:center; text-align:center;
+  padding:26px; color:var(--dim); font-family:'JetBrains Mono',monospace;
+  font-size:11.5px; letter-spacing:.06em; line-height:1.7;
+}
+.device-screen .shot-fallback b{ color:var(--off); display:block; margin-bottom:6px; letter-spacing:.12em; }
+.device.no-shot .shot{ display:none; }
+.device.no-shot .shot-fallback{ display:grid; }
+.showcase-media.pair .device{ max-width:210px; }
+
 @media (max-width:820px){
   .stat-strip{ grid-template-columns:repeat(2,1fr); }
   .grid{ grid-template-columns:1fr; }
   .steps{ grid-template-columns:1fr; }
   .btn{ flex:1 1 auto; }
   .topbar .cta-mini{ flex:0 0 auto; }
+  .showcase-row{ grid-template-columns:1fr; gap:28px; }
+  .showcase-row.reverse .showcase-media{ order:0; }
+  .showcase-copy p{ max-width:none; }
+  .showcase-media.pair .device{ max-width:180px; }
 }
 </style>
 </head>
@@ -332,6 +404,9 @@ footer{ border-top:1px solid var(--line); padding:34px 0 46px; color:var(--dim);
       </button>
       <button type="button" class="btn btn-gold" data-waitlist data-platform="sleeper">
         <span class="logo">SLEEPER</span> Connect Sleeper
+      </button>
+      <button type="button" class="btn btn-ghost" data-waitlist data-platform="yahoo">
+        <span class="logo">YAHOO</span> Early Access <span class="platform-badge">Coming Soon</span>
       </button>
       <button type="button" class="btn btn-ghost" data-waitlist>Join the waitlist →</button>
     </div>
@@ -388,6 +463,118 @@ footer{ border-top:1px solid var(--line); padding:34px 0 46px; color:var(--dim);
   </div>
 </section>
 
+<!-- ============================================================ SCREENSHOT SHOWCASE ============================================================ -->
+<section class="section">
+  <div class="wrap">
+    <div class="section-eyebrow">// On the air</div>
+    <h2>See the broadcast desk in action</h2>
+    <p class="lead">This is your league, rendered like a sports network. Real screens from FSN — the same desk that lights up the moment you connect.</p>
+
+    <div class="showcase">
+
+      <!-- News Desk -->
+      <div class="showcase-row">
+        <div class="showcase-media">
+          <div class="device">
+            <div class="device-screen">
+              <img class="shot" src="screenshots/news-desk.png" alt="FSN News Desk — a live wire of league stories with a lead 'State of the League' feature and a running timeline"
+                   loading="lazy" onerror="this.closest('.device').classList.add('no-shot')">
+              <div class="shot-fallback"><b>NEWS DESK</b>screenshots/news-desk.png</div>
+            </div>
+          </div>
+        </div>
+        <div class="showcase-copy">
+          <div class="tag-line">The News Desk</div>
+          <h3>Your league's front page</h3>
+          <p>Recaps, power rankings, waiver fallout and op-eds — written around your actual managers and updated every week.</p>
+          <ul>
+            <li>A live wire of league stories, ranked by what matters this week</li>
+            <li>Lead features like "State of the League" with a running timeline</li>
+            <li>Week-ahead previews so every manager walks in warned</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Matchups -->
+      <div class="showcase-row reverse">
+        <div class="showcase-media">
+          <div class="device">
+            <div class="device-screen">
+              <img class="shot" src="screenshots/matchups.png" alt="FSN Matchups — this week's head-to-head board with projected margins for every game"
+                   loading="lazy" onerror="this.closest('.device').classList.add('no-shot')">
+              <div class="shot-fallback"><b>MATCHUPS</b>screenshots/matchups.png</div>
+            </div>
+          </div>
+        </div>
+        <div class="showcase-copy">
+          <div class="tag-line">Matchups &amp; scoreboard</div>
+          <h3>Every game, projected and live</h3>
+          <p>The full head-to-head board with projected margins, pulled straight from ESPN or Sleeper and updated as scores move.</p>
+          <ul>
+            <li>Projected and live margins for every matchup, side by side</li>
+            <li>Team avatars, records and win projections at a glance</li>
+            <li>The whole slate on one board — no group-chat math</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Season Stats -->
+      <div class="showcase-row">
+        <div class="showcase-media">
+          <div class="device">
+            <div class="device-screen">
+              <img class="shot" src="screenshots/season-stats.png" alt="FSN Season Stats — the Adjusted Expected Wins model ranking teams by scoring quality with a luck differential"
+                   loading="lazy" onerror="this.closest('.device').classList.add('no-shot')">
+              <div class="shot-fallback"><b>SEASON STATS</b>screenshots/season-stats.png</div>
+            </div>
+          </div>
+        </div>
+        <div class="showcase-copy">
+          <div class="tag-line">Season stats &amp; analytics</div>
+          <h3>Six models reading your season</h3>
+          <p>Adjusted Expected Wins, luck differential, strength of schedule and more — the math that settles every argument on the scoreboard.</p>
+          <ul>
+            <li>Adjusted Expected Wins ranks teams by real scoring quality</li>
+            <li>Luck differential shows who's overachieving — and who's due</li>
+            <li>Analytics that update live, all season long</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Record Book / Franchise Dossier (paired screens) -->
+      <div class="showcase-row reverse">
+        <div class="showcase-media pair">
+          <div class="device">
+            <div class="device-screen">
+              <img class="shot" src="screenshots/record-book.png" alt="FSN Record Book — a franchise dossier with lifetime vital stats, all-time record and career points"
+                   loading="lazy" onerror="this.closest('.device').classList.add('no-shot')">
+              <div class="shot-fallback"><b>RECORD BOOK</b>screenshots/record-book.png</div>
+            </div>
+          </div>
+          <div class="device">
+            <div class="device-screen">
+              <img class="shot" src="screenshots/franchise-dossier.png" alt="FSN Franchise Dossier — an all-time résumé with win percentage, titles and a year-by-year finish trend"
+                   loading="lazy" onerror="this.closest('.device').classList.add('no-shot')">
+              <div class="shot-fallback"><b>FRANCHISE DOSSIER</b>screenshots/franchise-dossier.png</div>
+            </div>
+          </div>
+        </div>
+        <div class="showcase-copy">
+          <div class="tag-line">The Record Book</div>
+          <h3>Two decades of franchise history</h3>
+          <p>Every manager gets an all-time résumé — records, titles, playoff berths and a year-by-year finish trend going back through your league's history.</p>
+          <ul>
+            <li>Franchise dossiers with lifetime vital stats and career points</li>
+            <li>Playoff rate, best and worst finishes, luck differential</li>
+            <li>Screenshot-ready résumés built to be shared and argued over</li>
+          </ul>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
 <!-- ============================================================ HOW IT WORKS ============================================================ -->
 <section class="section">
   <div class="wrap">
@@ -428,6 +615,9 @@ footer{ border-top:1px solid var(--line); padding:34px 0 46px; color:var(--dim);
         <button type="button" class="btn btn-gold" data-waitlist data-platform="sleeper">
           <span class="logo">SLEEPER</span> Connect Sleeper
         </button>
+        <button type="button" class="btn btn-ghost" data-waitlist data-platform="yahoo">
+          <span class="logo">YAHOO</span> Early Access <span class="platform-badge">Coming Soon</span>
+        </button>
       </div>
       <p class="cta-fine" style="margin-top:18px;">Free for the 2026 season · No account required to join</p>
     </div>
@@ -444,6 +634,7 @@ footer{ border-top:1px solid var(--line); padding:34px 0 46px; color:var(--dim);
       <a href="#" data-waitlist>Join waitlist</a>
       <a href="#" data-waitlist data-platform="espn">Connect ESPN</a>
       <a href="#" data-waitlist data-platform="sleeper">Connect Sleeper</a>
+      <a href="#" data-waitlist data-platform="yahoo">Yahoo Early Access</a>
     </nav>
   </div>
 </footer>
@@ -462,12 +653,27 @@ footer{ border-top:1px solid var(--line); padding:34px 0 46px; color:var(--dim);
     </p>
     <div class="eta"><span class="tag">ETA</span> Around September 4th</div>
 
+    <div class="platform-picker">
+      <span class="platform-label" id="platformLabel">Choose your platform</span>
+      <div class="platform-options" role="group" aria-labelledby="platformLabel">
+        <button type="button" class="platform-option" data-platform-option="espn" aria-pressed="true">ESPN</button>
+        <button type="button" class="platform-option" data-platform-option="sleeper" aria-pressed="false">Sleeper</button>
+        <button type="button" class="platform-option platform-option-yahoo" data-platform-option="yahoo" aria-pressed="false">
+          <span>Yahoo Fantasy</span><span class="platform-badge">Coming Soon</span>
+        </button>
+      </div>
+    </div>
+
     <form class="wl-form" id="waitlistForm" novalidate>
       <input class="wl-input" id="waitlistEmail" type="email" name="email"
              inputmode="email" autocomplete="email" placeholder="you@email.com"
              aria-label="Your email address" required>
-      <button type="submit" class="btn btn-primary" id="waitlistSubmit">Notify me</button>
+      <button type="submit" class="btn btn-primary" id="waitlistSubmit">Join Waitlist</button>
     </form>
+
+    <p class="platform-helper" id="platformHelper" hidden>
+      Yahoo API access is currently undergoing final approval. Enter your email to receive early access the moment the integration goes live.
+    </p>
 
     <!-- Optional pre-collection: League ID + ESPN SWID so commissioners can be
          ready on launch day. Collapsed by default so it never blocks the email. -->
@@ -531,15 +737,32 @@ footer{ border-top:1px solid var(--line); padding:34px 0 46px; color:var(--dim);
   var swid     = document.getElementById('waitlistSwid');
   var msg      = document.getElementById('waitlistMsg');
   var submit   = document.getElementById('waitlistSubmit');
+  var helper   = document.getElementById('platformHelper');
+  var platformOptions = document.querySelectorAll('[data-platform-option]');
   var lastFocus = null;
 
   function isEmail(v){ return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v); }
+
+  function normalizePlatform(value){
+    return value === 'sleeper' || value === 'yahoo' ? value : 'espn';
+  }
+
+  function setPlatform(value){
+    var platform = normalizePlatform(value);
+    email.dataset.platform = platform;
+    Array.prototype.forEach.call(platformOptions, function(option){
+      option.setAttribute('aria-pressed', option.getAttribute('data-platform-option') === platform ? 'true' : 'false');
+    });
+    var isYahoo = platform === 'yahoo';
+    submit.textContent = isYahoo ? 'Join Yahoo Early Access' : 'Join Waitlist';
+    helper.hidden = !isYahoo;
+  }
 
   function openModal(platform){
     lastFocus = document.activeElement;
     modal.dataset.done = 'false';
     msg.textContent = ''; msg.removeAttribute('data-state');
-    if(platform) email.dataset.platform = platform; else delete email.dataset.platform;
+    setPlatform(platform || 'espn');
     overlay.dataset.open = 'true';
     document.body.style.overflow = 'hidden';
     setTimeout(function(){ try{ email.focus(); }catch(e){} }, 60);
@@ -554,6 +777,12 @@ footer{ border-top:1px solid var(--line); padding:34px 0 46px; color:var(--dim);
   document.addEventListener('click', function(e){
     var t = e.target.closest('[data-waitlist]');
     if(t){ e.preventDefault(); openModal(t.getAttribute('data-platform') || ''); }
+  });
+
+  Array.prototype.forEach.call(platformOptions, function(option){
+    option.addEventListener('click', function(){
+      setPlatform(option.getAttribute('data-platform-option'));
+    });
   });
 
   // Close affordances.
@@ -584,7 +813,7 @@ footer{ border-top:1px solid var(--line); padding:34px 0 46px; color:var(--dim);
 
     var entry = {
       email: value,
-      platform: email.dataset.platform || '',
+      platform: normalizePlatform(email.dataset.platform),
       league_id: (leagueId && leagueId.value || '').trim(),
       swid: (swid && swid.value || '').trim(),
       ts: new Date().toISOString()
@@ -604,9 +833,10 @@ footer{ border-top:1px solid var(--line); padding:34px 0 46px; color:var(--dim);
         headers:{ 'Content-Type':'application/json', 'Accept':'application/json' },
         body: JSON.stringify(payload)
       }).then(function(r){
-        if(!r.ok) throw new Error('bad status');
+        if(!r.ok) throw new Error('Waitlist request failed with status ' + r.status);
         done();
-      }).catch(function(){
+      }).catch(function(err){
+        console.error('[Waitlist] signup request failed', err);
         // Genuine backend failure — the email is stashed locally as a backup,
         // but surface a retry so we don't falsely claim they're on the list.
         msg.textContent = 'Something went wrong on our end — please try again.';
