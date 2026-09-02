@@ -12369,7 +12369,11 @@ function priorRoundRowsOf(ctx){
   const prev = ctx.priorPlayoffWeek;
   if(!prev) return null;
   let games = [];
-  try{ games = LeagueData.getWeekMatchups(prev) || []; }catch(e){ return null; }
+  try{ games = LeagueData.getWeekMatchups(prev) || []; }
+  catch(err){
+    console.error('[NewsDesk] prior playoff round could not be read for Week ' + prev, err);
+    return null;
+  }
   const played = games.filter(g=> (parseFloat(g.homeScore) || 0) + (parseFloat(g.awayScore) || 0) > 0);
   if(!played.length) return null;
   const rowOf = (game)=>{
@@ -12536,7 +12540,7 @@ function titleDossierArticle(ctx, game, team, ordinal){
       { label:'Turning point', value:turn ? 'Week ' + turn.week : 'Unavailable' },
       { label:'Roster engine', value:engine ? esc(engine.name) : 'Unavailable', note:engine ? n1(engine.ppg) + ' PPG in wins' : '' },
       { label:'All-time playoff record', value:history.record },
-      { label:'Past title appearances', value:history.appearances == null ? 'Unavailable' : String(history.appearances), note:history.titles == null ? 'Record Book unavailable' : history.titles + ' championships' },
+      { label:'Past title appearances', value:history.appearances == null ? 'Unavailable' : String(history.appearances), note:history.titles == null ? 'Record Book unavailable' : history.titles + ' title' + (history.titles === 1 ? '' : 's') },
     ], note:'Regular-season and lineup facts come from the loaded ESPN schedule; legacy facts come from the Supabase Record Book.' },
     narrativeLocked:true, headlineLocked:true,
   });
@@ -12727,6 +12731,12 @@ function tlPlayoffBracket(ctx){
 
   const crown = championshipRecapArticle(ctx, championshipFinal);
   if(crown) out.push(crown);
+
+  /* Championship detection is a hard editorial boundary. Once the title game
+     is present, prior-round upset cards cannot leak UPSET ALERT, Advancing or
+     Eliminated labels into the same feed. The bracket filing and both title
+     dossiers already preserve that journey before the definitive crown recap. */
+  if(championshipFinal) return out;
 
   /* ---- UPSET ALERTS ----
      A lower seed knocking out a higher one is the only thing a bracket owes
