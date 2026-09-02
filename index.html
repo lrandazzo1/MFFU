@@ -201,11 +201,14 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
 /* ---------- SAVED LEAGUES / SEASON STATS CONTROLS ---------- */
 .league-switcher{ display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; align-items:end; }
 .league-switcher-empty{ font-size:11px; line-height:1.5; color:var(--dim); }
-.stats-mode-toggle{ margin:0 16px 14px; display:grid; grid-template-columns:1fr 1fr; gap:4px;
+.stats-mode-toggle{ margin:0 16px 14px; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:4px;
   padding:4px; border:1px solid var(--line); border-radius:12px; background:#0b0f16; }
 .stats-mode-toggle button{ min-height:42px; padding:8px; border-radius:9px; color:var(--dim);
   font-size:10.5px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; }
 .stats-mode-toggle button[data-active="true"]{ background:var(--cyan); color:#04121a; box-shadow:0 0 14px rgba(0,224,255,.18); }
+@media (max-width:520px){
+  .stats-mode-toggle button{ padding:7px 4px; font-size:8.5px; letter-spacing:.07em; }
+}
 .standings-card-list{
   display:grid; grid-template-columns:minmax(0,1fr); gap:12px;
   width:100%; max-width:100%; min-width:0;
@@ -265,6 +268,61 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
 .standings-stat-value strong{ color:var(--cyan); font-weight:900; }
 @media (min-width:560px){
   .standings-stats-grid{ grid-template-columns:repeat(3,minmax(0,1fr)); }
+}
+.power-index-list{
+  display:grid; grid-template-columns:minmax(0,1fr); gap:12px;
+  width:100%; max-width:100%; min-width:0;
+}
+.power-index-card{
+  --power-accent:var(--cyan); position:relative; overflow:hidden; min-width:0;
+  padding:14px; border:1px solid var(--line); border-radius:15px;
+  background:linear-gradient(155deg,#111824,#090d14);
+}
+.power-index-card::before{
+  content:''; position:absolute; left:0; top:0; bottom:0; width:3px;
+  background:var(--power-accent); box-shadow:0 0 14px var(--power-accent);
+}
+.power-index-head{ display:flex; align-items:center; gap:10px; min-width:0; margin-bottom:12px; }
+.power-index-rank{
+  flex:none; display:grid; place-items:center; width:30px; height:30px; border-radius:9px;
+  border:1px solid rgba(0,224,255,.42); background:#080c12; color:var(--cyan);
+  font-family:'JetBrains Mono',monospace; font-size:11px; font-weight:900;
+}
+.power-index-identity{ flex:1 1 0%; min-width:0; }
+.power-index-team{
+  display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#fff;
+  font-family:'Oswald',sans-serif; font-size:16px; font-weight:700; letter-spacing:.025em;
+}
+.power-index-tag{
+  display:inline-flex; align-items:center; margin-top:4px; padding:3px 7px; border-radius:999px;
+  border:1px solid var(--line-2); font-family:'JetBrains Mono',monospace;
+  font-size:7.5px; font-weight:900; letter-spacing:.09em; text-transform:uppercase;
+}
+.power-index-tag[data-band="stable"]{ color:var(--green); border-color:rgba(57,255,140,.34); background:rgba(57,255,140,.07); }
+.power-index-tag[data-band="balanced"]{ color:#9fb3ca; border-color:rgba(159,179,202,.28); background:rgba(159,179,202,.06); }
+.power-index-tag[data-band="volatile"]{ color:var(--gold); border-color:rgba(255,196,0,.38); background:rgba(255,196,0,.07); }
+.power-index-score{ flex:none; text-align:right; }
+.power-index-score strong{
+  display:block; color:var(--cyan); font-family:'JetBrains Mono',monospace;
+  font-size:28px; font-weight:900; line-height:1; text-shadow:0 0 15px rgba(0,224,255,.25);
+}
+.power-index-score span{
+  display:block; margin-top:4px; color:var(--dim); font-family:'JetBrains Mono',monospace;
+  font-size:7.5px; font-weight:700; letter-spacing:.11em; text-transform:uppercase;
+}
+.power-index-metrics{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+.power-index-metric{ min-width:0; padding:9px 10px; border:1px solid rgba(255,255,255,.065); border-radius:10px; background:#080d12; }
+.power-index-metric-label{
+  display:block; margin-bottom:5px; color:#647084; font-family:'JetBrains Mono',monospace;
+  font-size:8px; font-weight:700; letter-spacing:.1em; text-transform:uppercase;
+}
+.power-index-metric-value{
+  display:block; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  color:var(--off); font-family:'JetBrains Mono',monospace; font-size:11px;
+  font-weight:900; line-height:1.2; font-variant-numeric:tabular-nums;
+}
+@media (min-width:720px){
+  .power-index-list{ grid-template-columns:repeat(2,minmax(0,1fr)); }
 }
 
 /* ---------- SCREENS ---------- */
@@ -1994,6 +2052,7 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
       <div class="stats-mode-toggle" id="statsModeToggle" role="tablist" aria-label="Season statistics view">
         <button type="button" data-stats-mode="standings" data-active="true" role="tab" aria-selected="true">Standings</button>
         <button type="button" data-stats-mode="advanced" data-active="false" role="tab" aria-selected="false">Advanced Analytics</button>
+        <button type="button" data-stats-mode="power" data-active="false" role="tab" aria-selected="false">FSN Power Index</button>
       </div>
       <div id="analyticsBody" class="analytics-shell"></div>
     </div>
@@ -14072,9 +14131,21 @@ function blankRow(team){
     team,
     scores:[], opponentScores:[], games:0,
     actualWins:0, expectedWins:0,
+    allPlayWins:0, allPlayLosses:0, allPlayTies:0, allPlayMatchups:0,
     lineupActual:0, lineupOptimal:0, wastedPoints:0, lineupSamples:0, benchBlunders:0,
     heartbreaks:0, blowoutWins:0, heartbreakPoints:0, blowoutPoints:0,
   };
+}
+
+function boundedPercent(value){
+  return Math.max(0, Math.min(100, number(value)));
+}
+
+function median(values){
+  const ordered = (values || []).filter(Number.isFinite).slice().sort((a,b)=>a-b);
+  if(!ordered.length) return 0;
+  const middle = Math.floor(ordered.length / 2);
+  return ordered.length % 2 ? ordered[middle] : (ordered[middle-1] + ordered[middle]) / 2;
 }
 
 function computePlayerPointIndex(schedule, throughWeek){
@@ -14210,6 +14281,43 @@ function compute(selectedWeek){
     });
   });
 
+  // Schedule-neutral all-play: each team is compared once with every other
+  // team that posted a score in the same completed week. Exact score ties are
+  // recorded explicitly and contribute half a win to the percentage.
+  weeks.forEach(entries=>{
+    const seenTeams = new Set();
+    const activeEntries = entries.filter(entry=>{
+      if(!entry || !byTeam.has(entry.teamId) || seenTeams.has(entry.teamId)) return false;
+      seenTeams.add(entry.teamId);
+      return Number.isFinite(entry.score) && entry.score > 0;
+    }).sort((a,b)=> String(a.teamId).localeCompare(String(b.teamId)));
+    // A partially posted live week is not a completed all-play slate. Waiting
+    // for every active league team prevents early finishers from receiving a
+    // temporary schedule-neutral record that the late games cannot yet match.
+    if(activeEntries.length !== byTeam.size || activeEntries.length < 2) return;
+    for(let i=0;i<activeEntries.length;i+=1){
+      for(let j=i+1;j<activeEntries.length;j+=1){
+        const left = activeEntries[i];
+        const right = activeEntries[j];
+        const leftRow = byTeam.get(left.teamId);
+        const rightRow = byTeam.get(right.teamId);
+        if(!leftRow || !rightRow) continue;
+        leftRow.allPlayMatchups += 1;
+        rightRow.allPlayMatchups += 1;
+        if(Math.abs(left.score - right.score) < 0.001){
+          leftRow.allPlayTies += 1;
+          rightRow.allPlayTies += 1;
+        }else if(left.score > right.score){
+          leftRow.allPlayWins += 1;
+          rightRow.allPlayLosses += 1;
+        }else{
+          rightRow.allPlayWins += 1;
+          leftRow.allPlayLosses += 1;
+        }
+      }
+    }
+  });
+
   // Reuse the app's legal-slot optimizer so the News Desk and Analytics tab
   // cannot disagree about which lineup was actually optimal.
   Array.from(weeks.keys()).sort((a,b)=>a-b).forEach(week=>{
@@ -14233,18 +14341,51 @@ function compute(selectedWeek){
   }, {sum:0,count:0});
   const opponentBaseline = leagueOpponentAverage.count ? leagueOpponentAverage.sum / leagueOpponentAverage.count : 0;
 
-  const rows = Array.from(byTeam.values()).map(row=>{
+  const baseRows = Array.from(byTeam.values()).map(row=>{
     const mean = row.scores.length ? row.scores.reduce((sum,v)=>sum+v,0) / row.scores.length : 0;
     const variance = row.scores.length ? row.scores.reduce((sum,v)=>sum+Math.pow(v-mean,2),0) / row.scores.length : 0;
+    const sampleVariance = row.scores.length > 1
+      ? row.scores.reduce((sum,v)=>sum+Math.pow(v-mean,2),0) / (row.scores.length-1)
+      : 0;
+    const powerCv = mean > 0 ? Math.sqrt(sampleVariance) / mean : null;
     const opponentPpg = row.opponentScores.length ? row.opponentScores.reduce((sum,v)=>sum+v,0) / row.opponentScores.length : 0;
     return Object.assign(row, {
       ppg:mean,
       consistencyCv:mean > 0 ? Math.sqrt(variance) / mean * 100 : null,
+      powerSampleStdDev:mean > 0 ? Math.sqrt(sampleVariance) : null,
+      powerCv,
+      consistencyFactorRaw:powerCv == null ? null : boundedPercent((1-powerCv)*100),
       luckDelta:row.actualWins - row.expectedWins,
       lineupEfficiency:row.lineupOptimal > 0 ? Math.min(100, row.lineupActual / row.lineupOptimal * 100) : null,
       opponentPpg,
       scheduleDelta:opponentPpg && opponentBaseline ? opponentPpg - opponentBaseline : null,
       marginIndex:row.blowoutPoints - row.heartbreakPoints,
+    });
+  });
+
+  const scoredRows = baseRows.filter(row=> row.scores.length > 0 && row.consistencyFactorRaw != null);
+  const consistencyMedian = median(scoredRows.map(row=>row.consistencyFactorRaw));
+  const leagueMaxPpg = scoredRows.reduce((max,row)=>Math.max(max,row.ppg),0);
+  const rows = baseRows.map(row=>{
+    const k = row.scores.length;
+    const allPlayWinPct = row.allPlayMatchups > 0
+      ? ((row.allPlayWins + row.allPlayTies * .5) / row.allPlayMatchups) * 100
+      : 0;
+    const pfNormalized = leagueMaxPpg > 0 && row.ppg > 0 ? boundedPercent((row.ppg / leagueMaxPpg) * 100) : 0;
+    const consistencyFactorAdjusted = row.consistencyFactorRaw == null ? 0 : (k < 4
+      ? (k/4) * row.consistencyFactorRaw + (1-k/4) * consistencyMedian
+      : row.consistencyFactorRaw);
+    const actualWinPct = row.games > 0 ? (row.actualWins / row.games) * 100 : 0;
+    const fsnIndex = row.allPlayMatchups > 0
+      ? boundedPercent(.60 * allPlayWinPct + .25 * pfNormalized + .15 * consistencyFactorAdjusted)
+      : null;
+    return Object.assign(row, {
+      allPlayWinPct,
+      pfNormalized,
+      consistencyFactorAdjusted:boundedPercent(consistencyFactorAdjusted),
+      actualWinPct,
+      powerLuckDelta:actualWinPct-allPlayWinPct,
+      fsnIndex,
     });
   });
 
@@ -14254,6 +14395,8 @@ function compute(selectedWeek){
     rows,
     weeks:Array.from(weeks.keys()).sort((a,b)=>a-b),
     opponentBaseline,
+    leagueMaxPpg,
+    consistencyMedian,
     waiverGems:waiverGems(schedule, throughWeek),
     coverage:{
       scoredWeeks:weeks.size,
@@ -15578,10 +15721,74 @@ function renderSeasonStandings(){
   '</div>';
 }
 
+function renderPowerIndex(model){
+  const rows = (model && Array.isArray(model.rows) ? model.rows : []).filter(function(row){
+    return row && row.fsnIndex != null && row.allPlayMatchups > 0;
+  }).sort(function(a,b){
+    return (b.fsnIndex-a.fsnIndex) ||
+      (b.allPlayWinPct-a.allPlayWinPct) ||
+      (b.ppg-a.ppg) ||
+      (b.consistencyFactorAdjusted-a.consistencyFactorAdjusted) ||
+      String(a.team.name).localeCompare(String(b.team.name));
+  });
+
+  if(!model || !model.coverage || !model.coverage.scoredWeeks || !rows.length){
+    return '<div class="analytics-empty">FSN Index activates after Week 1 scores finalize.</div>';
+  }
+
+  const cards = rows.map(function(row,index){
+    const cv = Number(row.powerCv);
+    const volatility = cv < .12
+      ? {label:'STABLE FLOOR',band:'stable'}
+      : cv <= .25
+        ? {label:'BALANCED',band:'balanced'}
+        : {label:'VOLATILE CEILING',band:'volatile'};
+    const allPlayRecord = row.allPlayWins+'–'+row.allPlayLosses+(row.allPlayTies ? '–'+row.allPlayTies : '');
+    const luck = Number(row.powerLuckDelta) || 0;
+    const luckClass = luck > .05 ? 'analytics-good' : luck < -.05 ? 'analytics-bad' : 'analytics-muted';
+    const luckLabel = (luck > 0 ? '+' : '')+analyticsValue(luck)+' pts';
+    let teamMark = '';
+    try{
+      teamMark = crest(row.team.name,row.team.logo,34);
+    }catch(err){
+      console.warn('[PowerIndex] crest could not be rendered for team '+row.team.id,err);
+      teamMark = '<span class="analytics-model-num" aria-hidden="true">TM</span>';
+    }
+    return '<article class="power-index-card" role="listitem" aria-label="Rank '+(index+1)+': '+esc(row.team.name)+'">'+
+      '<div class="power-index-head">'+
+        '<span class="power-index-rank" aria-label="Rank '+(index+1)+'">'+(index+1)+'</span>'+
+        '<span class="standings-team-logo" aria-hidden="true">'+teamMark+'</span>'+
+        '<span class="power-index-identity">'+
+          '<span class="power-index-team" title="'+esc(row.team.name)+'">'+esc(row.team.name)+'</span>'+
+          '<span class="power-index-tag" data-band="'+volatility.band+'">'+volatility.label+'</span>'+
+        '</span>'+
+        '<span class="power-index-score"><strong>'+analyticsValue(row.fsnIndex)+'</strong><span>FSN Index</span></span>'+
+      '</div>'+
+      '<div class="power-index-metrics">'+
+        '<div class="power-index-metric"><span class="power-index-metric-label">All-Play</span><span class="power-index-metric-value">'+allPlayRecord+' ('+analyticsValue(row.allPlayWinPct)+'%)</span></div>'+
+        '<div class="power-index-metric"><span class="power-index-metric-label">PPG</span><span class="power-index-metric-value">'+analyticsValue(row.ppg)+' / '+analyticsValue(model.leagueMaxPpg)+' max</span></div>'+
+        '<div class="power-index-metric"><span class="power-index-metric-label">Consistency</span><span class="power-index-metric-value">'+analyticsValue(row.consistencyFactorAdjusted)+' CF · '+analyticsValue(cv*100)+'% CV</span></div>'+
+        '<div class="power-index-metric"><span class="power-index-metric-label">Luck Delta</span><span class="power-index-metric-value '+luckClass+'">'+luckLabel+'</span></div>'+
+      '</div>'+
+    '</article>';
+  }).join('');
+
+  return '<div class="w-full max-w-full" style="width:100%;max-width:100%;min-width:0;">'+
+    '<div class="analytics-status">'+
+      '<span class="analytics-status-chip"><b>60%</b> All-Play</span>'+
+      '<span class="analytics-status-chip"><b>25%</b> Scoring</span>'+
+      '<span class="analytics-status-chip"><b>15%</b> Consistency</span>'+
+    '</div>'+
+    '<div class="power-index-list" role="list" aria-label="FSN Power Index rankings">'+cards+'</div>'+
+  '</div>';
+}
+
 if($('statsModeToggle')) $('statsModeToggle').addEventListener('click', e=>{
   const button = e.target.closest('[data-stats-mode]');
   if(!button) return;
-  ui.statsMode = button.dataset.statsMode === 'advanced' ? 'advanced' : 'standings';
+  ui.statsMode = button.dataset.statsMode === 'advanced' || button.dataset.statsMode === 'power'
+    ? button.dataset.statsMode
+    : 'standings';
   savePrefs();
   safeRun('analytics-toggle', renderAnalytics, ()=> renderScreenFallback('analytics'));
 });
@@ -15639,6 +15846,19 @@ function renderAnalytics(){
     <span class="analytics-status-chip"><b>${model.coverage.lineupTeams}</b> Lineup Feeds</span>
     <span class="analytics-status-chip"><b>${model.coverage.waiverClaims}</b> Executed Adds</span>
   </div>`;
+
+  if(ui.statsMode === 'power'){
+    try{
+      if(updatedLabel) updatedLabel.textContent = model.coverage.scoredWeeks
+        ? `FSN INDEX · THROUGH WEEK ${model.throughWeek}`
+        : 'PRESEASON · INDEX STANDBY';
+      body.innerHTML = renderPowerIndex(model);
+    }catch(err){
+      console.error('[PowerIndex] component render failed for Week '+model.throughWeek,err);
+      body.innerHTML = '<div class="analytics-empty">The FSN Power Index could not verify this scoring payload. Re-fetch the league to retry.</div>';
+    }
+    return;
+  }
 
   if(!model.coverage.scoredWeeks){
     body.innerHTML = status + `<div class="analytics-grid">${analyticsModel(
@@ -18237,7 +18457,7 @@ function loadPrefs(){
   $('seasonYear').value = (saved && saved.season) || String(uiActiveSeasonYear());
   $('weekNum').value = (saved && saved.week) || '';
   if(saved && (saved.provider === 'sleeper' || saved.provider === 'espn' || saved.provider === 'yahoo')) setProvider(saved.provider);
-  if(saved && (saved.statsMode === 'standings' || saved.statsMode === 'advanced')) ui.statsMode = saved.statsMode;
+  if(saved && (saved.statsMode === 'standings' || saved.statsMode === 'advanced' || saved.statsMode === 'power')) ui.statsMode = saved.statsMode;
 try{ if($('espnS2Input'))   $('espnS2Input').value   = localStorage.getItem('fsn.espn.s2.v1')   || ''; }catch(e){}
   try{ if($('espnSwidInput')) $('espnSwidInput').value = localStorage.getItem('fsn.espn.swid.v1') || ''; }catch(e){}
   refreshEspnAuthStatus();
