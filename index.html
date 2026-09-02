@@ -6770,7 +6770,9 @@ const MARGIN_TIERS = [
   {
     tier:1, key:'close', label:'TRUE NAIL-BITER', tone:'red',
     min:0.0, max:NAILBITER_MARGIN,          // [0.0, 5.0)
-    tags:['NAIL-BITER', 'PHOTO FINISH', '0.2 MARGIN'],
+    /* MARGIN is a dynamic token. marginTag() replaces it with the evaluated
+       score differential; a stale numeric literal can never reach the pill. */
+    tags:['NAIL-BITER', 'PHOTO FINISH', 'MARGIN'],
     phrases:[
       'the width of a garbage-time reception',
       'stat correction territory',
@@ -6844,9 +6846,27 @@ function marginTierLabel(margin){ return marginTier(margin).label; }
 /* A deterministic headline tag from this tier's sanctioned pool. The seed
    keeps the same matchup on the same tag across re-renders. */
 function marginTag(margin, seed){
-  const tier = marginTier(margin);
+  const evaluated = Number(margin);
+  if(!Number.isFinite(evaluated)){
+    console.error('[NewsDesk] margin badge received a non-finite value', { margin, seed });
+    return 'MARGIN UNAVAILABLE';
+  }
+  const absoluteMargin = Math.abs(evaluated);
+  const tier = marginTier(absoluteMargin);
   const idx = Math.abs(hash(String(seed == null ? tier.key : seed))) % tier.tags.length;
-  return tier.tags[idx];
+  const tag = tier.tags[idx];
+  return tag === 'MARGIN' ? exactMarginTag(absoluteMargin, seed) : tag;
+}
+
+/* Used by the weekly margin desk, whose badge is the evaluated differential
+   itself rather than a semantic tier label. */
+function exactMarginTag(margin, context){
+  const evaluated = Number(margin);
+  if(!Number.isFinite(evaluated)){
+    console.error('[NewsDesk] exact margin badge received a non-finite value', { margin, context });
+    return 'MARGIN UNAVAILABLE';
+  }
+  return `${Math.abs(evaluated).toFixed(1)} MARGIN`;
 }
 
 /* A deterministic sanctioned clause from this tier's phrase pool. */
@@ -6975,7 +6995,7 @@ const EDITORIAL_MATRIX = {
     "headline": [
       "DECIMAL-POINT DERBY: {WIN} FINISHES {DIFF_CLAUSE} {LOSE}",
       "ROBBERY IN BROAD DAYLIGHT: {WIN} EDGES {LOSE} {WSCORE}–{LSCORE}",
-      "THE 0.2 MARGIN OF AGONY: {WIN} SURVIVES {LOSE}",
+      "THE {MARGIN}-POINT MARGIN OF AGONY: {WIN} SURVIVES {LOSE}",
       "MONDAY NIGHT ESCAPE: {WIN} FINISHES {DIFF_CLAUSE} {LOSE}",
       "STAT CORRECTION NIGHTMARE: {WIN} WINS BY A HAIR OVER {LOSE}",
       "THE KNEEL-DOWN MIRACLE: {WIN} HANGS ON AGAINST {LOSE}",
@@ -7004,7 +7024,7 @@ const EDITORIAL_MATRIX = {
       "THE ULTIMATE SWEAT: {WIN} HOLDS OFF {LOSE} {WSCORE}–{LSCORE}",
       "LUCKY BREAK: {WIN} FINISHES {DIFF_CLAUSE} {LOSE}",
       "PHOTO FINISH: {WIN} SURVIVED THE FINAL REFRESH AGAINST {LOSE}",
-      "0.2 MARGIN TERRITORY: {WIN} EDGES {LOSE} {WSCORE}–{LSCORE}",
+      "{MARGIN}-POINT TERRITORY: {WIN} EDGES {LOSE} {WSCORE}–{LSCORE}",
       "NAIL-BITER: {WIN} WINS BY THE WIDTH OF A GARBAGE-TIME RECEPTION",
       "STAT CORRECTION TERRITORY: {WIN} FINISHES {DIFF_CLAUSE} {LOSE}"
     ],
@@ -7579,7 +7599,7 @@ const OUTRO_STRUCTURES = [
 
 const PHASE_OUTROS = {
   early: [
-    'Weeks 1–3 are for signal hunting, not obituaries; the panic meter can move without declaring anybody finished.',
+    'The early sample is small, but the correction is concrete: the next lineup has to answer the exact weakness this score exposed.',
     'Draft-day priors still matter this early, but the first real scoring sample is officially on the board.',
     'An 0–2 start is a warning light, not a mathematical sentence. The next roster move matters more than the meme.',
     'Week 1 can be a fluke. Week 2 can be noise. By Week 3, managers at least have enough data to start arguing responsibly.'
@@ -7794,7 +7814,7 @@ const BODY_CLOSES = [
   'One week cannot finish the argument; it can permanently change its terms.', 'The response has to arrive in the lineup, not in the group chat.',
   'The model will carry this evidence until another Sunday overturns it.', 'The archive keeps the receipt long after the projections disappear.',
   'Reputation gets another week; the scoreboard has already filed its verdict.', 'The next decision is whether this was a peak, a warning or a new baseline.',
-  'The rematch inherits every consequence of this finish.', 'The schedule offers another test, but no erase button.',
+  'Any rematch will start from a series ledger this result has already changed.', 'The schedule offers another test, but no erase button.',
   'A single win enters the record; the manner of it enters league memory.', 'The result leaves both teams with a clearer assignment for next week.',
   'The trophy path changed here even if the bracket has not noticed yet.', 'The margin will matter again when tiebreakers replace September optimism.',
   'The winner owns the evidence and the loser owns the correction plan.', 'Future rankings can debate the weight, not the existence, of this signal.',
@@ -8078,7 +8098,7 @@ const RECAP_HEADLINE_SUFFIXES = [
   "THE RESPONSE MUST COME IN THE LINEUP","THE FINAL CREATES A NEW BASELINE","THE NUMBERS REMOVE THE EASY EXCUSE","THE SCHEDULE CARRIES THE CONSEQUENCE",
   "THE VERDICT ENTERS LEAGUE MEMORY","THE PRESSURE REDISTRIBUTES IMMEDIATELY","THE SCOREBOARD FILES THE DECISION","THE NEXT REFRESH CANNOT ERASE IT",
   "THE LEAGUE GETS A CLEANER MAP","THE OUTCOME BECOMES A CONTROL POINT","THE WIN CHANGES THE BURDEN OF PROOF","THE LOSS EXPOSES THE REQUIRED FIX",
-  "THE TAPE AND TOTAL AGREE","THE RESULT SETS UP THE NEXT TEST","THE ARCHIVE ADDS A WARNING LABEL","THE WEEK LEAVES A PERMANENT SIGNAL",
+  "THE TAPE AND TOTAL AGREE","THE RESULT SETS UP THE NEXT TEST","THE ARCHIVE ADDS A WARNING LABEL","THE SERIES LEDGER HAS A NEW LINE",
   "THE FINAL DEFINES THE CURRENT SHAPE","THE MATCHUP RESETS EXPECTATIONS","THE SCORE BECOMES THE OPERATING CONDITION","THE SEASON MOVES FORWARD WITH PROOF"
 ];
 const STATE_HEADLINE_SUFFIXES = [
@@ -8817,6 +8837,174 @@ function ppgComparisonClause(champPpg, sackoPpg){
   if(champ > sacko) return `${(champ - sacko).toFixed(1)} points per game fewer than the champion`;
   return `${(sacko - champ).toFixed(1)} points per game MORE than the champion, proving points meant nothing without playoff matchups`;
 }
+
+/* Postgame context is calculated once and carried as structured facts. These
+   helpers read only the already-hydrated week and Record Book snapshots; they
+   never mutate either source or alter the deterministic seed. */
+function matchupMarginBenchmark(ctx, side){
+  const decided = ((ctx && ctx.scored) || []).filter(s=> s && s.winner && s.loser);
+  const valid = decided.filter(s=> Number.isFinite(Number(s.margin)));
+  if(valid.length !== decided.length){
+    console.error('[NewsDesk] non-finite final margin excluded from weekly benchmark', {
+      week:ctx && ctx.week, excluded:decided.length - valid.length,
+    });
+  }
+  const margin = Number(side && side.margin);
+  if(!Number.isFinite(margin) || !valid.length){
+    console.error('[NewsDesk] matchup margin benchmark could not be evaluated', {
+      week:ctx && ctx.week, margin:side && side.margin,
+    });
+    return null;
+  }
+  const margins = valid.map(s=> Math.abs(Number(s.margin)));
+  const leagueAverage = margins.reduce((sum,value)=> sum + value, 0) / margins.length;
+  const otherMargins = valid.filter(s=> s !== side).map(s=> Math.abs(Number(s.margin)));
+  const closest = valid.slice().sort((a,b)=> Math.abs(Number(a.margin)) - Math.abs(Number(b.margin)));
+  const rank = closest.indexOf(side) + 1;
+  return {
+    leagueAverage,
+    otherAverage:otherMargins.length ? otherMargins.reduce((sum,value)=> sum + value, 0) / otherMargins.length : null,
+    differenceFromAverage:Math.abs(margin) - leagueAverage,
+    closestRank:rank > 0 ? rank : null,
+    totalGames:valid.length,
+  };
+}
+
+function postgameSeriesLedger(facts){
+  const hist = LeagueData.leagueHistory || {};
+  const log = Array.isArray(hist.gameLog) ? hist.gameLog : [];
+  const winner = facts && facts.winner;
+  const loser = facts && facts.loser;
+  const winnerId = winner && winner.ownerId;
+  const loserId = loser && loser.ownerId;
+  const year = Number(facts && facts.lore && facts.lore.year || viewedSeasonYear() || 0);
+  const week = Number(facts && facts.week || 0);
+  if(!winnerId || !loserId || !year || !week || !log.length) return null;
+
+  const prior = log.filter(game=> archiveBefore(game, year, week) && sameOwners(game, winnerId, loserId));
+  let winsFor = 1, winsAgainst = 0, ties = 0; // the current final is the winner's additional win
+  prior.forEach(game=>{
+    if(!game.winnerOwnerId) ties += 1;
+    else if(String(game.winnerOwnerId) === String(winnerId)) winsFor += 1;
+    else if(String(game.winnerOwnerId) === String(loserId)) winsAgainst += 1;
+  });
+  return {
+    meetings:prior.length + 1,
+    priorMeetings:prior.length,
+    winsFor,
+    winsAgainst,
+    ties,
+    winnerRecord:winsFor + '-' + winsAgainst + (ties ? '-' + ties : ''),
+    loserRecord:winsAgainst + '-' + winsFor + (ties ? '-' + ties : ''),
+  };
+}
+
+function matchupLineupAudit(side){
+  const winnerRoster = side && side.winnerRoster;
+  const loserRoster = side && side.loserRoster;
+  if(!winnerRoster && !loserRoster) return null;
+  const legalSwaps = loserRoster && Array.isArray(loserRoster.swaps)
+    ? loserRoster.swaps.filter(swap=> swap && swap.in && swap.out && Number.isFinite(Number(swap.gain)) && Number(swap.gain) > 0)
+    : [];
+  const swap = legalSwaps.slice().sort((a,b)=> Number(b.gain) - Number(a.gain))[0] || null;
+  const margin = Number(side && side.margin);
+  const gain = swap ? Number(swap.gain) : null;
+  const winnerEfficiency = winnerRoster && Number.isFinite(Number(winnerRoster.efficiency)) ? Number(winnerRoster.efficiency) : null;
+  const loserEfficiency = loserRoster && Number.isFinite(Number(loserRoster.efficiency)) ? Number(loserRoster.efficiency) : null;
+  const loserWasted = loserRoster && Number.isFinite(Number(loserRoster.wasted)) ? Number(loserRoster.wasted) : null;
+  return {
+    swap,
+    gain,
+    slot:swap ? (swap.out.slotLabel || swap.out.pos || 'starting slot') : '',
+    winnerEfficiency,
+    loserEfficiency,
+    loserWasted,
+    wouldFlip:swap && Number.isFinite(margin) ? gain > Math.abs(margin) : false,
+    wouldTie:swap && Number.isFinite(margin) ? Math.abs(gain - Math.abs(margin)) < 0.05 : false,
+  };
+}
+
+function losingScoreCounterfactual(ctx, side){
+  const score = Number(side && side.loserScore);
+  const loserId = side && side.loser && side.loser.id;
+  if(!Number.isFinite(score) || loserId == null){
+    console.error('[NewsDesk] losing-score counterfactual could not be evaluated', {
+      week:ctx && ctx.week, score:side && side.loserScore, loserId,
+    });
+    return null;
+  }
+  const opponents = ((ctx && ctx.posted) || []).filter(row=> row && row.team && String(row.team.id) !== String(loserId) && Number.isFinite(Number(row.score)));
+  const otherLosingScores = ((ctx && ctx.scored) || [])
+    .filter(candidate=> candidate && candidate !== side && candidate.winner && candidate.loser && Number.isFinite(Number(candidate.loserScore)))
+    .map(candidate=> Number(candidate.loserScore));
+  const higherLosingScores = otherLosingScores.filter(value=> value > score).length;
+  return {
+    score,
+    opponentCount:opponents.length,
+    teamsBeaten:opponents.filter(row=> Number(row.score) < score).length,
+    teamsTied:opponents.filter(row=> Math.abs(Number(row.score) - score) < 0.001).length,
+    losingRank:higherLosingScores + 1,
+    losingCount:otherLosingScores.length + 1,
+    highestLosingTotal:higherLosingScores === 0,
+  };
+}
+
+function marginBenchmarkSentence(benchmark, margin){
+  if(!benchmark) return '';
+  const delta = Number(benchmark.differenceFromAverage);
+  const direction = delta < 0 ? 'tighter' : delta > 0 ? 'wider' : 'exactly level with';
+  const comparison = delta === 0
+    ? direction
+    : `<b>${n1(Math.abs(delta))}</b> points ${direction} than`;
+  const rank = benchmark.closestRank
+    ? ` It ranked <b>No. ${benchmark.closestRank}</b> of ${benchmark.totalGames} from closest to widest.`
+    : '';
+  return `The league's Week ${benchmark.week || ''} average final margin was <b>${n1(benchmark.leagueAverage)}</b>. ` +
+    `This <b>${n1(margin)}</b>-point finish landed ${comparison} that baseline.${rank}`;
+}
+
+function seriesLedgerSentence(series, winner, loser){
+  if(!series) return '';
+  return `The Supabase Record Book now carries <b>${series.meetings}</b> meeting${series.meetings === 1 ? '' : 's'} between these franchises. ` +
+    `<b>${esc(winner && winner.name)}</b> owns a <b>${series.winnerRecord}</b> series line; ` +
+    `the loss drops <b>${esc(loser && loser.name)}</b> to <b>${series.loserRecord}</b> from the other side of the ledger.`;
+}
+
+function lineupAuditSentence(audit, side){
+  if(!audit) return '';
+  if(audit.swap){
+    const result = audit.wouldFlip
+      ? `That legal swap alone was larger than the <b>${n1(side.margin)}</b>-point deficit and would have reversed the result.`
+      : audit.wouldTie
+        ? `That legal swap exactly matched the <b>${n1(side.margin)}</b>-point deficit and would have forced a tie.`
+        : `It recovers <b>${n1(audit.gain)}</b> points, but still leaves <b>${n1(Math.max(0, Number(side.margin) - audit.gain))}</b> points of the deficit unexplained.`;
+    return `The sharpest slot-level decision came at <b>${esc(audit.slot)}</b>: ` +
+      `<b>${esc(audit.swap.in.name)}</b> scored <b>${n1(audit.swap.in.points)}</b> on the bench while ` +
+      `<b>${esc(audit.swap.out.name)}</b> started for <b>${n1(audit.swap.out.points)}</b>. ${result}`;
+  }
+  if(audit.winnerEfficiency != null || audit.loserEfficiency != null){
+    const winnerLine = audit.winnerEfficiency == null ? 'unavailable' : n1(audit.winnerEfficiency) + '%';
+    const loserLine = audit.loserEfficiency == null ? 'unavailable' : n1(audit.loserEfficiency) + '%';
+    return `The lineup cards grade at <b>${winnerLine}</b> efficiency for <b>${esc(side.winner && side.winner.name)}</b> and ` +
+      `<b>${loserLine}</b> for <b>${esc(side.loser && side.loser.name)}</b>` +
+      `${audit.loserWasted != null ? `, with <b>${n1(audit.loserWasted)}</b> recoverable points left by the losing lineup` : ''}.`;
+  }
+  return '';
+}
+
+function scheduleLuckSentence(counterfactual, side){
+  if(!counterfactual) return '';
+  const ties = counterfactual.teamsTied
+    ? ` and tied ${counterfactual.teamsTied}`
+    : '';
+  const allPlay = `Across the full board it would have beaten <b>${counterfactual.teamsBeaten}</b> of ` +
+    `<b>${counterfactual.opponentCount}</b> other teams${ties}.`;
+  if(counterfactual.highestLosingTotal){
+    return `<b>${n1(counterfactual.score)}</b> was the highest losing total on the board — the definition of brutal schedule luck. ${allPlay}`;
+  }
+  return `<b>${n1(counterfactual.score)}</b> ranked <b>${counterfactual.losingRank}</b> of ${counterfactual.losingCount} among losing totals. ${allPlay}`;
+}
+
 function matrixFacts(ctx, side){
   const wr = side.winnerRoster, lr = side.loserRoster;
   const wpRaw = wr && wr.starters && wr.starters[0] ? wr.starters[0] : null;
@@ -8841,8 +9029,12 @@ function matrixFacts(ctx, side){
     PPG_COMPARISON:ppgComparisonClause(champPpg, sackoPpg),
     winnerTop:wp, loserTop:lp, loserBench:bench, loserWorstStarter:worst, benchSwing:swing,
     rivalry,
+    marginBenchmark:matchupMarginBenchmark(ctx, side),
+    lineupAudit:matchupLineupAudit(side),
   };
   facts.lore = buildHistoricalLore(facts);
+  if(facts.marginBenchmark) facts.marginBenchmark.week = ctx.week;
+  facts.postgameSeries = postgameSeriesLedger(facts);
   facts.persona = narrativePersona(facts);
   facts.winnerArchetype = narrativeArchetype(winner, ctx.week, facts.lore);
   facts.loserArchetype = narrativeArchetype(loser, ctx.week, facts.lore);
@@ -8876,7 +9068,6 @@ function assembleDeterministicStory(ctx, category, ordinal, facts, overrides){
   let quote = copy.quote;
   let outro = fillEditorial(outroForm, tokens);
   const winner = facts.winner || {}, loser = facts.loser || {};
-  const bench = facts.loserBench, worst = facts.loserWorstStarter;
 
   const winnerPlayerAvailable = !!(facts.winnerTop && Number(facts.winnerTop.points) > 0);
   const loserPlayerAvailable = !!(facts.loserTop && Number(facts.loserTop.points) > 0);
@@ -8884,7 +9075,8 @@ function assembleDeterministicStory(ctx, category, ordinal, facts, overrides){
     (!winnerPlayerAvailable && Number(facts.winnerScore) > 0) ||
     (!loserPlayerAvailable && Number(facts.loserScore) > 0);
 
-  let context = `<b>${esc(winner.name || 'The winner')}</b> got the result over <b>${esc(loser.name || 'the opponent')}</b>. `;
+  let context = `The final read <b>${esc(winner.name || 'The winner')} ${n1(facts.winnerScore)}–${n1(facts.loserScore)} ${esc(loser.name || 'the opponent')}</b>, ` +
+    `an exact margin of <b>${n1(facts.margin)}</b>. `;
   if(incompleteScoredPlayerFeed){
     context += `The margin was built across the full lineup, so the team-level scoring carries the analysis from start to finish. `;
   } else {
@@ -8895,12 +9087,14 @@ function assembleDeterministicStory(ctx, category, ordinal, facts, overrides){
       context += `<b>${esc(facts.loserTop.name)}</b> led the losing starters with <b>${n1(facts.loserTop.points)} points</b>. `;
     }
   }
-  if(bench && worst){
-    context += `<b>${esc(bench.name)}</b> scored <b>${n1(bench.points)}</b> on the bench while <b>${esc(worst.name)}</b> started for <b>${n1(worst.points)}</b>, a potential <b>${n1(facts.benchSwing)}</b>-point swing. `;
-  }
-  if(facts.rivalry && facts.rivalry.meetings){
-    context += `The all-time series now carries <b>${facts.rivalry.meetings}</b> recorded meeting${facts.rivalry.meetings === 1 ? '' : 's'} in the Record Book and stands at <b>${facts.rivalry.winsFor}-${facts.rivalry.winsAgainst}${facts.rivalry.ties ? '-' + facts.rivalry.ties : ''}</b> from the winner's side. `;
-  }
+  const benchmarkLine = marginBenchmarkSentence(facts.marginBenchmark, facts.margin);
+  const lineupLine = lineupAuditSentence(facts.lineupAudit, {
+    winner, loser, margin:facts.margin,
+  });
+  const seriesLine = seriesLedgerSentence(facts.postgameSeries, winner, loser);
+  if(benchmarkLine) context += benchmarkLine + ' ';
+  if(lineupLine) context += lineupLine + ' ';
+  if(seriesLine) context += seriesLine + ' ';
 
   const phase = seasonToneBucket(ctx.week);
   const phaseLine = PHASE_OUTROS[phase][hash(selectedLeagueId() + ':' + viewedSeasonYear() + ':' + ctx.week + ':' + category + ':' + ordinal) % PHASE_OUTROS[phase].length];
@@ -8928,9 +9122,7 @@ function assembleDeterministicStory(ctx, category, ordinal, facts, overrides){
   /* Margin-tier stories take their tag straight from the tier's sanctioned
      pool so a 19-point win can never print NAIL-BITER. */
   const tierForCategory = MARGIN_TIER_BY_KEY[category] || null;
-  const tierTag = tierForCategory
-    ? tierForCategory.tags[Math.abs(hash(String(o.id || category) + ':' + ordinal)) % tierForCategory.tags.length]
-    : null;
+  const tierTag = tierForCategory ? marginTag(facts.margin, String(o.id || category) + ':' + ordinal) : null;
   const defaultTags = { bench:'LINEUP MALPRACTICE', fraud:'FRAUD ALERT' };
   return article({
     id:o.id, kind:o.kind || category, tag:o.tag || tierTag || defaultTags[category] || 'FSN',
@@ -8945,10 +9137,16 @@ function assembleDeterministicStory(ctx, category, ordinal, facts, overrides){
     numbers:{ title:'By the Numbers', rows:[
       {label:'Final', value:n1(facts.winnerScore) + '–' + n1(facts.loserScore)},
       {label:'Margin', value:n1(facts.margin)},
+      ...(facts.marginBenchmark
+        ? [{label:'League-average margin', value:n1(facts.marginBenchmark.leagueAverage), note:'Week ' + ctx.week + ' · ' + facts.marginBenchmark.totalGames + ' finals'}]
+        : []),
       ...(incompleteScoredPlayerFeed
         ? [{label:'Team scoring', value:n1(facts.winnerScore) + '–' + n1(facts.loserScore), note:'Final team totals.'}]
         : [{label:'Top winning starter', value:winnerPlayerAvailable ? esc(facts.winnerTop.name) + ' · ' + n1(facts.winnerTop.points) + ' pts' : 'No scored starter available'}]),
       {label:'Bench swing available', value:(facts.benchSwing ? n1(facts.benchSwing) : '0.0') + ' pts'},
+      ...(facts.postgameSeries
+        ? [{label:'All-time series', value:esc(winner.name) + ' ' + facts.postgameSeries.winnerRecord, note:facts.postgameSeries.meetings + ' recorded meeting' + (facts.postgameSeries.meetings===1?'':'s')}]
+        : []),
       ...(facts.lore && facts.lore.claims.length
         ? [{label:'Historical marker', value:esc(facts.lore.claims[0]), note:facts.lore.pairMeetingsBefore + ' prior head-to-head meeting' + (facts.lore.pairMeetingsBefore===1?'':'s')}]
         : []),
@@ -10918,8 +11116,19 @@ function tlRecap(ctx){
     const dseed = 'debrief' + ctx.week + tight.winner.id;
     const dTier = marginTier(tight.margin);
     const dCategory = dTier.key;
-    const dCopy = matrixCopy(ctx, dCategory, 20, matrixFacts(ctx, tight));
-    const avgMargin = decided.reduce((acc,d)=> acc + d.margin, 0) / decided.length;
+    const tightFacts = matrixFacts(ctx, tight);
+    const dCopy = matrixCopy(ctx, dCategory, 20, tightFacts);
+    const benchmarkLine = marginBenchmarkSentence(tightFacts.marginBenchmark, tight.margin);
+    const lineupLine = lineupAuditSentence(tightFacts.lineupAudit, tight);
+    const verifiedSwap = !!(tightFacts.lineupAudit && tightFacts.lineupAudit.swap);
+    const seriesLine = seriesLedgerSentence(tightFacts.postgameSeries, tight.winner, tight.loser);
+    const playerLine = tightFacts.winnerTop && tightFacts.loserTop
+      ? `<b>${esc(tightFacts.winnerTop.name)}</b> led the winning card with <b>${n1(tightFacts.winnerTop.points)}</b>, ` +
+        `while <b>${esc(tightFacts.loserTop.name)}</b> supplied <b>${n1(tightFacts.loserTop.points)}</b> for the other side.`
+      : `The player-level feed did not expose a complete slot card, so the desk is holding the tactical finding to the verified team totals.`;
+    const historyLine = seriesLine || `The loaded Record Book contains no prior meeting between these franchises, making this the first documented line in the series.`;
+    const recordLine = `The standings consequence is exact: <b>${esc(tight.winner.name)}</b> exits Week ${ctx.week} at ` +
+      `<b>${esc(tightFacts.winner.record)}</b>, while <b>${esc(tight.loser.name)}</b> falls to <b>${esc(tightFacts.loser.record)}</b>.`;
     /* Four bands, four vocabularies. The closing clause is drawn from the tier
        the margin actually landed in, so last-drive language cannot attach to a
        19-point win and a 3-point win never reads as routine. */
@@ -10945,25 +11154,21 @@ function tlRecap(ctx){
         'and it was still the least lopsided result on the slate.',
       ],
     };
-    const secondPara = dTier.tier === 1
-      ? `Every other game on the board finished by an average of <b>${n1(avgMargin)}</b>. ` +
-        `This one was decided by less than a running back's afternoon.`
+    const consequenceLine = dTier.tier === 1
+      ? (verifiedSwap
+          ? `<b>${esc(tight.winner.name)}</b> survived a result whose verified lineup swing is measured above; ` +
+            `<b>${esc(tight.loser.name)}</b> now owns every start/sit decision that fits inside <b>${n1(tight.margin)}</b> points.`
+          : `<b>${esc(tight.winner.name)}</b> survived inside <b>${n1(tight.margin)}</b> points. Without a complete slot card, the desk assigns no unverified lineup blame.`)
       : dTier.tier === 2
-        ? `Every game on the board finished by an average of <b>${n1(avgMargin)}</b>. ` +
-          `A <b>${n1(tight.margin)}</b>-point margin is one touchdown — close enough that it stayed live until the 4th quarter, ` +
-          `wide enough that nobody needed a stat correction to settle it.`
-        : `Every game on the board finished by an average of <b>${n1(avgMargin)}</b>, ` +
-          `so a <b>${n1(tight.margin)}</b>-point result was the closest thing Week ${ctx.week} had to a fight.`;
-    const thirdPara = dTier.tier === 1
-      ? `The loss drops <b>${esc(tight.loser.name)}</b> into a week of what-ifs. The desk has heard three of them already.`
-      : dTier.tier === 2
-        ? `<b>${esc(tight.loser.name)}</b> needed one more score and never got it. That is a different week to carry than a blowout.`
-        : `<b>${esc(tight.loser.name)}</b> was in it without ever being ahead of it, which is a different kind of week to carry.`;
+        ? (lineupLine
+            ? `<b>${esc(tight.loser.name)}</b> needed one more scoring drive from the fantasy lineup and never found it; the verified slot math above shows whether the answer was available.`
+            : `<b>${esc(tight.loser.name)}</b> finished one score short; the incomplete slot feed does not support a claim that the missing points were available on the bench.`)
+        : `<b>${esc(tight.winner.name)}</b> created real separation, and the weekly baseline shows exactly how much of it exceeded an ordinary final.`;
     out.push(tl({
       id: 'tl-debrief-' + ctx.week,
       kind:'debrief', topic:'matchups', slot:'recap', offset: 90 + (hash(dseed) % 150),
       metaTag:'DEBRIEF',
-      tag: marginTag(tight.margin, 'tl-debrief-' + ctx.week), tone: dTier.tone, priority: 62,
+      tag: exactMarginTag(tight.margin, 'tl-debrief-' + ctx.week), tone: dTier.tone, priority: 62,
       byline:'FSN Senior League Insider',
       crest:{ name: tight.winner.name, logo: tight.winner.logo },
       headline: esc(upper(dCopy.headline)),
@@ -10972,13 +11177,17 @@ function tlRecap(ctx){
         `${datelineTag()} <b>${esc(tight.winner.name)}</b> ${n1(tight.winnerScore)}, ` +
         `<b>${esc(tight.loser.name)}</b> ${n1(tight.loserScore)}. A <b>${n1(tight.margin)}</b>-point margin — ` +
         `${pick(MARGIN_CLAUSES[dCategory], dseed)}`,
-        secondPara,
-        thirdPara,
+        benchmarkLine,
+        lineupLine || playerLine,
+        historyLine,
+        recordLine + ' ' + consequenceLine,
       ],
       quote: { text:dCopy.quote, who:upper(managerLabel(tight.winner)) },
       numbers: { title:'Week ' + ctx.week + ' Margins', rows: decided.slice().sort((a,b)=> a.margin - b.margin).slice(0,4).map(d=>({
         label: `${esc(d.winner.name)} over ${esc(d.loser.name)}`, value: n1(d.margin),
-      })), note:`Closest finishes first. Tier bands: nail-biter under ${n1(NAILBITER_MARGIN)}, one-score through ${n1(ONE_SCORE_MARGIN)}, competitive through ${n1(COMPETITIVE_MARGIN)}, blowout beyond.` },
+      })), note:`Closest finishes first. Week ${ctx.week} league-average margin: ${n1(tightFacts.marginBenchmark && tightFacts.marginBenchmark.leagueAverage)}. Tier bands: nail-biter under ${n1(NAILBITER_MARGIN)}, one-score through ${n1(ONE_SCORE_MARGIN)}, competitive through ${n1(COMPETITIVE_MARGIN)}, blowout beyond.` },
+      facts:tightFacts,
+      narrativeLocked:true,
     }));
 
     /* The other end of the same board — a debrief desk that only covers the
@@ -10986,29 +11195,45 @@ function tlRecap(ctx){
     const blowout = decided.slice().sort((a,b)=> b.margin - a.margin)[0];
     if(blowout && blowout !== tight && isBlowoutMargin(blowout.margin) && blowout.margin > tight.margin + 15){
       const bseed = 'blowout' + ctx.week + blowout.winner.id;
+      const blowoutFacts = matrixFacts(ctx, blowout);
+      const bCopy = matrixCopy(ctx, 'blowout', 20, blowoutFacts);
+      const counterfactual = losingScoreCounterfactual(ctx, blowout);
+      const scheduleLine = scheduleLuckSentence(counterfactual, blowout);
+      const blowoutLineup = lineupAuditSentence(blowoutFacts.lineupAudit, blowout);
+      const blowoutSeries = seriesLedgerSentence(blowoutFacts.postgameSeries, blowout.winner, blowout.loser) ||
+        `The loaded Record Book contains no prior meeting between these franchises, so this final opens the documented series.`;
+      const blowoutPlayerLine = blowoutFacts.winnerTop && blowoutFacts.loserTop
+        ? `<b>${esc(blowoutFacts.winnerTop.name)}</b> set the winning pace at <b>${n1(blowoutFacts.winnerTop.points)}</b>; ` +
+          `<b>${esc(blowoutFacts.loserTop.name)}</b> answered with <b>${n1(blowoutFacts.loserTop.points)}</b>, leaving the rest of the losing card unable to close the gap.`
+        : `The verified team totals establish the separation; the loaded feed does not expose a complete player-level card for a defensible slot claim.`;
       out.push(tl({
         id: 'tl-blowout-' + ctx.week,
         kind:'debrief', topic:'matchups', slot:'recap', offset: 140 + (hash(bseed) % 160),
         metaTag:'DEBRIEF',
-        tag: marginTag(blowout.margin, 'tl-blowout-' + ctx.week), tone:'gold', priority: 60,
+        tag: exactMarginTag(blowout.margin, 'tl-blowout-' + ctx.week), tone:'gold', priority: 60,
         byline:'FSN Numbers Desk',
         crest:{ name: blowout.winner.name, logo: blowout.winner.logo },
-        headline: esc(upper(matrixCopy(ctx, 'blowout', 20, matrixFacts(ctx, blowout)).headline)),
-        dek: esc(matrixCopy(ctx, 'blowout', 20, matrixFacts(ctx, blowout)).lede),
+        headline: esc(upper(bCopy.headline)),
+        dek: esc(bCopy.lede),
         paragraphs: [
           `${datelineTag()} <b>${esc(blowout.winner.name)}</b> ${n1(blowout.winnerScore)}, ` +
           `<b>${esc(blowout.loser.name)}</b> ${n1(blowout.loserScore)}. A <b>${n1(blowout.margin)}</b>-point margin in a week where the average game finished by ` +
-          `<b>${n1(decided.reduce((s2,d)=> s2 + d.margin, 0) / decided.length)}</b>.`,
-          `<b>${n1(blowout.loserScore)}</b> would have lost to <b>${decided.filter(d=> d.loserScore > blowout.loserScore).length}</b> of the other losing scores on this board too. ` +
-          pick(['This was not a matchup problem. This was a roster problem.',
-                'There is no lineup tweak that closes that gap.',
-                'The bench had nothing. The starters had less.'], bseed),
-          `<b>${esc(blowout.winner.name)}</b> moves on. <b>${esc(blowout.loser.name)}</b> has a week to think about it.`,
+          `<b>${n1(blowoutFacts.marginBenchmark && blowoutFacts.marginBenchmark.leagueAverage)}</b>.`,
+          scheduleLine,
+          blowoutLineup || blowoutPlayerLine,
+          blowoutSeries,
+          `<b>${esc(blowout.winner.name)}</b> leaves Week ${ctx.week} at <b>${esc(blowoutFacts.winner.record)}</b>; ` +
+          `<b>${esc(blowout.loser.name)}</b> falls to <b>${esc(blowoutFacts.loser.record)}</b>. ` +
+          (blowoutLineup
+            ? `The counterfactual separates schedule cruelty from roster failure, and the lineup audit identifies which part of the deficit was actually recoverable.`
+            : `The counterfactual measures the schedule effect; the incomplete slot feed does not support a claim about how much of the deficit was recoverable.`),
         ],
-        quote: { text:matrixCopy(ctx, 'blowout', 20, matrixFacts(ctx, blowout)).quote, who:upper(managerLabel(blowout.winner)) },
-        numbers: { title:'Week ' + ctx.week + ' Blowouts', rows: decided.slice().sort((a,b)=> b.margin - a.margin).slice(0,4).map(d=>({
+        quote: { text:bCopy.quote, who:upper(managerLabel(blowout.winner)) },
+        numbers: { title:'Week ' + ctx.week + ' Blowouts', rows: decided.filter(d=> isBlowoutMargin(d.margin)).sort((a,b)=> b.margin - a.margin).slice(0,4).map(d=>({
           label: `${esc(d.winner.name)} over ${esc(d.loser.name)}`, value: n1(d.margin),
-        })), note:'Widest margins first.' },
+        })), note:`Widest margins first. Week ${ctx.week} league-average margin: ${n1(blowoutFacts.marginBenchmark && blowoutFacts.marginBenchmark.leagueAverage)}.` },
+        facts:blowoutFacts,
+        narrativeLocked:true,
       }));
     }
   }
