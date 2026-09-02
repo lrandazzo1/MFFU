@@ -11707,6 +11707,137 @@ function projectedSwingPosition(ctx, teamA, teamB){
   return rows[0] || null;
 }
 
+const MATCHUP_HEADLINES = [
+  'MARQUEE FILE: {A} AND {B} TAKE OVER THE WEEK {WEEK} BOARD',
+  'PRESSURE GAME: {A} DRAWS {B} WITH THE LEAGUE WATCHING',
+  'CENTER STAGE, WEEK {WEEK}: {A} MEETS {B} WITH RECEIPTS',
+  'THE WEEK {WEEK} STANDARD: {A} AND {B} GET THE HEADLINE',
+  'MATCHUP OF THE WEEK: {A}–{B} CARRIES THE HEAVIEST FILE',
+];
+const MATCHUP_WEEK_ONE_HEADLINES = [
+  'OPENING STATEMENT: {A} AND {B} TAKE CENTER STAGE',
+  'WEEK 1 PRESSURE TEST: {A} DRAWS {B} WITH RECEIPTS',
+  'FIRST IMPRESSION, OLD FILE: {A} MEETS {B}',
+  'THE OPENER HAS A HEADLINER: {A} VS {B}',
+  'WEEK 1 STANDARD: {A} AND {B} OPEN UNDER THE LIGHTS',
+];
+
+function matchupRecordIsEmpty(record){
+  return /^0-0(?:-0)?$/.test(String(record || '').trim());
+}
+
+function matchupFinishLabel(year, rank){
+  const r = Number(rank);
+  if(!Number.isFinite(r) || r < 1) return null;
+  const finish = r === 1 ? 'Champion' : r === 2 ? 'Runner-Up' : ordinal(r) + ' Place';
+  return String(year) + ' ' + finish;
+}
+
+/* Read-only, time-machine-safe Record Book snapshot for an opening-week card.
+   The archive is scoped to seasons before the viewed year, so a historical
+   Week 1 preview can never borrow a future finish, score or meeting. */
+function matchupWeekOneArchive(ctx, A, B){
+  const result = {
+    hasHistory:false, h2h:null, careerA:null, careerB:null,
+    previousA:null, previousB:null,
+  };
+  if(Number(ctx && ctx.week) !== 1) return result;
+
+  const viewedYear = Number(viewedSeasonYear());
+  const raw = Array.isArray(window._franchiseYearsData) ? window._franchiseYearsData : [];
+  const priorYears = raw.filter(entry=>{
+    const year = Number(entry && entry.year);
+    return Number.isFinite(year) && year < viewedYear && entry && entry.leagueData;
+  });
+
+  if(priorYears.length){
+    try{
+      const history = computeLeagueHistoryStats(priorYears);
+      result.hasHistory = !!(history && history.gameLog && history.gameLog.length);
+      const careerFor = team=>{
+        const total = history && history.careerTotals && team && team.ownerId
+          ? history.careerTotals[team.ownerId]
+          : null;
+        return total && Number(total.games) > 0 && Number.isFinite(Number(total.pointsFor))
+          ? Number(total.pointsFor) / Number(total.games)
+          : null;
+      };
+      result.careerA = careerFor(A);
+      result.careerB = careerFor(B);
+
+      if(A && B && A.ownerId && B.ownerId && history && history.h2h){
+        const key = [A.ownerId, B.ownerId].sort().join('__');
+        const rec = history.h2h[key];
+        if(rec && Array.isArray(rec.meetings) && rec.meetings.length){
+          const aIsRecA = String(A.ownerId) === String(rec.a);
+          const meetings = rec.meetings.slice().sort((m1,m2)=> Number(m1.year)-Number(m2.year) || Number(m1.week)-Number(m2.week));
+          const last = meetings[meetings.length - 1];
+          const winsFor = aIsRecA ? Number(rec.winsA || 0) : Number(rec.winsB || 0);
+          const winsAgainst = aIsRecA ? Number(rec.winsB || 0) : Number(rec.winsA || 0);
+          const pointsFor = aIsRecA ? Number(rec.pointsA || 0) : Number(rec.pointsB || 0);
+          const pointsAgainst = aIsRecA ? Number(rec.pointsB || 0) : Number(rec.pointsA || 0);
+          let streakOwnerId = null, streakCount = 0;
+          for(let i=meetings.length-1; i>=0; i--){
+            const ownerId = meetings[i].winnerOwnerId;
+            if(!ownerId) break;
+            if(streakOwnerId === null){ streakOwnerId = ownerId; streakCount = 1; }
+            else if(String(ownerId) === String(streakOwnerId)) streakCount += 1;
+            else break;
+          }
+          result.h2h = {
+            winsFor, winsAgainst, ties:Number(rec.ties || 0),
+            pointsFor, pointsAgainst, diff:pointsFor-pointsAgainst,
+            meetingCount:meetings.length,
+            playoffMeetings:meetings.filter(meeting=> !!meeting.isPlayoff).length,
+            lastMeeting:last ? {
+              year:last.year, week:last.week,
+              scoreFor:aIsRecA ? last.scoreA : last.scoreB,
+              scoreAgainst:aIsRecA ? last.scoreB : last.scoreA,
+              won:String(last.winnerOwnerId) === String(A.ownerId),
+            } : null,
+            streakOwnerId, streakCount,
+          };
+        }
+      }
+    }catch(err){
+      console.error('[NewsDesk] Matchup of the Week scoped Record Book calculation failed for Week ' + ctx.week, err);
+    }
+  }
+
+  try{
+    const report = FSNIntel.preseasonReport();
+    const previous = report && report.lastSeason;
+    const standings = previous && Array.isArray(previous.standings) ? previous.standings : [];
+    const rowFor = team=> standings.find(row=> row && team && String(row.ownerId) === String(team.ownerId));
+    const rowA = rowFor(A), rowB = rowFor(B);
+    result.previousA = rowA ? matchupFinishLabel(previous.year, rowA.finalRank) : null;
+    result.previousB = rowB ? matchupFinishLabel(previous.year, rowB.finalRank) : null;
+  }catch(err){
+    console.error('[NewsDesk] Matchup of the Week previous-season finish lookup failed for Week ' + ctx.week, err);
+  }
+  return result;
+}
+
+function matchupDraftSnapshot(A, B, week){
+  try{
+    const board = FSNIntel.draft();
+    const grades = FSNIntel.draftGrades();
+    if(!board) return null;
+    const picksFor = team=> (board.byTeam && team ? board.byTeam[team.id] : null) || [];
+    const gradeForTeam = team=> (grades || []).find(row=> row && row.team && team && String(row.team.id) === String(team.id));
+    const picksA = picksFor(A), picksB = picksFor(B);
+    const gradeA = gradeForTeam(A), gradeB = gradeForTeam(B);
+    return {
+      firstA:picksA[0] || null, firstB:picksB[0] || null,
+      gradeA:gradeA && gradeA.grade || null,
+      gradeB:gradeB && gradeB.grade || null,
+    };
+  }catch(err){
+    console.error('[NewsDesk] Matchup of the Week draft context failed for Week ' + week, err);
+    return null;
+  }
+}
+
 function tlPrimer(ctx){
   const out = [];
   /* Matchup of the Week never comes out of the consolation ladder. In a
@@ -11742,31 +11873,121 @@ function tlPrimer(ctx){
   const thursdayA = shortWeekStarters(ctx, A, shortWeek);
   const thursdayB = shortWeekStarters(ctx, B, shortWeek);
   const swing = projectedSwingPosition(ctx, A, B);
+  const recordA = FSNIntel.getRecordAsOfWeek(A.id, ctx.week);
+  const recordB = FSNIntel.getRecordAsOfWeek(B.id, ctx.week);
+  const deadWeekOne = Number(ctx.week) === 1 && matchupRecordIsEmpty(recordA) && matchupRecordIsEmpty(recordB) &&
+    Math.round(Number(probA)) === 50 && Math.round(100 - Number(probA)) === 50;
+  const archive = deadWeekOne ? matchupWeekOneArchive(ctx, A, B) : null;
+  if(archive && archive.h2h) recordbook = archive.h2h;
+  const draft = deadWeekOne ? matchupDraftSnapshot(A, B, ctx.week) : null;
   const seriesLeader = recordbook && recordbook.meetingCount && recordbook.winsFor !== recordbook.winsAgainst
     ? (recordbook.winsFor > recordbook.winsAgainst ? A : B)
     : null;
+  const seriesLedger = recordbook && recordbook.meetingCount
+    ? (seriesLeader === B
+        ? recordbook.winsAgainst + '–' + recordbook.winsFor
+        : recordbook.winsFor + '–' + recordbook.winsAgainst) + (recordbook.ties ? '–' + recordbook.ties : '')
+    : '';
 
-  const rows = [
-    { label: esc(A.name) + ' win probability', value: Math.round(probA) + '%' },
-    { label: esc(B.name) + ' win probability', value: Math.round(100 - probA) + '%' },
-  ];
-  const recordA = FSNIntel.getRecordAsOfWeek(A.id, ctx.week);
-  const recordB = FSNIntel.getRecordAsOfWeek(B.id, ctx.week);
-  rows.push({ label: esc(A.name) + ' record', value: esc(recordA) });
-  rows.push({ label: esc(B.name) + ' record', value: esc(recordB) });
-  if(recordbook && recordbook.meetingCount){
-    rows.push({ label:'All-time series', value: recordbook.winsFor + '-' + recordbook.winsAgainst + (recordbook.ties ? '-' + recordbook.ties : ''),
-      note:(seriesLeader ? esc(seriesLeader.name) + ' leads the win ledger. ' : 'The win ledger is even. ') +
-        (Number.isFinite(recordbook.diff) ? esc(recordbook.diff >= 0 ? A.name : B.name) + ' holds a ' + n1(Math.abs(recordbook.diff)) + '-point career scoring edge.' : '') });
-    if(recordbook.lastMeeting){
-      rows.push({ label:'Last meeting', value: n1(recordbook.lastMeeting.scoreFor) + ' – ' + n1(recordbook.lastMeeting.scoreAgainst),
-        note: recordbook.lastMeeting.year + ' · Week ' + recordbook.lastMeeting.week });
+  const rows = [];
+  if(deadWeekOne){
+    if(archive && archive.careerA != null && archive.careerB != null){
+      rows.push({ label:'Career scoring avg', value:n1(archive.careerA) + ' – ' + n1(archive.careerB) + ' PPG', note:esc(A.name) + ' · ' + esc(B.name) });
+    }
+    if(archive && (archive.previousA || archive.previousB)){
+      rows.push({ label:'Previous season finish', value:[archive.previousA ? esc(A.name) + ' · ' + esc(archive.previousA) : '', archive.previousB ? esc(B.name) + ' · ' + esc(archive.previousB) : ''].filter(Boolean).join(' | ') });
+    }
+    if(recordbook && recordbook.meetingCount){
+      rows.push({ label:'Head-to-head win ledger', value:seriesLeader ? esc(seriesLeader.name) + ' leads ' + seriesLedger : 'Even at ' + seriesLedger, note:recordbook.meetingCount + ' career meetings' });
+      if(Number.isFinite(recordbook.diff)){
+        rows.push({ label:'All-time scoring delta', value:esc(recordbook.diff >= 0 ? A.name : B.name) + ' +' + n1(Math.abs(recordbook.diff)) + ' PT', note:'Scoring edge across the full series.' });
+      }
+    }
+    if(draft && draft.gradeA && draft.gradeB){
+      rows.push({ label:'Draft room grade', value:esc(A.name) + ' ' + draft.gradeA + ' · ' + esc(B.name) + ' ' + draft.gradeB });
+    }
+    if(draft && draft.firstA && draft.firstB){
+      rows.push({ label:'Premium draft capital', value:esc(draft.firstA.name) + ' #' + draft.firstA.overall + ' · ' + esc(draft.firstB.name) + ' #' + draft.firstB.overall, note:esc(A.name) + ' · ' + esc(B.name) });
+    }
+  } else {
+    rows.push({ label:esc(A.name) + ' win probability', value:Math.round(probA) + '%' });
+    rows.push({ label:esc(B.name) + ' win probability', value:Math.round(100 - probA) + '%' });
+    rows.push({ label:esc(A.name) + ' record', value:esc(recordA) });
+    rows.push({ label:esc(B.name) + ' record', value:esc(recordB) });
+    if(recordbook && recordbook.meetingCount){
+      rows.push({ label:'All-time series', value:recordbook.winsFor + '-' + recordbook.winsAgainst + (recordbook.ties ? '-' + recordbook.ties : ''),
+        note:(seriesLeader ? esc(seriesLeader.name) + ' leads the win ledger. ' : 'The win ledger is even. ') +
+          (Number.isFinite(recordbook.diff) ? esc(recordbook.diff >= 0 ? A.name : B.name) + ' holds a ' + n1(Math.abs(recordbook.diff)) + '-point career scoring edge.' : '') });
+      if(recordbook.lastMeeting){
+        rows.push({ label:'Last meeting', value:n1(recordbook.lastMeeting.scoreFor) + ' – ' + n1(recordbook.lastMeeting.scoreAgainst),
+          note:recordbook.lastMeeting.year + ' · Week ' + recordbook.lastMeeting.week });
+      }
     }
   }
-  rows.push({ label:'Thursday starters', value:String(thursdayA.length + thursdayB.length),
-    note:shortWeek.metadataAvailable ? esc(A.name) + ' ' + thursdayA.length + ' · ' + esc(B.name) + ' ' + thursdayB.length : 'NFL kickoff metadata unavailable in the loaded payload.' });
-  rows.push({ label:'Projected swing position', value:swing ? esc(swing.pos) : 'Unavailable',
-    note:swing ? esc(swing.a >= swing.b ? A.name : B.name) + ' by ' + n1(swing.gap) + ' verified PPG' : 'Prior-week player scoring samples did not resolve both sides.' });
+  if(shortWeek.metadataAvailable && thursdayA.length + thursdayB.length > 0){
+    rows.push({ label:'Thursday starters', value:String(thursdayA.length + thursdayB.length),
+      note:esc(A.name) + ' ' + thursdayA.length + ' · ' + esc(B.name) + ' ' + thursdayB.length });
+  }
+  if(swing){
+    rows.push({ label:'Projected swing position', value:esc(swing.pos),
+      note:esc(swing.a >= swing.b ? A.name : B.name) + ' by ' + n1(swing.gap) + ' verified PPG' });
+  }
+
+  const historyParagraph = recordbook && recordbook.meetingCount
+    ? `The Record Book carries <b>${recordbook.meetingCount}</b> meetings between them, with <b>${esc(seriesLeader ? seriesLeader.name : 'neither side')}</b> ` +
+      `${seriesLeader ? `holding the <b>${seriesLedger}</b> edge` : `able to break a <b>${seriesLedger}</b> deadlock`}. ` +
+      `${recordbook.playoffMeetings ? `<b>${recordbook.playoffMeetings}</b> of those collision${recordbook.playoffMeetings === 1 ? '' : 's'} came in the postseason. ` : ''}` +
+      `${recordbook.lastMeeting ? `The freshest receipt is a <b>${n1(recordbook.lastMeeting.scoreFor)}–${n1(recordbook.lastMeeting.scoreAgainst)}</b> verdict from ${recordbook.lastMeeting.year} (Week ${recordbook.lastMeeting.week}).` : ''}`
+    : '';
+  const careerParagraph = deadWeekOne && archive && archive.careerA != null && archive.careerB != null
+    ? `Across the completed Record Book, <b>${esc(A.name)}</b> has carried a <b>${n1(archive.careerA)} PPG</b> career scoring rate against <b>${esc(B.name)}</b> at <b>${n1(archive.careerB)} PPG</b>. ` +
+      `${archive.previousA && archive.previousB ? `Their latest finished seasons ended at <b>${esc(archive.previousA)}</b> and <b>${esc(archive.previousB)}</b>, respectively. ` : ''}` +
+      `That is the real opening-week baseline: years of scoring behavior, not an untouched standings column.`
+    : '';
+  const draftParagraph = deadWeekOne && draft && (draft.gradeA || draft.firstA) && (draft.gradeB || draft.firstB)
+    ? `The newest roster file adds its own pressure. ` +
+      `${draft.gradeA && draft.gradeB ? `The draft room graded the builds <b>${esc(A.name)} ${draft.gradeA}</b> and <b>${esc(B.name)} ${draft.gradeB}</b>. ` : ''}` +
+      `${draft.firstA && draft.firstB ? `Their premium capital sits with <b>${esc(draft.firstA.name)}</b> at pick ${draft.firstA.overall} and <b>${esc(draft.firstB.name)}</b> at pick ${draft.firstB.overall}.` : ''}`
+    : '';
+  const lineupParagraph = shortWeek.metadataAvailable && thursdayA.length + thursdayB.length > 0
+    ? `The short-week pressure is real: <b>${thursdayA.length}</b> ${esc(A.name)} starter${thursdayA.length === 1 ? '' : 's'} and <b>${thursdayB.length}</b> ${esc(B.name)} starter${thursdayB.length === 1 ? '' : 's'} are tied to Thursday — <b>${thursdayA.concat(thursdayB).map(player=> esc(player.name)).join('</b>, <b>')}</b>.`
+    : '';
+  const swingParagraph = swing
+    ? `The sharpest positional leverage sits at <b>${esc(swing.pos)}</b>, where ${esc(swing.a >= swing.b ? A.name : B.name)} owns a verified <b>${n1(swing.gap)} PPG</b> edge through Week ${Math.max(0, ctx.week-1)}. That is not the whole matchup, but it is the first place the lineup card can bend it.`
+    : '';
+  const stakesParagraph = ctx.playoffWeek
+    ? `The archive can frame the matchup; it cannot soften the consequence. One lineup advances, one season closes, and every old receipt gets reread against the final.`
+    : Number(ctx.week) === 1
+      ? pick([
+          `Opening week does not settle a season. It establishes who gets to spend September as evidence and who begins it as an explanation. This is the first statement game, and both rooms know it.`,
+          `The opener cannot award a title, but it can set the hierarchy everybody spends the next month trying to escape. One of these rosters leaves Week 1 with proof; the other leaves with corrections.`,
+          `The standings will call this one game. The league will treat it as the first piece of evidence about which roster is real, which history still matters and who can carry pressure without blinking.`,
+        ], seed + ':stakes')
+      : pick([
+          `The model supplies a starting point. The history supplies the pressure. The lineup card decides which one survives Sunday.`,
+          `This is where a weekly projection stops being a number and becomes a burden of proof. The winner owns the headline; the loser owns the explanation.`,
+          `By the final horn, one side gets a result and the other gets another entry in a file that was already heavy enough.`,
+        ], seed + ':stakes');
+
+  const openingParagraph = deadWeekOne
+    ? `${datelineTag()} The Week 1 board has one game carrying more institutional weight than the rest: <b>${esc(A.name)}</b> at <b>${esc(B.name)}</b>. ` +
+      `There is no current-season sample worth dressing up as certainty, so the file starts where it should — with franchise history, roster construction and the pressure of the first public statement.`
+    : `${datelineTag()} The Week ${ctx.week} board has one game carrying more leverage than the rest: <b>${esc(A.name)}</b> (${esc(recordA)}) at <b>${esc(B.name)}</b> (${esc(recordB)}). ` +
+      `The model leans <b>${esc(probA >= 50 ? A.name : B.name)}</b> at <b>${Math.round(Math.max(probA, 100-probA))}%</b>. That is the opening position, not the verdict.`;
+
+  const headlinePool = deadWeekOne ? MATCHUP_WEEK_ONE_HEADLINES : MATCHUP_HEADLINES;
+  const headline = fillEditorial(headlinePool[hash(seed + ':headline') % headlinePool.length], {
+    A:upper(A.name), B:upper(B.name), WEEK:ctx.week,
+  });
+  const dek = deadWeekOne && recordbook && recordbook.meetingCount
+    ? `${esc(A.name)} and ${esc(B.name)} bring ${recordbook.meetingCount} meetings of history into opening week's highest-leverage game.`
+    : `${esc(A.name)} and ${esc(B.name)} carry the week's strongest mix of form, roster leverage and franchise consequence.`;
+  const weekOneSources = [
+    (recordbook && recordbook.meetingCount) || (archive && (archive.careerA != null || archive.previousA || archive.previousB)) ? 'completed Record Book seasons' : '',
+    draft && (draft.gradeA || draft.firstA || draft.gradeB || draft.firstB) ? 'the current draft board' : '',
+    shortWeek.metadataAvailable && thursdayA.length + thursdayB.length > 0 ? 'the verified kickoff schedule' : '',
+    swing ? 'scored player samples' : '',
+  ].filter(Boolean);
 
   out.push(tl({
     id: 'tl-motw-' + ctx.week,
@@ -11777,41 +11998,10 @@ function tlPrimer(ctx){
     tag: ctx.playoffWeek ? `${ctx.playoffRound} MATCHUP` : 'MATCHUP OF THE WEEK', tone:'gold', priority: 74,
     byline:'FSN Senior League Insider',
     crest:{ name:B.name, logo:B.logo },
-    headline: (()=>{
-      const fav = probA >= 50 ? A : B, dog = probA >= 50 ? B : A;
-      return esc(upper(auxiliaryCopy(ctx, 'primer', 0, {
-        A:A.name, B:B.name, FAV:fav.name, DOG:dog.name, WEEK:ctx.week, PROB:Math.round(Math.max(probA, 100-probA))
-      }).headline));
-    })(),
-    dek: (()=>{
-      const fav = probA >= 50 ? A : B, dog = probA >= 50 ? B : A;
-      return esc(auxiliaryCopy(ctx, 'primer', 0, {
-        A:A.name, B:B.name, FAV:fav.name, DOG:dog.name, WEEK:ctx.week, PROB:Math.round(Math.max(probA, 100-probA))
-      }).lede);
-    })(),
-    paragraphs: [
-      `${datelineTag()} ${ctx.playoffWeek
-        ? `The Week ${ctx.week} ${ctx.playoffRound.toLowerCase()} board has one game that matters more than the rest`
-        : `The Week ${ctx.week} board has one game that matters more than the rest`}: ` +
-      `<b>${esc(A.name)}</b> (${esc(recordA)}) at <b>${esc(B.name)}</b> (${esc(recordB)}). ` +
-      `The model gives ${esc(probA >= 50 ? A.name : B.name)} a <b>${Math.round(Math.max(probA, 100 - probA))}%</b> edge, which is ` +
-      pick(['not the same as a prediction.','close enough to be worthless.','the polite way of saying coin flip.'], seed),
-
-      recordbook && recordbook.meetingCount
-        ? `The Record Book says these two have met <b>${recordbook.meetingCount}</b> times, with <b>${esc(A.name)}</b> holding a ` +
-          `<b>${recordbook.winsFor}-${recordbook.winsAgainst}${recordbook.ties ? '-' + recordbook.ties : ''}</b> line from its side of the ledger` +
-          `${recordbook.streakCount > 1 ? ` and the current streak sitting at ${recordbook.streakCount} straight` : ''}. ` +
-          `${recordbook.lastMeeting ? `The last one finished ${n1(recordbook.lastMeeting.scoreFor)}–${n1(recordbook.lastMeeting.scoreAgainst)}.` : ''}`
-        : `There is no history to lean on here — load the Record Book and the desk will pull the all-time series into this preview.`,
-
-      shortWeek.metadataAvailable
-        ? `The short-week exposure is exact: <b>${thursdayA.length}</b> ${esc(A.name)} starter${thursdayA.length === 1 ? '' : 's'} and <b>${thursdayB.length}</b> ${esc(B.name)} starter${thursdayB.length === 1 ? '' : 's'} are tied to verified Thursday games${thursdayA.length + thursdayB.length ? ` — <b>${thursdayA.concat(thursdayB).map(player=> esc(player.name)).join('</b>, <b>')}</b>` : ''}.`
-        : `The loaded league payload does not include NFL kickoff metadata, so the desk will not guess which starters play Thursday.`,
-      swing
-        ? `The largest verified positional swing is <b>${esc(swing.pos)}</b>: ${esc(swing.a >= swing.b ? A.name : B.name)} holds a <b>${n1(swing.gap)} PPG</b> edge from player scoring samples through Week ${Math.max(0, ctx.week-1)}.`
-        : `A projected swing position is unavailable because both starting cards do not carry comparable prior-week scoring samples.`,
-    ],
-    numbers: { title:'Tale of the Tape', rows, note:'Win probability from power rating, scoring average and the all-time series.' },
+    headline:esc(upper(headline)),
+    dek,
+    paragraphs:[openingParagraph, historyParagraph, careerParagraph, draftParagraph, lineupParagraph, swingParagraph, stakesParagraph].filter(Boolean),
+    numbers:rows.length ? { title:'Tale of the Tape', rows, note:deadWeekOne ? 'Opening-week baseline from ' + weekOneSources.join(', ') + '.' : 'Win probability from power rating, scoring average and the all-time series.' } : null,
     narrativeLocked:true,
     headlineLocked:true,
   }));
