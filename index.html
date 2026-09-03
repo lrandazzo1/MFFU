@@ -3585,24 +3585,56 @@ function computeLeagueHistoryStats(yearsData){
 /* Manager's most recent known team name/logo. */
 function managerLatestInfo(ownerId){ return LeagueData.managerLatestInfo(ownerId); }
 
-/* All-time head-to-head record between two managers, from the selected
-   manager's perspective (winsFor/winsAgainst), plus the last meeting and
-   the current streak (consecutive results in either direction). */
-function getH2H(ownerIdA, ownerIdB){
+/* Head-to-head record between two managers as of a temporal boundary, from
+   the selected manager's perspective (winsFor/winsAgainst), plus the last
+   meeting and the current streak (consecutive results in either direction).
+
+   maxYear/maxWeek fence the series to matchups played during or prior to that
+   point: a meeting counts when its year is before maxYear, or the year matches
+   and its week is <= maxWeek. Pass the boundary as the week BEFORE the game a
+   card is framing (e.g. viewedSeasonYear(), ctx.week - 1) to get the series a
+   matchup carries INTO kickoff — a Week 1 view (maxWeek 0) then sees only prior
+   seasons, and two teams meeting for the first time correctly read 0-0 rather
+   than inheriting an all-time ledger stuffed with games from future seasons.
+   Omit the bounds (or pass a non-finite maxYear) for the true all-time record.
+
+   Returns null only when the pairing has no shared record at all. A real
+   pairing with no meetings inside the boundary returns a live 0-0 shell
+   (meetingCount 0, lastMeeting null) so callers can frame a first-ever meeting
+   instead of degrading to an empty card. */
+function getH2HAsOf(ownerIdA, ownerIdB, maxYear, maxWeek){
   const hist = LeagueData.leagueHistory;
-  if(!hist) return null;
+  if(!hist || !hist.h2h) return null;
   const key = [ownerIdA, ownerIdB].sort().join('__');
   const rec = hist.h2h[key];
-  if(!rec) return null;
+  if(!rec || !Array.isArray(rec.meetings)) return null;
 
   const aIsRecA = ownerIdA === rec.a;
-  const winsFor = aIsRecA ? rec.winsA : rec.winsB;
-  const winsAgainst = aIsRecA ? rec.winsB : rec.winsA;
-  const pointsFor = aIsRecA ? rec.pointsA : rec.pointsB;
-  const pointsAgainst = aIsRecA ? rec.pointsB : rec.pointsA;
 
-  const meetings = rec.meetings.slice().sort((m1,m2)=> m1.year - m2.year || m1.week - m2.week);
-  const last = meetings[meetings.length - 1];
+  /* No boundary (or a non-finite one) means the full all-time series; a finite
+     year always pairs with a finite week ceiling so the fence is unambiguous. */
+  const bounded = Number.isFinite(Number(maxYear));
+  const capYear = bounded ? Number(maxYear) : Infinity;
+  const capWeek = bounded && Number.isFinite(Number(maxWeek)) ? Number(maxWeek) : Infinity;
+  const withinBound = (m)=> m.year < capYear || (m.year === capYear && m.week <= capWeek);
+
+  const meetings = rec.meetings
+    .filter(withinBound)
+    .sort((m1,m2)=> m1.year - m2.year || m1.week - m2.week);
+
+  /* Recount strictly from the fenced slice so wins, points and playoff tallies
+     can never borrow from a meeting outside the timeline. */
+  let winsFor = 0, winsAgainst = 0, ties = 0, pointsFor = 0, pointsAgainst = 0, playoffMeetings = 0;
+  meetings.forEach(m=>{
+    pointsFor += aIsRecA ? m.scoreA : m.scoreB;
+    pointsAgainst += aIsRecA ? m.scoreB : m.scoreA;
+    if(!m.winnerOwnerId) ties++;
+    else if(m.winnerOwnerId === ownerIdA) winsFor++;
+    else if(m.winnerOwnerId === ownerIdB) winsAgainst++;
+    if(m.isPlayoff) playoffMeetings++;
+  });
+
+  const last = meetings.length ? meetings[meetings.length - 1] : null;
 
   let streakOwnerId = null, streakCount = 0;
   for(let i = meetings.length - 1; i >= 0; i--){
@@ -3614,9 +3646,9 @@ function getH2H(ownerIdA, ownerIdB){
   }
 
   return {
-    winsFor, winsAgainst, ties: rec.ties,
+    winsFor, winsAgainst, ties,
     pointsFor, pointsAgainst, diff: pointsFor - pointsAgainst,
-    meetingCount: meetings.length,
+    meetingCount: meetings.length, playoffMeetings,
     lastMeeting: last ? {
       year: last.year, week: last.week,
       scoreFor: aIsRecA ? last.scoreA : last.scoreB,
@@ -3624,7 +3656,16 @@ function getH2H(ownerIdA, ownerIdB){
       won: last.winnerOwnerId === ownerIdA,
     } : null,
     streakOwnerId, streakCount,
+    asOf: bounded ? { year: capYear, week: Number.isFinite(capWeek) ? capWeek : null } : null,
   };
+}
+
+/* All-time head-to-head record between two managers. Thin wrapper over the
+   temporal helper with no boundary — the fenced recount over every meeting is
+   arithmetically identical to the precomputed all-time aggregates, so existing
+   all-time callers (Rivalry Vault, franchise dossier) are unchanged. */
+function getH2H(ownerIdA, ownerIdB){
+  return getH2HAsOf(ownerIdA, ownerIdB);
 }
 
 /* ============================================================
@@ -10458,10 +10499,16 @@ function genMatchupPreviews(ctx){
 
     let h2h = null;
     try{
-      if(LeagueData.hasHistory() && A.ownerId && B.ownerId && typeof window.getH2H === 'function'){
-        h2h = window.getH2H(A.ownerId, B.ownerId);
+      if(LeagueData.hasHistory() && A.ownerId && B.ownerId && typeof window.getH2HAsOf === 'function'){
+        /* Fence the series to what these two carried into this week: the viewed
+           season, up to the week before kickoff. A time-machine view of an old
+           week can never quote a meeting from a future season. */
+        h2h = window.getH2HAsOf(A.ownerId, B.ownerId, Number(viewedSeasonYear()) || 0, Number(ctx.week) - 1);
       }
-    }catch(_){ h2h = null; }
+    }catch(err){
+      console.error('[NewsDesk] matchup preview head-to-head lookup failed for Week ' + ctx.week, err);
+      h2h = null;
+    }
 
     /* ---- BEAT 1 · the lead ---- */
     const edgeLine = coinFlip
@@ -11864,8 +11911,11 @@ function tlPrimer(ctx){
 
   let recordbook = null;
   try{
-    if(LeagueData.hasHistory() && A.ownerId && B.ownerId && window.getH2H){
-      recordbook = window.getH2H(A.ownerId, B.ownerId);
+    if(LeagueData.hasHistory() && A.ownerId && B.ownerId && window.getH2HAsOf){
+      /* Series fenced to the viewed season through the week before this game,
+         so an older Matchup of the Week never cites a future last meeting or a
+         win ledger padded by seasons that have not happened in this view yet. */
+      recordbook = window.getH2HAsOf(A.ownerId, B.ownerId, Number(viewedSeasonYear()) || 0, Number(ctx.week) - 1);
     }
   }catch(err){ console.error('[NewsDesk] Matchup of the Week Record Book lookup failed for Week ' + ctx.week, err); }
 
@@ -12062,18 +12112,29 @@ function tlRivalry(ctx){
   if(!Array.isArray(ctx.games) || !ctx.games.length) return out;
   let hasHistory = false;
   try{ hasHistory = LeagueData.hasHistory(); }catch(_){ hasHistory = false; }
-  if(!hasHistory || typeof window.getH2H !== 'function') return out;
+  if(!hasHistory || typeof window.getH2HAsOf !== 'function') return out;
+
+  /* The whole feature is fenced to the viewed timeline: the series each pair
+     carries INTO this week is everything up to the week before kickoff, so a
+     spotlight opened on an old week is built only from meetings that had
+     actually happened by then — never a renewal that lies in this view's
+     future. A pair whose real series hasn't reached three chapters yet simply
+     never wins the spotlight, which keeps early-era boards honest. */
+  const boundYear = Number(viewedSeasonYear()) || 0;
+  const boundWeek = Number(ctx.week) - 1;
 
   /* Score every game on the board by how much of a rivalry it actually is:
-     meetings carry it, a live head-to-head streak and a tight all-time margin
-     sharpen it. The deepest, meanest series wins the spotlight. */
+     meetings carry it, a head-to-head streak and a tight scoring margin — both
+     measured within the timeline — sharpen it. The deepest, meanest series
+     wins the spotlight. */
   let best = null;
   ctx.games.forEach(g=>{
     if(!g || !g.homeTeam || !g.awayTeam) return;
     const A = g.awayTeam, B = g.homeTeam;
     if(!A.ownerId || !B.ownerId) return;
     let h2h = null;
-    try{ h2h = window.getH2H(A.ownerId, B.ownerId); }catch(_){ h2h = null; }
+    try{ h2h = window.getH2HAsOf(A.ownerId, B.ownerId, boundYear, boundWeek); }
+    catch(err){ console.error('[NewsDesk] rivalry spotlight head-to-head lookup failed for Week ' + ctx.week, err); h2h = null; }
     if(!h2h || h2h.meetingCount < 3) return;
     const closeness = 1 / (1 + Math.abs(h2h.winsFor - h2h.winsAgainst));
     const score = h2h.meetingCount * 3 + (h2h.streakCount > 1 ? h2h.streakCount * 2 : 0) + closeness * 4;
