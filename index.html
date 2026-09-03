@@ -777,11 +777,12 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
 .record-book-streak-grid{ display:grid; gap:12px; margin-top:12px; }
 
 /* ---------- RECORD BOOK SCOPE TOGGLE + SINGLE-SEASON BOARDS ----------
-   The scope pill switches the whole screen between the career/all-time
-   archive and the single-season peak leaderboards. It borrows .seg's shell
-   so it reads as the same control family, but takes gold rather than cyan:
-   the sub-tabs below it are a filter *within* the all-time view, while this
-   one changes which record book you are reading. */
+   The scope pill is a control *inside* the RECORDS view: it switches that one
+   board between the career/all-time aggregates and the single-season peak
+   leaderboards, and never touches the Franchises or Rivalries tabs above it.
+   It borrows .seg's shell so it reads as the same control family, but takes
+   gold rather than cyan to mark it as the nested, secondary choice. */
+.record-book-scope-wrap{ margin-top:9px; }
 .record-book-scope{ background:#0a0e14; }
 .record-book-scope button{ letter-spacing:.16em; }
 .record-book-scope button[data-active="true"]{ background:var(--gold); color:#1a1200; }
@@ -2126,19 +2127,22 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
       <div class="text-[10.5px] text-[var(--dim)] mt-1.5 font-mono tabular" id="recordBookMeta">8 seasons · 16 managers · 687 matchups</div>
     </header>
 
-    <!-- Scope toggle: career aggregates vs. the best single seasons ever posted. -->
-    <div class="px-4 mb-2.5">
-      <div class="seg record-book-scope" id="recordBookScopeSeg" role="tablist" aria-label="Record book scope">
-        <button data-record-scope="alltime" data-active="true" role="tab" aria-selected="true">All-Time</button>
-        <button data-record-scope="season" data-active="false" role="tab" aria-selected="false">Single-Season</button>
-      </div>
-    </div>
-
     <div class="px-4 mb-4" id="recordBookSegWrap">
       <div class="seg" id="recordBookSeg">
         <button data-record-book="franchises" data-active="true">Franchises</button>
         <button data-record-book="rivalries" data-active="false">Rivalries</button>
         <button data-record-book="records" data-active="false">Records</button>
+      </div>
+
+      <!-- Scope toggle for the RECORDS view only: career aggregates vs. the
+           best single seasons ever posted. It lives inside the Records view
+           header, directly under the primary sub-nav, and retires on the
+           Franchises and Rivalries tabs where it has nothing to switch. -->
+      <div class="record-book-scope-wrap hidden" id="recordBookScopeWrap">
+        <div class="seg record-book-scope" id="recordBookScopeSeg" role="tablist" aria-label="Records view scope">
+          <button data-record-scope="alltime" data-active="true" role="tab" aria-selected="true">All-Time</button>
+          <button data-record-scope="season" data-active="false" role="tab" aria-selected="false">Single-Season</button>
+        </div>
       </div>
     </div>
 
@@ -15827,9 +15831,11 @@ const MATCHUP_FLAVOR = {
 const ui = {
   screen: 'home',
   recordBookTab: 'franchises',
-  /* Which record book is on screen: 'alltime' keeps the existing career
-     archive and its three sub-tabs, 'season' swaps in the single-season
-     peak leaderboards. */
+  /* Which board the RECORDS sub-tab shows: 'alltime' keeps the career
+     aggregate leaderboards, 'season' swaps in the single-season peak
+     leaderboards. Only read while recordBookTab === 'records'; it is
+     preserved across tab switches so returning to Records restores the
+     board the reader left. */
   recordBookScope: 'alltime',
   topic: 'all',
   storyCategory: '',
@@ -17427,34 +17433,43 @@ function renderRecordBook(){
     return;
   }
 
-  if(ui.recordBookScope === 'season'){
-    safeRun('seasonRecords', renderSeasonRecords, ()=> renderScreenFallback('recordbook'));
-    return;
-  }
-
-  if(ui.recordBookTab === 'franchises')      safeRun('franchises', renderFranchises, ()=> renderScreenFallback('recordbook'));
-  else if(ui.recordBookTab === 'rivalries')  safeRun('rivalries', renderRivalries, ()=> renderScreenFallback('recordbook'));
-  else                                  safeRun('records', renderRecords, ()=> renderScreenFallback('recordbook'));
+  /* The primary sub-nav decides the view; inside RECORDS the scope pill
+     decides which of the two record boards that view renders. */
+  if(ui.recordBookTab === 'franchises')          safeRun('franchises', renderFranchises, ()=> renderScreenFallback('recordbook'));
+  else if(ui.recordBookTab === 'rivalries')      safeRun('rivalries', renderRivalries, ()=> renderScreenFallback('recordbook'));
+  else if(ui.recordBookScope === 'season')       safeRun('seasonRecords', renderSeasonRecords, ()=> renderScreenFallback('recordbook'));
+  else                                           safeRun('records', renderRecords, ()=> renderScreenFallback('recordbook'));
 }
 
-/* Reflect the ALL-TIME / SINGLE-SEASON scope on the header chrome. The three
-   sub-tabs below the pill (Franchises / Rivalries / Records) are filters
-   *within* the all-time archive, so they retire while the single-season boards
-   are up rather than sitting there inert. */
+/* Reflect the current sub-tab and, inside RECORDS, the ALL-TIME /
+   SINGLE-SEASON scope on the screen chrome. The primary sub-nav
+   (Franchises / Rivalries / Records) always stays up — it is the view
+   selector. The scope pill is nested inside the Records view, so it only
+   appears on that tab; the other two have nothing for it to switch. The
+   selected scope is still held in `ui` while it is off screen, so returning
+   to Records restores the board the reader left. */
 function syncRecordBookScope(){
-  const seasonScope = ui.recordBookScope === 'season';
+  const recordsTab  = ui.recordBookTab === 'records';
+  const seasonScope = recordsTab && ui.recordBookScope === 'season';
+
+  const seg = $('recordBookSeg');
+  if(seg){
+    seg.querySelectorAll('button').forEach(btn=>{
+      btn.dataset.active = String(btn.dataset.recordBook === ui.recordBookTab);
+    });
+  }
 
   const scopeSeg = $('recordBookScopeSeg');
   if(scopeSeg){
     scopeSeg.querySelectorAll('button').forEach(btn=>{
-      const on = (btn.dataset.recordScope === 'season') === seasonScope;
+      const on = (btn.dataset.recordScope === 'season') === (ui.recordBookScope === 'season');
       btn.dataset.active = String(on);
       btn.setAttribute('aria-selected', String(on));
     });
   }
 
-  const segWrap = $('recordBookSegWrap');
-  if(segWrap) segWrap.classList.toggle('hidden', seasonScope);
+  const scopeWrap = $('recordBookScopeWrap');
+  if(scopeWrap) scopeWrap.classList.toggle('hidden', !recordsTab);
 
   const kicker = $('recordBookKicker');
   if(kicker) kicker.textContent = seasonScope ? 'Single-Season Peaks' : 'All-Time Archive';
@@ -22086,9 +22101,10 @@ document.addEventListener('click', (e)=>{
   if(el) setScreen(el.dataset.goto);
 });
 
-/* ALL-TIME ⇄ SINGLE-SEASON. The sub-tab selection is deliberately preserved
-   across a scope switch, so flipping back to the archive returns the reader to
-   the board they left rather than resetting them to Franchises. */
+/* ALL-TIME ⇄ SINGLE-SEASON, nested inside the RECORDS view. Only the body
+   below swaps: the screen header, the primary sub-nav and the scope pill
+   itself are all outside #recordBookBody and are left standing, so the
+   transition never resets or reflows the outer layout containers. */
 $('recordBookScopeSeg').addEventListener('click', (e)=>{
   const btn = e.target.closest('[data-record-scope]');
   if(!btn) return;
@@ -22098,12 +22114,14 @@ $('recordBookScopeSeg').addEventListener('click', (e)=>{
   safeRun('recordbook', renderRecordBook, ()=> renderScreenFallback('recordbook'));
 });
 
+/* FRANCHISES ⇄ RIVALRIES ⇄ RECORDS. The scope selection is deliberately
+   preserved across a tab switch, so coming back to Records returns the reader
+   to the board they left. Button state is synced by syncRecordBookScope(),
+   which renderRecordBook() runs first thing on every pass. */
 $('recordBookSeg').addEventListener('click', (e)=>{
   const btn = e.target.closest('[data-record-book]');
   if(!btn) return;
   ui.recordBookTab = btn.dataset.recordBook;
-  $('recordBookSeg').querySelectorAll('button').forEach(b=>
-    b.dataset.active = String(b.dataset.recordBook === ui.recordBookTab));
   safeRun('recordbook', renderRecordBook, ()=> renderScreenFallback('recordbook'));
 });
 
