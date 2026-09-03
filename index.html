@@ -2890,10 +2890,57 @@ window.LeagueData = (function(){
     },
     scopeToken(){ return store.activeProvider + ':' + store.leagueId(); },
 
+    /* Escaping is ATTRIBUTE-safe, not merely text-safe.
+
+       A textContent -> innerHTML round-trip escapes & < >, but leaves " and '
+       untouched. esc() output is interpolated into double-quoted HTML
+       attributes in roughly thirty places across blocks 4, 6 and 7 —
+       src=, value=, title=, aria-label=, data-label=, data-tip=, data-rival-a=
+       — and every one of those values ultimately comes from ESPN: a team name,
+       an owner name, a logo URL, all of them typed by a league member. A
+       single double quote therefore closed the attribute and opened a new one:
+       a team logo of
+
+         x" onerror="…" y="
+
+       rendered as a live event handler running in this origin, where
+       localStorage holds the reader's espn_s2 and SWID. Escaping the quotes
+       here fixes every call site at once instead of thirty by hand.
+
+       Escaping " and ' is invisible in text context — the parser decodes the
+       entities back to the same characters — so rendered copy, article bodies
+       and headlines are byte-identical to a reader. The & pass runs first (via
+       textContent), so the entities introduced below are never re-escaped.
+
+       This is NOT sufficient inside a script attribute (onerror="…'X'…"),
+       where the HTML parser decodes entities before JS parses the string. Use
+       escScriptString() for those. */
     esc(str){
       const div = document.createElement('div');
       div.textContent = str ?? '';
-      return div.innerHTML;
+      return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    },
+
+    /* A JS string literal that has to survive being written into an HTML
+       attribute — the `onerror="…"` fallback handlers on team crests.
+
+       Entity escaping alone cannot protect this position: the HTML parser
+       decodes the attribute value BEFORE the JS parser sees it, so a `&#39;`
+       arrives at JS as a bare quote and closes the literal. JSON.stringify
+       produces a correctly quoted, backslash-escaped JS literal first; the two
+       replacements then make that literal safe to carry inside an attribute.
+
+       Order matters. & is escaped before ", otherwise a name containing the
+       literal text `&quot;` would decode into a real quote at parse time and
+       break out — which is exactly how the previous
+       JSON.stringify(...).replace(/"/g,'&quot;') form could still be escaped.
+
+       Returns the quotes too, so callers interpolate it bare:
+         onerror="f(${LeagueData.escScriptString(name)})" */
+    escScriptString(value){
+      return JSON.stringify(String(value == null ? '' : value))
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;');
     },
 
     /* ---- live season helpers ---- */
@@ -16236,8 +16283,13 @@ function crest(name, logo, size){
   const px = size || 38;
   const style = `width:${px}px;height:${px}px;`;
   if(logo){
+    /* escScriptString, not esc(): this is a JS string literal living inside an
+       HTML attribute, and the parser decodes entities before JS reads them. It
+       also escapes & before ", which the previous JSON.stringify(esc(name))
+       form did not — a team literally named `&quot;` decoded into a real quote
+       at parse time and closed the literal. */
     return `<img class="logo" style="${style}" src="${esc(logo)}" alt=""
-            onerror="this.outerHTML=window.__fsnMono(${JSON.stringify(esc(name)).replace(/"/g,'&quot;')},${px})">`;
+            onerror="this.outerHTML=window.__fsnMono(${LeagueData.escScriptString(name)},${px})">`;
   }
   return monoBadge(name, px);
 }
@@ -16649,7 +16701,12 @@ function gameHasActiveTeam(g){
 function profileAvatar(team){
   const initials = initialsFrom(team.name || team.abbrev || 'FSN');
   if(team.logo){
-    return `<span class="profile-avatar"><img src="${esc(team.logo)}" alt="" onerror="this.parentNode.textContent='${esc(initials)}'"></span>`;
+    /* The initials ride inside an onerror JS string literal, so they need
+       escScriptString (which supplies its own quotes) rather than esc() — an
+       entity-escaped quote is decoded by the HTML parser before JS sees it and
+       would close the literal. team.logo is attribute context, where esc() is
+       now sufficient. */
+    return `<span class="profile-avatar"><img src="${esc(team.logo)}" alt="" onerror="this.parentNode.textContent=${LeagueData.escScriptString(initials)}"></span>`;
   }
   return `<span class="profile-avatar">${esc(initials)}</span>`;
 }
