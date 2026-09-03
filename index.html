@@ -10918,48 +10918,349 @@ function genMatchupPreviews(ctx){
   return out;
 }
 
-/* Weekly Power Rankings that also runs on a pregame board (a future week that
-   has not kicked off), using the model through the last scored week so the
-   desk always publishes an official FSN Power Index — even in the preview
-   window. Shares the id with the postgame power article so a week can never
-   print two. */
-function genPreviewPower(ctx){
-  if(ctx.anyScored) return [];
-  let table = [];
-  try{ table = FSNIntel.powerRankings(ctx.week) || []; }
-  catch(err){ console.error('[NewsDesk] preview Power Index failed for Week ' + ctx.week, err); table = []; }
-  if(!table.length) return [];
-  const top = table[0];
-  const bottom = table[table.length - 1];
-  const seed = 'prevpr' + ctx.week + top.team.id;
-  const rankRows = table.slice(0, Math.min(table.length, 12)).map(r=>{
-    const audit = powerIndexAudit(r, Math.max(0, ctx.week - 1));
-    return {
-      label: `${r.rank}. ${esc(r.team.name)} <span style="color:#5d6879">(${esc(r.recordLabel)})</span>`,
-      value: (r.delta > 0 ? '▲' + r.delta : r.delta < 0 ? '▼' + Math.abs(r.delta) : '—'),
-      note: `${n1(audit.actualWins)} W vs ${audit.expectedWins == null ? 'unavailable xW' : n1(audit.expectedWins) + ' xW (' + signedNumber(audit.winDelta) + ')'}` +
-        ` · ${audit.efficiency == null ? 'lineup efficiency unavailable' : n1(audit.efficiency) + '% lineup efficiency'}`,
-    };
+/* ============================================================================
+   FSN POWER INDEX EDITORIAL ENGINE — fsnPowerIndexArticleEngine.js
+   The Tuesday-morning weekly editorial column driven directly by the 4-pillar
+   FSN Power Index (FSNIntel.fsnPowerIndex). Replaces the legacy powerRankings()
+   spot-movement recap and the pregame Power Index preview: both branches now
+   route through a single, deterministic desk that reads the current board,
+   diffs it against the prior week, and writes up the biggest movers as an
+   analyst column — surges, plummets, and fraudulent records exposed by weak
+   underlying metrics.
+
+   Editorial-to-data separation is strict: this desk is the narrative wrapper
+   only. Every row of the full 4-pillar breakdown (CV ratings, all-play %, PPG,
+   context grid) lives on the FSN POWER INDEX tab and is pointed to explicitly
+   from inside the article. The article does not attempt to reproduce that grid.
+
+   Determinism contract (CLAUDE.md rule 2): no Math.random, no Date.now, no
+   network. Every draw comes from a seeded hash of
+   `selectedLeagueId() + season + week + team_ids`, so a reader who reloads
+   gets the exact same article. Additive only: does not read from or mutate
+   powerRankings() / standingsThrough().rating / any News Desk state.
+
+   Emits `tl-power-{week}` in every branch, matching the id the legacy engine
+   used, so a week can never print two competing power articles.
+============================================================================ */
+
+/* The most recent week ≤ target whose FSN Power Index board actually resolves
+   to non-empty rows. Under a live pregame anchor (Thursday preview, no Week N
+   scores yet) this falls back to Week N-1 so the desk always analyses the
+   latest scored board rather than an empty one. Returns 0 when no scored
+   week exists at all. */
+function fsnPowerIndexAnchorWeek(week){
+  const target = Math.max(0, parseInt(week, 10) || 0);
+  for(let w = target; w >= 1; w--){
+    let board = [];
+    try{ board = FSNIntel.fsnPowerIndex(w) || []; }
+    catch(err){
+      console.error('[NewsDesk] fsnPowerIndex read failed while anchoring Week ' + w, err);
+      board = [];
+    }
+    if(board.length) return w;
+  }
+  return 0;
+}
+
+/* Diff two boards by index score and by rank. Positive `indexDelta` = the
+   underlying model improved for this team since last week; positive
+   `rankDelta` = climbed the board. Teams present on the current board but
+   missing from the prior board (new samples, mid-season additions) get null
+   deltas so the article never invents movement. */
+function fsnPowerIndexDeltas(currentBoard, priorBoard){
+  const priorById = Object.create(null);
+  (priorBoard || []).forEach(row=>{
+    if(row && row.team && row.team.id != null) priorById[String(row.team.id)] = row;
   });
+  return (currentBoard || []).map(row=>{
+    const prior = priorById[String(row.team.id)] || null;
+    const indexDelta = prior ? (Number(row.index) - Number(prior.index)) : null;
+    const rankDelta = prior ? (Number(prior.rank) - Number(row.rank)) : null;
+    const allPlayDelta = (prior && prior.allPlay && row.allPlay && prior.allPlay.hasData && row.allPlay.hasData)
+      ? (Number(row.allPlay.pct) - Number(prior.allPlay.pct)) : null;
+    const ppgDelta = prior && prior.ppg && row.ppg
+      ? (Number(row.ppg.avg) - Number(prior.ppg.avg)) : null;
+    const consistencyDelta = prior && prior.consistency && row.consistency
+      ? (Number(row.consistency.cf) - Number(prior.consistency.cf)) : null;
+    return { row, prior, indexDelta, rankDelta, allPlayDelta, ppgDelta, consistencyDelta };
+  });
+}
+
+/* Fraud gap = actual win % (standings) minus all-play win % (the FSN Index
+   schedule-neutral pillar). A large positive gap means the record is
+   fraudulent — the team is winning games the underlying scoring says they
+   shouldn't. A large negative gap means the record is hiding a real
+   contender — a hidden gem being punished by the schedule. Returns null
+   when the required samples are missing rather than inventing a zero. */
+function fsnPowerIndexFraudGap(indexRow, standingsRow){
+  if(!indexRow || !standingsRow) return null;
+  const ap = indexRow.allPlay;
+  if(!ap || !ap.hasData) return null;
+  const actualPct = Number(standingsRow.winPct);
+  const allPlayPct = Number(ap.pct);
+  if(!Number.isFinite(actualPct) || !Number.isFinite(allPlayPct)) return null;
+  return (actualPct * 100) - allPlayPct;
+}
+
+/* The signed delta glyph used everywhere in the editorial: ▲/▼/— never a
+   raw + / - sign in front of the number. */
+function fsnPowerIndexArrow(delta, digits){
+  if(delta == null || !Number.isFinite(Number(delta))) return '—';
+  const d = Number(delta);
+  const magnitude = digits === 0
+    ? String(Math.abs(Math.round(d)))
+    : Math.abs(d).toFixed(digits == null ? 1 : Math.max(0, digits|0));
+  if(d > 0) return '▲' + magnitude;
+  if(d < 0) return '▼' + magnitude;
+  return '—';
+}
+
+/* One deterministic voice-of-the-column sentence for a Riser. Every choice —
+   which verb, which framing clause — is drawn from the row's own seed so a
+   re-render never reshuffles the copy under the reader's thumb. */
+const FSN_POWER_INDEX_RISE_VERBS = [
+  'surged','climbed','erupted','forced its way up','made the biggest move up','kicked the door in'
+];
+const FSN_POWER_INDEX_RISE_CAUSES = [
+  "an all-play line that finally caught up to what the eye test has been screaming",
+  "a scoring pace that stopped leaving points on the bench",
+  "consistency this roster has not shown all season",
+  "a schedule-neutral profile the model can no longer ignore",
+  "an underlying board that stopped punishing them for one bad half"
+];
+const FSN_POWER_INDEX_FALL_VERBS = [
+  'plummeted','cratered','slid','free-fell','tumbled','lost the room'
+];
+const FSN_POWER_INDEX_FALL_CAUSES = [
+  "an all-play win rate that exposed the record as circumstantial",
+  "a scoring floor the schedule stopped hiding",
+  "week-to-week variance that started to matter",
+  "an efficiency read that no longer covers the gap",
+  "a soft-schedule dividend that finally ran out"
+];
+
+function fsnPowerIndexMoverSentence(mover, seedTag){
+  if(!mover || !mover.row) return '';
+  const r = mover.row;
+  const seed = seedTag + ':' + (r.team && r.team.id != null ? r.team.id : 'x');
+  const climbed = (mover.rankDelta != null && mover.rankDelta > 0) || (mover.indexDelta != null && mover.indexDelta > 0);
+  const verb = pick(climbed ? FSN_POWER_INDEX_RISE_VERBS : FSN_POWER_INDEX_FALL_VERBS, seed);
+  const cause = pick(climbed ? FSN_POWER_INDEX_RISE_CAUSES : FSN_POWER_INDEX_FALL_CAUSES, seed + '::c');
+  const rankPhrase = mover.rankDelta != null
+    ? (climbed
+        ? `up <b>${Math.abs(mover.rankDelta)}</b> spot${Math.abs(mover.rankDelta) === 1 ? '' : 's'} to No. <b>${r.rank}</b>`
+        : `down <b>${Math.abs(mover.rankDelta)}</b> spot${Math.abs(mover.rankDelta) === 1 ? '' : 's'} to No. <b>${r.rank}</b>`)
+    : `now sitting at No. <b>${r.rank}</b>`;
+  const indexPhrase = mover.indexDelta == null
+    ? `an FSN Power Index of <b>${n1(r.index)}</b>`
+    : `an FSN Power Index of <b>${n1(r.index)}</b> (${fsnPowerIndexArrow(mover.indexDelta, 1)} on the week)`;
+  const supportBits = [];
+  if(mover.allPlayDelta != null && Math.abs(mover.allPlayDelta) >= 3){
+    supportBits.push(`all-play win rate ${fsnPowerIndexArrow(mover.allPlayDelta, 1)}%`);
+  }
+  if(mover.ppgDelta != null && Math.abs(mover.ppgDelta) >= 2){
+    supportBits.push(`scoring pace ${fsnPowerIndexArrow(mover.ppgDelta, 1)} PPG`);
+  }
+  if(mover.consistencyDelta != null && Math.abs(mover.consistencyDelta) >= 4){
+    supportBits.push(`consistency ${fsnPowerIndexArrow(mover.consistencyDelta, 1)}`);
+  }
+  const support = supportBits.length ? ' — ' + supportBits.join(', ') : '';
+  return `<b>${esc(r.team.name)}</b> ${verb} on the board, ${rankPhrase} with ${indexPhrase}${support}. The pillar chart on the FSN POWER INDEX tab shows exactly why: ${cause}.`;
+}
+
+/* Deterministic column headline built around the biggest mover of the week.
+   Falls back to a top-of-board framing when no verified prior board exists
+   (Week 1, or the first week the sample is large enough to score). */
+const FSN_POWER_INDEX_RISE_HEADLINES = [
+  '{RISER} STORMS THE FSN POWER INDEX WHILE {TOP} HOLDS NO. 1',
+  '{RISER} RIPS UP THE FSN POWER INDEX BOARD AS {TOP} STAYS ON TOP',
+  '{RISER} CRASHES THE FSN POWER INDEX TOP TIER — {TOP} STILL SETS THE PACE'
+];
+const FSN_POWER_INDEX_FALL_HEADLINES = [
+  '{FALLER} PLUMMETS ON THE FSN POWER INDEX AS {TOP} TIGHTENS ITS GRIP',
+  '{FALLER} EXPOSED BY THE FSN POWER INDEX; {TOP} REMAINS THE STANDARD',
+  'THE FSN POWER INDEX CATCHES UP TO {FALLER} — {TOP} STILL OWNS THE MODEL'
+];
+const FSN_POWER_INDEX_STASIS_HEADLINES = [
+  'FSN POWER INDEX HOLDS THE SHAPE: {TOP} STILL LEADS THE MODEL',
+  'FSN POWER INDEX RE-RUN: {TOP} SURVIVES ANOTHER AUDIT',
+  'FSN POWER INDEX REPORTS QUIET WEEK — {TOP} ON TOP, FIELD ON NOTICE'
+];
+const FSN_POWER_INDEX_OPENING_HEADLINES = [
+  'FSN POWER INDEX OPENS THE BOARD WITH {TOP} AT NO. 1',
+  'FIRST FSN POWER INDEX PULL: {TOP} SETS THE STANDARD',
+  'FSN POWER INDEX GOES ON THE RECORD: {TOP} LEADS THE MODEL'
+];
+
+function fsnPowerIndexHeadline(seed, top, riser, faller){
+  const topName = esc(upper(top && top.team && top.team.name || 'THE FIELD'));
+  if(!riser && !faller){
+    return pick(FSN_POWER_INDEX_OPENING_HEADLINES, seed).replace('{TOP}', topName);
+  }
+  const riserRankDelta = riser && riser.rankDelta != null ? Math.abs(riser.rankDelta) : 0;
+  const fallerRankDelta = faller && faller.rankDelta != null ? Math.abs(faller.rankDelta) : 0;
+  if(!riser && !faller || (!riserRankDelta && !fallerRankDelta)){
+    return pick(FSN_POWER_INDEX_STASIS_HEADLINES, seed).replace('{TOP}', topName);
+  }
+  if(riserRankDelta >= fallerRankDelta && riser){
+    return pick(FSN_POWER_INDEX_RISE_HEADLINES, seed)
+      .replace('{RISER}', esc(upper(riser.row.team.name)))
+      .replace('{TOP}', topName);
+  }
+  return pick(FSN_POWER_INDEX_FALL_HEADLINES, seed)
+    .replace('{FALLER}', esc(upper(faller.row.team.name)))
+    .replace('{TOP}', topName);
+}
+
+/* The one entry point the runners list wires up. Always emits exactly one
+   article (id 'tl-power-{week}') when a scored board exists; otherwise
+   silently yields an empty stream so the pregame primer board is not padded
+   with an empty card. */
+function genFsnPowerIndexEditorial(ctx){
+  const anchorWeek = fsnPowerIndexAnchorWeek(ctx.week);
+  if(!anchorWeek) return [];
+
+  let currentBoard = [];
+  try{ currentBoard = FSNIntel.fsnPowerIndex(anchorWeek) || []; }
+  catch(err){
+    console.error('[NewsDesk] FSN Power Index editorial failed to read current board for Week ' + anchorWeek, err);
+    return [];
+  }
+  if(!currentBoard.length) return [];
+
+  const priorAnchor = anchorWeek > 1 ? fsnPowerIndexAnchorWeek(anchorWeek - 1) : 0;
+  let priorBoard = [];
+  if(priorAnchor){
+    try{ priorBoard = FSNIntel.fsnPowerIndex(priorAnchor) || []; }
+    catch(err){
+      console.warn('[NewsDesk] FSN Power Index editorial prior board unavailable for Week ' + priorAnchor + '; movers section will fall back to top-of-board framing.', err);
+      priorBoard = [];
+    }
+  }
+
+  let standings = [];
+  try{ standings = FSNIntel.standingsThrough(anchorWeek) || []; }
+  catch(err){
+    console.warn('[NewsDesk] FSN Power Index editorial standings unavailable for Week ' + anchorWeek + '; fraud gaps will be reported as unavailable.', err);
+    standings = [];
+  }
+  const standingsById = Object.create(null);
+  standings.forEach(row=>{
+    if(row && row.team && row.team.id != null) standingsById[String(row.team.id)] = row;
+  });
+
+  const deltas = fsnPowerIndexDeltas(currentBoard, priorBoard);
+  const movers = deltas.slice().sort((a,b)=>{
+    const ai = a.indexDelta == null ? -1 : Math.abs(a.indexDelta);
+    const bi = b.indexDelta == null ? -1 : Math.abs(b.indexDelta);
+    if(bi !== ai) return bi - ai;
+    const ar = a.rankDelta == null ? 0 : Math.abs(a.rankDelta);
+    const br = b.rankDelta == null ? 0 : Math.abs(b.rankDelta);
+    return br - ar;
+  });
+  const riser = movers.find(m=> m.indexDelta != null && m.indexDelta > 0) || null;
+  const faller = movers.find(m=> m.indexDelta != null && m.indexDelta < 0) || null;
+
+  /* Fraud audit — the second half of the column. Only teams with a resolved
+     standings row and a resolved all-play sample can be classified; the desk
+     refuses to fake a gap when either is missing. */
+  const fraud = currentBoard.map(row=>{
+    const standingsRow = standingsById[String(row.team.id)] || null;
+    return { row, standingsRow, gap: fsnPowerIndexFraudGap(row, standingsRow) };
+  }).filter(entry=> entry.gap != null);
+  const topFraud = fraud.slice().sort((a,b)=> b.gap - a.gap)[0] || null;
+  const topGem   = fraud.slice().sort((a,b)=> a.gap - b.gap)[0] || null;
+
+  const top = currentBoard[0];
+  const bottom = currentBoard[currentBoard.length - 1];
+  const pregame = !ctx.anyScored;
+  const slot = pregame ? 'primer' : 'recap';
+  const seed = 'fsnpi:' + (typeof selectedLeagueId === 'function' ? selectedLeagueId() : 'league') +
+               ':' + (typeof viewedSeasonYear === 'function' ? viewedSeasonYear() : 0) +
+               ':' + anchorWeek + ':' + (top && top.team && top.team.id != null ? top.team.id : 'x');
+
+  const headline = fsnPowerIndexHeadline(seed, top, riser, faller);
+  const columnistIntro = pick([
+    'The board is not a wall of numbers this week; it is a receipt.',
+    'The desk is done being polite about it.',
+    'Every week the underlying math tells a different story than the standings, and this week it is not close.',
+    'The 4-pillar model does not care about your win column, and neither does this column.'
+  ], seed + '::intro');
+  const topClause = pick([
+    'and the case against them is thin.',
+    "and the profile behind the ranking is not a hot streak — it is a tier.",
+    "on merit, not vibes, not narrative, not last year's ring."
+  ], seed + '::top');
+
+  const moversParagraph = (() => {
+    const riserSentence = riser ? fsnPowerIndexMoverSentence(riser, seed + '::rise') : '';
+    const fallerSentence = faller ? fsnPowerIndexMoverSentence(faller, seed + '::fall') : '';
+    if(riserSentence && fallerSentence) return riserSentence + ' ' + fallerSentence;
+    if(riserSentence) return riserSentence + ' Nobody plummeted this week — the field held, which is its own kind of story.';
+    if(fallerSentence) return fallerSentence + ' Nobody surged to match the drop, which is why the top of the board looks locked.';
+    return pregame
+      ? 'The first FSN Power Index of the season is on the record; there is no prior week to compare it against yet.'
+      : 'Nobody moved a full spot on the model this week. That is either parity, or a league too scared to lose.';
+  })();
+
+  const fraudParagraph = (() => {
+    if(topFraud && topFraud.gap >= 8){
+      const gemBit = topGem && topGem !== topFraud && topGem.gap <= -8
+        ? ` On the other side, <b>${esc(topGem.row.team.name)}</b> (${esc(topGem.standingsRow.recordLabel)}) is being punished by the schedule: an all-play rate that outruns the record by <b>${n1(Math.abs(topGem.gap))}</b> points of win-percentage. That is the model telling you who is really good.`
+        : '';
+      return `Now the frauds. <b>${esc(topFraud.row.team.name)}</b> is <b>${esc(topFraud.standingsRow.recordLabel)}</b> on paper, and the all-play line says they should be closer to <b>${n1(Number(topFraud.row.allPlay.pct))}%</b> — a <b>${n1(topFraud.gap)}</b>-point gap between what the record claims and what the roster earns. That is a lucky record dressed up as a good team, and the FSN POWER INDEX tab lays out the pillar-by-pillar why.` + gemBit;
+    }
+    if(topGem && topGem.gap <= -8){
+      return `The other read is on the hidden gem. <b>${esc(topGem.row.team.name)}</b> (${esc(topGem.standingsRow.recordLabel)}) has an all-play win rate <b>${n1(Math.abs(topGem.gap))}</b> points of win-percentage above the record. The schedule is doing them dirty; the pillar breakdown on the FSN POWER INDEX tab shows exactly which weeks stole their wins.`;
+    }
+    return `No team on the board is running a record that lies to the model by more than a rounding error this week. The FSN POWER INDEX tab keeps the full pillar-by-pillar audit if you want to walk it yourself, but the desk will not manufacture a fraud where the math does not find one.`;
+  })();
+
+  const closingParagraph = `At the other end of the board, <b>${esc(bottom.team.name)}</b> anchors it at No. <b>${currentBoard.length}</b> with an FSN Power Index of <b>${n1(bottom.index)}</b>. The full 4-pillar breakdown — CV consistency, all-play %, scoring dominance, and the context grid — lives on the <b>FSN POWER INDEX</b> tab. This column is the deep-dive on the movers; the tab is the math.`;
+
+  const dek = pregame
+    ? `A columnist's read on the biggest movers on the FSN Power Index heading into Week ${ctx.week}. Full pillar-by-pillar math on the FSN POWER INDEX tab.`
+    : `A columnist's read on the biggest movers on the FSN Power Index after Week ${anchorWeek}. Full pillar-by-pillar math on the FSN POWER INDEX tab.`;
+
   return [tl({
     id: 'tl-power-' + ctx.week,
-    articleType:'fsn_power_index',
-    kind: 'power', topic: 'power', slot: 'primer', offset: (hash(seed) % 90),
-    metaTag: 'FSN POWER INDEX', tag: 'FSN POWER INDEX', tone: 'cyan', priority: 78,
-    byline: 'FSN Numbers Desk', narrativeLocked: true,
+    articleType: 'fsn_power_index_editorial',
+    kind: 'power', topic: 'power', slot: slot, offset: (hash(seed) % 90),
+    metaTag: 'FSN POWER INDEX', tag: 'FSN POWER INDEX', tone: 'cyan', priority: 80,
+    byline: 'FSN Numbers Desk',
     crest: { name: top.team.name, logo: top.team.logo },
-    headline: `FSN POWER INDEX · WEEK ${ctx.week}: ${esc(upper(top.team.name))} SETS THE STANDARD`,
-    dek: `Model-Driven Power Rankings ahead of Week ${ctx.week}. The board rewards scoring strength and lineup efficiency, not just the win column.`,
+    headline: headline,
+    dek: dek,
     paragraphs: [
-      `${datelineTag()} Before a single Week ${ctx.week} snap, the FSN Power Index already has an opinion — and it is not a gentle one. <b>${esc(top.team.name)}</b> (${esc(top.recordLabel)}, ${n1(top.pf)} PF) sits at No. 1, the team everyone else has to measure themselves against this week.`,
-      `Every movement row carries the same receipts: actual wins minus all-play expected wins, plus verified lineup efficiency. A rise without those two numbers is noise, so the desk prints unavailable when the underlying sample is not there.`,
-      powerMovementSentence(table.find(r=> r.delta > 0), Math.max(0, ctx.week - 1), 'up') || `No verified riser is on this pregame board.`,
-      powerMovementSentence(table.find(r=> r.delta < 0), Math.max(0, ctx.week - 1), 'down') || `No verified faller is on this pregame board.`,
-      `At the other end, <b>${esc(bottom.team.name)}</b> anchors the board at No. ${table.length} with <b>${n1(bottom.pf)}</b> points on the season. The schedule does not care about reputation, and Week ${ctx.week} is another chance to climb or another week of proving the ranking right.`,
+      `${datelineTag()} ${columnistIntro} <b>${esc(top.team.name)}</b> sits at No. 1 on the FSN Power Index at <b>${n1(top.index)}</b>, ` + topClause,
+      moversParagraph,
+      fraudParagraph,
+      closingParagraph,
     ],
-    numbers: { title: 'FSN Power Index · Week ' + ctx.week, rows: rankRows,
-      note: 'FSN Power Index weights 60% points-for & roster efficiency against 40% win record to expose lucky records and identify real contenders.' },
-    headlineLocked:true,
+    numbers: { title: 'FSN Power Index · Editorial Snapshot · Week ' + anchorWeek, rows: [
+      { label: 'Board leader', value: (top && top.team ? top.team.name : '—'),
+        note: 'FSN Power Index ' + n1(top && top.index) + ' · No. 1 of ' + currentBoard.length },
+      riser
+        ? { label: 'Biggest riser', value: esc(riser.row.team.name),
+            note: 'FSN Power Index ' + fsnPowerIndexArrow(riser.indexDelta, 1) +
+              (riser.rankDelta != null ? ' · ' + fsnPowerIndexArrow(riser.rankDelta, 0) + ' spots' : '') }
+        : { label: 'Biggest riser', value: 'Unavailable', note: 'No prior FSN Power Index board resolved for comparison.' },
+      faller
+        ? { label: 'Biggest faller', value: esc(faller.row.team.name),
+            note: 'FSN Power Index ' + fsnPowerIndexArrow(faller.indexDelta, 1) +
+              (faller.rankDelta != null ? ' · ' + fsnPowerIndexArrow(faller.rankDelta, 0) + ' spots' : '') }
+        : { label: 'Biggest faller', value: 'Unavailable', note: 'No prior FSN Power Index board resolved for comparison.' },
+      topFraud
+        ? { label: 'Most fraudulent record', value: esc(topFraud.row.team.name),
+            note: esc(topFraud.standingsRow.recordLabel) + ' · +' + n1(topFraud.gap) + ' pts of win% above all-play' }
+        : { label: 'Most fraudulent record', value: 'None flagged', note: 'No verified all-play sample crossed the fraud threshold.' },
+      topGem
+        ? { label: 'Most schedule-punished', value: esc(topGem.row.team.name),
+            note: esc(topGem.standingsRow.recordLabel) + ' · ' + n1(topGem.gap) + ' pts of win% below all-play' }
+        : { label: 'Most schedule-punished', value: 'None flagged', note: 'No verified all-play sample crossed the hidden-gem threshold.' },
+    ], note: 'Snapshot only. The full 4-pillar grid — all-play %, PPG norm, CV consistency, context — lives on the FSN POWER INDEX tab.' },
+    narrativeLocked: true,
+    headlineLocked: true,
   })];
 }
 
@@ -11550,58 +11851,15 @@ function redemptionClockFacts(ctx, row, table){
 function tlRecap(ctx){
   const out = [];
   if(ctx.active2026PregameGuard || !ctx.anyScored || ctx.weekTotal <= 0 || ctx.allScores.length === 0) return out;
+  /* Legacy powerRankings() spot-movement recap has been fully deprecated —
+     the Tuesday-morning FSN POWER INDEX column now ships from
+     genFsnPowerIndexEditorial() and is wired into the runners list in both
+     the pregame and postgame branches. tlRecap keeps ownership of the
+     bottom-board watch below because that filing is a distinct story
+     (Sacko Watch / Redemption Clock), but the movement-based board table
+     that this generator used to publish is intentionally gone. */
   const table = FSNIntel.powerRankings(ctx.week);
   if(!table.length) return out;
-
-  /* ---- POWER RANKINGS SHAKEUP ---- */
-  const risers  = table.filter(r=> r.delta > 0).sort((a,b)=> b.delta - a.delta);
-  const fallers = table.filter(r=> r.delta < 0).sort((a,b)=> a.delta - b.delta);
-  const top = table[0];
-  const riser = risers[0] || null;
-  const faller = fallers[0] || null;
-  const seed = 'pr' + ctx.week + top.team.id;
-
-  const rankRows = table.slice(0, Math.min(table.length, 12)).map(r=>{
-    const audit = powerIndexAudit(r, ctx.week);
-    const badge = r.indexBadge
-      ? ` <span style="color:${r.indexBadge === 'PRESEASON CAPITAL' ? 'var(--gold)' : 'var(--cyan)'};font-weight:700">[${esc(r.indexBadge)}]</span>`
-      : '';
-    return {
-      label: `${r.rank}. ${esc(r.team.name)} <span style="color:#5d6879">(${esc(r.recordLabel)})</span>${badge}`,
-      value: (r.delta > 0 ? '▲' + r.delta : r.delta < 0 ? '▼' + Math.abs(r.delta) : '—'),
-      note: `${n1(r.pf)} PF · ${n1(audit.actualWins)} W vs ${audit.expectedWins == null ? 'unavailable xW' : n1(audit.expectedWins) + ' xW (' + signedNumber(audit.winDelta) + ')'}` +
-        ` · ${audit.efficiency == null ? 'lineup efficiency unavailable' : n1(audit.efficiency) + '% lineup efficiency'}`,
-    };
-  });
-
-  out.push(tl({
-    id: 'tl-power-' + ctx.week,
-    articleType:'fsn_power_index',
-    kind:'power', topic:'power', slot:'recap', offset: (hash(seed) % 90),
-    metaTag:'FSN POWER INDEX',
-    tag:'FSN POWER INDEX', tone:'cyan', priority: 80,
-    byline:'FSN Numbers Desk',
-    crest:{ name: top.team.name, logo: top.team.logo },
-    headline: `FSN POWER INDEX · WEEK ${ctx.week}: ${esc(upper(top.team.name))} LEADS THE MODEL`,
-    dek: `Model-Driven Power Rankings, NOT raw standings. Week ${ctx.week} rewards scoring strength and lineup efficiency while keeping wins meaningful.`,
-    paragraphs: [
-      `${datelineTag()} The desk re-ran the board after Week ${ctx.week}. ` +
-      `<b>${esc(top.team.name)}</b> (${esc(top.recordLabel)}, ${n1(top.pf)} PF) sits at No. 1, ` +
-      `${pick(['and the case against them is thin.','which is starting to feel less like a hot streak and more like a tier.','on merit, not vibes.'], seed)}`,
-
-      riser
-        ? powerMovementSentence(riser, ctx.week, 'up') + (faller ? ' ' + powerMovementSentence(faller, ctx.week, 'down') : '')
-        : `Nobody moved more than a spot. That is either parity or a league too scared to lose.`,
-
-      `The bottom of the board is where the season is actually being decided. ` +
-      `<b>${esc(table[table.length - 1].team.name)}</b> anchors it at No. ${table.length} with ${n1(table[table.length-1].pf)} points on the year.`,
-    ],
-    numbers: { title:'FSN Power Index · Week ' + ctx.week, rows: rankRows,
-      note:'FSN Power Index weights 60% points-for & roster efficiency against 40% win record to expose lucky records and identify real contenders.' +
-        (ctx.week <= 3 ? ' PRESEASON CAPITAL is used only as an early tie-break signal when model scores are effectively even.' : '') },
-    narrativeLocked:true,
-    headlineLocked:true,
-  }));
 
   /* ---- BOTTOM-BOARD WATCH ----
      Strict temporal guardrail: the true "Sacko Watch" — the basement-tier
@@ -14015,8 +14273,8 @@ function getTimelineStream(week){
      matchup Tale of the Tape, and start/sit injury warnings only. No clinch
      math or postgame generator is even invoked until the live week has points. */
   const runners = pregameOnly
-    ? [tlPlayoffBracket, tlPreseason, genPreviewPower, tlPrimer, tlRivalry, tlInjury, tlDraft]
-    : [tlPlayoffBracket, tlPreseason, tlPlayoffPicture, tlGameDay, tlRecap, tlWaivers, tlPrimer, tlRivalry, tlInjury, tlDraft];
+    ? [tlPlayoffBracket, tlPreseason, genFsnPowerIndexEditorial, tlPrimer, tlRivalry, tlInjury, tlDraft]
+    : [tlPlayoffBracket, tlPreseason, tlPlayoffPicture, tlGameDay, tlRecap, genFsnPowerIndexEditorial, tlWaivers, tlPrimer, tlRivalry, tlInjury, tlDraft];
   /* Every slotTime() call below — in the generators, in the legacy adopt()
      pass, in the community fold-in — resolves against this week's real dates
      while the anchor is in force. The generators are already individually
