@@ -21,6 +21,14 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=&#39;http://www.w3.org/2000/svg&#39; viewBox=&#39;0 0 64 64&#39;%3E%3Crect width=&#39;64&#39; height=&#39;64&#39; fill=&#39;%23080a0e&#39;/%3E%3Ctext x=&#39;32&#39; y=&#39;43&#39; font-family=&#39;Helvetica,Arial&#39; font-size=&#39;27&#39; font-weight=&#39;bold&#39; fill=&#39;%2300e0ff&#39; text-anchor=&#39;middle&#39;%3EFSN%3C/text%3E%3C/svg%3E">
 
 <script src="https://cdn.tailwindcss.com"></script>
+<!--
+  Dynamic weekly publishing schedule engine. Loads at global scope so the
+  News Desk (block 4) and any other block can consult it via
+  window.EditorialScheduleEngine without reaching into another closure. Kept
+  as a separate file per CLAUDE.md's cross-block scope rule — a helper needed
+  by more than one IIFE lives outside every IIFE.
+-->
+<script src="editorialScheduleEngine.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Anton&family=Oswald:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700;800&display=swap" rel="stylesheet">
@@ -11447,12 +11455,40 @@ function seasonWeekOneStart(seasonYear){
 }
 
 /* The exact local moment slot `slotName` goes to air in week `week` of
-   `seasonYear`. Null whenever the season has no calendar anchor. */
+   `seasonYear`. Null whenever the season has no calendar anchor.
+
+   Two layers:
+     1. If the EditorialScheduleEngine (loaded at global scope from
+        editorialScheduleEngine.js) can resolve this week's first NFL kickoff
+        from the loaded ESPN payload, the release lands relative to that
+        anchor — T-3 for the post-mortem, T-2 for the transaction wire, T-1
+        for the primer, matchupday for the injury wire. That is what lets the
+        timeline organically render THURSDAY / SATURDAY / TUESDAY headers as
+        the actual kickoff shifts across the mid-week doldrums.
+     2. When the engine has no kickoff data (archive seasons, sparse payloads,
+        pre-week fetches), the release falls back to the original Tuesday-
+        start-of-week math so nothing regresses. */
 function slotReleaseAt(slotName, week, seasonYear){
   const slot = SLOTS[slotName] || SLOTS.gameday;
   const wk = parseInt(week, 10);
+  if(!(wk > 0)) return null;
+
+  try{
+    const engine = (typeof window !== 'undefined') ? window.EditorialScheduleEngine : null;
+    if(engine && typeof engine.firstGameTimestamp === 'function'){
+      const kickoff = engine.firstGameTimestamp(seasonYear, wk);
+      if(kickoff != null){
+        const dyn = engine.releaseAt(slotName, kickoff);
+        if(Number.isFinite(dyn)) return dyn;
+      }
+    }
+  }catch(err){
+    console.warn('[EditorialScheduleEngine] release resolve failed for slot ' + slotName +
+      ' week ' + wk, err);
+  }
+
   const start = seasonWeekOneStart(seasonYear);
-  if(!start || !(wk > 0)) return null;
+  if(!start) return null;
   const dayOffset = (wk - 1) * 7 + (slot.day != null ? slot.day : 0);
   return new Date(start.getFullYear(), start.getMonth(), start.getDate() + dayOffset,
                   slot.hour, 0, 0, 0).getTime();
@@ -15458,7 +15494,12 @@ function tickerItems(){
     const hs = displayScore(g.homeScore, g.homeProjected, st);
     const as = displayScore(g.awayScore, g.awayProjected, st);
     const homeWins = parseFloat(g.homeScore) > parseFloat(g.awayScore);
-    const tag = st === 'live' ? '<span class="tk-tag">LIVE</span>' : (st === 'pre' ? '<span class="tk-tag" style="color:var(--dim)">PROJ</span>' : '');
+    // Pre-game and mid-game slates are label-less on the crawl now — the only
+    // moment the ticker calls out a state is when the ball is in the air (LIVE).
+    // A projection tag on a Tuesday scoreboard implied live tracking the app
+    // has never actually done; the clean crawl matches the finalize sub-text
+    // shown on the score cards.
+    const tag = st === 'live' ? '<span class="tk-tag">LIVE</span>' : '';
     items.push(
       `<span class="ticker-item">${tag}` +
       `<span class="tk-team ${st!=='pre' && !homeWins ? '' : ''}">${esc(g.awayTeam.abbrev)}</span>` +
@@ -15649,11 +15690,14 @@ function renderHome(){
     const margin = Math.abs(hs - as);
     const homeLeads = hs >= as;
     const pregameWeek = totalScored === 0;
-    const statusPill = pregameWeek
-      ? `<span class="pill pill-cyan">PROJECTED</span>`
-      : (st === 'live'
-          ? `<span class="pill pill-live"><span class="live-dot"></span>LIVE</span>`
-          : (st === 'final' ? `<span class="pill pill-final">FINAL</span>` : `<span class="pill pill-cyan">PROJECTED</span>`));
+    /* Only LIVE and FINAL earn a pill on the marquee card now — the app has
+       never actually tracked live-game scoring, and printing PROJECTED on a
+       Tuesday scoreboard sold a service that does not exist. Pre-game and any
+       still-tallying state leave the pill slot empty; the finalize sub-text
+       below the score block explains when the numbers will be real. */
+    const statusPill = st === 'live'
+      ? `<span class="pill pill-live"><span class="live-dot"></span>LIVE</span>`
+      : (st === 'final' ? `<span class="pill pill-final">FINAL</span>` : '');
     /* Same calibrated thresholds the News Desk writes to: under 5.0 is a true
        nail-biter, 5.0–12.0 is a one-score game, 12.1–24.0 is a competitive
        decision and anything past 24.0 is a blowout. */
@@ -15666,9 +15710,16 @@ function renderHome(){
     const bracketLabel = playoffWeek
       ? `${motwRound} · ${bracketOf === 'toilet' ? 'TOILET BOWL' : 'CHAMPIONSHIP BRACKET'}`
       : '';
-    const centerStat = pregameWeek
-      ? (bestTotal > 0 ? `PROJECTED TOTAL ${bestTotal.toFixed(1)}` : 'PROJECTIONS PENDING')
-      : `${margin.toFixed(1)} MARGIN`;
+    // Pre-game center rail no longer prints a fake "projected total" — the
+    // number was never live and the label was misleading. Show the neutral
+    // MATCHUP divider until the week has scored; then the real margin.
+    const centerStat = pregameWeek ? 'MATCHUP' : `${margin.toFixed(1)} MARGIN`;
+    // Non-final matchups (pre-kickoff or mid-slate before Tuesday roll) get a
+    // clean editorial sub-line beneath the score block so nobody expects a
+    // live-tracker experience that this app has never delivered.
+    const finalizeNotice = st !== 'final'
+      ? `<div class="mt-2 text-[11px] text-[var(--dim)] leading-relaxed italic">Scores finalize Tuesday morning following stat corrections.</div>`
+      : '';
 
     $('motwCard').innerHTML = `
       <div class="pl-5 pr-4 py-4">
@@ -15685,6 +15736,7 @@ function renderHome(){
           <div class="flex-1 h-px bg-[var(--line)]"></div>
         </div>
         ${motwSide(g.homeTeam, hs, homeLeads, st, week)}
+        ${finalizeNotice}
         <div class="mt-3.5 pt-3 border-t border-[var(--line)] text-[11px] text-[var(--dim)] leading-relaxed">
           ${playoffWeek
             ? `${bracketOf === 'toilet'
@@ -15693,10 +15745,10 @@ function renderHome(){
                     ? (st === 'final' ? 'Title decided. The winner is Champion; the other finalist is Runner-Up.' : 'Championship game. The final designations are Champion and Runner-Up.')
                     : 'Championship Bracket. The loser is out of the title picture for good.')}
                ${pregameWeek
-                 ? `Projected combined total <b class="text-[var(--off)] font-mono tabular">${bestTotal > 0 ? bestTotal.toFixed(1) : '—'}</b>.`
+                 ? `The marquee matchup is set; combined scoring lands once the slate finalizes.`
                  : `Combined <b class="text-[var(--off)] font-mono tabular">${bestTotal.toFixed(1)}</b> points.`}`
             : (pregameWeek
-                ? `Projected combined total: <b class="text-[var(--off)] font-mono tabular">${bestTotal > 0 ? bestTotal.toFixed(1) : '—'}</b> points. Actual scoring has not started.`
+                ? `The marquee matchup is set. Combined scoring will land once the slate finalizes.`
                 : `Combined <b class="text-[var(--off)] font-mono tabular">${bestTotal.toFixed(1)}</b> points — the highest total on this week's board.`)}
         </div>
       </div>`;
@@ -15794,7 +15846,7 @@ function compactGameRow(g){
       <span class="text-[12px] font-semibold truncate ${homeWins && st!=='pre' ? dim : ''}">${esc(g.awayTeam.name)}</span>
       <span class="font-mono tabular text-[13px] font-bold ml-auto ${homeWins && st!=='pre' ? dim : 'text-[var(--cyan)]'}">${awayShown}</span>
     </div>
-    <div class="text-[9px] ${st === 'pre' ? 'text-[var(--cyan)]' : 'text-[#39424f]'} tracking-widest">${st === 'pre' ? 'PROJ' : 'VS'}</div>
+    <div class="text-[9px] text-[#39424f] tracking-widest">${st === 'live' ? 'LIVE' : 'VS'}</div>
     <div class="flex-1 min-w-0 flex items-center gap-2">
       <span class="font-mono tabular text-[13px] font-bold ${!homeWins && st!=='pre' ? dim : 'text-[var(--cyan)]'}">${homeShown}</span>
       <span class="text-[12px] font-semibold truncate ${!homeWins && st!=='pre' ? dim : ''}">${esc(g.homeTeam.name)}</span>
@@ -15844,22 +15896,32 @@ function matchupCard(g){
   const homeLeads = hs >= as;
   const margin = Math.abs(hs - as);
 
+  /* Only LIVE and FINAL earn a state pill. Pre-kickoff and mid-slate cards
+     drop the projection chip entirely and lean on the finalize sub-text below
+     the scores, so the board reads as a schedule rather than a live tracker
+     the app has never actually shipped. */
   const statusPill = st === 'live'
     ? `<span class="pill pill-live"><span class="live-dot"></span>LIVE</span>`
-    : (st === 'final' ? `<span class="pill pill-final">FINAL</span>` : `<span class="pill pill-cyan">PROJECTED</span>`);
+    : (st === 'final' ? `<span class="pill pill-final">FINAL</span>` : '');
 
   const playoff = g.playoffTierType && g.playoffTierType !== 'NONE'
     ? `<span class="pill pill-gold">PLAYOFFS</span>` : '';
 
   const accent = st === 'live' ? 'accent-red' : (st === 'final' ? 'accent-cyan' : 'accent-gold');
 
-  // Before kickoff there is no margin to report — show the projected total (or a
-  // clean "SEASON OPENER" badge) instead of a hollow "0.0 MARGIN".
+  // Pre-game rows also drop the projected-total badge; margin only lives here
+  // once real scoring exists.
   const marginBadge = st === 'pre'
-    ? ((hs + as) > 0
-        ? `<span class="font-mono tabular text-[10px] text-[var(--cyan)]">PROJ TOTAL ${(hs + as).toFixed(1)}</span>`
-        : `<span class="pill pill-cyan" style="padding:2px 8px">SEASON OPENER</span>`)
+    ? ''
     : `<span class="font-mono tabular text-[10px] text-[var(--dim)]">${margin.toFixed(1)} MARGIN</span>`;
+
+  // In-universe fallback sub-text: any matchup period that has not finalized
+  // (pre-game, active, or awaiting the Tuesday roll) gets the clean editorial
+  // notice directly beneath the score block. FINAL is the only state that
+  // skips it, since those numbers are already the settled value.
+  const finalizeNotice = st !== 'final'
+    ? `<div class="mt-2 text-[11px] text-[var(--dim)] leading-relaxed italic">Scores finalize Tuesday morning following stat corrections.</div>`
+    : '';
 
   return `<div class="card card-accent ${accent} ${gameHasActiveTeam(g) ? 'active-team-matchup' : ''}">
     <div class="pl-4 pr-3.5 py-3.5">
@@ -15870,6 +15932,7 @@ function matchupCard(g){
       ${matchupSide(g.awayTeam, as, !homeLeads, st, g.awayProjected, effectiveWeek())}
       <div class="h-px bg-[var(--line)] my-2.5"></div>
       ${matchupSide(g.homeTeam, hs, homeLeads, st, g.homeProjected, effectiveWeek())}
+      ${finalizeNotice}
     </div>
   </div>`;
 }
@@ -15884,8 +15947,10 @@ function matchupSide(team, score, leading, status, projected, week){
       border-color:${won ? 'rgba(57,255,140,.4)' : 'rgba(255,45,85,.4)'};
       color:${won ? 'var(--green)' : 'var(--red)'};">${won ? 'W' : 'L'}${streak.length}</span>`;
   }
-  // Once a game is under way the projection is still worth showing alongside.
-  const projLine = (status !== 'pre' && projected) ? `<span class="font-mono tabular text-[9.5px] text-[var(--dim)]">PROJ ${esc(projected)}</span>` : '';
+  /* The PROJ sub-value under each team's score is retired along with the
+     PROJECTED pills — the finalize sub-text on the card is now the single
+     authoritative statement about non-final numbers. */
+  const projLine = '';
 
   return `<div class="flex items-center gap-3">
     ${crest(team.name, team.logo, 40)}
