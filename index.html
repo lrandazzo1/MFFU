@@ -201,10 +201,10 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
 /* ---------- SAVED LEAGUES / SEASON STATS CONTROLS ---------- */
 .league-switcher{ display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; align-items:end; }
 .league-switcher-empty{ font-size:11px; line-height:1.5; color:var(--dim); }
-.stats-mode-toggle{ margin:0 16px 14px; display:grid; grid-template-columns:1fr 1fr; gap:4px;
+.stats-mode-toggle{ margin:0 16px 14px; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:4px;
   padding:4px; border:1px solid var(--line); border-radius:12px; background:#0b0f16; }
-.stats-mode-toggle button{ min-height:42px; padding:8px; border-radius:9px; color:var(--dim);
-  font-size:10.5px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; }
+.stats-mode-toggle button{ min-height:42px; padding:8px 6px; border-radius:9px; color:var(--dim);
+  font-size:10px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; line-height:1.2; }
 .stats-mode-toggle button[data-active="true"]{ background:var(--cyan); color:#04121a; box-shadow:0 0 14px rgba(0,224,255,.18); }
 .standings-card-list{
   display:grid; grid-template-columns:minmax(0,1fr); gap:12px;
@@ -266,6 +266,76 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
 @media (min-width:560px){
   .standings-stats-grid{ grid-template-columns:repeat(3,minmax(0,1fr)); }
 }
+
+/* ---------- FSN POWER INDEX ---------- */
+.fsn-index-head-row{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin:0 0 12px; }
+.fsn-index-head-title{ min-width:0; color:var(--off); font-family:'JetBrains Mono',monospace; font-size:9px;
+  font-weight:700; letter-spacing:.14em; text-transform:uppercase; }
+.fsn-index-info-btn{ flex:none; width:24px; height:24px; border-radius:50%; display:grid; place-items:center;
+  border:1px solid color-mix(in srgb,var(--cyan) 45%,transparent); color:var(--cyan); background:rgba(0,224,255,.08);
+  font-family:Georgia,'Times New Roman',serif; font-style:italic; font-size:13px; font-weight:700; line-height:1; cursor:pointer; }
+.fsn-index-info-btn:hover,.fsn-index-info-btn:focus-visible{ background:rgba(0,224,255,.2); outline:none; }
+.fsn-index-note{ margin:0 0 12px; padding:9px 11px; border:1px dashed rgba(0,224,255,.28); border-radius:10px;
+  color:var(--dim); font-size:10.5px; line-height:1.45; background:rgba(0,224,255,.04); }
+.fsn-index-card-list{ display:grid; grid-template-columns:minmax(0,1fr); gap:12px; width:100%; max-width:100%; min-width:0; }
+.fsn-index-card{ width:100%; max-width:100%; min-width:0; padding:14px; border:1px solid var(--line); border-radius:15px;
+  background:linear-gradient(155deg,#111824,#090d14); position:relative; overflow:hidden; }
+.fsn-index-card::before{ content:''; position:absolute; left:0; top:0; width:3px; height:100%;
+  background:var(--model-accent,var(--cyan)); box-shadow:0 0 14px var(--model-accent,var(--cyan)); }
+.fsn-index-card-head{ display:flex; align-items:center; gap:10px; width:100%; max-width:100%; min-width:0; margin-bottom:12px; }
+.fsn-index-rank{ flex:none; display:grid; place-items:center; width:28px; height:28px; border-radius:8px;
+  border:1px solid color-mix(in srgb,var(--model-accent,var(--cyan)) 40%,transparent); color:var(--model-accent,var(--cyan));
+  background:#080c12; font-family:'JetBrains Mono',monospace; font-size:10px; font-weight:900; }
+.fsn-index-logo{ flex:none; width:34px; height:34px; display:grid; place-items:center; overflow:hidden; }
+.fsn-index-identity{ flex:1 1 0%; min-width:0; max-width:100%; }
+.fsn-index-name{ display:block; min-width:0; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  color:#fff; font-family:'Oswald',sans-serif; font-size:16px; font-weight:700; line-height:1.2; letter-spacing:.025em; }
+.fsn-index-sub{ display:block; margin-top:3px; color:var(--dim); font-family:'JetBrains Mono',monospace; font-size:8px;
+  font-weight:700; letter-spacing:.1em; text-transform:uppercase; }
+.fsn-index-score{ flex:none; text-align:right; color:var(--cyan); font-family:'JetBrains Mono',monospace; line-height:1; }
+.fsn-index-score strong{ font-size:22px; font-weight:900; }
+.fsn-index-score em{ display:block; margin-top:3px; font-style:normal; color:var(--dim); font-size:8px; letter-spacing:.1em; }
+.fsn-index-grid{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; width:100%; max-width:100%; min-width:0; }
+.fsn-index-pill{ min-width:0; padding:9px 10px; border:1px solid rgba(255,255,255,.065); border-radius:10px; background:#080d12; }
+.fsn-index-pill-label{ display:block; margin-bottom:5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  color:#647084; font-family:'JetBrains Mono',monospace; font-size:8px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; }
+.fsn-index-pill-value{ display:block; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--off);
+  font-family:'JetBrains Mono',monospace; font-size:12.5px; font-weight:900; line-height:1.15; font-variant-numeric:tabular-nums; }
+.fsn-index-pill-value strong{ color:var(--cyan); font-weight:900; }
+.fsn-index-pill-sub{ display:block; margin-top:4px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#4d5769;
+  font-family:'JetBrains Mono',monospace; font-size:7.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; }
+.fsn-pill-pct{ color:var(--dim); font-weight:700; }
+.fsn-pill-flag{ color:var(--gold); font-size:8px; letter-spacing:.06em; }
+@media (min-width:560px){ .fsn-index-grid{ grid-template-columns:repeat(4,minmax(0,1fr)); } }
+
+/* FSN Power Index — formula breakdown modal */
+#fsnIndexInfoModal{ position:fixed; inset:0; z-index:130; display:none; align-items:center; justify-content:center;
+  padding:20px; background:rgba(3,6,10,.72); backdrop-filter:blur(4px); }
+#fsnIndexInfoModal[data-open="true"]{ display:flex; animation:fsnInfoFade .18s ease both; }
+@keyframes fsnInfoFade{ from{ opacity:0 } to{ opacity:1 } }
+.fsn-info-panel{ width:100%; max-width:440px; max-height:86vh; overflow-y:auto; border:1px solid var(--line);
+  border-radius:16px; background:linear-gradient(160deg,#111824,#080c13); box-shadow:0 24px 60px rgba(0,0,0,.55); }
+.fsn-info-head{ position:sticky; top:0; display:flex; align-items:flex-start; justify-content:space-between; gap:12px;
+  padding:16px; background:linear-gradient(160deg,#121a26,#0c111a); border-bottom:1px solid var(--line); }
+.fsn-info-kicker{ display:block; margin-bottom:4px; color:var(--cyan); font-family:'JetBrains Mono',monospace; font-size:8.5px;
+  font-weight:700; letter-spacing:.16em; text-transform:uppercase; }
+.fsn-info-title{ color:#fff; font-family:'Oswald',sans-serif; font-size:18px; font-weight:700; letter-spacing:.02em; }
+.fsn-info-close{ flex:none; width:28px; height:28px; border-radius:8px; border:1px solid var(--line); color:var(--dim);
+  background:#0a0f16; font-size:18px; line-height:1; cursor:pointer; }
+.fsn-info-close:hover{ color:#fff; border-color:var(--cyan); }
+.fsn-info-body{ padding:14px 16px 20px; }
+.fsn-info-formula{ margin:0 0 6px; padding:11px 12px; border:1px solid rgba(0,224,255,.25); border-radius:10px;
+  background:rgba(0,224,255,.05); color:var(--off); font-family:'JetBrains Mono',monospace; font-size:11px; line-height:1.5; }
+.fsn-info-scale{ margin:0 0 12px; color:#4d5769; font-family:'JetBrains Mono',monospace; font-size:8.5px;
+  font-weight:700; letter-spacing:.1em; text-transform:uppercase; }
+.fsn-info-pillar{ padding:11px 0; border-top:1px solid rgba(255,255,255,.06); }
+.fsn-info-pillar:first-of-type{ border-top:none; }
+.fsn-info-pillar-head{ display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin-bottom:4px; }
+.fsn-info-pillar-name{ color:#fff; font-family:'Oswald',sans-serif; font-size:14px; font-weight:600; }
+.fsn-info-weight{ flex:none; color:var(--cyan); font-family:'JetBrains Mono',monospace; font-size:11px; font-weight:900; }
+.fsn-info-pillar-desc{ color:var(--dim); font-size:11.5px; line-height:1.5; }
+.fsn-info-pillar-desc code{ color:var(--off); font-family:'JetBrains Mono',monospace; font-size:10.5px;
+  background:rgba(255,255,255,.05); padding:1px 4px; border-radius:4px; }
 
 /* ---------- SCREENS ---------- */
 .screen{ display:none; animation:screenIn .22s ease both; }
@@ -1993,7 +2063,8 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
       <div id="analyticsWeekScrubber" class="px-4 pb-3"></div>
       <div class="stats-mode-toggle" id="statsModeToggle" role="tablist" aria-label="Season statistics view">
         <button type="button" data-stats-mode="standings" data-active="true" role="tab" aria-selected="true">Standings</button>
-        <button type="button" data-stats-mode="advanced" data-active="false" role="tab" aria-selected="false">Advanced Analytics</button>
+        <button type="button" data-stats-mode="power" data-active="false" role="tab" aria-selected="false">FSN Index</button>
+        <button type="button" data-stats-mode="advanced" data-active="false" role="tab" aria-selected="false">Advanced</button>
       </div>
       <div id="analyticsBody" class="analytics-shell"></div>
     </div>
@@ -2336,6 +2407,59 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
       <button type="button" class="dossier-info-close" id="dossierInfoClose" aria-label="Close explanation">×</button>
     </div>
     <p class="dossier-info-body" id="dossierInfoBody"></p>
+  </div>
+</div>
+
+<!-- ============================================================
+     FSN POWER INDEX — formula breakdown modal
+     Opened by the (i) icon on the FSN Index view so managers can inspect
+     the exact weights and pillars behind the 0–100 score at any time.
+============================================================ -->
+<div id="fsnIndexInfoModal" data-open="false" role="dialog" aria-modal="true" aria-labelledby="fsnIndexInfoTitle">
+  <div class="fsn-info-panel">
+    <div class="fsn-info-head">
+      <div class="min-w-0">
+        <span class="fsn-info-kicker">Decision Science · Transparency</span>
+        <h2 class="fsn-info-title" id="fsnIndexInfoTitle">How the FSN Power Index Works</h2>
+      </div>
+      <button type="button" class="fsn-info-close" id="fsnIndexInfoClose" aria-label="Close explanation">×</button>
+    </div>
+    <div class="fsn-info-body">
+      <p class="fsn-info-formula">FSN Index = 0.50·All-Play% + 0.20·PF<sub>norm</sub> + 0.15·CF<sub>adj</sub> + 0.15·Context</p>
+      <p class="fsn-info-scale">A single 0–100 read on roster quality · Higher is better</p>
+
+      <div class="fsn-info-pillar">
+        <div class="fsn-info-pillar-head">
+          <span class="fsn-info-pillar-name">1 · All-Play Win %</span>
+          <span class="fsn-info-weight">50%</span>
+        </div>
+        <p class="fsn-info-pillar-desc">Schedule-neutral win rate. Every week your score is run head-to-head against <em>every</em> other team in the league, then <code>total all-play wins ÷ total all-play matchups × 100</code>. It strips away who you happened to be scheduled against.</p>
+      </div>
+
+      <div class="fsn-info-pillar">
+        <div class="fsn-info-pillar-head">
+          <span class="fsn-info-pillar-name">2 · Scoring Dominance</span>
+          <span class="fsn-info-weight">20%</span>
+        </div>
+        <p class="fsn-info-pillar-desc">Your points-per-game measured against the league ceiling: <code>PPG ÷ league-max PPG × 100</code>. The hottest offense in the league sets 100; everyone else is scored relative to it.</p>
+      </div>
+
+      <div class="fsn-info-pillar">
+        <div class="fsn-info-pillar-head">
+          <span class="fsn-info-pillar-name">3 · Consistency</span>
+          <span class="fsn-info-weight">15%</span>
+        </div>
+        <p class="fsn-info-pillar-desc">Week-to-week stability from the coefficient of variation, <code>CV = s ÷ μ</code>, scored as <code>(1 − CV) × 100</code> — a steadier floor rates higher. Before four scored weeks the value is shrunk toward the league median so a tiny sample can't overrate a team.</p>
+      </div>
+
+      <div class="fsn-info-pillar">
+        <div class="fsn-info-pillar-head">
+          <span class="fsn-info-pillar-name">4 · Roster Context</span>
+          <span class="fsn-info-weight">15%</span>
+        </div>
+        <p class="fsn-info-pillar-desc">Managerial efficiency — the share of your optimal lineup you actually started (<code>Optimal Start %</code>). When the platform doesn't expose bench points (a common ESPN export limit), this pillar safely falls back to normalized Schedule Hardship / Strength of Schedule instead.</p>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -5466,6 +5590,158 @@ function powerRankings(week){
   });
 }
 
+/* ============================================================
+   FSN POWER INDEX — expanded 4-pillar roster-quality model
+   A schedule-neutral, 0–100 read on how good a roster actually is,
+   evaluated independently of the movement-based weekly powerRankings()
+   above:
+
+     FSN Index = 0.50·W_all-play + 0.20·PF_norm
+               + 0.15·CF_adj    + 0.15·Context_composite
+
+   Every pillar is derived purely from the live seeded payload — no
+   Math.random, no Date.now, no network — so a given league/season/week
+   always resolves to the same board. This is strictly ADDITIVE: it does
+   not read from, or mutate, standingsThrough().rating or powerRankings(),
+   so the News Desk power-index generators are untouched.
+============================================================ */
+const FSN_INDEX_WEIGHTS = { allPlay:0.50, pf:0.20, consistency:0.15, context:0.15 };
+
+function fsnMedian(values){
+  const list = values.filter(v=> Number.isFinite(v)).slice().sort((a,b)=> a-b);
+  if(!list.length) return 0;
+  const mid = Math.floor(list.length / 2);
+  return list.length % 2 ? list[mid] : (list[mid-1] + list[mid]) / 2;
+}
+
+function fsnPowerIndex(week){
+  const targetWeek = Math.max(1, parseInt(week, 10) || 1);
+  return memo('fsnIndex:' + targetWeek, ()=>{
+    const rawTeams = LeagueData.getTeams();
+    const teams = (Array.isArray(rawTeams) ? rawTeams : []).filter(t=> t && t.id != null);
+    if(!teams.length) return [];
+    const rawSchedule = LeagueData.espnData && LeagueData.espnData.schedule;
+    const schedule = Array.isArray(rawSchedule) ? rawSchedule : [];
+
+    /* Weekly scoreboards — regular season, played, through the selected week.
+       Playoff tiers are excluded so a bracket blowout cannot distort a
+       schedule-neutral roster-quality read. */
+    const byWeek = Object.create(null);
+    schedule.forEach(g=>{
+      if(!g || !g.home || !g.away) return;
+      if(g.playoffTierType && String(g.playoffTierType).toUpperCase() !== 'NONE') return;
+      const wk = Number(g.matchupPeriodId || 0);
+      if(!wk || wk > targetWeek) return;
+      const hs = Number(g.home.totalPoints || 0), as = Number(g.away.totalPoints || 0);
+      if(hs <= 0 && as <= 0) return;                       // unplayed
+      (byWeek[wk] || (byWeek[wk] = [])).push(
+        { teamId:g.home.teamId, score:hs, oppScore:as },
+        { teamId:g.away.teamId, score:as, oppScore:hs }
+      );
+    });
+
+    const agg = Object.create(null);
+    teams.forEach(t=>{ agg[String(t.id)] = {
+      team:t, scores:[], oppScores:[], apWins:0, apTies:0, apLosses:0, apGames:0
+    }; });
+
+    /* Pillar 1 raw counts — each week, every team plays a head-to-head against
+       every other active team on the board. */
+    Object.keys(byWeek).forEach(wk=>{
+      const board = byWeek[wk];
+      board.forEach(entry=>{
+        const row = agg[String(entry.teamId)];
+        if(!row) return;
+        row.scores.push(entry.score);
+        row.oppScores.push(entry.oppScore);
+        board.forEach(other=>{
+          if(other === entry || String(other.teamId) === String(entry.teamId)) return;
+          row.apGames += 1;
+          if(entry.score > other.score) row.apWins += 1;
+          else if(entry.score === other.score) row.apTies += 1;
+          else row.apLosses += 1;
+        });
+      });
+    });
+
+    /* Base pillars per team, keeping only teams that have actually scored. */
+    const base = Object.keys(agg).map(k=> agg[k]).filter(r=> r.scores.length > 0).map(r=>{
+      const k = r.scores.length;
+      const mean = r.scores.reduce((s,v)=> s + v, 0) / k;
+      const variance = r.scores.reduce((s,v)=> s + Math.pow(v - mean, 2), 0) / k;
+      const cv = mean > 0 ? Math.sqrt(variance) / mean : 0;   // coefficient of variation (fraction)
+      const cfRaw = Math.max(0, (1 - cv) * 100);
+      const apPct = r.apGames ? ((r.apWins + r.apTies * 0.5) / r.apGames) * 100 : null;
+      const oppPpg = r.oppScores.length ? r.oppScores.reduce((s,v)=> s + v, 0) / r.oppScores.length : 0;
+
+      /* Pillar 4 primary metric — managerial efficiency (points captured vs.
+         the optimal legal lineup). ESPN season exports frequently omit the
+         bench detail this needs, in which case lineupEfficiencyThrough()
+         returns null and the SOS fallback takes over below. */
+      let context = null;
+      try{
+        const eff = lineupEfficiencyThrough(targetWeek, r.team.id);
+        if(eff != null && Number.isFinite(eff)) context = eff;
+      }catch(err){
+        console.warn('[FSNIntel] lineup efficiency unavailable for FSN Index team ' + r.team.id + ' through Week ' + targetWeek + '; using schedule fallback.', err);
+      }
+
+      return {
+        team:r.team, weeks:k, mean, cv, cfRaw,
+        apWins:r.apWins, apTies:r.apTies, apLosses:r.apLosses, apGames:r.apGames, apPct,
+        oppPpg, context
+      };
+    });
+    if(!base.length) return [];
+
+    const maxMean = Math.max.apply(null, base.map(r=> r.mean)) || 1;
+    const maxOppPpg = Math.max.apply(null, base.map(r=> r.oppPpg)) || 1;
+    const cfMedian = fsnMedian(base.map(r=> r.cfRaw));
+
+    const scored = base.map(r=>{
+      // Pillar 1 — schedule-neutral all-play win %.
+      const wAllPlay = r.apPct == null ? 0 : Math.max(0, Math.min(100, r.apPct));
+      // Pillar 2 — scoring dominance normalized against the league ceiling.
+      const pfNorm = Math.max(0, Math.min(100, (r.mean / maxMean) * 100));
+      // Pillar 3 — consistency with early-season Bayesian shrinkage to the median.
+      const shrunk = r.weeks < 4;
+      const cfAdj = shrunk
+        ? (r.weeks / 4) * r.cfRaw + (1 - r.weeks / 4) * cfMedian
+        : r.cfRaw;
+      // Pillar 4 — roster context: managerial efficiency, else schedule hardship (SOS).
+      let contextScore, contextMode, contextLabel;
+      if(r.context != null){
+        contextScore = Math.max(0, Math.min(100, r.context));
+        contextMode = 'optimal';
+        contextLabel = 'Optimal Start';
+      } else {
+        contextScore = Math.max(0, Math.min(100, (r.oppPpg / maxOppPpg) * 100));
+        contextMode = 'sos';
+        contextLabel = 'Schedule Hardship';
+      }
+      const index = Math.max(0, Math.min(100,
+        FSN_INDEX_WEIGHTS.allPlay * wAllPlay +
+        FSN_INDEX_WEIGHTS.pf * pfNorm +
+        FSN_INDEX_WEIGHTS.consistency * cfAdj +
+        FSN_INDEX_WEIGHTS.context * contextScore));
+
+      return {
+        team:r.team, index, weeks:r.weeks,
+        allPlay:{ wins:r.apWins, ties:r.apTies, losses:r.apLosses, games:r.apGames, pct:wAllPlay, hasData:r.apGames > 0 },
+        ppg:{ avg:r.mean, max:maxMean, norm:pfNorm },
+        consistency:{ cf:cfAdj, cfRaw:r.cfRaw, cvPct:r.cv * 100, weeks:r.weeks, shrunk },
+        context:{ score:contextScore, mode:contextMode, label:contextLabel, oppPpg:r.oppPpg }
+      };
+    });
+
+    scored.sort((a,b)=> b.index - a.index ||
+      b.allPlay.pct - a.allPlay.pct || b.ppg.avg - a.ppg.avg ||
+      String(a.team.name).localeCompare(String(b.team.name)));
+    scored.forEach((r,i)=> r.rank = i + 1);
+    return scored;
+  });
+}
+
 /* Abramowitz & Stegun 7.1.26 — good to ~1e-7, which is far more than a
    fantasy win probability deserves. */
 function erf(x){
@@ -6293,7 +6569,7 @@ return {
   players, player, playerName,
   transactions, faabReport, rageDrops,
   draft, draftGrades, gradeFor,
-  standingsThrough, getRecordAsOfWeek, getStreakAsOfWeek, powerRankings, winProbability,
+  standingsThrough, getRecordAsOfWeek, getStreakAsOfWeek, powerRankings, fsnPowerIndex, winProbability,
   injuries, stashCandidates,
   startersFor, startingQB,
   seasonPhase, teamOf, preseasonReport, playoffPicture,
@@ -14451,7 +14727,7 @@ function toast(msg){
    strand every primary screen behind overflow:hidden. Recompute from actual
    DOM state after every transition instead of trusting paired assignments. */
 function syncBodyScrollLock(){
-  const overlayIds = ['reader','franchiseModal','onboardModal','storyComposer','profilePicker'];
+  const overlayIds = ['reader','franchiseModal','onboardModal','storyComposer','profilePicker','fsnIndexInfoModal'];
   const locked = overlayIds.some(id=>{
     const node = $(id);
     return node && node.dataset && node.dataset.open === 'true';
@@ -15639,12 +15915,123 @@ function renderSeasonStandings(){
   '</div>';
 }
 
+/* ---- FSN POWER INDEX — card grid for the expanded 4-pillar engine ---- */
+function fsnIndexPill(label, value, sub){
+  return '<div class="fsn-index-pill">'+
+    '<span class="fsn-index-pill-label">'+esc(label)+'</span>'+
+    '<span class="fsn-index-pill-value">'+value+'</span>'+
+    (sub ? '<span class="fsn-index-pill-sub">'+esc(sub)+'</span>' : '')+
+  '</div>';
+}
+
+function openFsnIndexInfo(){
+  const modal = $('fsnIndexInfoModal');
+  if(!modal) return;
+  modal.dataset.open = 'true';
+  try{ syncBodyScrollLock(); }catch(err){ console.warn('[FSNIndex] scroll lock on open failed', err); }
+  try{ const c = $('fsnIndexInfoClose'); if(c) c.focus(); }catch(_){ /* focus is best-effort */ }
+}
+function closeFsnIndexInfo(){
+  const modal = $('fsnIndexInfoModal');
+  if(!modal) return;
+  modal.dataset.open = 'false';
+  try{ syncBodyScrollLock(); }catch(err){ console.warn('[FSNIndex] scroll lock on close failed', err); }
+}
+
+function renderFsnIndex(){
+  const body = $('analyticsBody');
+  if(!body) return;
+
+  let week = 1;
+  try{ week = Math.max(1, parseInt(effectiveWeek(), 10) || 1); }
+  catch(err){ console.warn('[FSNIndex] effective week could not be resolved', err); week = 1; }
+
+  let table = [];
+  try{
+    table = (FSNIntel && typeof FSNIntel.fsnPowerIndex === 'function') ? (FSNIntel.fsnPowerIndex(week) || []) : [];
+  }catch(err){
+    console.error('[FSNIndex] engine failed for Week ' + week, err);
+    body.innerHTML = '<div class="analytics-empty">The FSN Power Index engine could not read this league for Week ' + week + '. Re-fetch the season to retry.</div>';
+    return;
+  }
+  if(!Array.isArray(table) || !table.length){
+    body.innerHTML = '<div class="analytics-empty">No scored matchups have posted yet — the FSN Power Index publishes once the first week is final.</div>';
+    return;
+  }
+
+  const fallbackOnly = table.every(r=> r && r.context && r.context.mode === 'sos');
+
+  const cards = table.map(function(row){
+    let mark = '';
+    try{ mark = crest(row.team.name, row.team.logo, 34); }
+    catch(err){ console.warn('[FSNIndex] crest could not be rendered for team ' + row.team.id, err); mark = '<span class="analytics-model-num" aria-hidden="true">TM</span>'; }
+
+    const ap = row.allPlay || {};
+    const apRecord = ap.hasData ? (ap.wins + '-' + ap.losses + (ap.ties ? '-' + ap.ties : '')) : '—';
+    const apPct = ap.hasData ? '(' + n1(ap.pct) + '%)' : '(no sample)';
+
+    const con = row.consistency || {};
+    const conFlag = con.shrunk ? ' <span class="fsn-pill-flag">EARLY</span>' : '';
+
+    const ctx = row.context || {};
+    const ctxValue = ctx.mode === 'optimal' ? n1(ctx.score) + '% Optimal' : n1(ctx.score) + ' SOS';
+    const ctxSub = ctx.mode === 'optimal' ? 'Optimal start %' : 'Schedule hardship';
+
+    return '<article class="fsn-index-card" style="--model-accent:var(--cyan)" aria-label="'+esc(row.team.name)+' FSN Power Index">'+
+      '<div class="fsn-index-card-head">'+
+        '<span class="fsn-index-rank" aria-label="Rank '+row.rank+'">'+row.rank+'</span>'+
+        '<span class="fsn-index-logo" aria-hidden="true">'+mark+'</span>'+
+        '<span class="fsn-index-identity">'+
+          '<span class="fsn-index-name" title="'+esc(row.team.name)+'">'+esc(row.team.name)+'</span>'+
+          '<span class="fsn-index-sub">FSN Power Index · Week '+week+'</span>'+
+        '</span>'+
+        '<span class="fsn-index-score" aria-label="FSN Index '+n1(row.index)+' of 100"><strong>'+n1(row.index)+'</strong><em>/ 100</em></span>'+
+      '</div>'+
+      '<div class="fsn-index-grid">'+
+        fsnIndexPill('All-Play', '<strong>'+esc(apRecord)+'</strong> <span class="fsn-pill-pct">'+esc(apPct)+'</span>', 'Schedule-neutral')+
+        fsnIndexPill('PPG', '<strong>'+n1(row.ppg.avg)+'</strong> / '+n1(row.ppg.max)+' max', 'vs. League Max')+
+        fsnIndexPill('Consistency', '<strong>'+n1(con.cf)+' CF</strong> • '+n1(con.cvPct)+'% CV'+conFlag, 'Lower CV = steadier')+
+        fsnIndexPill('Roster Context', '<strong>'+esc(ctxValue)+'</strong>', ctxSub)+
+      '</div>'+
+    '</article>';
+  }).join('');
+
+  const note = fallbackOnly
+    ? '<div class="fsn-index-note">Bench-point detail is not exposed by this league’s data export, so the <b>Roster Context</b> pillar is powered by normalized Schedule Hardship (SOS) rather than optimal-start efficiency.</div>'
+    : '';
+
+  body.innerHTML =
+    '<div class="w-full max-w-full overflow-hidden" style="width:100%;max-width:100%;min-width:0;overflow:hidden;">'+
+      '<div class="fsn-index-head-row">'+
+        '<span class="fsn-index-head-title">FSN Power Index · '+table.length+' Teams · Week '+week+'</span>'+
+        '<button type="button" class="fsn-index-info-btn" id="fsnIndexInfoBtn" aria-label="How the FSN Power Index is calculated" aria-haspopup="dialog">i</button>'+
+      '</div>'+
+      note+
+      '<div class="fsn-index-card-list" role="list" aria-label="FSN Power Index board">'+cards+'</div>'+
+    '</div>';
+}
+
 if($('statsModeToggle')) $('statsModeToggle').addEventListener('click', e=>{
   const button = e.target.closest('[data-stats-mode]');
   if(!button) return;
-  ui.statsMode = button.dataset.statsMode === 'advanced' ? 'advanced' : 'standings';
+  const mode = button.dataset.statsMode;
+  ui.statsMode = (mode === 'advanced' || mode === 'power') ? mode : 'standings';
   savePrefs();
   safeRun('analytics-toggle', renderAnalytics, ()=> renderScreenFallback('analytics'));
+});
+
+/* Info-modal wiring for the FSN Power Index. The (i) button is re-rendered on
+   every paint, so open via delegation; close on the ×, a backdrop tap, or Esc. */
+document.addEventListener('click', e=>{
+  const t = e.target;
+  if(!t || !t.closest) return;
+  if(t.closest('#fsnIndexInfoBtn')){ openFsnIndexInfo(); return; }
+  if(t.closest('#fsnIndexInfoClose')){ closeFsnIndexInfo(); return; }
+  if(t === $('fsnIndexInfoModal')) closeFsnIndexInfo();
+});
+document.addEventListener('keydown', e=>{
+  const modal = $('fsnIndexInfoModal');
+  if(e.key === 'Escape' && modal && modal.dataset.open === 'true') closeFsnIndexInfo();
 });
 
 function renderAnalytics(){
@@ -15674,6 +16061,22 @@ function renderAnalytics(){
     }catch(err){
       console.error('[Standings] component render failed', err);
       body.innerHTML = '<div class="analytics-empty">Standings are connected, but this ESPN season does not expose a valid table for the selected week.</div>';
+    }
+    return;
+  }
+
+  if(ui.statsMode === 'power'){
+    try{
+      const powerYear = (typeof NewsDesk !== 'undefined' && typeof NewsDesk.viewedSeasonYear === 'function')
+        ? NewsDesk.viewedSeasonYear()
+        : (LeagueData.espnData && (LeagueData.espnData.seasonId || LeagueData.espnData.season)) || uiActiveSeasonYear();
+      const powerWeek = Math.max(1, parseInt(effectiveWeek(),10) || 1);
+      if(seasonPill) seasonPill.textContent = String(powerYear || '—') + ' SEASON';
+      if(updatedLabel) updatedLabel.textContent = 'WEEK ' + powerWeek + ' · FSN POWER INDEX';
+      renderFsnIndex();
+    }catch(err){
+      console.error('[FSNIndex] component render failed', err);
+      body.innerHTML = '<div class="analytics-empty">The FSN Power Index is connected, but this season does not expose a valid board for the selected week.</div>';
     }
     return;
   }
@@ -18298,7 +18701,7 @@ function loadPrefs(){
   $('seasonYear').value = (saved && saved.season) || String(uiActiveSeasonYear());
   $('weekNum').value = (saved && saved.week) || '';
   if(saved && (saved.provider === 'sleeper' || saved.provider === 'espn' || saved.provider === 'yahoo')) setProvider(saved.provider);
-  if(saved && (saved.statsMode === 'standings' || saved.statsMode === 'advanced')) ui.statsMode = saved.statsMode;
+  if(saved && (saved.statsMode === 'standings' || saved.statsMode === 'advanced' || saved.statsMode === 'power')) ui.statsMode = saved.statsMode;
 try{ if($('espnS2Input'))   $('espnS2Input').value   = localStorage.getItem('fsn.espn.s2.v1')   || ''; }catch(e){}
   try{ if($('espnSwidInput')) $('espnSwidInput').value = localStorage.getItem('fsn.espn.swid.v1') || ''; }catch(e){}
   refreshEspnAuthStatus();
