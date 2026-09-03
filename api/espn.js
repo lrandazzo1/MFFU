@@ -12,6 +12,10 @@
 ============================================================ */
 
 const { getStoredLeagueCookies } = require('./league');
+/* One sanitizer/serializer shared with api/league.js so the relay and the
+   cookie-ingestion handler can never disagree about what a valid credential
+   looks like. See api/espn-cookies.js for the paste shapes it repairs. */
+const { sanitizeCookieValue, buildEspnCookieHeader } = require('./espn-cookies');
 
 const ALLOWED_ESPN_HOSTS = new Set([
   'lm-api-reads.fantasy.espn.com',
@@ -88,10 +92,10 @@ module.exports = async function handler(req, res) {
   //   2. Encrypted cookies from public.leagues, decrypted only on the server
   //   3. Deployment-wide ESPN_S2 / ESPN_SWID environment variables
   const headerS2 = typeof req.headers['x-espn-s2'] === 'string'
-    ? req.headers['x-espn-s2'].trim()
+    ? sanitizeCookieValue('espn_s2', req.headers['x-espn-s2'])
     : '';
   const headerSwid = typeof req.headers['x-espn-swid'] === 'string'
-    ? req.headers['x-espn-swid'].trim()
+    ? sanitizeCookieValue('SWID', req.headers['x-espn-swid'])
     : '';
 
   let stored = null;
@@ -102,25 +106,32 @@ module.exports = async function handler(req, res) {
     }
   }
 
-  const espnS2 = headerS2 ||
-    String(stored && stored.espn_s2 || '').trim() ||
-    String(process.env.ESPN_S2 || '').trim();
-  let espnSwid = headerSwid ||
-    String(stored && stored.swid || '').trim() ||
-    String(process.env.ESPN_SWID || '').trim();
+  const rawS2 = headerS2 ||
+    String(stored && stored.espn_s2 || '') ||
+    String(process.env.ESPN_S2 || '');
+  const rawSwid = headerSwid ||
+    String(stored && stored.swid || '') ||
+    String(process.env.ESPN_SWID || '');
 
-  const cookieParts = [];
-  if (espnS2) cookieParts.push('espn_s2=' + espnS2);
-  if (espnSwid) {
-    if (espnSwid[0] !== '{') espnSwid = '{' + espnSwid.replace(/^\{|\}$/g, '') + '}';
-    cookieParts.push('SWID=' + espnSwid);
+  // One serializer for every credential source, so a cookie that arrives from
+  // Supabase or an env var is normalized exactly like one from the browser.
+  const cookie = buildEspnCookieHeader(rawSwid, rawS2);
+  const cookieParts = cookie.count ? [cookie.header] : [];
+
+  // A credential that arrived but did not survive sanitization is the single
+  // most confusing private-league failure there is: the request looks
+  // authenticated to the caller and anonymous to ESPN. Name it in the logs.
+  if ((rawS2 && !cookie.s2) || (rawSwid && !cookie.swid)) {
+    console.error('[api/espn] A supplied ESPN credential was dropped as unusable ' +
+      '(espn_s2 usable: ' + (!rawS2 || !!cookie.s2) + ', SWID usable: ' + (!rawSwid || !!cookie.swid) +
+      '). The upstream read will be treated as anonymous.');
   }
 
   const upstreamHeaders = {
     Accept: 'application/json',
     'User-Agent': BROWSER_USER_AGENT,
   };
-  if (cookieParts.length) upstreamHeaders.Cookie = cookieParts.join('; ');
+  if (cookie.header) upstreamHeaders.Cookie = cookie.header;
 
   try {
     const upstream = await fetch(target.toString(), {
