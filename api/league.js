@@ -11,6 +11,7 @@
 ============================================================ */
 
 const crypto = require('crypto');
+const { sanitizeCookieValue, buildEspnCookieHeader } = require('./espn-cookies');
 const { createClient } = require('@supabase/supabase-js');
 
 const MAX_BODY_BYTES = 8 * 1024 * 1024;
@@ -60,24 +61,38 @@ function cleanSeasonYear(value, fallback) {
   return Number.isInteger(year) && year >= 1990 && year <= activeFantasySeason() + 1 ? year : 0;
 }
 
+/* Cookie ingestion runs through the same sanitizer the relay uses, so a value
+   that arrives here as a "SWID={...}" row copy, a quoted string, or a paste the
+   DevTools panel line-wrapped is stored (and later replayed to ESPN) in its
+   canonical, transmittable form rather than verbatim. A value that cannot be
+   repaired becomes '' — which makes verifyLeagueMember refuse the save with a
+   real message instead of encrypting an unusable credential. */
 function normalizeSwid(value) {
-  const raw = String(value || '').trim();
-  return raw ? '{' + raw.replace(/^\{|\}$/g, '') + '}' : '';
+  return sanitizeCookieValue('SWID', value);
 }
 
 function cleanCookies(value) {
   const source = value && typeof value === 'object' ? value : {};
-  const espnS2 = String(source.espn_s2 || source.s2 || '').trim();
+  const espnS2 = sanitizeCookieValue('espn_s2', source.espn_s2 || source.s2);
   const swid = normalizeSwid(source.swid || source.SWID);
   return { espn_s2: espnS2, swid };
 }
 
 function requestCookies(req, body) {
-  const fromBody = cleanCookies(body && body.cookies);
-  return cleanCookies({
-    espn_s2: fromBody.espn_s2 || req.headers['x-espn-s2'],
-    swid: fromBody.swid || req.headers['x-espn-swid'],
-  });
+  const rawS2 = (body && body.cookies && (body.cookies.espn_s2 || body.cookies.s2)) ||
+    req.headers['x-espn-s2'];
+  const rawSwid = (body && body.cookies && (body.cookies.swid || body.cookies.SWID)) ||
+    req.headers['x-espn-swid'];
+  const cleaned = cleanCookies({ espn_s2: rawS2, swid: rawSwid });
+  /* A credential that arrived but did not survive sanitization is the most
+     confusing private-league failure there is — the caller believes it sent
+     cookies and ESPN sees an anonymous request. Name it in the logs. */
+  if ((rawS2 && !cleaned.espn_s2) || (rawSwid && !cleaned.swid)) {
+    console.error('[api/league] A supplied ESPN credential was dropped as unusable ' +
+      '(espn_s2 usable: ' + (!rawS2 || !!cleaned.espn_s2) +
+      ', SWID usable: ' + (!rawSwid || !!cleaned.swid) + ').');
+  }
+  return cleaned;
 }
 
 let warnedAboutFallbackKey = false;
@@ -183,7 +198,13 @@ async function readBody(req) {
 
 async function verifyLeagueMember(leagueId, seasonYear, cookies) {
   if (!cookies.espn_s2 || !cookies.swid) {
-    return { ok: false, status: 401, error: 'Both ESPN cookies are required to save league data.' };
+    return {
+      ok: false,
+      status: 401,
+      error: 'Both ESPN cookies are required to save league data. If you pasted both, one of them was ' +
+        'unusable — paste just the cookie value (a "SWID=" prefix, quotes and stray whitespace are ' +
+        'stripped for you, but a truncated or non-ASCII paste cannot be repaired).',
+    };
   }
 
   const targetSwid = cookies.swid.replace(/^\{|\}$/g, '').toLowerCase();
@@ -198,7 +219,9 @@ async function verifyLeagueMember(leagueId, seasonYear, cookies) {
       response = await fetch(url, {
         headers: {
           Accept: 'application/json',
-          Cookie: 'espn_s2=' + cookies.espn_s2 + '; SWID=' + cookies.swid,
+          // Shared serializer — SWID first, exactly as a logged-in ESPN
+          // browser sends it, with both values already sanitized.
+          Cookie: buildEspnCookieHeader(cookies.swid, cookies.espn_s2).header,
           'User-Agent': USER_AGENT,
         },
         redirect: 'follow',

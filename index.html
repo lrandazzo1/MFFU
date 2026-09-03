@@ -2272,6 +2272,11 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
             <span id="fetchLabel">FETCH LEAGUE DATA</span>
           </button>
           <p id="fetchStatus" class="text-[11.5px] text-[var(--dim)] leading-relaxed">Enter your ESPN League ID to load the live 2026 season.</p>
+          <!-- Second status line, below the connection banner. The live season can
+               connect while ESPN still refuses the PAST seasons (expired or
+               non-member cookies); that verdict has to be readable without
+               demoting the green "connected" line above it. -->
+          <p id="espnArchiveNotice" class="text-[11.5px] leading-relaxed hidden" style="color:var(--gold);margin-top:6px" role="status" aria-live="polite"></p>
           <button id="historyUnlockToggle" type="button" class="pill pill-cyan w-full justify-center" aria-expanded="false" aria-controls="historyUploadPanel">OPTIONAL · LOAD ARCHIVE JSON</button>
           <p class="text-[10.5px] text-[var(--dim)] leading-relaxed">Historical seasons are optional and only needed for the full Record Book archive.</p>
         </div>
@@ -2566,7 +2571,7 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
           <li>In the list, find the rows named <span class="onboard-code">espn_s2</span> and <span class="onboard-code">SWID</span>.</li>
           <li>Copy each long value and paste it into the matching <strong style="color:var(--off)">Private League Access</strong> box on the Setup screen.</li>
         </ol>
-        <div class="onboard-note">The <span class="onboard-code">SWID</span> value normally includes the curly braces <span class="onboard-kbd">{ }</span> — paste it exactly as shown; we handle it either way. Your cookies stay in this browser and are only sent to ESPN through the app's own secure relay.</div>
+        <div class="onboard-note">Paste each value exactly as your browser gives it — the app cleans it up for you. A copied <span class="onboard-code">SWID=</span> or <span class="onboard-code">espn_s2=</span> prefix, surrounding quotes, missing or percent-encoded curly braces <span class="onboard-kbd">{ }</span>, and the line breaks the cookie panel adds to long values are all handled automatically. Your cookies stay in this browser and are only sent to ESPN through the app's own secure relay.</div>
       </div>
     </div>
 
@@ -3142,48 +3147,282 @@ function validEspnPayload(rawData){
 /* One fetch seam for every ESPN read. In Vercel/deployed environments the
    same-origin function is authoritative. Local previews may fall back to
    the legacy browser proxy chain when /api is not being served. */
+/* ------------------------------------------------------------
+   ESPN COOKIE SANITIZER  (global scope — block 1)
+
+   Readers do not paste a bare cookie value. They paste whatever the
+   clipboard gave them, and every one of these shapes has been seen in
+   the wild for a credential that is otherwise perfectly valid:
+
+     {ABC12345-...}                 the ideal paste
+     ABC12345-...                   braces dropped by the copy
+     %7BABC12345-...%7D             URL-encoded braces (copied from a URL/log)
+     SWID={ABC12345-...}            the whole DevTools "name=value" row
+     "AEBxyz..."                    DevTools "Copy value" quotes the string
+     SWID={ABC...}; espn_s2=AEB...  a document.cookie / "Copy all" paste
+     AEBxyz...;                     a trailing separator from a row copy
+     AEBxy\nz...                    the DevTools cookie panel WRAPS long
+                                    values, so the copy carries newlines
+
+   The last one is the quiet killer. A newline (or any control character)
+   in a header value makes fetch() throw a TypeError before a request is
+   ever made, and the live-fetch path reads that throw as "the relay is
+   unreachable" — so a correct espn_s2 presents to the user as a network
+   outage, then silently degrades to a cookie-less public read that
+   returns no teams. Normalising here, at the single seam every consumer
+   reads through, is what makes a private league connect at all.
+
+   Deterministic string surgery only: no randomness, no clock, no network. */
+
+const ESPN_COOKIE_SPEC = {
+  s2:   { cookie:'espn_s2', label:'espn_s2' },
+  swid: { cookie:'SWID',    label:'SWID' },
+};
+
+/* An HTTP header value may carry only visible ASCII (0x21-0x7E) plus spaces,
+   and a cookie-pair value additionally may not contain ';'. Anything outside
+   that set cannot be transmitted, so we refuse it loudly rather than letting
+   fetch() throw an opaque TypeError at request time. */
+const ESPN_COOKIE_SAFE_RE = /^[\x21-\x3A\x3C-\x7E]+$/;
+
+/* Full inspection: returns the transmittable value plus why it was rejected,
+   so callers can log a real reason and the UI can tell the reader what to fix.
+   `raw` is whatever the reader pasted or whatever localStorage held. */
+function inspectEspnCookieValue(kind, raw){
+  const spec = ESPN_COOKIE_SPEC[kind === 'swid' ? 'swid' : 's2'];
+  const original = String(raw == null ? '' : raw);
+  const out = { kind:spec === ESPN_COOKIE_SPEC.swid ? 'swid' : 's2', label:spec.label,
+                value:'', present:false, ok:true, reason:'', changed:false };
+
+  let v = original.replace(/^﻿/, '').trim();
+  if(!v) return out;
+  out.present = true;
+
+  /* 1. A "name=value" row, or a whole cookie jar ("SWID={..}; espn_s2=.."),
+        pasted wholesale. Only a pair that starts the string or follows a ';'
+        counts as a name separator, so an '=' inside a URL-encoded espn_s2 body
+        can never be mistaken for one. */
+  const pairRe = new RegExp('(?:^|;)\\s*' + spec.cookie + '\\s*=\\s*([^;]*)', 'i');
+  const pair = pairRe.exec(v);
+  if(pair) v = pair[1];
+
+  /* 2. DevTools' "Copy value" wraps the string in quotes often enough to be
+        worth peeling — twice, for a value that got quoted on the way in and
+        again on the way out of a notes app. */
+  v = v.trim();
+  for(let i = 0; i < 2; i++){
+    const quoted = /^(["'])([\s\S]*)\1$/.exec(v);
+    if(!quoted) break;
+    v = quoted[2].trim();
+  }
+
+  /* 3. Drop a trailing separator, then every whitespace and control character.
+        ESPN cookie values contain neither, so anything here came from the copy
+        (a panel line-wrap, a mobile keyboard's trailing space) and would make
+        the value untransmittable if it survived. */
+  v = v.replace(/;+\s*$/, '').replace(/[\s ]+/g, '').replace(/[\x00-\x1f\x7f]+/g, '');
+
+  if(spec === ESPN_COOKIE_SPEC.swid){
+    /* 4. SWID only: braces are part of the value ESPN sets. Accept the paste
+          with them, without them, or percent-encoded, and always transmit the
+          canonical brace-wrapped form. espn_s2 is deliberately NOT decoded —
+          it is URL-encoded by design and ESPN expects it back verbatim. */
+    v = v.replace(/%7B/gi, '{').replace(/%7D/gi, '}');
+    v = v.replace(/^\{+/, '').replace(/\}+$/, '');
+    if(v) v = '{' + v + '}';
+  }
+
+  if(!v){
+    out.ok = false;
+    out.reason = 'the pasted ' + spec.label + ' held no usable value once the cookie name, quotes and whitespace were stripped';
+    return out;
+  }
+  if(!ESPN_COOKIE_SAFE_RE.test(v)){
+    out.ok = false;
+    out.reason = 'the ' + spec.label + ' value contains characters that cannot be sent in a cookie header (a stray ";" or a non-ASCII character from the paste)';
+    return out;
+  }
+
+  out.value = v;
+  out.changed = v !== original;
+  return out;
+}
+
+/* Value-only convenience for the many call sites that just want the clean
+   string (input handlers, storage writes, the credential shape check). */
+function sanitizeEspnCookieValue(kind, raw){
+  return inspectEspnCookieValue(kind, raw).value;
+}
+
+/* Serialize a credential pair into the exact Cookie header ESPN expects:
+     SWID={XXXXXXXX-...}; espn_s2=AEB...
+   SWID leads because that is the order a logged-in ESPN browser sends.
+
+   The browser cannot set a cross-site Cookie header itself — the relay
+   (api/espn.js) builds the real one from the x-espn-* headers this page sends.
+   This is the client-side statement of that same contract: it is what the
+   verification harness diffs against api/espn-cookies.js to prove the two
+   sides cannot drift apart, and what any future same-origin cookie transport
+   would use. */
+function buildEspnCookieHeader(creds){
+  const source = creds || {};
+  const swid = sanitizeEspnCookieValue('swid', source.swid || source.SWID);
+  const s2 = sanitizeEspnCookieValue('s2', source.s2 || source.espn_s2);
+  const parts = [];
+  if(swid) parts.push('SWID=' + swid);
+  if(s2) parts.push('espn_s2=' + s2);
+  return parts.join('; ');
+}
+
 /* Optional ESPN auth for PRIVATE leagues. Read from localStorage and forwarded
    only to the same-origin /api/espn and /api/league routes (never to public
-   CORS proxies, which would leak them). ESPN reads a private league with the espn_s2 + SWID cookies
-   the member's browser holds; the relay replays them so it can read as the member. */
+   CORS proxies, which would leak them). ESPN reads a private league with the
+   espn_s2 + SWID cookies the member's browser holds; the relay replays them so
+   it can read as the member. */
 function getEspnCreds(){
-  let s2 = '', swid = '';
-  try{ s2 = (localStorage.getItem('fsn.espn.s2.v1') || '').trim(); }catch(e){}
-  try{ swid = (localStorage.getItem('fsn.espn.swid.v1') || '').trim(); }catch(e){}
-  // ESPN's SWID cookie is brace-wrapped; tolerate a paste with or without braces.
-  if(swid && swid[0] !== '{') swid = '{' + swid.replace(/^\{|\}$/g, '') + '}';
-  return { s2, swid };
+  let rawS2 = '', rawSwid = '';
+  try{ rawS2 = localStorage.getItem('fsn.espn.s2.v1') || ''; }catch(e){}
+  try{ rawSwid = localStorage.getItem('fsn.espn.swid.v1') || ''; }catch(e){}
+  return {
+    s2: sanitizeEspnCookieValue('s2', rawS2),
+    swid: sanitizeEspnCookieValue('swid', rawSwid),
+  };
+}
+
+/* One place that decides what state the stored credentials are in, so the
+   status line, the failure messages and the transport guard never disagree.
+     'none'      nothing stored — anonymous reads, public leagues only
+     'partial'   one cookie stored — ESPN needs both for a private league
+     'malformed' stored but untransmittable — the reason says what to fix
+     'ready'     both present and header-safe */
+function espnCredDiagnostics(){
+  let rawS2 = '', rawSwid = '';
+  try{ rawS2 = localStorage.getItem('fsn.espn.s2.v1') || ''; }catch(e){}
+  try{ rawSwid = localStorage.getItem('fsn.espn.swid.v1') || ''; }catch(e){}
+  const s2 = inspectEspnCookieValue('s2', rawS2);
+  const swid = inspectEspnCookieValue('swid', rawSwid);
+  const faults = [s2, swid].filter(entry=> entry.present && !entry.ok);
+
+  let state;
+  if(faults.length) state = 'malformed';
+  else if(s2.value && swid.value) state = 'ready';
+  else if(s2.value || swid.value) state = 'partial';
+  else state = 'none';
+
+  return {
+    state,
+    s2: s2.value,
+    swid: swid.value,
+    faults,
+    /* Anything stored at all — a malformed paste still means "this reader is
+       trying to open a private league", which the transport guard must respect
+       rather than silently degrading to a credential-stripping public proxy. */
+    attempted: s2.present || swid.present,
+    reason: faults.length ? faults.map(f=> f.reason).join('; ') : '',
+  };
 }
 
 function espnCredHeaders(){
-  const { s2, swid } = getEspnCreds();
+  const diag = espnCredDiagnostics();
   const headers = { Accept:'application/json,text/plain,*/*' };
-  if(s2)   headers['x-espn-s2']   = s2;
-  if(swid) headers['x-espn-swid'] = swid;
+  /* A stored-but-unusable cookie is the exact failure this whole seam exists to
+     make visible. Say so once per request rather than shipping a header that
+     makes fetch() throw, or omitting it and calling the result "no data". */
+  diag.faults.forEach(fault=>{
+    console.error('[ESPN auth] Stored ' + fault.label + ' cookie is unusable and will not be sent — ' +
+      fault.reason + '. Re-paste it in Private League Access.',
+      new Error('UNUSABLE_ESPN_COOKIE:' + fault.label));
+  });
+  if(diag.s2)   headers['x-espn-s2']   = diag.s2;
+  if(diag.swid) headers['x-espn-swid'] = diag.swid;
   return headers;
+}
+
+/* Pull the relay's own diagnosis out of a non-2xx body. api/espn answers a
+   401/403/404 with { error:"<actionable sentence>", espn:<upstream payload> },
+   and that sentence is the only thing that tells a reader their cookies were
+   rejected rather than their league being empty. Throwing a bare "HTTP 401"
+   discards it, so read the body and carry it on the Error — while keeping the
+   "HTTP NNN" token intact, because every caller's message routing greps it. */
+async function espnRelayError(res, apiUrl){
+  let detail = '';
+  let payload = null;
+  try{
+    const body = await res.text();
+    try{
+      payload = JSON.parse(body);
+      detail = String((payload && (payload.error || payload.message)) || '').trim();
+    }catch(parseErr){
+      detail = String(body || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+    }
+  }catch(readErr){
+    console.warn('[FSN] Could not read the /api/espn error body for ' + apiUrl, readErr);
+  }
+  const err = new Error('HTTP ' + res.status + (detail ? ': ' + detail : '') + ' from ' + apiUrl);
+  err.status = res.status;
+  err.relayDetail = detail;
+  err.espnPayload = payload && payload.espn ? payload.espn : null;
+  /* Log the exact upstream payload once, loudly. On a private-league failure
+     this is the only record of what ESPN actually said. */
+  if(res.status === 401 || res.status === 403 || res.status === 404){
+    console.error('[FSN] ESPN relay rejected ' + apiUrl + ' with HTTP ' + res.status +
+      (detail ? ' — ' + detail : ''), err.espnPayload || err);
+  }
+  return err;
 }
 
 async function fetchLeagueDataViaProxies(espnUrl){
   let lastErr = null;
   const localPreview = isStaticLocalPreview();
+  /* Public CORS proxies cannot carry credentials — forwarding espn_s2/SWID to a
+     third-party relay would leak them, so we never do. That makes the fallback
+     chain useless for a private league: it returns an auth shell with no teams,
+     which downstream reads as "this league is empty" and paints a blank
+     dashboard. Once a reader has supplied ANY credential, the same-origin relay
+     is the only legitimate transport and its failure is the answer. */
+  const credState = espnCredDiagnostics();
 
   if(typeof window !== 'undefined' && window.location && window.location.protocol !== 'file:'){
     const apiUrl = serverlessEspnUrl(espnUrl);
     try{
       const res = await fetch(apiUrl, { headers: espnCredHeaders() });
-      if(!res.ok) throw new Error('HTTP ' + res.status + ' from ' + apiUrl);
+      if(!res.ok) throw await espnRelayError(res, apiUrl);
       const rawData = parseEspnProxyPayload(await res.text());
       if(validEspnPayload(rawData)) return rawData;
       throw new Error('Unexpected payload shape from ' + apiUrl);
     }catch(err){
       lastErr = err;
       if(!localPreview) throw err;
+      if(credState.attempted){
+        console.error('[FSN] Local /api/espn failed for a private-league read; NOT falling back to ' +
+          'credential-stripping public CORS proxies (they would return an empty, unauthenticated payload).', err);
+        throw err;
+      }
+      /* A real HTTP status from the relay is ESPN's answer, not a transport
+         problem — a 401 means the cookies were refused and a 404 means the
+         season does not exist there. Retrying it through a public proxy cannot
+         change either verdict; it only replaces the status with a generic
+         "Failed to fetch" once the proxies time out, which is what hid both the
+         auth failure and the season-endpoint fallback behind a fake network
+         error. Only an unreachable relay (no /api served in this preview)
+         justifies the fallback chain. */
+      if(/\bHTTP \d{3}\b/.test(String(err && err.message))){
+        console.warn('[FSN] /api/espn answered with a real status for ' + espnUrl +
+          '; not masking it behind the static-preview CORS fallbacks.', err);
+        throw err;
+      }
       console.warn('[FSN] Local /api/espn unavailable; trying static-preview CORS fallbacks.', err);
     }
   }
 
   if(!localPreview){
     throw lastErr || new Error('The deployed ESPN route /api/espn is unavailable.');
+  }
+
+  if(credState.attempted){
+    console.error('[FSN] Private-league credentials are present but no same-origin relay is reachable; ' +
+      'public CORS proxies cannot authenticate this read.', lastErr);
+    throw lastErr || new Error('PRIVATE_LEAGUE_NEEDS_RELAY');
   }
 
   for(const wrapWithProxy of CORS_PROXIES){
@@ -3334,33 +3573,89 @@ async function fetchAllTimeHistory(leagueId) {
   const yearsData = [];
   const skipped = [];
   let uncertainFailures = 0;
-  const views = 'view=mTeam&view=mRoster&view=mMatchup&view=mMatchupScore&view=mSettings';
+  /* The five views the Record Book actually reads. Shared with the URL builder
+     so an archive request can never go out missing mTeam/mRoster/mMatchup and
+     come back as a shell that looks like an empty season. */
+  const views = HISTORICAL_VIEWS;
   const archiveDelay = (ms)=> new Promise(resolve=> setTimeout(resolve, ms));
+  /* A 401/403 across the archive is a credential verdict, not a per-season
+     gap: it means ESPN accepted the request and refused the identity. Counting
+     those separately is what lets the caller say "your cookies were rejected"
+     instead of rendering an empty Record Book with no explanation. */
+  let authFailures = 0;
+  let authDetail = '';
 
   for (const year of targetYears) {
-    const url = `https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/${year}/segments/0/leagues/${requestedLeagueId}?${views}`;
+    /* Primary: the direct season route, which is where ESPN serves every
+       modern league. Fallback: leagueHistory with an explicit seasonId — some
+       leagues (a rename, a re-created league keeping its ID, an early season
+       that predates the direct route for that league) answer 404 on the direct
+       route while still returning that season through the history endpoint. */
+    const endpoints = [
+      `https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/${year}/segments/0/leagues/${requestedLeagueId}?${views}`,
+      `https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/leagueHistory/${requestedLeagueId}?seasonId=${year}&${views}`,
+    ];
 
-    try {
-      const raw = await fetchLeagueDataViaProxies(url);
-      if(!historyRequestIsCurrent(requestedLeagueId, 'espn')){
-        console.warn('[FSN] Discarded stale ESPN history response for league ' + requestedLeagueId + '.');
-        return { yearsData:[], skipped, stale:true };
-      }
-      const data = Array.isArray(raw) ? raw[0] : raw;
+    let data = null;
+    let lastErr = null;
+    let stale = false;
 
-      if (data && Array.isArray(data.teams) && data.teams.length > 0) {
-        yearsData.push({ year: Number(year), leagueData: data });
-      } else {
-        skipped.push(Number(year));
-        console.warn(`[FSN] Season ${year} returned no usable team data.`);
+    for (let attempt = 0; attempt < endpoints.length; attempt++) {
+      const url = endpoints[attempt];
+      try {
+        const raw = await fetchLeagueDataViaProxies(url);
+        if(!historyRequestIsCurrent(requestedLeagueId, 'espn')){
+          console.warn('[FSN] Discarded stale ESPN history response for league ' + requestedLeagueId + '.');
+          stale = true;
+          break;
+        }
+        /* leagueHistory answers with a single-entry array; the direct season
+           route answers with the object. Pick the season-shaped node either
+           way, preferring one that actually carries teams. */
+        const rows = Array.isArray(raw) ? raw : [raw];
+        const found = rows.find(row=> row && Array.isArray(row.teams) && row.teams.length > 0) || rows[0] || null;
+        lastErr = null;
+        data = found;
+        if (found && Array.isArray(found.teams) && found.teams.length > 0) break;
+        /* An empty-team payload from the direct route is still worth retrying
+           through leagueHistory before calling the season a gap. */
+      } catch (err) {
+        lastErr = err;
+        const message = String(err && err.message || err);
+        const status = Number(err && err.status) ||
+          (/\bHTTP (\d{3})\b/.exec(message) ? Number(/\bHTTP (\d{3})\b/.exec(message)[1]) : 0);
+        if (status === 401 || status === 403) {
+          /* Credentials were refused. Retrying the same read through a second
+             endpoint would refuse identically, so stop this season here. */
+          console.error(`[FSN] Season ${year} archive read was refused by ESPN (HTTP ${status}) — ` +
+            'the private-league cookies were rejected.', err);
+          if(!authDetail) authDetail = String(err && err.relayDetail || '').trim();
+          break;
+        }
+        console.warn(`[FSN] Season ${year} archive read failed on ${attempt === 0 ? 'the direct season route' : 'the leagueHistory route'}:`, err);
       }
-    } catch (err) {
-      skipped.push(Number(year));
-      if(!/\bHTTP 404\b/.test(String(err && err.message || err))) uncertainFailures += 1;
-      console.warn(`[FSN] Season ${year} fetch failed; continuing archive hydration:`, err);
       if(!historyRequestIsCurrent(requestedLeagueId, 'espn')){
         console.warn('[FSN] Stopped stale ESPN history hydration for league ' + requestedLeagueId + '.');
-        return { yearsData:[], skipped, stale:true };
+        stale = true;
+        break;
+      }
+    }
+
+    if (stale) return { yearsData:[], skipped, stale:true };
+
+    if (data && Array.isArray(data.teams) && data.teams.length > 0) {
+      yearsData.push({ year: Number(year), leagueData: data });
+    } else {
+      skipped.push(Number(year));
+      if (lastErr) {
+        const message = String(lastErr && lastErr.message || lastErr);
+        const status = Number(lastErr && lastErr.status) ||
+          (/\bHTTP (\d{3})\b/.exec(message) ? Number(/\bHTTP (\d{3})\b/.exec(message)[1]) : 0);
+        if (status === 401 || status === 403) authFailures += 1;
+        else if (status !== 404) uncertainFailures += 1;
+        console.warn(`[FSN] Season ${year} produced no usable team data; continuing archive hydration:`, lastErr);
+      } else {
+        console.warn(`[FSN] Season ${year} returned no usable team data.`);
       }
     }
 
@@ -3372,7 +3667,11 @@ async function fetchAllTimeHistory(leagueId) {
     return { yearsData:[], skipped, stale:true };
   }
 
-  setHistoryProbeState('espn', requestedLeagueId, uncertainFailures === 0 ? 'complete' : 'failed');
+  /* An archive that ESPN refused is NOT a completed probe. Folding authFailures
+     in here is what stops an all-401 hydration from being recorded as "this
+     league has no history" and rendering a permanently empty Record Book. */
+  const archiveFailed = uncertainFailures > 0 || authFailures > 0;
+  setHistoryProbeState('espn', requestedLeagueId, archiveFailed ? 'failed' : 'complete');
 
   if (yearsData.length > 0) {
     const stats = computeLeagueHistoryStats(yearsData);
@@ -3391,17 +3690,43 @@ async function fetchAllTimeHistory(leagueId) {
     FSNBridge.call('renderRecordBook');
     FSNBridge.call('renderNews');
     FSNBridge.call('renderHomeStories');
-  } else if(uncertainFailures === 0) {
+  } else if(!archiveFailed) {
     // A completed, empty archive is the only safe proof of a first season.
     FSNBridge.call('renderNews');
     FSNBridge.call('renderHomeStories');
+  }
+
+  /* Build the reader-facing sentence here, where the actual verdict is known.
+     The caller only decides whether to show it. */
+  let authError = '';
+  if(authFailures > 0 && !yearsData.length){
+    const creds = espnCredDiagnostics();
+    if(creds.state === 'malformed'){
+      authError = 'ESPN refused every past season because the saved private-league cookies are unusable — ' +
+        creds.reason + '. Re-paste espn_s2 and SWID in Private League Access.';
+    } else if(creds.state === 'partial'){
+      authError = 'ESPN refused every past season — only one cookie is saved, and a private league needs BOTH ' +
+        'espn_s2 and SWID. Add the missing value in Private League Access, then fetch again.';
+    } else if(creds.state === 'ready'){
+      authError = 'ESPN rejected your saved private-league cookies on every past season (HTTP 401/403). ' +
+        'They are likely expired — re-copy espn_s2 and SWID from your logged-in ESPN browser and paste them again.';
+    } else {
+      authError = 'ESPN would not release this league\u2019s past seasons without credentials (HTTP 401/403). ' +
+        'Paste your espn_s2 + SWID cookies into Private League Access to unlock the Record Book.';
+    }
+    console.error('[FSN] All-time archive hydration was refused by ESPN for league ' + requestedLeagueId +
+      ' (' + authFailures + ' season' + (authFailures === 1 ? '' : 's') + ' returned 401/403)' +
+      (authDetail ? ' — ' + authDetail : '') + '.',
+      new Error('ESPN_ARCHIVE_UNAUTHORIZED'));
   }
 
   return {
     yearsData,
     skipped,
     stale:false,
-    probeStatus:uncertainFailures === 0 ? 'complete' : 'failed',
+    authFailures,
+    authError,
+    probeStatus:archiveFailed ? 'failed' : 'complete',
   };
 }
 
@@ -3445,6 +3770,10 @@ async function fetchLeagueHistoryArchive(leagueId){
     skipped:seq.skipped || [],
     route:'sequential',
     stale:!!seq.stale,
+    /* Carried through so the caller can tell an empty Record Book caused by a
+       credential rejection apart from a genuine first-season league. */
+    authFailures:Number(seq.authFailures) || 0,
+    authError:String(seq.authError || ''),
   };
 }
 
@@ -18977,6 +19306,26 @@ function hideHistoryBanner(){
   if(el) el.classList.add('hidden');
 }
 
+/* The archive notice is a SECOND status line under the connection banner. The
+   live season and the multi-season archive authenticate independently — cookies
+   that read 2026 fine can still be refused for every past season — so a refused
+   archive must be readable without overwriting (and demoting) the green
+   "Live Season Connected" line. */
+function showArchiveNotice(text){
+  const el = $('espnArchiveNotice');
+  if(!el){
+    // Never let a missing surface swallow the verdict.
+    console.error('[ESPN archive] #espnArchiveNotice is missing; the reader will not see: ' + text);
+    return;
+  }
+  el.textContent = text;
+  el.classList.remove('hidden');
+}
+function hideArchiveNotice(){
+  const el = $('espnArchiveNotice');
+  if(el){ el.textContent = ''; el.classList.add('hidden'); }
+}
+
 /* Shared by the fetch button, the paste box, and the .json upload: run the
    aggregator over the parsed seasons, store it, and report what landed. */
 function applyLeagueHistory(yearsData, skipped, sourceLabel, options){
@@ -19420,6 +19769,7 @@ async function fetchLeagueData(options){
   hydrateLeagueFromCloud(league, { silent:true });
   setFetchLoading(true);
   hideHistoryBanner();
+  hideArchiveNotice();
   $('fetchStatus').style.color = 'var(--dim)';
   $('fetchStatus').textContent = silent ? 'Restoring live 2026 season…' : 'Fetching live 2026 season…';
 
@@ -19431,8 +19781,17 @@ async function fetchLeagueData(options){
   try{
     const headers = { 'Accept':'application/json' };
     try{
-      if(typeof espnCredHeaders === 'function') Object.assign(headers, espnCredHeaders() || {});
-    }catch(e){}
+      Object.assign(headers, espnCredHeaders() || {});
+    }catch(err){
+      console.error('[ESPN live fetch] Could not assemble the ESPN credential headers; the read will go out ' +
+        'unauthenticated and a private league will refuse it.', err);
+    }
+    /* Whether this reader is attempting a private-league read at all. A stored
+       credential — even a malformed one — means the public CORS fallbacks below
+       must not run: they cannot carry cookies, so they would answer with an
+       unauthenticated shell and turn a diagnosable auth failure into a blank
+       dashboard. */
+    const credState = espnCredDiagnostics();
 
     /* Primary transport is the same-origin Vercel relay. If that request fails
        at the NETWORK level ("Failed to fetch" — the /api/espn function is
@@ -19448,13 +19807,36 @@ async function fetchLeagueData(options){
       });
       text = await response.text();
       if(!response.ok){
-        const detail = String(text || '').replace(/\s+/g, ' ').slice(0, 180);
-        throw new Error(`HTTP ${response.status}${detail ? ': ' + detail : ''}`);
+        /* The relay answers a 401/403/404 with { error:"<actionable sentence>",
+           espn:<upstream payload> }. That sentence is the only thing that
+           distinguishes "your cookies were rejected" from "your league is
+           empty", so lift it out rather than dumping the raw body into the
+           message — and log the upstream payload verbatim, which on a
+           private-league failure is the only record of what ESPN said. */
+        let detail = '';
+        let relayBody = null;
+        try{
+          relayBody = JSON.parse(text);
+          detail = String((relayBody && (relayBody.error || relayBody.message)) || '').trim();
+        }catch(parseErr){
+          detail = String(text || '').replace(/\s+/g, ' ').trim().slice(0, 180);
+        }
+        console.error('[ESPN live fetch] /api/espn returned HTTP ' + response.status +
+          (detail ? ' — ' + detail : ''), (relayBody && relayBody.espn) || text);
+        const relayErr = new Error('HTTP ' + response.status + (detail ? ': ' + detail : ''));
+        relayErr.status = response.status;
+        relayErr.relayDetail = detail;
+        throw relayErr;
       }
     }catch(err){
       // A thrown "HTTP NNN" is a genuine upstream status — surface it. Anything
       // else is a transport failure; try the CORS fallbacks before giving up.
       if(/\bHTTP \d{3}\b/.test(String(err && err.message))) throw err;
+      if(credState.attempted){
+        console.error('[ESPN live fetch] The same-origin /api/espn relay is unreachable and this is a ' +
+          'private-league read; public CORS proxies cannot carry espn_s2/SWID, so no fallback is attempted.', err);
+        throw new Error('PRIVATE_RELAY_UNREACHABLE');
+      }
       console.warn('[ESPN live fetch] same-origin /api/espn unreachable; trying CORS fallbacks.', err);
       text = null;
       for(const wrapWithProxy of CORS_PROXIES){
@@ -19581,6 +19963,14 @@ async function fetchLeagueData(options){
           const years = (archive && archive.yearsData) || [];
           const pastSeasons = years.filter(y=> Number(y && y.year) !== currentYear);
           if(!pastSeasons.length){
+            /* The live season is connected, so the banner stays green — but an
+               empty Record Book caused by ESPN refusing the archive is a
+               credential problem the reader can fix, and it must not look like
+               "this league has no history". Say so where they will see it. */
+            if(archive.authError){
+              showArchiveNotice(archive.authError);
+              if(!silent) toast('Past seasons locked — ESPN rejected the private-league cookies');
+            }
             safeRun('desk', renderDesk, ()=> renderScreenFallback('home'));
             safeRun('news', renderNews, ()=> renderScreenFallback('news'));
             return;
@@ -19622,22 +20012,40 @@ async function fetchLeagueData(options){
     /* Surface the real reason so a live production failure is diagnosable at a
        glance instead of always reading "could not be loaded". */
     let msg;
-    if(/\bHTTP 40[13]\b/.test(message)){
+    const credReport = espnCredDiagnostics();
+    if(credReport.state === 'malformed'){
+      // The stored paste itself is untransmittable, so the request never had a
+      // chance regardless of what ESPN said. Lead with the fixable cause.
+      msg = 'Your saved private-league cookies could not be sent — ' + credReport.reason +
+        '. Open Private League Access and re-paste espn_s2 and SWID (paste just the value; the app strips a ' +
+        '“SWID=” prefix, quotes and stray braces for you).';
+    } else if(/\bHTTP 40[13]\b/.test(message)){
       // Tailor the guidance to whether the user has already supplied cookies:
       // present-but-rejected almost always means an invalid or expired paste,
       // while none-set means this private league needs credentials at all.
-      const { s2, swid } = getEspnCreds();
-      if(s2 && swid){
+      // The relay attaches ESPN's own sentence to the error; keep it visible.
+      const relayDetail = String((err && err.relayDetail) || '').trim();
+      if(credReport.state === 'ready'){
         msg = 'ESPN rejected your saved private-league cookies (401/403). They are likely invalid or expired. Re-copy espn_s2 and SWID from your logged-in ESPN browser (see “How do I connect my league?” → Step 2) and paste them again.';
-      } else if(s2 || swid){
+      } else if(credReport.state === 'partial'){
         msg = 'ESPN denied the request (401/403) and only one cookie is saved — a private league needs BOTH espn_s2 and SWID. Add the missing value in Private League Access (see “How do I connect my league?” → Step 2), then try again.';
       } else {
         msg = 'ESPN denied the request (401/403) — this league is private. Open “How do I connect my league?” → Step 2, paste your espn_s2 + SWID cookies into Private League Access, then fetch again.';
       }
+      if(relayDetail && relayDetail.length < 240) msg += ' (ESPN relay: ' + relayDetail + ')';
     } else if(/\bHTTP 404\b/.test(message)){
-      msg = 'ESPN has no 2026 season for this League ID (HTTP 404). Confirm the league renewed for 2026 and the ID is correct.';
+      msg = credReport.state === 'ready'
+        ? 'ESPN has no 2026 season at this League ID (HTTP 404). Your cookies are saved, so this is the ID or the season — confirm the league renewed for 2026 and that the ID matches the one in your ESPN league URL.'
+        : 'ESPN has no 2026 season for this League ID (HTTP 404). Confirm the league renewed for 2026 and the ID is correct.';
+    } else if(/PRIVATE_RELAY_UNREACHABLE/.test(message)){
+      msg = 'Your private-league cookies are saved, but the same-origin /api/espn relay could not be reached. ' +
+        'Private leagues can only be read through that relay (public proxies cannot carry your cookies), so ' +
+        'there is no fallback — confirm the Vercel api/ routes are deployed, disable any request-blocking ' +
+        'extension, and retry.';
     } else if(/NO_LIVE_LEAGUE_DATA/.test(message)){
-      msg = 'Connected to ESPN, but the 2026 season returned no teams yet. If the league is private add ESPN credentials; if 2026 rosters are not set, try again once the season opens.';
+      msg = credReport.state === 'ready'
+        ? 'ESPN answered for this League ID but returned no teams — which is what a private league looks like when the cookies do not belong to a member of it. Confirm the espn_s2 + SWID you pasted come from an ESPN account that is in this league, then try again.'
+        : 'Connected to ESPN, but the 2026 season returned no teams yet. If the league is private add ESPN credentials; if 2026 rosters are not set, try again once the season opens.';
     } else if(/INVALID_ESPN_JSON/.test(message)){
       msg = 'The /api/espn relay returned an unexpected (non-JSON) response — the serverless function may not be deployed. Verify the Vercel deployment includes the api/ routes.';
     } else if(/RELAY_UNREACHABLE|Failed to fetch|NetworkError|Load failed/i.test(message)){
@@ -20061,8 +20469,29 @@ function loadPrefs(){
   $('weekNum').value = (saved && saved.week) || '';
   if(saved && (saved.provider === 'sleeper' || saved.provider === 'espn' || saved.provider === 'yahoo')) setProvider(saved.provider);
   if(saved && (saved.statsMode === 'standings' || saved.statsMode === 'advanced' || saved.statsMode === 'power')) ui.statsMode = saved.statsMode;
-try{ if($('espnS2Input'))   $('espnS2Input').value   = localStorage.getItem('fsn.espn.s2.v1')   || ''; }catch(e){}
-  try{ if($('espnSwidInput')) $('espnSwidInput').value = localStorage.getItem('fsn.espn.swid.v1') || ''; }catch(e){}
+/* One-time migration for readers whose credentials were stored by an earlier
+     build that persisted the raw paste. Re-canonicalise what is on disk so a
+     value carrying a "SWID=" prefix, quotes, or a line-wrap newline starts
+     working on this launch instead of continuing to fail every request. */
+  [['fsn.espn.s2.v1', 's2', 'espnS2Input'], ['fsn.espn.swid.v1', 'swid', 'espnSwidInput']]
+    .forEach(function(entry){
+      const key = entry[0], kind = entry[1], inputId = entry[2];
+      let raw = '';
+      try{ raw = localStorage.getItem(key) || ''; }catch(e){ return; }
+      const clean = sanitizeEspnCookieValue(kind, raw);
+      if(raw && clean !== raw){
+        if(clean){
+          console.warn('[Setup] Normalised the stored ' + kind + ' credential left by an earlier build ' +
+            '(stray cookie name, quotes or whitespace removed).');
+          try{ localStorage.setItem(key, clean); }catch(e){}
+        } else {
+          console.error('[Setup] The stored ' + kind + ' credential is unusable and cannot be repaired ' +
+            'automatically; it must be re-pasted.', new Error('UNUSABLE_STORED_ESPN_COOKIE:' + kind));
+        }
+      }
+      const input = $(inputId);
+      if(input) input.value = clean || raw;
+    });
   refreshEspnAuthStatus();
   syncCredValidity();
   renderLeagueSwitcher();
@@ -20073,10 +20502,16 @@ try{ if($('espnS2Input'))   $('espnS2Input').value   = localStorage.getItem('fsn
 function refreshEspnAuthStatus(){
   const el = $('espnAuthStatus');
   if(!el) return;
-  const { s2, swid } = getEspnCreds();
-  if(s2 && swid){
+  const diag = espnCredDiagnostics();
+  const escapeText = (value)=> String(value == null ? '' : value)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  if(diag.state === 'malformed'){
+    // Never echo the secret itself — only the reason it cannot be transmitted.
+    el.innerHTML = '<span style="color:var(--red)">UNUSABLE PASTE</span> · ' + escapeText(diag.reason) +
+      '. Paste just the cookie value; the “SWID=” prefix, quotes and stray braces are handled for you.';
+  } else if(diag.state === 'ready'){
     el.innerHTML = '<span style="color:var(--green)">PRIVATE-LEAGUE AUTH SAVED</span> · Local fallback is ready; member saves encrypt a server-side copy.';
-  } else if(s2 || swid){
+  } else if(diag.state === 'partial'){
     el.innerHTML = '<span style="color:var(--gold)">INCOMPLETE</span> · Both espn_s2 and SWID are required for a private league.';
   } else if(window._fsnCloudHasCookies){
     el.innerHTML = '<span style="color:var(--green)">CLOUD AUTH AVAILABLE</span> · The backend can read this private league without exposing its cookies.';
@@ -20146,10 +20581,15 @@ $('historyUnlockToggle').addEventListener('click', ()=>{
 // shape checks only (they never verify the cookie against ESPN) so the reader
 // gets instant "looks right ✓" feedback while typing or pasting.
 function credLooksValid(kind, value){
-  const v = String(value || '').trim();
-  if(!v) return 'empty';
+  if(!String(value == null ? '' : value).trim()) return 'empty';
+  /* Judge what will ACTUALLY be sent, not the raw paste. A reader who pasted
+     "SWID={ABC-...}" or a quoted value has given us a perfectly good
+     credential; telling them it looks wrong (while storing it anyway) is how
+     the original bug hid in plain sight. */
+  const v = sanitizeEspnCookieValue(kind, value);
+  if(!v) return 'invalid';
   if(kind === 'swid'){
-    return /^\{?[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\}?$/.test(v)
+    return /^\{[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\}$/.test(v)
       ? 'valid' : 'invalid';
   }
   // espn_s2 is a long URL-encoded token; anything substantial with the right
@@ -20184,26 +20624,43 @@ function syncCredValidity(){
   setCredValidity('espnSwidValid', 'swid', ($('espnSwidInput') && $('espnSwidInput').value) || '');
 }
 
-if($('espnS2Input')){
-  $('espnS2Input').addEventListener('input', ()=>{
+/* Persist the SANITIZED value, not the raw paste. Storing the raw string is
+   what shipped the original bug: a "SWID={...}" row copy, a quoted value, or a
+   value the DevTools panel line-wrapped went straight into localStorage and
+   then into a request header, where it was either ignored by ESPN or made
+   fetch() throw outright. Normalising at the input seam means every later
+   read — headers, cloud sync, the status line — sees one canonical form.
+
+   The field itself is only rewritten when the reader is not mid-edit and the
+   cleanup actually changed something, so a paste visibly settles into the
+   stored value without the caret jumping while someone types. */
+function bindCredentialField(inputId, storageKey, kind, validityBoxId){
+  const input = $(inputId);
+  if(!input) return;
+  input.addEventListener('input', ()=>{
+    const clean = sanitizeEspnCookieValue(kind, input.value);
     try{
-      const v = $('espnS2Input').value.trim();
-      if(v) localStorage.setItem('fsn.espn.s2.v1', v); else localStorage.removeItem('fsn.espn.s2.v1');
-    }catch(e){}
-    setCredValidity('espnS2Valid', 's2', $('espnS2Input').value);
+      if(clean) localStorage.setItem(storageKey, clean);
+      else localStorage.removeItem(storageKey);
+    }catch(err){
+      console.warn('[Setup] Could not persist the ' + kind + ' credential to localStorage ' +
+        '(private mode or blocked storage); it will not survive a reload.', err);
+    }
+    setCredValidity(validityBoxId, kind, input.value);
     refreshEspnAuthStatus();
   });
-}
-if($('espnSwidInput')){
-  $('espnSwidInput').addEventListener('input', ()=>{
-    try{
-      const v = $('espnSwidInput').value.trim();
-      if(v) localStorage.setItem('fsn.espn.swid.v1', v); else localStorage.removeItem('fsn.espn.swid.v1');
-    }catch(e){}
-    setCredValidity('espnSwidValid', 'swid', $('espnSwidInput').value);
-    refreshEspnAuthStatus();
+  /* Settle the field to the canonical value once the reader leaves it. */
+  input.addEventListener('blur', ()=>{
+    const clean = sanitizeEspnCookieValue(kind, input.value);
+    if(clean && clean !== input.value){
+      input.value = clean;
+      setCredValidity(validityBoxId, kind, clean);
+      refreshEspnAuthStatus();
+    }
   });
 }
+bindCredentialField('espnS2Input', 'fsn.espn.s2.v1', 's2', 'espnS2Valid');
+bindCredentialField('espnSwidInput', 'fsn.espn.swid.v1', 'swid', 'espnSwidValid');
 
 // "Paste" buttons — pull from the clipboard so a manager never has to fight the
 // mobile paste menu on a password field. Falls back gracefully where the async
@@ -20327,7 +20784,7 @@ function renderOnboardGuide(provider){
               <li>Copy the values named <span class="onboard-code">espn_s2</span> and <span class="onboard-code">SWID</span>.</li>
               <li>Paste both values into the matching <strong style="color:var(--off)">Private League Access</strong> fields on Setup, then fetch the league again.</li>
             </ol>
-            <div class="onboard-note">Providing both cookies unlocks the private league and automatically pulls up to 10 seasons into the Record Book. No JSON file upload is needed. Paste the SWID exactly as shown, including its curly braces.</div>
+            <div class="onboard-note">Providing both cookies unlocks the private league and automatically pulls up to 10 seasons into the Record Book. No JSON file upload is needed. Paste each value however your browser copied it — a “SWID=” prefix, quotes, missing braces or a line-wrapped espn_s2 are all cleaned up automatically.</div>
           </div>
         </div>
 
