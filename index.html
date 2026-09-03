@@ -16187,7 +16187,18 @@ const ui = {
   seasonLoading: null,
   cloudHydrateSeq: 0,
   cloudLeagueId: '',
-  cloudUpdatedAt: '',
+  /* Optimistic-concurrency token for the shared league archive. It is stored
+     as { leagueId, seasonYear, updatedAt } rather than a bare timestamp
+     BECAUSE a bare string cannot say which row it describes: it survived a
+     league change (clearLeagueStateForSwitch() returns early until an ESPN
+     fetch has set activeLeagueKey) and a failed hydration, and the next save
+     then sent one league's version for another league's row. The server
+     answered "the shared league archive no longer matches the version loaded
+     by this browser" on every retry, which is a permanent local-only lockout —
+     the token never changed, so neither did the verdict. Reading it through
+     cloudVersionFor(league, season) makes a mismatched token structurally
+     unusable instead of relying on every clear-path being remembered. */
+  cloudVersion: { leagueId:'', seasonYear:0, updatedAt:'' },
   cloudSyncing: false,
   rivalA: '', rivalB: '',
   activeLeagueKey: '',   // provider:id of the league currently resident in the stores
@@ -18717,6 +18728,36 @@ function cloudSeasonYear(){
   return parseInt(($('seasonYear').value || '').trim(), 10) || uiActiveSeasonYear();
 }
 
+/* ---- Shared-archive version token ----
+   Three accessors are the only way this token is read or written, so it can
+   never drift from the row it belongs to. */
+function setCloudVersion(leagueId, seasonYear, updatedAt){
+  ui.cloudVersion = {
+    leagueId:String(leagueId || '').trim(),
+    seasonYear:Number(seasonYear) || 0,
+    updatedAt:String(updatedAt || ''),
+  };
+}
+function clearCloudVersion(){
+  ui.cloudVersion = { leagueId:'', seasonYear:0, updatedAt:'' };
+}
+/* The version to send as expected_updated_at for THIS league and season, or ''
+   when we hold no version for it. Returning '' is what makes the save an
+   INSERT rather than a doomed guarded UPDATE. */
+function cloudVersionFor(leagueId, seasonYear){
+  const token = ui.cloudVersion || {};
+  const league = String(leagueId || '').trim();
+  const season = Number(seasonYear) || 0;
+  if(!token.updatedAt) return '';
+  if(token.leagueId !== league || token.seasonYear !== season){
+    console.warn('[League Storage] Discarding a version token for ' +
+      (token.leagueId || '(none)') + '/' + (token.seasonYear || '(none)') +
+      ' while saving ' + league + '/' + season + '; this save is treated as a first write.');
+    return '';
+  }
+  return token.updatedAt;
+}
+
 function cloudHeaders(includeBody, includeCredentials){
   const headers = { Accept:'application/json' };
   if(includeBody) headers['Content-Type'] = 'application/json';
@@ -19121,7 +19162,7 @@ async function hydrateLeagueFromCloud(league, options){
     });
     if(seq !== ui.cloudHydrateSeq || id !== String($('leagueIdInput').value || '').trim()) return null;
     if(response.status === 404){
-      ui.cloudUpdatedAt = '';
+      clearCloudVersion();
       const local = applyLocalLeagueFallback(id, season, 'no cloud record exists yet');
       if(local) return local;
       setCloudStatus('idle', 'No stored league record exists yet. Any authenticated member can save it after connecting.');
@@ -19131,7 +19172,7 @@ async function hydrateLeagueFromCloud(league, options){
     if(!response.ok) throw new Error(payload.error || ('League storage read failed (HTTP ' + response.status + ').'));
 
     const record = payload.record || payload;
-    ui.cloudUpdatedAt = String(record.updated_at || '');
+    setCloudVersion(id, season, record.updated_at);
     const applied = applyCloudRecord(record, id);
     cacheLeagueRecord(record);
     const stored = storedHistoryPayload(record);
@@ -19144,7 +19185,15 @@ async function hydrateLeagueFromCloud(league, options){
     return record;
   }catch(err){
     if(seq === ui.cloudHydrateSeq){
-      console.warn('[League Storage] hydration failed', err);
+      /* A failed read means we do NOT know the server's version. Holding on to
+         the previous one makes the next save assert a version for a row this
+         browser never read — the server rejects it, the token never changes,
+         and the reader is locked into local-only mode until a reload. Drop it:
+         with no token the save is a first write, and a row that does exist
+         answers with a conflict the save path below resolves by re-reading. */
+      clearCloudVersion();
+      console.warn('[League Storage] hydration failed; version token dropped so the next save is not ' +
+        'rejected against a row this browser never read.', err);
       const local = applyLocalLeagueFallback(id, season, 'cloud temporarily unavailable');
       if(local) return local;
       setCloudStatus('error', 'Could not reach league storage. Local preferences and direct ESPN loading are still available.');
@@ -19190,7 +19239,7 @@ async function syncLeagueToCloud(options){
     const body = {
       league_id:league,
       season_year:season,
-      expected_updated_at:ui.cloudUpdatedAt || null,
+      expected_updated_at:cloudVersionFor(league, season) || null,
       history_json:historyJson,
     };
     return { historyJson, serialized:JSON.stringify(body) };
@@ -19198,15 +19247,29 @@ async function syncLeagueToCloud(options){
 
   let requestData = makeSaveRequest(optimization.archive);
 
-  // Persist the optimized, non-secret portion immediately. The separate cookie
-  // keys provide the browser-only fallback if the network save is interrupted.
+  /* Persist the optimized, non-secret portion immediately. The separate cookie
+     keys provide the browser-only fallback if the network save is interrupted.
+
+     has_cookies describes the SERVER's state — whether public.leagues holds an
+     encrypted envelope for this league — and only a successful save can
+     establish that. Asserting it here made a save that later failed leave a
+     cached record claiming the backend could read the private league; a
+     subsequent hydrate falling back to that cache then reported "CLOUD AUTH
+     AVAILABLE" for cookies that were never stored. Carry forward whatever the
+     server last confirmed instead. */
+  const priorRecord = readCachedLeagueRecord(league, season);
+  const serverConfirmedCookies = !!(priorRecord && priorRecord.has_cookies);
   cacheLeagueRecord({
     league_id:league,
     season_year:season,
     history_json:requestData.historyJson,
-    has_cookies:true,
+    has_cookies:serverConfirmedCookies,
     updated_at:new Date().toISOString(),
   });
+
+  // Set when a version conflict was resolved automatically, so the success
+  // message can say what happened instead of silently overwriting a leaguemate.
+  let conflictResolved = '';
 
   ui.cloudSyncing = true;
   if($('cloudSyncBtn')) $('cloudSyncBtn').disabled = true;
@@ -19231,14 +19294,70 @@ async function syncLeagueToCloud(options){
         league_id:league,
         season_year:season,
         history_json:requestData.historyJson,
-        has_cookies:true,
+        has_cookies:serverConfirmedCookies,
         updated_at:new Date().toISOString(),
       });
       setCloudStatus('syncing', 'Retrying optimized archive upload…');
       response = await postArchive();
     }
 
-    const payload = await response.json().catch(()=> ({}));
+    let payload = await response.json().catch(()=> ({}));
+
+    /* ---- Version-conflict resolution ----
+       A 409 is the one failure where the server knows the answer and the client
+       does not, so dead-ending here is never right. Two shapes reach us:
+
+         a) the row exists and moved on — a leaguemate saved in between. The
+            response carries current_updated_at.
+         b) the row does not exist at all, but we sent a token anyway. There is
+            nothing to overwrite; this is a first write wearing a stale token.
+
+       Both are resolved by adopting the authoritative version and retrying
+       ONCE. Bounded at one attempt on purpose: two members saving in a loop
+       must not turn into an unbounded retry storm, and a second conflict is a
+       real race worth telling the reader about. */
+    if(response.status === 409){
+      const serverVersion = String((payload && payload.current_updated_at) || '').trim();
+      console.warn('[League Storage] save rejected by the version guard; re-reading the authoritative ' +
+        'version and retrying once.', { code:payload && payload.code, current_updated_at:serverVersion || null });
+      setCloudStatus('syncing', 'The shared archive moved on · re-reading the latest version and retrying…');
+
+      let resolved = serverVersion;
+      if(resolved){
+        setCloudVersion(league, season, resolved);
+      } else {
+        // Shape (b), or a server that did not report a version: ask outright.
+        clearCloudVersion();
+        try{
+          const fresh = await fetch('/api/league?league_id=' + encodeURIComponent(league) +
+            '&season_year=' + encodeURIComponent(season), {
+            method:'GET', headers:cloudHeaders(false, false), cache:'no-store',
+          });
+          if(fresh.ok){
+            const freshPayload = await fresh.json().catch(()=> ({}));
+            const freshRecord = (freshPayload && freshPayload.record) || freshPayload || {};
+            resolved = String(freshRecord.updated_at || '');
+            if(resolved) setCloudVersion(league, season, resolved);
+          } else if(fresh.status !== 404){
+            console.warn('[League Storage] conflict re-read returned HTTP ' + fresh.status +
+              '; retrying as a first write.');
+          }
+        }catch(reReadErr){
+          console.warn('[League Storage] conflict re-read failed; retrying as a first write.', reReadErr);
+        }
+      }
+
+      requestData = makeSaveRequest(optimization.archive);
+      response = await postArchive();
+      payload = await response.json().catch(()=> ({}));
+      if(response.ok){
+        conflictResolved = resolved ? 'overwrote' : 'created';
+      } else {
+        console.error('[League Storage] the retry after a version conflict also failed (HTTP ' +
+          response.status + ')', payload && payload.error);
+      }
+    }
+
     if(!response.ok){
       // Log the EXACT server/database error so a save failure is never silent.
       // The /api/league route now returns the real Supabase error (message,
@@ -19249,14 +19368,22 @@ async function syncLeagueToCloud(options){
         db_error: payload && payload.db_error,
         payload,
       });
-      const automaticMessage = response.status === 413
-        ? 'Maximum archive optimization completed. The optimized local copy is saved and cloud sync will retry on the next save.'
-        : (payload.error || ('League save failed (HTTP ' + response.status + ').'));
+      let automaticMessage;
+      if(response.status === 413){
+        automaticMessage = 'Maximum archive optimization completed. The optimized local copy is saved and cloud sync will retry on the next save.';
+      } else if(response.status === 409){
+        // The re-read + retry above already ran, so this is a live race with
+        // another member saving right now, not the stale-token lockout.
+        automaticMessage = 'Another league member is saving at the same moment, so this save was held back after ' +
+          'one automatic retry. Your optimized archive is safe locally — press Save again in a few seconds.';
+      } else {
+        automaticMessage = payload.error || ('League save failed (HTTP ' + response.status + ').');
+      }
       throw new Error(automaticMessage);
     }
 
     const record = payload.record || {};
-    ui.cloudUpdatedAt = String(record.updated_at || '');
+    setCloudVersion(league, season, record.updated_at);
     cacheLeagueRecord(record);
     window._fsnCloudHasCookies = !!record.has_cookies;
     // A partial success: history saved but cookie encryption was skipped. Log
@@ -19267,9 +19394,12 @@ async function syncLeagueToCloud(options){
     const reduction = optimization.originalBytes > 0
       ? Math.max(0, Math.round((1 - optimization.optimizedBytes / optimization.originalBytes) * 100))
       : 0;
+    const conflictNote = conflictResolved === 'overwrote'
+      ? ' · the shared archive had been updated by another member; this browser re-read it and saved over it'
+      : (conflictResolved === 'created' ? ' · a stale version marker was cleared automatically' : '');
     setCloudStatus(payload.warning ? 'idle' : 'ready', 'League data saved · ' + sourceArchive.length + ' season' +
       (sourceArchive.length===1?'':'s') + ' · ' + formatCloudBytes(optimization.optimizedBytes) +
-      (reduction ? ' · ' + reduction + '% smaller' : '') +
+      (reduction ? ' · ' + reduction + '% smaller' : '') + conflictNote +
       (payload.warning ? ' · ' + payload.warning : ' · encrypted private-league access is ready.'));
     refreshEspnAuthStatus();
     if(!opts.silent) toast(payload.warning ? 'League history saved (cookies skipped)' : 'Optimized league archive saved to Supabase');
@@ -19401,7 +19531,7 @@ function clearLeagueStateForSwitch(nextLeagueId, nextProvider){
   // any half-finished cloud hydration aimed at the previous league.
   ui.rivalA = ''; ui.rivalB = '';
   ui.cloudHydrateSeq = (ui.cloudHydrateSeq || 0) + 1;
-  ui.cloudUpdatedAt = '';
+  clearCloudVersion();
   ui.activeLeagueKey = '';
 
   // The reader-view article lookup is keyed by article id; drop it so a
