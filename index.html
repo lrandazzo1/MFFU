@@ -776,6 +776,43 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
 .record-book-podium-value{ color:var(--off); font-family:'JetBrains Mono',monospace; font-size:11.5px; font-weight:800; text-align:right; white-space:nowrap; }
 .record-book-streak-grid{ display:grid; gap:12px; margin-top:12px; }
 
+/* ---------- RECORD BOOK SCOPE TOGGLE + SINGLE-SEASON BOARDS ----------
+   The scope pill switches the whole screen between the career/all-time
+   archive and the single-season peak leaderboards. It borrows .seg's shell
+   so it reads as the same control family, but takes gold rather than cyan:
+   the sub-tabs below it are a filter *within* the all-time view, while this
+   one changes which record book you are reading. */
+.record-book-scope{ background:#0a0e14; }
+.record-book-scope button{ letter-spacing:.16em; }
+.record-book-scope button[data-active="true"]{ background:var(--gold); color:#1a1200; }
+
+.record-book-season{ padding-bottom:14px; }
+.record-book-season-note{
+  border:1px solid var(--line); border-radius:13px; background:rgba(10,14,20,.7);
+  padding:11px 13px; margin-bottom:12px; color:var(--dim);
+  font-size:10.5px; line-height:1.55;
+}
+.record-book-season-grid{ display:grid; gap:12px; }
+/* Gold head, so a single-season board is never mistaken for a career board. */
+.record-book-season-grid .record-book-leaderboard-head{
+  background:linear-gradient(90deg,rgba(255,196,0,.09),transparent);
+}
+/* Season rows carry a longer supporting line than the career boards (the
+   metric plus the numbers behind it), so let it run to two lines here rather
+   than truncating it to an ellipsis on a phone. The all-time boards keep
+   their single-line rule. */
+.record-book-season-grid .record-book-leader-name span{
+  white-space:normal; line-height:1.35;
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+}
+.record-book-season-tag{
+  display:inline-block; margin-top:3px; padding:1px 6px; border-radius:999px;
+  border:1px solid rgba(255,196,0,.35); background:rgba(255,196,0,.10);
+  color:var(--gold); font-family:'JetBrains Mono',monospace;
+  font-size:8.5px; font-weight:800; letter-spacing:.08em;
+}
+.record-book-season-empty{ padding:14px 15px 16px; color:var(--dim); font-size:10.5px; line-height:1.55; }
+
 /* Rivalry manager selectors — avatar preview beside each dropdown. */
 .rival-select{ position:relative; display:flex; align-items:center; gap:8px; }
 .rival-select-crest{ flex:none; display:flex; }
@@ -916,7 +953,7 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
 
 @media (min-width:700px){
   .franchise-metrics{ grid-template-columns:repeat(4,minmax(0,1fr)); }
-  .record-book-leaderboard-grid,.record-book-milestone-grid,.record-book-streak-grid,.dossier-h2h-grid{ grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .record-book-leaderboard-grid,.record-book-milestone-grid,.record-book-streak-grid,.record-book-season-grid,.dossier-h2h-grid{ grid-template-columns:repeat(2,minmax(0,1fr)); }
   .dossier-vitals{ grid-template-columns:repeat(4,minmax(0,1fr)); }
   #franchiseModalBody{ padding:24px 0 calc(40px + env(safe-area-inset-bottom)); }
 }
@@ -2084,12 +2121,20 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
   <section class="screen" data-screen="recordbook" data-active="false">
     <div class="screen-shell max-w-6xl mx-auto w-full px-4 sm:px-6">
     <header class="px-4 pt-4 pb-3">
-      <div class="kicker text-[var(--gold)]">All-Time Archive</div>
+      <div class="kicker text-[var(--gold)]" id="recordBookKicker">All-Time Archive</div>
       <h1 class="font-display text-[27px] leading-none mt-1.5">THE RECORD BOOK</h1>
       <div class="text-[10.5px] text-[var(--dim)] mt-1.5 font-mono tabular" id="recordBookMeta">8 seasons · 16 managers · 687 matchups</div>
     </header>
 
-    <div class="px-4 mb-4">
+    <!-- Scope toggle: career aggregates vs. the best single seasons ever posted. -->
+    <div class="px-4 mb-2.5">
+      <div class="seg record-book-scope" id="recordBookScopeSeg" role="tablist" aria-label="Record book scope">
+        <button data-record-scope="alltime" data-active="true" role="tab" aria-selected="true">All-Time</button>
+        <button data-record-scope="season" data-active="false" role="tab" aria-selected="false">Single-Season</button>
+      </div>
+    </div>
+
+    <div class="px-4 mb-4" id="recordBookSegWrap">
       <div class="seg" id="recordBookSeg">
         <button data-record-book="franchises" data-active="true">Franchises</button>
         <button data-record-book="rivalries" data-active="false">Rivalries</button>
@@ -14905,6 +14950,851 @@ return { compute };
 
 <script>
 /* ============================================================================
+   RECORD BOOK — SINGLE-SEASON QUERY ENGINE
+   The all-time Record Book answers "who, ever". This module answers the other
+   half: "what is the best any manager has done in ONE year". It ranks the top
+   five single-season peaks across advanced analytics, scoring/lineup
+   execution, and managerial value.
+
+   Source of truth: the raw archived season payloads in
+   window._franchiseYearsData, folded together with the live season by the
+   data engine's withCurrentSeason(). This module is strictly READ-ONLY over
+   that archive — it never mutates a payload, never calls
+   computeLeagueHistoryStats, and never writes back to LeagueData. Nothing
+   here reaches the network, Math.random or Date.now: a given archive always
+   resolves to exactly the same boards, and every ranking carries explicit
+   tie-breaks (metric, then earlier season, then ownerId) so ordering is
+   stable across reloads.
+
+   It lives in its own top-level block and is exposed on window rather than
+   nested inside the UI IIFE, because the UI layer, the intel layer and any
+   future caller are all separate closed scopes — a copy hidden inside one of
+   them would throw a ReferenceError in the other five.
+
+   Managers are keyed by ownerId (ESPN's stable member GUID) using exactly the
+   same fallback chain as computeLeagueHistoryStats, so a franchise that
+   renamed or re-logoed mid-archive still resolves through managerLatestInfo().
+============================================================================ */
+window.FSNRecordBook = (function(){
+'use strict';
+
+/* Block-private mirrors of ESPN's id maps. Every engine in this file keeps its
+   own copy for the same structural reason (separate script blocks cannot see
+   each other's consts); these are read-only lookup tables, not shared state. */
+const POS_BY_ID = { 1:'QB', 2:'RB', 3:'WR', 4:'TE', 5:'K', 16:'D/ST' };
+const BENCH_SLOTS = { 20:true, 21:true };   // 20 = bench, 21 = IR
+
+/* The canonical FSN Power Index weights, mirrored from FSNIntel.fsnPowerIndex
+   so a historical season is scored on exactly the model the live Power Index
+   tab shows. If that model is ever re-weighted, this table moves with it. */
+const FSN_INDEX_WEIGHTS = { allPlay:0.50, pf:0.20, consistency:0.15, context:0.15 };
+
+/* A season needs a real sample before it can hold a record. Four scored weeks
+   is the same floor the FSN Index uses before it stops shrinking a team's
+   consistency toward the league median. */
+const MIN_SEASON_WEEKS = 4;
+const TOP_N = 5;
+
+/* Draft ROI is only meaningful when most of the class can actually be priced.
+   Below these floors the board reports missing coverage instead of ranking
+   noise. */
+const MIN_DRAFT_COVERAGE = 0.5;
+const MIN_TEAM_PICKS = 3;
+
+/* ---- memo, scoped to the league AND to the archive's shape ----
+   The store publishes on every archive mutation, which clears the map; the
+   fingerprint is the belt-and-braces half, because the data engine assigns
+   window._franchiseYearsData immediately AFTER calling setLeagueHistory(). */
+let memoMap = new Map();
+try{
+  LeagueData.subscribe(function(){ memoMap.clear(); });
+}catch(err){
+  console.error('[RecordBook] could not subscribe to the league store; single-season boards will rely on the archive fingerprint alone.', err);
+}
+
+function num(value){
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function archiveFingerprint(rows){
+  let scope = '';
+  try{ scope = String(leagueScopeToken()); }
+  catch(err){
+    console.error('[RecordBook] league scope token unavailable; falling back to an archive-only cache key.', err);
+    scope = 'unscoped';
+  }
+  const shape = rows.map(function(row){
+    const ld = row.leagueData;
+    return row.year + ':' + (ld.teams || []).length + ':' + ((ld.schedule || []).length) +
+      ':' + (ld.draftDetail && Array.isArray(ld.draftDetail.picks) ? ld.draftDetail.picks.length : 0);
+  }).join(',');
+  return scope + '|' + shape;
+}
+
+function memo(key, rows, build){
+  const token = archiveFingerprint(rows);
+  const full = token + '#' + key;
+  if(memoMap.has(full)) return memoMap.get(full);
+  const value = build();
+  memoMap.set(full, value);
+  return value;
+}
+
+/* ============================================================
+   ARCHIVE ACCESS
+============================================================ */
+
+/* Every completed archived season plus the live one, in ascending year order.
+   withCurrentSeason() is the data engine's own merge rule (newer payload wins
+   for a duplicated year), reused here so the Record Book and the rest of the
+   app always agree on which seasons exist. */
+function archiveSeasons(){
+  const stored = Array.isArray(window._franchiseYearsData) ? window._franchiseYearsData : [];
+  let merged = stored;
+  try{
+    merged = withCurrentSeason(stored);
+  }catch(err){
+    console.error('[RecordBook] could not fold the live season into the archive; ranking archived seasons only.', err);
+    merged = stored;
+  }
+  return (Array.isArray(merged) ? merged : [])
+    .filter(function(row){
+      return row && Number(row.year) > 0 && row.leagueData &&
+        Array.isArray(row.leagueData.teams) && row.leagueData.teams.length > 0;
+    })
+    .slice()
+    .sort(function(a, b){ return Number(a.year) - Number(b.year); });
+}
+
+/* Same ownerId fallback chain as computeLeagueHistoryStats — the identity has
+   to match or managerLatestInfo() cannot resolve the crest. */
+function ownerIdOf(team, year){
+  return team.primaryOwner || (team.owners && team.owners[0]) || ('team-' + team.id + '-' + year);
+}
+
+function franchiseNameOf(team){
+  return ((team.location || '') + ' ' + (team.nickname || '')).trim() || team.name || ('Team ' + team.id);
+}
+
+function isRegularSeasonGame(game){
+  const tier = String((game && game.playoffTierType) || 'NONE').toUpperCase();
+  return !tier || tier === 'NONE';
+}
+
+/* ESPN leaves unplayed matchups in the schedule with zeroed totals. Both sides
+   must carry a real number and at least one of them must be non-zero. */
+function gameWasPlayed(game){
+  if(!game || !game.home || !game.away) return false;
+  if(typeof game.home.totalPoints !== 'number' || typeof game.away.totalPoints !== 'number') return false;
+  return !(game.home.totalPoints <= 0 && game.away.totalPoints <= 0);
+}
+
+function entryPoints(entry){
+  if(entry && typeof entry.appliedStatTotal === 'number') return entry.appliedStatTotal;
+  const ppe = entry && entry.playerPoolEntry;
+  if(ppe && typeof ppe.appliedStatTotal === 'number') return ppe.appliedStatTotal;
+  return null;
+}
+
+function rosterEntriesOf(side){
+  const roster = side && (side.rosterForCurrentScoringPeriod || side.rosterForMatchupPeriod);
+  return roster && Array.isArray(roster.entries) ? roster.entries : [];
+}
+
+/* ============================================================
+   LINEUP EFFICIENCY — two deliberately different models
+
+   1. contextEfficiency() mirrors FSNIntel.lineupEfficiencyThrough() exactly
+      (best bench score recovered against the worst starter). It feeds the FSN
+      Index context pillar, so a historical index score is computed on the same
+      model the live Power Index tab uses. Changing it here would silently make
+      the two disagree.
+
+   2. optimalEfficiency() fills the real legal lineup card through
+      NewsDesk.fillOptimalLineup, which is the honest answer to "what share of
+      the optimal lineup did this manager actually start" and is what the Peak
+      Lineup Efficiency board reports.
+
+   Both return null — never 0 — when the payload omits bench detail, which ESPN
+   season exports very often do.
+============================================================ */
+
+function contextEfficiency(leagueData, teamId){
+  const schedule = Array.isArray(leagueData.schedule) ? leagueData.schedule : [];
+  let realized = 0, optimized = 0, samples = 0;
+
+  schedule.forEach(function(game){
+    const side = [game && game.home, game && game.away].find(function(x){
+      return x && String(x.teamId) === String(teamId);
+    });
+    if(!side) return;
+    const entries = rosterEntriesOf(side);
+    if(!entries.length) return;
+
+    const starters = [], bench = [];
+    entries.forEach(function(entry){
+      const pts = entryPoints(entry);
+      if(typeof pts !== 'number') return;
+      (BENCH_SLOTS[entry.lineupSlotId] ? bench : starters).push(pts);
+    });
+    if(!starters.length || !bench.length) return;
+
+    const starterTotal = starters.reduce(function(sum, v){ return sum + v; }, 0);
+    const recoverable = Math.max(0, Math.max.apply(null, bench) - Math.min.apply(null, starters));
+    const optimizedTotal = starterTotal + recoverable;
+    if(optimizedTotal <= 0) return;
+
+    realized += starterTotal;
+    optimized += optimizedTotal;
+    samples++;
+  });
+
+  return samples && optimized > 0 ? Math.max(0, Math.min(100, (realized / optimized) * 100)) : null;
+}
+
+function optimalEfficiency(leagueData, teamId){
+  if(!window.NewsDesk || typeof NewsDesk.lineupEfficiencyOf !== 'function' ||
+     !Array.isArray(NewsDesk.STANDARD_LINEUP_TEMPLATE)){
+    console.warn('[RecordBook] NewsDesk optimal-lineup math is unavailable; skipping the Peak Lineup Efficiency board.');
+    return null;
+  }
+  const schedule = Array.isArray(leagueData.schedule) ? leagueData.schedule : [];
+  let actual = 0, optimal = 0, weeks = 0;
+
+  schedule.forEach(function(game){
+    if(!isRegularSeasonGame(game)) return;
+    const side = [game && game.home, game && game.away].find(function(x){
+      return x && String(x.teamId) === String(teamId);
+    });
+    if(!side) return;
+    const entries = rosterEntriesOf(side);
+    if(!entries.length) return;
+
+    const starters = [], bench = [];
+    entries.forEach(function(entry){
+      const pts = entryPoints(entry);
+      if(typeof pts !== 'number') return;
+      const ppe = entry.playerPoolEntry || {};
+      const player = ppe.player || {};
+      const isBench = !!BENCH_SLOTS[entry.lineupSlotId];
+      const rec = { pos: POS_BY_ID[player.defaultPositionId] || '', points: pts, bench: isBench };
+      (isBench ? bench : starters).push(rec);
+    });
+    if(!starters.length || !bench.length) return;
+
+    let eff = null;
+    try{
+      eff = NewsDesk.lineupEfficiencyOf(starters, bench, NewsDesk.STANDARD_LINEUP_TEMPLATE);
+    }catch(err){
+      console.error('[RecordBook] optimal-lineup math failed for team ' + teamId + ' in a ' +
+        (leagueData.seasonId || 'archived') + ' matchup', err);
+      return;
+    }
+    if(!eff || !(eff.optimalScore > 0)) return;
+
+    actual += eff.actualScore;
+    optimal += eff.optimalScore;
+    weeks++;
+  });
+
+  return weeks && optimal > 0 ? Math.max(0, Math.min(100, (actual / optimal) * 100)) : null;
+}
+
+/* ============================================================
+   TRANSACTION VALUE
+   ESPN stamps every roster entry with how the team acquired that player.
+   Summing the season output of everything that did NOT arrive through the
+   draft is the wire-and-trade half of a manager's season.
+
+   Honest limit, surfaced in the card's subtitle: mRoster is an end-of-season
+   snapshot, so a pickup that was later dropped is not in it. This measures
+   value that was acquired AND held, not gross churn.
+============================================================ */
+function transactionValueOf(team){
+  const entries = (team.roster && Array.isArray(team.roster.entries)) ? team.roster.entries : [];
+  if(!entries.length) return null;
+
+  let points = 0, players = 0, priced = 0;
+  entries.forEach(function(entry){
+    const how = String(entry.acquisitionType || '').toUpperCase();
+    if(!how) return;
+    priced++;
+    if(how === 'DRAFT') return;
+    const pts = entryPoints(entry);
+    if(typeof pts !== 'number') return;
+    points += pts;
+    players++;
+  });
+
+  if(!priced) return null;            // payload carries rosters but no acquisition detail
+  return { points: points, players: players };
+}
+
+/* ============================================================
+   DRAFT QUALITY (ROI)
+   Value is priced against the draft board itself rather than an external ADP,
+   so it needs no outside feed and cannot drift: sort every gradeable pick in
+   the class by the points it actually produced, and the k-th best total
+   becomes "par" for the k-th pick off the board. A pick's surplus is
+   actual − par; a team's ROI is the sum of its surpluses.
+
+   The construction is zero-sum across the league by definition, which is what
+   makes a positive number mean "beat the room from where you picked" rather
+   than "drafted early". Keepers are excluded (they were never a market
+   decision), and a pick only grades when its player's season total survives
+   in the payload.
+============================================================ */
+function draftRoiFor(leagueData, year){
+  const detail = leagueData.draftDetail;
+  const rawPicks = detail && Array.isArray(detail.picks) ? detail.picks : [];
+  if(!rawPicks.length) return null;
+
+  // playerId -> season points, from every roster in the payload.
+  const pointsByPlayer = Object.create(null);
+  (leagueData.teams || []).forEach(function(team){
+    const entries = (team.roster && Array.isArray(team.roster.entries)) ? team.roster.entries : [];
+    entries.forEach(function(entry){
+      const ppe = entry.playerPoolEntry || {};
+      const id = ppe.id != null ? ppe.id : (ppe.player && ppe.player.id);
+      const pts = entryPoints(entry);
+      if(id == null || typeof pts !== 'number') return;
+      pointsByPlayer[id] = pts;
+    });
+  });
+  if(!Object.keys(pointsByPlayer).length) return null;
+
+  const gradeable = rawPicks
+    .filter(function(pick){
+      return pick && pick.playerId != null && Number(pick.playerId) > 0 &&
+        !pick.keeper && Number(pick.overallPickNumber) > 0;
+    })
+    .map(function(pick){
+      const pts = pointsByPlayer[pick.playerId];
+      return {
+        playerId: pick.playerId,
+        teamId: pick.teamId,
+        overall: Number(pick.overallPickNumber),
+        round: Number(pick.roundId) || 0,
+        points: typeof pts === 'number' ? pts : null,
+      };
+    });
+
+  const totalPicks = gradeable.length;
+  if(!totalPicks) return null;
+
+  const priced = gradeable.filter(function(p){ return p.points != null; });
+  const coverage = priced.length / totalPicks;
+  if(coverage < MIN_DRAFT_COVERAGE){
+    console.warn('[RecordBook] ' + year + ' draft class priced only ' +
+      priced.length + ' of ' + totalPicks + ' picks; skipping its ROI board entry.');
+    return null;
+  }
+
+  // Par curve: the k-th best season total is what the k-th pick off the board
+  // was worth. Deterministic ties — equal totals fall back to pick order.
+  const par = priced.map(function(p){ return p.points; }).sort(function(a, b){ return b - a; });
+  const byBoardOrder = priced.slice().sort(function(a, b){ return a.overall - b.overall; });
+
+  const byTeam = Object.create(null);
+  byBoardOrder.forEach(function(pick, index){
+    const surplus = pick.points - par[index];
+    const bucket = byTeam[pick.teamId] || (byTeam[pick.teamId] = { surplus:0, picks:0, best:null });
+    bucket.surplus += surplus;
+    bucket.picks += 1;
+    if(!bucket.best || surplus > bucket.best.surplus){
+      bucket.best = { surplus: surplus, round: pick.round, overall: pick.overall };
+    }
+  });
+
+  return { byTeam: byTeam, coverage: coverage, gradedPicks: priced.length, totalPicks: totalPicks };
+}
+
+/* ============================================================
+   ONE SEASON, EVERY TEAM
+   Regular season only for everything schedule-derived: a bracket blowout is
+   not evidence about a roster, and a bye-week bracket row would otherwise
+   double-count a team's matchup period.
+============================================================ */
+function buildSeason(entry){
+  const year = Number(entry.year);
+  const leagueData = entry.leagueData;
+
+  const memberNames = Object.create(null);
+  (leagueData.members || []).forEach(function(member){
+    const full = [member.firstName, member.lastName].filter(Boolean).join(' ').trim();
+    memberNames[member.id] = full || member.displayName || member.id;
+  });
+
+  const rows = Object.create(null);
+  (leagueData.teams || []).forEach(function(team){
+    if(!team || team.id == null) return;
+    const ownerId = ownerIdOf(team, year);
+    const teamName = franchiseNameOf(team);
+    rows[String(team.id)] = {
+      year: year,
+      teamId: team.id,
+      ownerId: ownerId,
+      teamName: teamName,
+      logo: team.logo || '',
+      managerName: memberNames[ownerId] || teamName,
+      scores: [], oppScores: [],
+      wins: 0, losses: 0, ties: 0,
+      apWins: 0, apTies: 0, apLosses: 0, apGames: 0,
+      team: team,
+    };
+  });
+  if(!Object.keys(rows).length) return null;
+
+  /* Weekly regular-season boards, one entry per team per matchup period. The
+     seen-guard is the same defence computeLeagueHistoryStats uses: a bracket
+     row can put a franchise in a second schedule entry for one period, which
+     is how a 56-win record can read as 68. */
+  const byWeek = Object.create(null);
+  const seen = Object.create(null);
+  const schedule = Array.isArray(leagueData.schedule) ? leagueData.schedule : [];
+
+  schedule.forEach(function(game){
+    if(!isRegularSeasonGame(game) || !gameWasPlayed(game)) return;
+    const week = Number(game.matchupPeriodId) || 0;
+    if(!week) return;
+    [
+      { teamId: game.home.teamId, score: num(game.home.totalPoints), oppScore: num(game.away.totalPoints) },
+      { teamId: game.away.teamId, score: num(game.away.totalPoints), oppScore: num(game.home.totalPoints) },
+    ].forEach(function(side){
+      if(!rows[String(side.teamId)]) return;
+      const key = week + ':' + side.teamId;
+      if(seen[key]) return;
+      seen[key] = true;
+      (byWeek[week] || (byWeek[week] = [])).push(side);
+    });
+  });
+
+  Object.keys(byWeek).forEach(function(week){
+    const board = byWeek[week];
+    board.forEach(function(side){
+      const row = rows[String(side.teamId)];
+      row.scores.push(side.score);
+      row.oppScores.push(side.oppScore);
+      if(side.score > side.oppScore) row.wins += 1;
+      else if(side.score === side.oppScore) row.ties += 1;
+      else row.losses += 1;
+
+      /* All-play: this week's score run head-to-head against every other team
+         on the board, which is the schedule-neutral half of the model. */
+      board.forEach(function(other){
+        if(other === side || String(other.teamId) === String(side.teamId)) return;
+        row.apGames += 1;
+        if(side.score > other.score) row.apWins += 1;
+        else if(side.score === other.score) row.apTies += 1;
+        else row.apLosses += 1;
+      });
+    });
+  });
+
+  const draft = (function(){
+    try{ return draftRoiFor(leagueData, year); }
+    catch(err){
+      console.error('[RecordBook] draft ROI failed for ' + year, err);
+      return null;
+    }
+  })();
+
+  const teams = Object.keys(rows).map(function(k){ return rows[k]; })
+    .filter(function(row){ return row.scores.length >= MIN_SEASON_WEEKS; })
+    .map(function(row){
+      const weeks = row.scores.length;
+      const mean = row.scores.reduce(function(s, v){ return s + v; }, 0) / weeks;
+      const variance = row.scores.reduce(function(s, v){ return s + Math.pow(v - mean, 2); }, 0) / weeks;
+      const cv = mean > 0 ? Math.sqrt(variance) / mean : 0;
+      const oppPpg = row.oppScores.reduce(function(s, v){ return s + v; }, 0) / weeks;
+      const apPct = row.apGames ? ((row.apWins + row.apTies * 0.5) / row.apGames) * 100 : null;
+      const actualPct = ((row.wins + row.ties * 0.5) / weeks) * 100;
+
+      let context = null;
+      try{
+        const eff = contextEfficiency(leagueData, row.teamId);
+        if(eff != null && Number.isFinite(eff)) context = eff;
+      }catch(err){
+        console.warn('[RecordBook] lineup context unavailable for ' + year + ' team ' + row.teamId +
+          '; the FSN Index will use the schedule-hardship fallback.', err);
+      }
+
+      let lineup = null;
+      try{
+        lineup = optimalEfficiency(leagueData, row.teamId);
+      }catch(err){
+        console.error('[RecordBook] optimal lineup efficiency failed for ' + year + ' team ' + row.teamId, err);
+        lineup = null;
+      }
+
+      let transaction = null;
+      try{
+        transaction = transactionValueOf(row.team);
+      }catch(err){
+        console.error('[RecordBook] transaction value failed for ' + year + ' team ' + row.teamId, err);
+        transaction = null;
+      }
+
+      const draftBucket = draft && draft.byTeam[row.teamId];
+      const draftRoi = (draftBucket && draftBucket.picks >= MIN_TEAM_PICKS)
+        ? { surplus: draftBucket.surplus, picks: draftBucket.picks, best: draftBucket.best, coverage: draft.coverage }
+        : null;
+
+      return {
+        year: year,
+        ownerId: row.ownerId,
+        teamId: row.teamId,
+        teamName: row.teamName,
+        logo: row.logo,
+        managerName: row.managerName,
+        weeks: weeks,
+        ppg: mean,
+        papg: oppPpg,
+        cv: cv,
+        cfRaw: Math.max(0, (1 - cv) * 100),
+        wins: row.wins, losses: row.losses, ties: row.ties,
+        actualPct: actualPct,
+        allPlayPct: apPct,
+        allPlayWins: row.apWins, allPlayTies: row.apTies, allPlayLosses: row.apLosses, allPlayGames: row.apGames,
+        expectedWins: apPct == null ? null : (apPct / 100) * weeks,
+        luckWins: apPct == null ? null : ((actualPct - apPct) / 100) * weeks,
+        luckPct: apPct == null ? null : (actualPct - apPct),
+        context: context,
+        lineupEfficiency: lineup,
+        transaction: transaction,
+        draftRoi: draftRoi,
+      };
+    });
+
+  if(!teams.length) return null;
+
+  /* League-relative pillars are normalized inside the season they belong to —
+     comparing a 2018 PF against a 2025 ceiling would rank scoring inflation,
+     not rosters. */
+  const maxPpg = Math.max.apply(null, teams.map(function(t){ return t.ppg; })) || 1;
+  const maxOppPpg = Math.max.apply(null, teams.map(function(t){ return t.papg; })) || 1;
+  const cfMedian = median(teams.map(function(t){ return t.cfRaw; }));
+
+  teams.forEach(function(t){
+    const wAllPlay = t.allPlayPct == null ? 0 : Math.max(0, Math.min(100, t.allPlayPct));
+    const pfNorm = Math.max(0, Math.min(100, (t.ppg / maxPpg) * 100));
+    const shrunk = t.weeks < 4;
+    const cfAdj = shrunk
+      ? (t.weeks / 4) * t.cfRaw + (1 - t.weeks / 4) * cfMedian
+      : t.cfRaw;
+    let contextScore, contextMode;
+    if(t.context != null){
+      contextScore = Math.max(0, Math.min(100, t.context));
+      contextMode = 'optimal';
+    } else {
+      contextScore = Math.max(0, Math.min(100, (t.papg / maxOppPpg) * 100));
+      contextMode = 'sos';
+    }
+    t.consistency = cfAdj;
+    t.contextScore = contextScore;
+    t.contextMode = contextMode;
+    t.fsnIndex = Math.max(0, Math.min(100,
+      FSN_INDEX_WEIGHTS.allPlay * wAllPlay +
+      FSN_INDEX_WEIGHTS.pf * pfNorm +
+      FSN_INDEX_WEIGHTS.consistency * cfAdj +
+      FSN_INDEX_WEIGHTS.context * contextScore));
+  });
+
+  /* Single-game records ride along with the season that produced them. Playoff
+     games count here — a loss is a loss, and the all-time score records the
+     book already ships include the postseason. */
+  const losses = [];
+  schedule.forEach(function(game){
+    if(!gameWasPlayed(game)) return;
+    const week = Number(game.matchupPeriodId) || 0;
+    const home = num(game.home.totalPoints), away = num(game.away.totalPoints);
+    if(home === away) return;
+    const loserSide = home > away ? game.away : game.home;
+    const winnerSide = home > away ? game.home : game.away;
+    const loser = rows[String(loserSide.teamId)];
+    const winner = rows[String(winnerSide.teamId)];
+    if(!loser) return;
+    losses.push({
+      year: year,
+      week: week,
+      ownerId: loser.ownerId,
+      teamName: loser.teamName,
+      logo: loser.logo,
+      managerName: loser.managerName,
+      score: Math.max(home, away) === home ? away : home,
+      oppScore: Math.max(home, away),
+      oppTeamName: winner ? winner.teamName : 'Opponent',
+      isPlayoff: !isRegularSeasonGame(game),
+    });
+  });
+
+  return { year: year, teams: teams, losses: losses, hasDraft: !!draft };
+}
+
+function median(values){
+  const list = values.filter(function(v){ return Number.isFinite(v); }).slice().sort(function(a, b){ return a - b; });
+  if(!list.length) return 0;
+  const mid = Math.floor(list.length / 2);
+  return list.length % 2 ? list[mid] : (list[mid - 1] + list[mid]) / 2;
+}
+
+/* ============================================================
+   BOARD ASSEMBLY
+============================================================ */
+
+/* Rank a pool of season rows and keep the top five. Every board sorts on its
+   metric first, then the earlier season, then ownerId — no comparison can end
+   in a coin flip, so two reads of the same archive always agree. */
+function topFive(pool, valueOf, direction){
+  const dir = direction === 'asc' ? 1 : -1;
+  return pool
+    .filter(function(row){
+      const v = valueOf(row);
+      return v != null && Number.isFinite(v);
+    })
+    .slice()
+    .sort(function(a, b){
+      const av = valueOf(a), bv = valueOf(b);
+      if(av !== bv) return (av - bv) * dir;
+      if(a.year !== b.year) return a.year - b.year;
+      return String(a.ownerId).localeCompare(String(b.ownerId));
+    })
+    .slice(0, TOP_N);
+}
+
+function n1(v){ return (Math.round(num(v) * 10) / 10).toFixed(1); }
+function n2(v){ return (Math.round(num(v) * 100) / 100).toFixed(2); }
+
+function board(key, title, subtitle, rows, decorate, unavailable){
+  return {
+    key: key,
+    title: title,
+    subtitle: subtitle,
+    unavailable: rows.length ? '' : (unavailable || ''),
+    rows: rows.map(function(row, index){
+      const shaped = decorate(row);
+      return {
+        rank: index + 1,
+        year: row.year,
+        ownerId: row.ownerId,
+        teamName: row.teamName,
+        logo: row.logo,
+        managerName: row.managerName,
+        value: shaped.value,
+        detail: shaped.detail,
+      };
+    }),
+  };
+}
+
+function buildBoards(seasons){
+  const teamSeasons = seasons.reduce(function(all, season){ return all.concat(season.teams); }, []);
+  const lossGames = seasons.reduce(function(all, season){ return all.concat(season.losses); }, []);
+
+  const boards = [];
+
+  /* ---- Advanced FSN analytics ---- */
+  boards.push(board('fsnIndex', 'Peak FSN Power Index',
+    'The highest composite index any roster has posted over a full season · 0.50 All-Play + 0.20 PF + 0.15 Consistency + 0.15 Context',
+    topFive(teamSeasons, function(r){ return r.fsnIndex; }, 'desc'),
+    function(r){
+      return {
+        value: n1(r.fsnIndex),
+        detail: n1(r.allPlayPct) + '% all-play · ' + n1(r.ppg) + ' PPG · ' +
+          (r.contextMode === 'optimal' ? n1(r.contextScore) + '% optimal start' : n1(r.contextScore) + ' SOS'),
+      };
+    }));
+
+  boards.push(board('expectedWins', 'Most Expected Wins (All-Play)',
+    'Schedule-neutral win total: every week run against the whole league, scaled back to the season’s games',
+    topFive(teamSeasons, function(r){ return r.expectedWins; }, 'desc'),
+    function(r){
+      return {
+        value: n1(r.expectedWins) + ' xW',
+        detail: 'Actual ' + r.wins + '-' + r.losses + (r.ties ? '-' + r.ties : '') + ' · ' +
+          n1(r.allPlayPct) + '% all-play over ' + r.weeks + ' weeks',
+      };
+    }));
+
+  boards.push(board('luck', 'Ultimate Schedule Fraud',
+    'Largest surplus of real wins over the all-play expectation — the seasons the schedule handed over',
+    topFive(teamSeasons.filter(function(r){ return r.luckWins != null && r.luckWins > 0; }),
+      function(r){ return r.luckWins; }, 'desc'),
+    function(r){
+      return {
+        value: '+' + n1(r.luckWins) + ' W',
+        detail: n1(r.actualPct) + '% real vs ' + n1(r.allPlayPct) + '% all-play · ' +
+          r.wins + '-' + r.losses + (r.ties ? '-' + r.ties : ''),
+      };
+    },
+    'No archived season finished ahead of its all-play expectation.'));
+
+  boards.push(board('unluck', 'The Bad Beat Award',
+    'Largest shortfall against the all-play expectation — scored like a contender, finished like a cellar team',
+    topFive(teamSeasons.filter(function(r){ return r.luckWins != null && r.luckWins < 0; }),
+      function(r){ return r.luckWins; }, 'asc'),
+    function(r){
+      return {
+        value: n1(r.luckWins) + ' W',
+        detail: n1(r.actualPct) + '% real vs ' + n1(r.allPlayPct) + '% all-play · ' +
+          r.wins + '-' + r.losses + (r.ties ? '-' + r.ties : ''),
+      };
+    },
+    'No archived season finished behind its all-play expectation.'));
+
+  boards.push(board('consistency', 'Highest Consistency Factor',
+    'Steadiest week-to-week scoring · CF = (1 − CV) × 100, where CV is the coefficient of variation of the weekly scores',
+    topFive(teamSeasons, function(r){ return r.consistency; }, 'desc'),
+    function(r){
+      return {
+        value: n1(r.consistency) + ' CF',
+        detail: 'CV ' + n2(r.cv * 100) + '% · ' + n1(r.ppg) + ' PPG across ' + r.weeks + ' weeks',
+      };
+    }));
+
+  /* ---- Scoring & lineup execution ---- */
+  boards.push(board('ppg', 'Highest Single-Season PPG',
+    'The biggest offensive seasons in league history, regular season only',
+    topFive(teamSeasons, function(r){ return r.ppg; }, 'desc'),
+    function(r){
+      return {
+        value: n1(r.ppg) + ' PPG',
+        detail: n1(r.ppg * r.weeks) + ' PF over ' + r.weeks + ' weeks · ' +
+          r.wins + '-' + r.losses + (r.ties ? '-' + r.ties : ''),
+      };
+    }));
+
+  boards.push(board('papg', 'Most Cursed Schedule (PAPG)',
+    'Highest opponent scoring average absorbed across a season — the schedules nobody would have volunteered for',
+    topFive(teamSeasons, function(r){ return r.papg; }, 'desc'),
+    function(r){
+      return {
+        value: n1(r.papg) + ' PAPG',
+        detail: n1(r.papg * r.weeks) + ' PA over ' + r.weeks + ' weeks · scored ' + n1(r.ppg) + ' PPG',
+      };
+    }));
+
+  boards.push(board('pointsInLoss', 'Most Points in a Loss',
+    'The highest single-game scores that still went in the loss column',
+    topFive(lossGames, function(r){ return r.score; }, 'desc'),
+    function(r){
+      return {
+        value: n1(r.score) + ' PTS',
+        detail: 'Lost ' + n1(r.score) + '–' + n1(r.oppScore) + ' to ' + r.oppTeamName +
+          ' · Week ' + r.week + (r.isPlayoff ? ' (playoffs)' : ''),
+      };
+    }));
+
+  boards.push(board('lineup', 'Peak Lineup Efficiency',
+    'Share of the optimal legal lineup a manager actually started, summed across the regular season',
+    topFive(teamSeasons, function(r){ return r.lineupEfficiency; }, 'desc'),
+    function(r){
+      return {
+        value: n1(r.lineupEfficiency) + '%',
+        detail: n1(r.ppg) + ' PPG started · ' + r.weeks + ' weeks of lineup cards',
+      };
+    },
+    'No archived season carried the bench detail this needs. ESPN season exports frequently omit it.'));
+
+  /* ---- Managerial & transaction value ---- */
+  boards.push(board('transactionValue', 'Top Transaction Value',
+    'Season output from every player acquired off waivers, free agency or a trade and still rostered at season’s end',
+    topFive(teamSeasons, function(r){ return r.transaction ? r.transaction.points : null; }, 'desc'),
+    function(r){
+      return {
+        value: n1(r.transaction.points) + ' PTS',
+        detail: r.transaction.players + ' acquired player' + (r.transaction.players === 1 ? '' : 's') +
+          ' held · ' + n1(r.ppg) + ' PPG season',
+      };
+    },
+    'No archived season carried roster acquisition detail.'));
+
+  boards.push(board('draftRoi', 'Best Draft Class (ROI)',
+    'Points a draft class returned above par for where it picked · par is the k-th best season total among that year’s gradeable picks',
+    topFive(teamSeasons, function(r){ return r.draftRoi ? r.draftRoi.surplus : null; }, 'desc'),
+    function(r){
+      const best = r.draftRoi.best;
+      return {
+        value: (r.draftRoi.surplus >= 0 ? '+' : '') + n1(r.draftRoi.surplus) + ' PTS',
+        detail: r.draftRoi.picks + ' graded pick' + (r.draftRoi.picks === 1 ? '' : 's') +
+          (best && best.round ? ' · best in round ' + best.round : ''),
+      };
+    },
+    'No archived season carried draft detail. ESPN history exports omit the draft view.'));
+
+  return boards;
+}
+
+/* ============================================================
+   PUBLIC API
+============================================================ */
+
+/* The full single-season report: every board, plus the coverage facts the UI
+   needs to explain an empty board honestly rather than implying no records
+   exist. Returns null only when the archive holds no season with a usable
+   sample — never throws into a caller's render. */
+function singleSeasonReport(){
+  const rows = archiveSeasons();
+  if(!rows.length) return null;
+
+  return memo('singleSeasonReport', rows, function(){
+    const seasons = [];
+    rows.forEach(function(entry){
+      let season = null;
+      try{
+        season = buildSeason(entry);
+      }catch(err){
+        console.error('[RecordBook] could not build single-season records for ' + entry.year, err);
+        season = null;
+      }
+      if(season) seasons.push(season);
+    });
+    if(!seasons.length) return null;
+
+    const years = seasons.map(function(s){ return s.year; });
+    const teamSeasons = seasons.reduce(function(n, s){ return n + s.teams.length; }, 0);
+
+    let boards = [];
+    try{
+      boards = buildBoards(seasons);
+    }catch(err){
+      console.error('[RecordBook] single-season board assembly failed', err);
+      return null;
+    }
+
+    return {
+      years: years,
+      seasonCount: years.length,
+      firstYear: years[0],
+      lastYear: years[years.length - 1],
+      teamSeasons: teamSeasons,
+      minWeeks: MIN_SEASON_WEEKS,
+      boards: boards,
+    };
+  });
+}
+
+/* Just the ranked boards. Exposed so a future surface (a franchise dossier
+   tab, a News Desk generator) can read the same leaderboards without
+   rebuilding the archive walk. Empty array, never null, when the archive has
+   nothing rankable in it. */
+function boards(){
+  const report = singleSeasonReport();
+  return report ? report.boards : [];
+}
+
+return {
+  singleSeasonReport: singleSeasonReport,
+  boards: boards,
+  MIN_SEASON_WEEKS: MIN_SEASON_WEEKS,
+  TOP_N: TOP_N,
+};
+})();
+</script>
+
+<script>
+/* ============================================================================
    FANTASY SPORTS NETWORK — MOBILE UI LAYER
 ============================================================================ */
 (function(){
@@ -14937,6 +15827,10 @@ const MATCHUP_FLAVOR = {
 const ui = {
   screen: 'home',
   recordBookTab: 'franchises',
+  /* Which record book is on screen: 'alltime' keeps the existing career
+     archive and its three sub-tabs, 'season' swaps in the single-season
+     peak leaderboards. */
+  recordBookScope: 'alltime',
   topic: 'all',
   storyCategory: '',
   storyAuthorId: '',
@@ -16514,6 +17408,10 @@ function renderRecordBook(){
   try{ hasHist = LeagueData.hasHistory(); }
   catch(err){ console.warn('[RecordBook] history probe failed; treating as sealed.', err); hasHist = false; }
 
+  /* Chrome first, so the header and the sub-tabs match the active scope even
+     when the body below them degrades to the sealed or fallback state. */
+  syncRecordBookScope();
+
   try{
     $('recordBookMeta').textContent = hasHist
       ? `${LeagueData.seasonCount()} seasons · ${Object.keys((LeagueData.leagueHistory && LeagueData.leagueHistory.managers) || {}).length} managers · ${LeagueData.matchupCount().toLocaleString()} matchups`
@@ -16529,9 +17427,37 @@ function renderRecordBook(){
     return;
   }
 
+  if(ui.recordBookScope === 'season'){
+    safeRun('seasonRecords', renderSeasonRecords, ()=> renderScreenFallback('recordbook'));
+    return;
+  }
+
   if(ui.recordBookTab === 'franchises')      safeRun('franchises', renderFranchises, ()=> renderScreenFallback('recordbook'));
   else if(ui.recordBookTab === 'rivalries')  safeRun('rivalries', renderRivalries, ()=> renderScreenFallback('recordbook'));
   else                                  safeRun('records', renderRecords, ()=> renderScreenFallback('recordbook'));
+}
+
+/* Reflect the ALL-TIME / SINGLE-SEASON scope on the header chrome. The three
+   sub-tabs below the pill (Franchises / Rivalries / Records) are filters
+   *within* the all-time archive, so they retire while the single-season boards
+   are up rather than sitting there inert. */
+function syncRecordBookScope(){
+  const seasonScope = ui.recordBookScope === 'season';
+
+  const scopeSeg = $('recordBookScopeSeg');
+  if(scopeSeg){
+    scopeSeg.querySelectorAll('button').forEach(btn=>{
+      const on = (btn.dataset.recordScope === 'season') === seasonScope;
+      btn.dataset.active = String(on);
+      btn.setAttribute('aria-selected', String(on));
+    });
+  }
+
+  const segWrap = $('recordBookSegWrap');
+  if(segWrap) segWrap.classList.toggle('hidden', seasonScope);
+
+  const kicker = $('recordBookKicker');
+  if(kicker) kicker.textContent = seasonScope ? 'Single-Season Peaks' : 'All-Time Archive';
 }
 
 /* ---- FRANCHISE RESUMES ---- */
@@ -17195,6 +18121,101 @@ function renderRecords(){
 
     ${streakCards.length ? `<div class="record-book-streak-grid">${streakCards.join('')}</div>` : ''}
   </div>`;
+}
+
+/* ---- SINGLE-SEASON RECORD BOOK ----
+   Purely a presentation layer over FSNRecordBook.singleSeasonReport(). All the
+   ranking, qualification and coverage logic lives in the query engine; this
+   function only decides how a board looks and never recomputes a metric. */
+function renderSeasonRecords(){
+  let report = null;
+  try{
+    report = FSNRecordBook.singleSeasonReport();
+  }catch(err){
+    console.error('[RecordBook] single-season report threw while rendering the leaderboards', err);
+    report = null;
+  }
+
+  if(!report){
+    $('recordBookBody').innerHTML = emptyState(
+      'NO SINGLE-SEASON RECORDS',
+      'No archived season carried at least ' + (FSNRecordBook.MIN_SEASON_WEEKS || 4) +
+      ' scored weeks of matchups. Load more history from Setup to open the single-season boards.',
+      'setup');
+    return;
+  }
+
+  const populated = report.boards.filter(b=> b.rows.length);
+  if(!populated.length){
+    $('recordBookBody').innerHTML = emptyState(
+      'NO QUALIFYING SEASONS',
+      'The loaded archive holds seasons, but none of them carried enough completed weeks to rank.',
+      'setup');
+    return;
+  }
+
+  const span = report.firstYear === report.lastYear
+    ? String(report.firstYear)
+    : `${report.firstYear}–${report.lastYear}`;
+
+  $('recordBookBody').innerHTML = `<div class="record-book-season">
+    <div class="record-book-season-note">
+      Ranking the best <b style="color:var(--off)">single seasons</b> in league history —
+      <b class="font-mono tabular" style="color:var(--gold)">${esc(String(report.teamSeasons))}</b>
+      qualifying team-seasons across <b class="font-mono tabular" style="color:var(--gold)">${esc(String(report.seasonCount))}</b>
+      archived year${report.seasonCount === 1 ? '' : 's'} (${esc(span)}).
+      A season needs ${report.minWeeks} scored weeks to qualify, and every schedule-derived
+      metric counts the regular season only.
+    </div>
+    <div class="record-book-season-grid">
+      ${report.boards.map(seasonLeaderboardPanel).join('')}
+    </div>
+  </div>`;
+}
+
+/* One Top 5 card: rank, that season's franchise crest, the manager behind it,
+   the metric, and the year the record was set. A board with no rows keeps its
+   header and states exactly which archive coverage it is missing — an honest
+   empty state beats a card that silently disappears. */
+function seasonLeaderboardPanel(boardData){
+  const rows = boardData.rows.map(row=>{
+    // Latest known identity for the manager, with this season's own franchise
+    // name and crest layered on top so a record reads as it did that year.
+    let info = {};
+    try{ info = managerLatestInfo(row.ownerId) || {}; }
+    catch(err){
+      console.warn('[RecordBook] manager lookup failed for owner ' + row.ownerId +
+        ' on the ' + boardData.key + ' board', err);
+      info = {};
+    }
+    const manager = row.managerName || info.name || 'Unknown manager';
+    const franchise = row.teamName || info.teamName || 'Franchise';
+    const logo = row.logo || info.logo || '';
+
+    return `<div class="record-book-leader-row">
+      <div class="record-book-leader-rank">${row.rank}</div>
+      ${crest(franchise, logo, 34)}
+      <div class="record-book-leader-name">
+        <strong>${esc(manager)}</strong>
+        <span>${esc(franchise)} · ${esc(row.detail)}</span>
+      </div>
+      <div class="record-book-leader-value">
+        <strong>${esc(row.value)}</strong>
+        <span class="record-book-season-tag">${esc(String(row.year))}</span>
+      </div>
+    </div>`;
+  }).join('');
+
+  return `<section class="record-book-leaderboard">
+    <header class="record-book-leaderboard-head">
+      <div class="kicker text-[var(--gold)]">Single-Season Top 5</div>
+      <div class="record-book-leaderboard-title">${esc(boardData.title)}</div>
+      <div class="record-book-leaderboard-sub">${esc(boardData.subtitle)}</div>
+    </header>
+    <div class="record-book-leaderboard-list">
+      ${rows || `<div class="record-book-season-empty">${esc(boardData.unavailable || 'No qualifying seasons.')}</div>`}
+    </div>
+  </section>`;
 }
 
 function careerLeaderboardPanel(title, subtitle, rows, mode){
@@ -21063,6 +22084,18 @@ document.querySelectorAll('.tab-btn').forEach(btn=>{
 document.addEventListener('click', (e)=>{
   const el = e.target.closest('[data-goto]');
   if(el) setScreen(el.dataset.goto);
+});
+
+/* ALL-TIME ⇄ SINGLE-SEASON. The sub-tab selection is deliberately preserved
+   across a scope switch, so flipping back to the archive returns the reader to
+   the board they left rather than resetting them to Franchises. */
+$('recordBookScopeSeg').addEventListener('click', (e)=>{
+  const btn = e.target.closest('[data-record-scope]');
+  if(!btn) return;
+  const next = btn.dataset.recordScope === 'season' ? 'season' : 'alltime';
+  if(next === ui.recordBookScope) return;
+  ui.recordBookScope = next;
+  safeRun('recordbook', renderRecordBook, ()=> renderScreenFallback('recordbook'));
 });
 
 $('recordBookSeg').addEventListener('click', (e)=>{
