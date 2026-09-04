@@ -5,7 +5,20 @@
   "engines": {
     "node": ">=18"
   },
+  "scripts": {
+    "build": "npm run build:ios",
+    "build:ios": "node scripts/build-ios.mjs",
+    "ios:assets": "npx @capacitor/assets generate --ios --assetPath assets",
+    "ios:sync": "npm run build:ios && npx cap sync ios",
+    "ios:open": "npx cap open ios"
+  },
   "dependencies": {
+    "@capacitor/core": "^6.1.2",
+    "@capacitor/ios": "^6.1.2",
     "@supabase/supabase-js": "^2.57.4"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^6.1.2"
   }
 }
