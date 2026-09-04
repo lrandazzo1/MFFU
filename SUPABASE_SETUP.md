@@ -7,8 +7,22 @@
    - `LEAGUE_COOKIE_ENCRYPTION_KEY` — a stable 32-byte encryption key, base64 or 64-character hex. Generate a base64 value with `openssl rand -base64 32` and mark it as a secret.
 3. Redeploy so Vercel installs `@supabase/supabase-js` from `package.json` and exposes `/api/league`.
 4. In MFFU Setup, enter a League ID and private-league cookies. **Save League Data Now** verifies that the ESPN account can read the league, then upserts the archive and encrypted cookies. Any authenticated league member can perform this sync.
+5. Press **Share** in the League Cloud card to copy the league's invite link. Send it to your league-mates — it is what lets them in (see below).
 
-`GET /api/league?league_id=123&season_year=2026` returns the shared history and a `has_cookies` flag. It never returns raw ESPN credentials. `/api/espn` can use the encrypted stored credentials server-side when the browser has no local copy, so league members only need the League ID.
+## Per-league share secret
+
+The numeric ESPN League ID is public: it is in every league URL. It therefore authorises nothing. Each league gets a `share_token` — 32 random bytes, base64url — minted by `/api/league` on the first save ESPN confirms came from a league member, and reused by every later save for that league.
+
+**Existing projects must run the `alter table public.leagues add column if not exists share_token text;` line in [`supabase/schema.sql`](supabase/schema.sql).** Re-running the whole file is safe; every statement is idempotent.
+
+Reads now require one of two things:
+
+- `GET /api/league?league_id=123&season_year=2026` needs a matching `share_token` (as the `x-league-token` header or a `?token=` parameter) **or** the caller's own `espn_s2` / `SWID`, which ESPN must confirm belong to a member of that league. Anything else is a `401` with `code: "SHARE_TOKEN_REQUIRED"`. The response carries `has_cookies` and, for an authorised caller, the `share_token` itself. It never returns raw ESPN credentials.
+- `/api/espn` will replay a league's encrypted stored cookies only for a request carrying that league's share token. Without it the read still goes out **anonymously**, so a public league is never blocked behind a token it does not need; if ESPN then refuses, the caller gets a `401` explaining they need the full invite link.
+
+The invite link is `https://<your-app>/?id=<leagueId>&token=<shareToken>`. Opening it stores the token in that browser (keyed per league), fills in the League ID, and strips the token from the address bar so it does not linger in history, bookmarks, or a `Referer` header. Treat the link like a password: anyone holding it can read the league's shared archive and use its saved ESPN access.
+
+Rows saved before this column existed have no token. They stay readable by an ESPN-verified member, their stored cookies are never lent to anyone, and the next member save mints the league's token.
 
 The frontend caches the last successful record in `localStorage`. If Supabase or the route is temporarily unavailable, the app applies that cache and continues using its existing local ESPN credential fallback.
 
