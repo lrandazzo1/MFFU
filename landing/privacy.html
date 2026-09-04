@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Privacy Policy · Fantasy Sports Network</title>
+<meta name="description" content="What Fantasy Sports Network collects, where it is stored, who it is shared with, and how to delete it.">
+<meta name="theme-color" content="#080a0e">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=&#39;http://www.w3.org/2000/svg&#39; viewBox=&#39;0 0 64 64&#39;%3E%3Crect width=&#39;64&#39; height=&#39;64&#39; fill=&#39;%23080a0e&#39;/%3E%3Ctext x=&#39;32&#39; y=&#39;43&#39; font-family=&#39;Helvetica,Arial&#39; font-size=&#39;27&#39; font-weight=&#39;bold&#39; fill=&#39;%2300e0ff&#39; text-anchor=&#39;middle&#39;%3EFSN%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Oswald:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="legal.css">
+</head>
+<body>
+
+<header class="legal-head">
+  <div class="wrap">
+    <a class="brand" href="/"><span class="brand-badge">FSN</span> Fantasy Sports Network</a>
+  </div>
+</header>
+
+<main class="wrap">
+
+<h1>Privacy Policy</h1>
+<p class="updated">Last updated 4 September 2026</p>
+
+<p class="lede">Fantasy Sports Network (“FSN”, “we”) turns your existing ESPN, Sleeper, or Yahoo fantasy football league into a broadcast-style desk. This policy describes exactly what the app collects, where each item is stored, who it is shared with, and how to delete it.</p>
+
+<div class="callout">
+  <p><strong>The short version.</strong> FSN has no user accounts and no password. Most of what it holds never leaves your device. The only things that reach our servers are your league's public-facing data (team names, scores, standings), an encrypted copy of your ESPN access cookies if you choose to share your league with your league-mates, an encrypted Yahoo token if you connect Yahoo, and your email address if you joined the waitlist. We do not sell data, we do not run advertising, and we do not use third-party analytics or tracking pixels.</p>
+</div>
+
+<h2>1. What we collect</h2>
+
+<h3>Stored only on your device</h3>
+<p>The following are written to your browser's <code>localStorage</code> and are never transmitted to us:</p>
+<ul>
+  <li>Your <strong>ESPN <code>espn_s2</code> and <code>SWID</code> cookies</strong>, if you paste them to read a private league. These are sent from your device to ESPN through our relay on each request (see §3) but the raw values are only stored on our servers if you explicitly press “Save League Data Now”, and then only encrypted.</li>
+  <li>Your saved League IDs, selected fantasy platform, chosen team, and current week.</li>
+  <li>Cached league and player data, so the app opens fast and keeps working when your connection drops.</li>
+</ul>
+
+<h3>Stored on our servers</h3>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Data</th><th>When</th><th>Where</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>League archive — league ID, season, team names, manager display names, scores, standings, matchup history</td>
+      <td>Only when a league member presses “Save League Data Now”</td>
+      <td>Supabase (Postgres), table <code>leagues</code></td>
+    </tr>
+    <tr>
+      <td>ESPN <code>espn_s2</code> / <code>SWID</code> cookies, <strong>AES-256-GCM encrypted</strong></td>
+      <td>Saved alongside the archive above, so other members of the same league can load shared history without pasting their own cookies</td>
+      <td>Supabase, <code>leagues.cookies</code></td>
+    </tr>
+    <tr>
+      <td>Yahoo OAuth access and refresh tokens, <strong>AES-256-GCM encrypted</strong>, plus a random session identifier stored as a SHA-256 hash</td>
+      <td>Only if you connect a Yahoo account</td>
+      <td>Supabase, <code>yahoo_oauth_tokens</code> and <code>yahoo_oauth_sessions</code></td>
+    </tr>
+    <tr>
+      <td>Waitlist signup — email address, chosen platform, referral source, browser user-agent string, and optionally a League ID and ESPN <code>SWID</code> you supplied on the signup form</td>
+      <td>Only if you submitted the waitlist form</td>
+      <td>Supabase, <code>waitlist_signups</code></td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<div class="callout gold">
+  <p><strong>Shared league archives are readable by League ID.</strong> A saved archive is designed to be loaded by anyone in your league who enters the same League ID — that is how one member can unlock the Record Book for everyone. It follows that anyone who knows your numeric League ID can retrieve that archive. It contains team names, manager display names and scores. It never returns your ESPN cookies, which are decrypted only inside our server when replaying a request to ESPN. Do not save an archive if you do not want your League ID to grant access to it.</p>
+</div>
+
+<h3>What we do not collect</h3>
+<ul>
+  <li>No name, password, address, phone number, payment details, or date of birth.</li>
+  <li>No location data, contacts, photos, camera, microphone, or health data.</li>
+  <li>No advertising identifiers, no cross-site tracking, no third-party analytics or tracking pixels.</li>
+  <li>No ESPN, Sleeper, or Yahoo password — FSN never asks for one and could not use one.</li>
+</ul>
+
+<h2>2. How we use it</h2>
+<p>Every item above exists to make one feature work:</p>
+<ul>
+  <li><strong>League data</strong> renders your scores, matchups, standings, records and the generated articles. All article generation runs on your device from your league's own numbers; nothing is sent to an AI service.</li>
+  <li><strong>ESPN cookies</strong> authenticate reads of a private league, exactly as your own browser would. They are used for nothing else.</li>
+  <li><strong>Yahoo tokens</strong> read your Yahoo fantasy leagues with the access you granted at Yahoo's consent screen.</li>
+  <li><strong>Your waitlist email</strong> sends you the launch announcement. We do not add you to a marketing list.</li>
+</ul>
+<p>We do not sell or rent personal data, and we do not use it for advertising or profiling.</p>
+
+<h2>3. Who it is shared with</h2>
+<p>FSN is a reader for services you already use. Requests are relayed through our own servers rather than made directly from your device, because those services do not permit direct browser access.</p>
+<ul>
+  <li><strong>ESPN</strong> (Disney) — receives your league requests and, for a private league, your <code>espn_s2</code> and <code>SWID</code> cookies. These are your own ESPN session credentials being replayed to ESPN.</li>
+  <li><strong>Sleeper</strong> — receives public league requests. No credentials are ever attached.</li>
+  <li><strong>Yahoo</strong> — receives requests bearing the OAuth token you authorised.</li>
+  <li><strong>Supabase</strong> — our database host, storing the data described in §1.</li>
+  <li><strong>Vercel</strong> — our application host, which serves the app and runs the relays. Vercel keeps standard server request logs.</li>
+  <li><strong>Resend</strong> — sends the single waitlist welcome email, and receives the address it is sent to.</li>
+  <li><strong>Google Fonts</strong> — serves the app's typefaces, and therefore receives your IP address as part of the font request.</li>
+</ul>
+<p>We disclose data to no one else, other than where we are legally required to.</p>
+
+<h2>4. Security</h2>
+<ul>
+  <li>All traffic is HTTPS.</li>
+  <li>ESPN cookies and Yahoo tokens are encrypted at rest with AES-256-GCM. The encryption keys live in the server environment, never in the database and never in the app.</li>
+  <li>Our API never returns stored credentials to a browser. A saved league reports only whether cookies exist, never what they are.</li>
+  <li>Yahoo tokens never reach your browser at all. Your device holds only a random, HttpOnly session value; the database stores its SHA-256 hash.</li>
+  <li>The database tables have row-level security enabled with no public policies, so they are reachable only through our own server routes.</li>
+</ul>
+<p>No system is perfectly secure. If you believe you have found a vulnerability, please email us at the address in §8 before disclosing it publicly.</p>
+
+<h2>5. Retention</h2>
+<ul>
+  <li><strong>On your device:</strong> kept until you clear it — see §6.</li>
+  <li><strong>League archives:</strong> kept until deletion is requested, so your league's Record Book survives between seasons.</li>
+  <li><strong>Yahoo sessions:</strong> expire automatically 30 days after sign-in. Yahoo tokens are deleted when you disconnect.</li>
+  <li><strong>Waitlist emails:</strong> kept until launch messaging is complete or you ask us to remove yours.</li>
+</ul>
+
+<h2>6. Your choices and deleting your data</h2>
+
+<h3>Delete everything on this device</h3>
+<p>Open <strong>Setup → Privacy &amp; Data → Erase data on this device</strong> in the app. This clears your stored ESPN cookies, saved leagues, team selection and every cache, immediately and without needing to contact us.</p>
+
+<h3>Disconnect Yahoo</h3>
+<p>Open <strong>Setup → Yahoo Account → Log Out</strong>. This ends your session and deletes the stored access and refresh tokens from our database. You can additionally revoke FSN's access from your Yahoo account's connected-apps settings at any time.</p>
+
+<h3>Delete a saved league archive, or a waitlist signup</h3>
+<p>Email us at the address in §8 with your League ID or the email address you signed up with. We will delete the record and confirm, ordinarily within 30 days.</p>
+
+<h3>Access, correction and portability</h3>
+<p>Depending on where you live — including under the GDPR in the UK and EEA, and the CCPA/CPRA in California — you may have the right to access, correct, export, restrict, or object to our processing of your data, and to complain to your local data protection authority. Email us to exercise any of these. We do not discriminate against anyone for exercising a privacy right.</p>
+
+<h2>7. Children</h2>
+<p>FSN is not directed at children under 13, and we do not knowingly collect data from them. If you believe a child has provided data to us, email us and we will delete it.</p>
+
+<h2>8. Contact and changes</h2>
+<p>Privacy questions, data requests, and security reports: <a href="mailto:privacy@fantasysportsnetwork.app">privacy@fantasysportsnetwork.app</a>.</p>
+<p>If we change this policy materially we will update the date at the top of this page and, where the change is significant, note it in the app.</p>
+
+<h2>9. Not affiliated</h2>
+<p>Fantasy Sports Network is an independent product. It is not affiliated with, endorsed by, or sponsored by ESPN, Disney, Sleeper, Yahoo, the National Football League, or any of their affiliates. All trademarks belong to their respective owners.</p>
+
+</main>
+
+<footer class="legal-foot">
+  <div class="wrap">
+    <nav>
+      <a href="/">Home</a>
+      <a href="/privacy">Privacy Policy</a>
+      <a href="/terms">Terms of Use</a>
+      <a href="mailto:support@fantasysportsnetwork.app">Support</a>
+    </nav>
+    <div>FSN · Fantasy Sports Network</div>
+  </div>
+</footer>
+
+</body>
+</html>

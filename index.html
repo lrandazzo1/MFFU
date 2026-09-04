@@ -2047,6 +2047,22 @@ body[data-offline="true"] #appShell{
   }
 }
 
+/* ---------- PRIVACY & DATA ---------- */
+.privacy-links{
+  display:flex; flex-wrap:wrap; gap:8px;
+}
+.privacy-link{
+  flex:1 1 auto; min-width:8.5rem;
+  display:inline-flex; align-items:center; justify-content:center;
+  min-height:40px; padding:9px 12px;
+  border:1px solid var(--line-2); border-radius:9px; background:#0b0f16;
+  color:var(--off); font-size:11.5px; font-weight:600; letter-spacing:.04em;
+  text-transform:uppercase; text-decoration:none;
+  transition:color .16s ease,border-color .16s ease;
+}
+.privacy-link:hover{ color:var(--cyan); border-color:rgba(0,224,255,.4); }
+.privacy-link:focus-visible{ outline:2px solid var(--cyan); outline-offset:2px; }
+
 /* League cloud-sync status lives in Setup but never exposes credentials. */
 .cloud-status{
   display:flex; gap:9px; align-items:flex-start; padding:10px 11px; border-radius:10px;
@@ -2505,6 +2521,31 @@ body[data-offline="true"] #appShell{
         </div>
         <button id="cloudSyncBtn" type="button" class="btn-ghost mt-3">SAVE LEAGUE DATA NOW</button>
         <p class="text-[10px] text-[var(--dim)] leading-relaxed mt-2">Saving is accepted when ESPN confirms the cookies belong to a member who can read the league. Database reads return only a has_cookies flag—never raw credentials.</p>
+      </div>
+
+      <!-- ============================================================
+           PRIVACY & DATA
+
+           App Store Guideline 5.1.1 requires a reachable privacy policy and,
+           where an app creates an account, a way to delete it. FSN has no
+           password account, but it does hold ESPN session cookies on the
+           device and can hold an encrypted Yahoo token on the server, and
+           until now offered no way to clear either and no policy link at all.
+      ============================================================ -->
+      <div class="card p-4" id="privacyDataCard">
+        <div class="section-head"><span class="bar" style="background:var(--dim)"></span><h2>Privacy &amp; Data</h2></div>
+        <p class="text-[11.5px] text-[var(--dim)] leading-relaxed mb-3">
+          FSN has no account and no password. Your ESPN cookies, saved leagues and caches live in this browser. Only a league archive you explicitly save — and an encrypted copy of the cookies that unlock it — ever reaches our servers.
+        </p>
+        <div class="privacy-links">
+          <a class="privacy-link" href="https://www.fantasysportsnetwork.app/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy&nbsp;↗</a>
+          <a class="privacy-link" href="https://www.fantasysportsnetwork.app/terms" target="_blank" rel="noopener noreferrer">Terms of Use&nbsp;↗</a>
+          <a class="privacy-link" href="mailto:support@fantasysportsnetwork.app">Support&nbsp;↗</a>
+        </div>
+        <button id="eraseDataBtn" type="button" class="btn-ghost mt-3" style="color:var(--red);border-color:rgba(255,45,85,.4)">ERASE DATA ON THIS DEVICE</button>
+        <p id="eraseDataStatus" class="text-[10.5px] text-[var(--dim)] leading-relaxed mt-2" role="status" aria-live="polite">
+          Clears your ESPN cookies, saved leagues, chosen team and every cache from this browser. A league archive already saved to the cloud is not removed — email support with your League ID to have it deleted.
+        </p>
       </div>
 
       <div class="text-center py-2">
@@ -20604,10 +20645,34 @@ if($('yahooDisconnectBtn')) $('yahooDisconnectBtn').addEventListener('click', as
     const response = await fetch('/api/auth/yahoo?action=disconnect', {
       method:'POST', headers:{ Accept:'application/json' }, credentials:'same-origin', cache:'no-store',
     });
-    if(!response.ok) throw new Error('YAHOO_DISCONNECT_HTTP_' + response.status);
+    const body = await response.json().catch(()=> null);
+
+    /* Logging out now also deletes the stored access and refresh tokens, so
+       the two failure shapes are no longer the same thing. A 502 carrying
+       YAHOO_TOKEN_DELETE_FAILED means the browser IS signed out but the
+       server-side grant survived — telling that reader to "retry the logout"
+       would be wrong twice over, since retrying cannot reach a session that no
+       longer exists. Point them at the revocation that does work. */
+    if(!response.ok){
+      if(body && body.code === 'YAHOO_TOKEN_DELETE_FAILED'){
+        console.error('[Yahoo OAuth UI] signed out, but the stored Yahoo authorization was not deleted',
+          new Error(String(body.error || 'YAHOO_TOKEN_DELETE_FAILED')));
+        populateYahooLeaguePicker([], '');
+        await refreshYahooAuthStatus();
+        $('fetchStatus').style.color = 'var(--gold)';
+        $('fetchStatus').textContent = 'Signed out of Yahoo on this device, but the stored authorization could not be ' +
+          'deleted on the server. Revoke Fantasy Sports Network from your Yahoo account settings, or contact support.';
+        return;
+      }
+      throw new Error('YAHOO_DISCONNECT_HTTP_' + response.status);
+    }
+
     populateYahooLeaguePicker([], '');
     await refreshYahooAuthStatus();
-    $('fetchStatus').textContent = 'Yahoo account disconnected from this browser.';
+    $('fetchStatus').style.color = 'var(--dim)';
+    $('fetchStatus').textContent = body && body.tokens_deleted === false
+      ? 'Yahoo account disconnected from this browser.'
+      : 'Yahoo account disconnected and its stored authorization deleted.';
   }catch(err){
     console.error('[Yahoo OAuth UI] disconnect failed', err);
     $('fetchStatus').style.color = 'var(--red)';
@@ -21101,6 +21166,128 @@ function bindCredentialField(inputId, storageKey, kind, validityBoxId){
 }
 bindCredentialField('espnS2Input', 'fsn.espn.s2.v1', 's2', 'espnS2Valid');
 bindCredentialField('espnSwidInput', 'fsn.espn.swid.v1', 'swid', 'espnSwidValid');
+
+/* ============================================================
+   ERASE DATA ON THIS DEVICE
+
+   The one control that lets a reader take back everything FSN put on their
+   device — required for Guideline 5.1.1, and the honest counterpart to asking
+   somebody to paste their ESPN session cookies in the first place.
+
+   Every key this app writes is prefixed fsn. / fsn_ / mffu., so the wipe
+   enumerates localStorage and removes by prefix rather than by a hand-kept
+   list. A hand-kept list is exactly what goes stale: the per-league cloud
+   cache (fsn.league.storage.v2:<id>:<season>) and the community story store
+   (fsn.news.community.v2:<league>) are composed at runtime and would never
+   have appeared on it, leaving league data behind after a "delete everything".
+
+   Two taps, not one — this is irreversible and the button sits directly under
+   a credentials panel.
+============================================================ */
+const ERASE_KEY_PREFIXES = ['fsn.', 'fsn_', 'mffu.'];
+let eraseArmed = false;
+let eraseArmTimer = null;
+
+function eraseLocalData(){
+  const removed = [];
+  let failure = null;
+  try{
+    const doomed = [];
+    for(let i = 0; i < localStorage.length; i++){
+      const key = localStorage.key(i);
+      if(key && ERASE_KEY_PREFIXES.some(prefix=> key.indexOf(prefix) === 0)) doomed.push(key);
+    }
+    /* Collect first, delete second: removing during the scan reindexes
+       localStorage and silently skips every other key. */
+    doomed.forEach(key=>{
+      try{ localStorage.removeItem(key); removed.push(key); }
+      catch(err){ console.error('[Privacy] Could not remove stored key ' + key, err); }
+    });
+  }catch(err){
+    /* Private mode and locked-down embedded browsers throw on access. The
+       reader still needs to know their data was not cleared. */
+    failure = err;
+    console.error('[Privacy] Local storage is unavailable; nothing was erased', err);
+  }
+  return { removed, failure };
+}
+
+(function bindEraseData(){
+  const btn = $('eraseDataBtn');
+  const status = $('eraseDataStatus');
+  if(!btn) return;
+  const idleLabel = btn.textContent;
+  const idleCopy = status ? status.textContent : '';
+
+  const disarm = ()=>{
+    clearTimeout(eraseArmTimer);
+    eraseArmed = false;
+    btn.textContent = idleLabel;
+    if(status){ status.textContent = idleCopy; status.style.color = ''; }
+  };
+
+  btn.addEventListener('click', ()=>{
+    if(!eraseArmed){
+      eraseArmed = true;
+      btn.textContent = 'TAP AGAIN TO CONFIRM';
+      if(status){
+        status.style.color = 'var(--gold)';
+        status.textContent = 'This cannot be undone. Your ESPN cookies, saved leagues, chosen team and every cache will be removed from this browser.';
+      }
+      eraseArmTimer = setTimeout(disarm, 6000);
+      return;
+    }
+
+    clearTimeout(eraseArmTimer);
+    eraseArmed = false;
+    const result = eraseLocalData();
+
+    if(result.failure){
+      btn.textContent = idleLabel;
+      if(status){
+        status.style.color = 'var(--red)';
+        status.textContent = 'Nothing could be erased — this browser is blocking local storage (private mode, or an embedded browser). ' +
+          'Clearing site data from your browser settings will remove it.';
+      }
+      return;
+    }
+
+    /* Return the app to a genuine first-run state rather than leaving the
+       previous league rendered from memory over an empty disk. */
+    try{
+      ['espnS2Input','espnSwidInput','leagueIdInput','jsonPaste'].forEach(id=>{
+        const field = $(id);
+        if(field) field.value = '';
+      });
+      ['espnS2Valid','espnSwidValid'].forEach(id=>{
+        const box = $(id);
+        if(box){ box.dataset.state = 'empty'; }
+      });
+      setCredValidity('espnS2Valid', 's2', '');
+      setCredValidity('espnSwidValid', 'swid', '');
+      refreshEspnAuthStatus();
+      LeagueData.setEspnData(null);
+      LeagueData.setLeagueHistory(null);
+      ui.week = null;
+      ui.currentWeek = null;
+      ui.hydrating = false;
+      ui.weekDataCache = {};
+      setConn('none');
+      renderAll();
+    }catch(err){
+      console.error('[Privacy] Data was erased, but resetting the in-memory app state failed', err);
+    }
+
+    btn.textContent = idleLabel;
+    if(status){
+      status.style.color = 'var(--green)';
+      status.textContent = 'Erased ' + result.removed.length + ' stored item' + (result.removed.length === 1 ? '' : 's') +
+        '. This browser now holds nothing from FSN. A league archive already saved to the cloud is not affected — ' +
+        'email support with your League ID to have it deleted.';
+    }
+    toast('FSN data erased from this device');
+  });
+})();
 
 // "Paste" buttons — pull from the clipboard so a manager never has to fight the
 // mobile paste menu on a password field. Falls back gracefully where the async

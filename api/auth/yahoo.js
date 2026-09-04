@@ -408,21 +408,69 @@ async function connectionStatus(req, res) {
   }
 }
 
+/* Disconnecting deletes the credential, not just the browser's view of it.
+
+   This previously removed only the yahoo_oauth_sessions row, so a user who
+   pressed "Log Out" was signed out while their encrypted access AND refresh
+   tokens stayed in yahoo_oauth_tokens indefinitely. A refresh token is a
+   long-lived grant: retaining one after the user has withdrawn consent is both
+   the thing App Store Guideline 5.1.1 asks about ("delete the account", not
+   "hide it") and a standing risk with no remaining purpose.
+
+   Order matters. The session goes first so the browser is signed out even if
+   the token delete then fails, and the caller is told when the credential
+   itself could not be removed rather than being shown a clean "disconnected".
+   yahoo_oauth_sessions.yahoo_user_id cascades on delete, so removing the token
+   row also clears any other session bound to the same Yahoo account — which is
+   the correct reading of "disconnect this account". */
 async function disconnect(req, res) {
   const secret = parseCookies(req)[SESSION_COOKIE] || '';
   appendCookies(res, [cookieLine(req, SESSION_COOKIE, '', 0)]);
-  if (secret) {
-    try {
-      const removed = await getSupabase().from('yahoo_oauth_sessions')
-        .delete()
-        .eq('session_hash', sessionHash(secret));
-      if (removed.error) throw removed.error;
-    } catch (error) {
-      console.error('[Yahoo OAuth] session disconnect cleanup failed', error);
-      return res.status(502).json({ error: 'Yahoo session could not be disconnected cleanly.' });
-    }
+  if (!secret) return res.status(200).json({ connected: false, provider: 'yahoo' });
+
+  const client = getSupabase();
+  let yahooUserId = '';
+
+  try {
+    // Read the owning account before deleting the session that identifies it.
+    const found = await client.from('yahoo_oauth_sessions')
+      .select('yahoo_user_id')
+      .eq('session_hash', sessionHash(secret))
+      .maybeSingle();
+    if (found.error) throw found.error;
+    yahooUserId = String((found.data && found.data.yahoo_user_id) || '');
+
+    const removed = await client.from('yahoo_oauth_sessions')
+      .delete()
+      .eq('session_hash', sessionHash(secret));
+    if (removed.error) throw removed.error;
+  } catch (error) {
+    console.error('[Yahoo OAuth] session disconnect cleanup failed', error);
+    return res.status(502).json({ error: 'Yahoo session could not be disconnected cleanly.' });
   }
-  return res.status(200).json({ connected: false, provider: 'yahoo' });
+
+  if (!yahooUserId) {
+    // An expired or already-deleted session: the cookie is cleared and there is
+    // no token row this request can prove ownership of.
+    return res.status(200).json({ connected: false, provider: 'yahoo', tokens_deleted: false });
+  }
+
+  try {
+    const purged = await client.from('yahoo_oauth_tokens')
+      .delete()
+      .eq('yahoo_user_id', yahooUserId);
+    if (purged.error) throw purged.error;
+  } catch (error) {
+    console.error('[Yahoo OAuth] stored token deletion failed for Yahoo user ' + yahooUserId, error);
+    return res.status(502).json({
+      error: 'You are signed out, but the stored Yahoo authorization could not be deleted. ' +
+        'Revoke FSN from your Yahoo account settings, or contact support.',
+      code: 'YAHOO_TOKEN_DELETE_FAILED',
+      connected: false,
+    });
+  }
+
+  return res.status(200).json({ connected: false, provider: 'yahoo', tokens_deleted: true });
 }
 
 async function handler(req, res) {

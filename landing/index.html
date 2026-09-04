@@ -203,8 +203,21 @@ h1.hero-title .accent{ color:var(--cyan); }
 footer{ border-top:1px solid var(--line); padding:34px 0 46px; color:var(--dim); }
 .foot-inner{ display:flex; flex-wrap:wrap; align-items:center; gap:14px; }
 .foot-inner .mono{ font-size:12.5px; letter-spacing:.04em; }
-.foot-links{ margin-left:auto; display:flex; gap:20px; font-size:13px; }
+.foot-links{ margin-left:auto; display:flex; flex-wrap:wrap; gap:20px; font-size:13px; }
 .foot-links a:hover{ color:var(--cyan); }
+/* Waitlist entries are buttons that open the modal, styled to sit in the same
+   row as the real links beside them. */
+.foot-link-btn{
+  appearance:none; background:none; border:0; padding:0; cursor:pointer;
+  font-family:inherit; font-size:inherit; color:inherit; letter-spacing:inherit;
+}
+.foot-link-btn:hover{ color:var(--cyan); }
+.foot-link-btn:focus-visible,
+.foot-links a:focus-visible{ outline:2px solid var(--cyan); outline-offset:3px; border-radius:3px; }
+/* Legal row sits under the primary footer row and stays left-aligned on a
+   phone rather than being pushed off by margin-left:auto. */
+.foot-legal{ margin-top:16px; }
+.foot-links-legal{ margin-left:0; font-size:12.5px; }
 
 /* ---------- waitlist modal ---------- */
 .modal-overlay{
@@ -632,11 +645,23 @@ footer{ border-top:1px solid var(--line); padding:34px 0 46px; color:var(--dim);
   <div class="wrap foot-inner">
     <span class="brand-badge" style="font-size:16px;">FSN</span>
     <span class="mono">FANTASY SPORTS NETWORK · Free for the 2026 season</span>
+    <!-- The four waitlist entries are buttons, not links: they open the
+         waitlist modal and never navigate. As <a href="#"> they were dead
+         links that jumped to the top of the page if the script had not loaded
+         yet — and read as broken navigation to anyone checking the footer.
+         The legal routes below are real destinations and stay anchors. -->
     <nav class="foot-links">
-      <a href="#" data-waitlist>Join waitlist</a>
-      <a href="#" data-waitlist data-platform="espn">Connect ESPN</a>
-      <a href="#" data-waitlist data-platform="sleeper">Connect Sleeper</a>
-      <a href="#" data-waitlist data-platform="yahoo">Yahoo Early Access</a>
+      <button type="button" class="foot-link-btn" data-waitlist>Join waitlist</button>
+      <button type="button" class="foot-link-btn" data-waitlist data-platform="espn">Connect ESPN</button>
+      <button type="button" class="foot-link-btn" data-waitlist data-platform="sleeper">Connect Sleeper</button>
+      <button type="button" class="foot-link-btn" data-waitlist data-platform="yahoo">Yahoo Early Access</button>
+    </nav>
+  </div>
+  <div class="wrap foot-legal">
+    <nav class="foot-links foot-links-legal">
+      <a href="/privacy">Privacy Policy</a>
+      <a href="/terms">Terms of Use</a>
+      <a href="mailto:support@fantasysportsnetwork.app">Support</a>
     </nav>
   </div>
 </footer>

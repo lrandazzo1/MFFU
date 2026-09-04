@@ -1,0 +1,107 @@
+/* ============================================================
+   FSN LEGAL PAGES — privacy.html and terms.html
+
+   Shared so the two documents cannot drift apart, and so they read as the
+   same product as index.html and the app. Palette tokens mirror the core app
+   exactly; nothing here loads a script.
+============================================================ */
+:root{
+  --ink:#080a0e;
+  --panel:#12161f;
+  --line:rgba(255,255,255,.08);
+  --line-2:rgba(255,255,255,.14);
+  --cyan:#00e0ff;
+  --gold:#ffc400;
+  --green:#39ff8c;
+  --off:#c7cdd8;
+  --dim:#7c8698;
+}
+*{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+html{ background:var(--ink); }
+body{
+  margin:0; background:var(--ink); color:var(--off);
+  font-family:'Oswald',system-ui,-apple-system,sans-serif;
+  font-size:15px; line-height:1.7;
+  -webkit-font-smoothing:antialiased;
+  /* No horizontal scroll at any width the App Store tests, from a 320px
+     iPhone SE up. */
+  overflow-x:hidden;
+}
+a{ color:var(--cyan); }
+a:hover{ color:#fff; }
+.wrap{
+  width:100%; max-width:46rem; margin:0 auto;
+  padding:0 clamp(16px,5vw,28px);
+}
+header.legal-head{
+  border-bottom:1px solid var(--line);
+  padding:22px 0 20px;
+  margin-bottom:clamp(24px,6vw,40px);
+}
+.brand{
+  display:inline-flex; align-items:center; gap:10px;
+  font-family:'Anton',Impact,sans-serif; letter-spacing:.02em;
+  font-size:17px; color:#fff; text-decoration:none;
+}
+.brand-badge{
+  background:var(--cyan); color:#080a0e; border-radius:6px;
+  padding:2px 8px; font-size:15px; font-weight:800;
+}
+h1{
+  font-family:'Anton',Impact,sans-serif; color:#fff;
+  font-size:clamp(28px,7vw,40px); line-height:1.08;
+  letter-spacing:.01em; text-transform:uppercase;
+  margin:0 0 10px;
+}
+h2{
+  font-family:'Anton',Impact,sans-serif; color:#fff;
+  font-size:clamp(18px,4.6vw,22px); line-height:1.15;
+  letter-spacing:.02em; text-transform:uppercase;
+  margin:38px 0 10px;
+}
+h3{
+  font-family:'Oswald',sans-serif; color:#fff;
+  font-size:15px; font-weight:600; letter-spacing:.02em;
+  margin:22px 0 6px;
+}
+p, li{ margin:0 0 12px; }
+ul, ol{ margin:0 0 12px; padding-left:22px; }
+li{ margin-bottom:7px; }
+strong{ color:#fff; font-weight:600; }
+code{
+  font-family:'JetBrains Mono',ui-monospace,monospace;
+  font-size:.86em; color:var(--cyan);
+  background:rgba(0,224,255,.08); border-radius:4px; padding:1px 5px;
+  /* Long identifiers must wrap rather than widen the page on a small screen. */
+  overflow-wrap:anywhere;
+}
+.updated{
+  font-family:'JetBrains Mono',ui-monospace,monospace;
+  font-size:11.5px; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--dim); margin:0 0 clamp(20px,5vw,32px);
+}
+.lede{ color:#e6eaf1; font-size:16px; }
+.callout{
+  border:1px solid var(--line-2); border-left:3px solid var(--cyan);
+  background:var(--panel); border-radius:0 12px 12px 0;
+  padding:14px 16px; margin:18px 0;
+  font-size:14px;
+}
+.callout.gold{ border-left-color:var(--gold); }
+.callout p:last-child{ margin-bottom:0; }
+/* Wide tables scroll inside their own box; the page itself never does. */
+.table-wrap{ overflow-x:auto; border:1px solid var(--line); border-radius:12px; margin:16px 0; }
+table{ width:100%; min-width:32rem; border-collapse:collapse; font-size:13.5px; }
+th{
+  text-align:left; padding:10px 12px; background:#101620; color:var(--dim);
+  font-size:10.5px; letter-spacing:.14em; text-transform:uppercase; font-weight:700;
+  white-space:nowrap;
+}
+td{ padding:11px 12px; border-top:1px solid var(--line); vertical-align:top; }
+td:first-child{ color:#fff; }
+footer.legal-foot{
+  border-top:1px solid var(--line);
+  margin-top:clamp(36px,8vw,56px); padding:24px 0 48px;
+  font-size:13px; color:var(--dim);
+}
+.legal-foot nav{ display:flex; flex-wrap:wrap; gap:18px; margin-bottom:10px; }
