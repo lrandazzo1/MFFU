@@ -209,6 +209,51 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
 /* ---------- SAVED LEAGUES / SEASON STATS CONTROLS ---------- */
 .league-switcher{ display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; align-items:end; }
 .league-switcher-empty{ font-size:11px; line-height:1.5; color:var(--dim); }
+
+/* ---------- GLOBAL LEAGUE BAR ----------
+   Multi-league means a reader can be looking at any one of several leagues, so
+   every screen has to answer "which league is this?" on its own. The bar sticks
+   just under the ticker on all six screens and is the switcher itself, so
+   swapping leagues never requires a detour through Setup. It is hidden
+   entirely until at least one league has been saved. */
+#leagueBar{
+  position:sticky; z-index:40;
+  top:calc(var(--ticker-h) + env(safe-area-inset-top));
+  display:flex; align-items:center; gap:9px;
+  padding:7px 16px;
+  background:rgba(6,9,14,.94);
+  -webkit-backdrop-filter:blur(9px); backdrop-filter:blur(9px);
+  border-bottom:1px solid var(--line);
+}
+#leagueBar[hidden]{ display:none; }
+.league-bar-tag{
+  flex:none; font-size:8.5px; font-weight:700; letter-spacing:.13em;
+  text-transform:uppercase; color:var(--dim);
+}
+.league-bar-select{
+  flex:1 1 auto; min-width:0;
+  appearance:none; -webkit-appearance:none;
+  background:#0b1017 url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath fill='%235d6879' d='M1 1.5 6 6.5l5-5'/%3E%3C/svg%3E") no-repeat right 10px center;
+  background-size:10px 7px;
+  border:1px solid var(--line); border-radius:9px;
+  color:var(--off); font-size:12px; font-weight:600;
+  padding:7px 28px 7px 10px;
+  text-overflow:ellipsis;
+}
+.league-bar-select:disabled{ opacity:1; color:var(--off); background-image:none; padding-right:10px; }
+.league-bar-select:focus-visible{ outline:2px solid var(--cyan); outline-offset:2px; }
+.league-bar-count{
+  flex:none; min-width:19px; text-align:center;
+  font-size:9.5px; font-weight:700; color:var(--cyan);
+  border:1px solid rgba(0,224,255,.35); border-radius:999px;
+  padding:2px 6px; line-height:1.2;
+}
+.league-bar-count:empty{ display:none; }
+.league-bar-add{
+  flex:none; border:1px solid var(--line); border-radius:9px; background:#0b1017;
+  color:var(--dim); font-size:14px; line-height:1; padding:7px 10px;
+}
+.league-bar-add:focus-visible{ outline:2px solid var(--cyan); outline-offset:2px; }
 .stats-mode-toggle{ margin:0 16px 14px; display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:4px;
   padding:4px; border:1px solid var(--line); border-radius:12px; background:#0b0f16; }
 .stats-mode-toggle button{ min-height:42px; padding:8px 6px; border-radius:9px; color:var(--dim);
@@ -1991,6 +2036,19 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
 <div id="appShell">
 
   <!-- ==========================================================
+       ACTIVE LEAGUE BAR — the global league switcher.
+       Present on every screen so the reader always knows which league's data
+       they are looking at, and can swap without going back to Setup. Rendered
+       (and hidden) by renderLeagueSwitcher().
+  ========================================================== -->
+  <div id="leagueBar" hidden>
+    <span class="league-bar-tag" aria-hidden="true">League</span>
+    <select id="globalLeagueSwitcher" class="league-bar-select" aria-label="Active league"></select>
+    <span id="leagueBarCount" class="league-bar-count" title="Saved leagues on this device" aria-hidden="true"></span>
+    <button type="button" class="league-bar-add" data-goto="setup" aria-label="Add another league" title="Add another league">+</button>
+  </div>
+
+  <!-- ==========================================================
        SCREEN 1 — HOME / THE DESK
   ========================================================== -->
   <section class="screen" data-screen="home" data-active="true">
@@ -2758,6 +2816,43 @@ function normalizedLeagueProvider(provider){
   return provider === 'sleeper' || provider === 'yahoo' ? provider : 'espn';
 }
 
+/* ---- CANONICAL NAMESPACE KEY ----
+   The one string every persisted league record, every credential pair and
+   every runtime payload is filed under. It is deliberately the same shape as
+   scopeToken() (provider + ':' + league id) because two providers can hand out
+   the same numeric league id, so the id alone is not a namespace.
+
+   Unlike scopeToken(), this NEVER substitutes a placeholder: an empty or
+   whitespace league id returns '', and every store method treats '' as "no
+   league selected" and refuses to read or write. That is what stops one
+   league's cookies, archive or profile from being filed under a bucket a
+   different league would later read back.
+
+   Global scope, first block, per the Global Scope Rule: the credential readers
+   below (block 1), the cloud sync layer (block 2) and the UI's league switcher
+   (block 6) all key off this, and a copy inside any one IIFE would throw a
+   ReferenceError in the other five. */
+function leagueScopeKey(provider, leagueId){
+  const id = String(leagueId == null ? '' : leagueId).trim();
+  return id ? normalizedLeagueProvider(provider) + ':' + id : '';
+}
+
+/* The namespace the app is pointed at right now. The Setup field is the live
+   source of truth while a reader is typing; LeagueData.meta is the fallback
+   once a payload has landed (and the only source on a screen where the field
+   is not mounted). */
+function activeLeagueScopeKey(){
+  let raw = '';
+  try{
+    const el = document.getElementById('leagueIdInput');
+    raw = (el && el.value) || '';
+  }catch(err){
+    console.warn('[LeagueStore] Could not read the League ID field; falling back to the store meta.', err);
+  }
+  if(!String(raw).trim()) raw = (LeagueData.meta && LeagueData.meta.leagueId) || '';
+  return leagueScopeKey(LeagueData.activeProvider, raw);
+}
+
 /* History completion is separate from history presence. An empty in-memory
    archive while ESPN/Sleeper is still loading (or after a network failure) is
    not evidence that a league is new. The News Desk may classify season one
@@ -3032,6 +3127,514 @@ window.LeagueData = (function(){
 })();
 
 /* ============================================================
+   MULTI-LEAGUE STORE — a dictionary of leagues, never a singleton
+
+   Every archive, credential pair, view preference and team profile this app
+   holds belongs to exactly one league, and before this store existed they were
+   all written to fixed global localStorage keys: one `fsn.espn.s2.v1`, one
+   `fsn.setup.v1`, one `fsn_active_team_id`. Connecting a second league did not
+   add a league, it OVERWROTE the first one — and, worse, a private league's
+   cookies stayed behind and were replayed on the next league's requests, so
+   ESPN judged the wrong identity and answered 401 for a league the reader is
+   actually in.
+
+   The shape on disk is:
+
+     { version:2,
+       activeLeague:'espn:123',
+       leagues:{ 'espn:123':{...}, 'sleeper:456':{...} },
+       pending:{ s2, swid } }
+
+   filed under leagueScopeKey() — provider + id, because two providers can hand
+   out the same numeric league id. Writes are upserts: adding a league never
+   touches another league's record, and removing one never touches the rest.
+
+   What is NOT kept here: the multi-season archive payloads. Those are megabytes
+   per league and would blow the localStorage quota (evicting the cloud archive
+   cache with it), so they live in the bounded in-memory runtime namespace
+   below and rehydrate from Supabase / ESPN on the next launch, exactly as they
+   did before. Isolation is what changed; durability is unchanged.
+
+   Global scope, first block, per the Global Scope Rule: block 1 reads
+   credentials from it on every ESPN request, block 6 writes to it from Setup
+   and the league switcher, and a copy nested in either IIFE would be invisible
+   to the other.
+============================================================ */
+window.FSNLeagueStore = (function(){
+  'use strict';
+
+  const STORAGE_KEY = 'mffu.leagues.v2';
+  /* The singleton keys this store replaces. They are read exactly once, by
+     migrateLegacy(), and never written again. */
+  const LEGACY_KEYS = {
+    setup:'fsn.setup.v1',
+    savedList:'mffu.saved.leagues.v1',
+    activeId:'fsn_saved_league_id',
+    s2:'fsn.espn.s2.v1',
+    swid:'fsn.espn.swid.v1',
+    teamId:'fsn_active_team_id',
+    role:'fsn_user_role',
+  };
+  /* Records are tiny (a name, two cookies, three prefs), so the cap is about
+     keeping the switcher usable rather than about bytes. */
+  const MAX_LEAGUES = 20;
+  /* Hydrated league payloads are NOT tiny — a live season plus a twenty-year
+     archive is tens of megabytes. Holding every league a reader has ever
+     opened would grow without bound for the whole page lifetime, so the
+     runtime namespace keeps the most recently used ones and evicts the rest;
+     an evicted league re-fetches on its next activation exactly as a
+     cold-loaded one does. */
+  const MAX_RUNTIME_LEAGUES = 6;
+
+  /* Cookies pasted before a League ID has been typed have no namespace to live
+     in yet. They wait here and are promoted by claimPendingCreds() as soon as a
+     league id exists. Deliberately invisible to credsFor(): an unclaimed cookie
+     must never be attached to a request for some other league. */
+  const runtime = new Map();     // scope key -> { live, history, years, weekDataCache, touched }
+  let doc = null;
+  let touchCounter = 0;
+
+  function emptyDoc(){ return { version:2, activeLeague:'', leagues:{}, pending:null }; }
+  function text(value){ return String(value == null ? '' : value).trim(); }
+
+  function readLegacy(key){
+    try{ return localStorage.getItem(key) || ''; }
+    catch(err){
+      console.warn('[LeagueStore] Could not read the legacy key "' + key + '" during migration.', err);
+      return '';
+    }
+  }
+
+  function splitKey(key){
+    const raw = text(key);
+    const at = raw.indexOf(':');
+    if(at < 1) return { provider:'espn', id:'' };
+    return { provider:normalizedLeagueProvider(raw.slice(0, at)), id:raw.slice(at + 1) };
+  }
+
+  function blankRecord(key){
+    const parts = splitKey(key);
+    return {
+      key:text(key),
+      id:parts.id,
+      provider:parts.provider,
+      name:'',
+      /* True once a payload for this league has actually landed. The League ID
+         field is a text input, so typing "123456" walks through 1, 12, 123…
+         and a credential pasted mid-entry has to be filed somewhere. Those
+         partial records are real (their cookies must be readable by the very
+         fetch that will register the league) but they are not leagues the
+         reader has, so only registered ones reach list() and the switchers. */
+      registered:false,
+      lastUsed:0,
+      prefs:{ season:'', week:'', statsMode:'' },
+      creds:{ s2:'', swid:'' },
+      profile:{ teamId:'', role:'' },
+    };
+  }
+
+  /* Every record that leaves this module goes through here, so a hand-edited or
+     half-written localStorage entry can never hand a caller a malformed cookie,
+     a numeric where a string is expected, or another league's identity. */
+  function normalizeRecord(key, raw){
+    const base = blankRecord(key);
+    if(!raw || typeof raw !== 'object') return base;
+    const prefs = raw.prefs && typeof raw.prefs === 'object' ? raw.prefs : {};
+    const creds = raw.creds && typeof raw.creds === 'object' ? raw.creds : {};
+    const profile = raw.profile && typeof raw.profile === 'object' ? raw.profile : {};
+    base.name = text(raw.name);
+    base.registered = raw.registered === true;
+    base.lastUsed = Number(raw.lastUsed) || 0;
+    base.prefs = {
+      season:text(prefs.season),
+      week:text(prefs.week),
+      statsMode:text(prefs.statsMode),
+    };
+    base.creds = {
+      s2:sanitizeEspnCookieValue('s2', creds.s2),
+      swid:sanitizeEspnCookieValue('swid', creds.swid),
+    };
+    base.profile = { teamId:text(profile.teamId), role:text(profile.role) };
+    return base;
+  }
+
+  function cloneRecord(record){
+    return {
+      key:record.key,
+      id:record.id,
+      provider:record.provider,
+      name:record.name,
+      registered:record.registered,
+      lastUsed:record.lastUsed,
+      prefs:{ season:record.prefs.season, week:record.prefs.week, statsMode:record.prefs.statsMode },
+      creds:{ s2:record.creds.s2, swid:record.creds.swid },
+      profile:{ teamId:record.profile.teamId, role:record.profile.role },
+    };
+  }
+
+  function readStored(){
+    let raw = '';
+    try{ raw = localStorage.getItem(STORAGE_KEY) || ''; }
+    catch(err){
+      console.warn('[LeagueStore] localStorage is unavailable (private mode or blocked storage); ' +
+        'leagues are kept in memory for this session only.', err);
+      return null;
+    }
+    if(!raw) return null;
+    try{
+      const parsed = JSON.parse(raw);
+      if(!parsed || typeof parsed !== 'object' || !parsed.leagues || typeof parsed.leagues !== 'object'){
+        console.error('[LeagueStore] The stored league index is not a league dictionary; rebuilding it ' +
+          'from the legacy single-league keys.', new Error('MALFORMED_LEAGUE_INDEX'));
+        return null;
+      }
+      return parsed;
+    }catch(err){
+      console.error('[LeagueStore] The stored league index could not be parsed; rebuilding it from the ' +
+        'legacy single-league keys.', err);
+      return null;
+    }
+  }
+
+  function persist(){
+    if(!doc) return false;
+    try{
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(doc));
+      return true;
+    }catch(err){
+      console.warn('[LeagueStore] Could not persist the league index (private mode or a full quota). ' +
+        'Every league stays available for this session but will not survive a reload.', err);
+      return false;
+    }
+  }
+
+  /* ---- one-time migration off the singleton keys ----
+     The old build kept ONE cookie pair, ONE active team and ONE prefs blob for
+     whatever league happened to be connected last. Those values belong to that
+     league and to no other, so they are filed under it alone — handing them to
+     every migrated league is precisely the credential bleed this store exists
+     to end. */
+  function migrateCookie(kind, raw, leagueKey){
+    const inspected = inspectEspnCookieValue(kind, raw);
+    if(inspected.present && !inspected.ok){
+      console.error('[LeagueStore] The ' + kind + ' credential left by an earlier build cannot be repaired ' +
+        'automatically (' + inspected.reason + '); it has not been carried over to ' + leagueKey +
+        ' and must be re-pasted in Private League Access.',
+        new Error('UNUSABLE_STORED_ESPN_COOKIE:' + kind));
+    } else if(inspected.present && inspected.changed){
+      console.warn('[LeagueStore] Normalised the ' + kind + ' credential left by an earlier build ' +
+        '(stray cookie name, quotes or whitespace removed) while filing it under ' + leagueKey + '.');
+    }
+    return inspected.value;
+  }
+
+  function migrateLegacy(next){
+    let legacyList = [];
+    try{
+      const parsed = JSON.parse(readLegacy(LEGACY_KEYS.savedList) || '[]');
+      if(Array.isArray(parsed)) legacyList = parsed;
+    }catch(err){
+      console.warn('[LeagueStore] The legacy saved-league list could not be parsed; migrating the rest.', err);
+    }
+
+    let setup = null;
+    try{ setup = JSON.parse(readLegacy(LEGACY_KEYS.setup) || 'null'); }
+    catch(err){ console.warn('[LeagueStore] The legacy setup preferences could not be parsed.', err); }
+
+    legacyList.forEach(function(entry){
+      const key = leagueScopeKey(entry && entry.provider, entry && entry.id);
+      if(!key || next.leagues[key]) return;
+      next.leagues[key] = normalizeRecord(key, {
+        name:entry && entry.name, lastUsed:entry && entry.lastUsed, registered:true });
+    });
+
+    const legacyActiveId = text(readLegacy(LEGACY_KEYS.activeId)) || text(setup && setup.leagueId);
+    const activeKey = leagueScopeKey(setup && setup.provider, legacyActiveId);
+    if(activeKey){
+      const record = next.leagues[activeKey] ||
+        normalizeRecord(activeKey, { lastUsed:Date.now(), registered:true });
+      record.registered = true;
+      record.prefs = {
+        season:text(setup && setup.season),
+        week:text(setup && setup.week),
+        statsMode:text(setup && setup.statsMode),
+      };
+      /* An earlier build persisted the RAW paste, so a legacy value can be
+         unrepairable (a line-wrapped copy, a stray ';'). Canonicalising it here
+         is the same repair loadPrefs() used to perform on the singleton key —
+         and when it cannot be repaired the reader has to be told, because a
+         silently dropped cookie reads to them as "the app forgot my login". */
+      record.creds = { s2:migrateCookie('s2', readLegacy(LEGACY_KEYS.s2), activeKey),
+                       swid:migrateCookie('swid', readLegacy(LEGACY_KEYS.swid), activeKey) };
+      record.profile = {
+        teamId:text(readLegacy(LEGACY_KEYS.teamId)),
+        role:text(readLegacy(LEGACY_KEYS.role)),
+      };
+      if(!record.lastUsed) record.lastUsed = Date.now();
+      next.leagues[activeKey] = record;
+      next.activeLeague = activeKey;
+    }
+
+    const migrated = Object.keys(next.leagues).length;
+    if(migrated){
+      console.warn('[LeagueStore] Migrated ' + migrated + ' league' + (migrated === 1 ? '' : 's') +
+        ' off the single-league storage keys' +
+        (activeKey ? '; the stored ESPN cookies and team profile were assigned to ' + activeKey +
+          ', the league that was connected when they were saved.' : '.'));
+    }
+    return next;
+  }
+
+  /* Oldest-first eviction so the cap can never silently drop the league the
+     reader is looking at. */
+  function pruneLeagues(){
+    const keys = Object.keys(doc.leagues);
+    if(keys.length <= MAX_LEAGUES) return;
+    const ordered = keys
+      .filter(function(key){ return key !== doc.activeLeague; })
+      .sort(function(a, b){
+        const ra = doc.leagues[a].registered ? 1 : 0, rb = doc.leagues[b].registered ? 1 : 0;
+        if(ra !== rb) return ra - rb;   // credential-only partials go first
+        return (doc.leagues[a].lastUsed || 0) - (doc.leagues[b].lastUsed || 0);
+      });
+    let excess = keys.length - MAX_LEAGUES;
+    while(excess > 0 && ordered.length){
+      const key = ordered.shift();
+      delete doc.leagues[key];
+      runtime.delete(key);
+      excess -= 1;
+      console.warn('[LeagueStore] Dropped the least recently used saved league "' + key +
+        '" to stay within the ' + MAX_LEAGUES + '-league cap.');
+    }
+  }
+
+  function load(){
+    if(doc) return doc;
+    const stored = readStored();
+    if(stored){
+      doc = emptyDoc();
+      doc.activeLeague = text(stored.activeLeague);
+      Object.keys(stored.leagues || {}).forEach(function(key){
+        const clean = leagueScopeKey(splitKey(key).provider, splitKey(key).id);
+        if(!clean) return;
+        doc.leagues[clean] = normalizeRecord(clean, stored.leagues[key]);
+      });
+      const pending = stored.pending && typeof stored.pending === 'object' ? stored.pending : null;
+      doc.pending = pending ? {
+        s2:sanitizeEspnCookieValue('s2', pending.s2),
+        swid:sanitizeEspnCookieValue('swid', pending.swid),
+      } : null;
+      if(doc.activeLeague && !doc.leagues[doc.activeLeague]) doc.activeLeague = '';
+      return doc;
+    }
+    doc = migrateLegacy(emptyDoc());
+    persist();
+    return doc;
+  }
+
+  function getRecord(key){
+    const id = text(key);
+    if(!id) return null;
+    const found = load().leagues[id];
+    return found ? cloneRecord(found) : null;
+  }
+
+  /* Upsert, never replace: the patch is merged into whatever this league
+     already holds, and no other league's record is read or written. */
+  function upsert(key, patch){
+    const id = text(key);
+    if(!id){
+      console.warn('[LeagueStore] Ignored a write with no league namespace; a league id is required.');
+      return null;
+    }
+    const store = load();
+    const current = store.leagues[id] || blankRecord(id);
+    const update = patch && typeof patch === 'object' ? patch : {};
+    const next = normalizeRecord(id, {
+      name:update.name !== undefined ? update.name : current.name,
+      registered:update.registered !== undefined ? update.registered === true : current.registered,
+      lastUsed:update.lastUsed !== undefined ? update.lastUsed : current.lastUsed,
+      prefs:Object.assign({}, current.prefs, update.prefs || {}),
+      creds:Object.assign({}, current.creds, update.creds || {}),
+      profile:Object.assign({}, current.profile, update.profile || {}),
+    });
+    store.leagues[id] = next;
+    pruneLeagues();
+    persist();
+    return cloneRecord(next);
+  }
+
+  /* ---- runtime namespace ----
+     The hydrated payloads for each league: the live season, the computed
+     history stats, the raw archive rows and the week box-score cache. Keyed by
+     the same namespace as the persisted record, so switching leagues swaps
+     pointers instead of overwriting one shared global. */
+  function runtimeTouch(key){
+    const entry = runtime.get(key);
+    if(entry) entry.touched = ++touchCounter;
+  }
+
+  function evictRuntime(protectKey){
+    if(runtime.size <= MAX_RUNTIME_LEAGUES) return;
+    const ordered = Array.from(runtime.keys())
+      .filter(function(key){ return key !== protectKey && key !== load().activeLeague; })
+      .sort(function(a, b){ return (runtime.get(a).touched || 0) - (runtime.get(b).touched || 0); });
+    while(runtime.size > MAX_RUNTIME_LEAGUES && ordered.length){
+      const key = ordered.shift();
+      runtime.delete(key);
+      console.warn('[LeagueStore] Released the cached payloads for "' + key + '" to bound memory; ' +
+        'that league re-fetches on its next activation.');
+    }
+  }
+
+  const api = {
+    STORAGE_KEY,
+    keyFor(provider, leagueId){ return leagueScopeKey(provider, leagueId); },
+
+    /* Every league the reader has actually connected or imported, most
+       recently used first — the switcher's model. */
+    list(){
+      const store = load();
+      return Object.keys(store.leagues)
+        .map(function(key){ return cloneRecord(store.leagues[key]); })
+        .filter(function(record){ return record.registered; })
+        .sort(function(a, b){
+          if((b.lastUsed || 0) !== (a.lastUsed || 0)) return (b.lastUsed || 0) - (a.lastUsed || 0);
+          return String(a.name || a.id).localeCompare(String(b.name || b.id));
+        });
+    },
+    count(){ return api.list().length; },
+    /* Including the credential-only partials — for diagnostics, not for UI. */
+    listAll(){
+      const store = load();
+      return Object.keys(store.leagues).map(function(key){ return cloneRecord(store.leagues[key]); });
+    },
+    get(key){ return getRecord(key); },
+    has(key){ return !!getRecord(key); },
+    upsert,
+    remove(key){
+      const id = text(key);
+      const store = load();
+      if(!id || !store.leagues[id]) return false;
+      delete store.leagues[id];
+      runtime.delete(id);
+      if(store.activeLeague === id) store.activeLeague = '';
+      persist();
+      return true;
+    },
+
+    activeKey(){ return text(load().activeLeague); },
+    setActiveKey(key){
+      const id = text(key);
+      const store = load();
+      if(id && !store.leagues[id]) upsert(id, { lastUsed:Date.now() });
+      store.activeLeague = id;
+      if(id && store.leagues[id]) store.leagues[id].lastUsed = Date.now();
+      persist();
+      return id;
+    },
+    activeRecord(){ return getRecord(load().activeLeague); },
+
+    /* ---- credentials, bound to one league ----
+       credsFor() answers for the league it is asked about and nothing else, so
+       an ESPN request for league B can never carry league A's cookies. */
+    credsFor(key){
+      const record = getRecord(key);
+      return record ? { s2:record.creds.s2, swid:record.creds.swid } : { s2:'', swid:'' };
+    },
+    setCreds(key, creds){
+      const id = text(key);
+      if(!id) return api.setPendingCreds(creds);
+      const patch = {};
+      if(creds && creds.s2 !== undefined) patch.s2 = creds.s2;
+      if(creds && creds.swid !== undefined) patch.swid = creds.swid;
+      return upsert(id, { creds:patch });
+    },
+
+    /* Cookies pasted before a League ID exists. Held apart from every league
+       and claimed by the first league that asks for them. */
+    pendingCreds(){
+      const pending = load().pending;
+      return pending ? { s2:pending.s2 || '', swid:pending.swid || '' } : { s2:'', swid:'' };
+    },
+    setPendingCreds(creds){
+      const store = load();
+      const current = store.pending || { s2:'', swid:'' };
+      const next = {
+        s2:creds && creds.s2 !== undefined ? sanitizeEspnCookieValue('s2', creds.s2) : current.s2,
+        swid:creds && creds.swid !== undefined ? sanitizeEspnCookieValue('swid', creds.swid) : current.swid,
+      };
+      store.pending = (next.s2 || next.swid) ? next : null;
+      persist();
+      return null;
+    },
+    /* Promote unclaimed cookies onto a league that has none of its own. A league
+       that already carries credentials keeps them: the pending pair is older,
+       and silently overwriting a working pair is the bleed in reverse. */
+    claimPendingCreds(key){
+      const id = text(key);
+      const store = load();
+      const pending = store.pending;
+      if(!id || !pending || (!pending.s2 && !pending.swid)) return false;
+      const record = store.leagues[id] || blankRecord(id);
+      if(record.creds.s2 || record.creds.swid) return false;
+      upsert(id, { creds:{ s2:pending.s2, swid:pending.swid } });
+      store.pending = null;
+      persist();
+      console.warn('[LeagueStore] Assigned the ESPN cookies pasted before a League ID was entered to "' +
+        id + '"; they are bound to that league only.');
+      return true;
+    },
+
+    prefsFor(key){
+      const record = getRecord(key);
+      return record ? record.prefs : { season:'', week:'', statsMode:'' };
+    },
+    setPrefs(key, prefs){ return text(key) ? upsert(key, { prefs:prefs || {} }) : null; },
+
+    profileFor(key){
+      const record = getRecord(key);
+      return record ? record.profile : { teamId:'', role:'' };
+    },
+    setProfile(key, profile){ return text(key) ? upsert(key, { profile:profile || {} }) : null; },
+
+    runtimeGet(key){
+      const id = text(key);
+      if(!id) return null;
+      const entry = runtime.get(id);
+      if(!entry) return null;
+      runtimeTouch(id);
+      return entry;
+    },
+    runtimeSet(key, payload){
+      const id = text(key);
+      if(!id || !payload) return false;
+      const entry = Object.assign({}, runtime.get(id) || {}, payload);
+      entry.touched = ++touchCounter;
+      runtime.set(id, entry);
+      evictRuntime(id);
+      return true;
+    },
+    runtimeDelete(key){ return runtime.delete(text(key)); },
+    runtimeKeys(){ return Array.from(runtime.keys()); },
+
+    /* Diagnostics seam for the headless smoke test and the console. */
+    debugSnapshot(){
+      return {
+        activeLeague:api.activeKey(),
+        leagues:api.listAll().map(function(r){
+          return { key:r.key, name:r.name, registered:r.registered,
+                   hasCreds:!!(r.creds.s2 && r.creds.swid), prefs:r.prefs };
+        }),
+        runtime:api.runtimeKeys(),
+      };
+    },
+  };
+
+  return api;
+})();
+
+/* ============================================================
    ESPN URL BUILDER
    Past seasons route through leagueHistory (seasonId as a query
    param); the current season uses the live seasons endpoint.
@@ -3274,33 +3877,39 @@ function buildEspnCookieHeader(creds){
   return parts.join('; ');
 }
 
-/* Optional ESPN auth for PRIVATE leagues. Read from localStorage and forwarded
-   only to the same-origin /api/espn and /api/league routes (never to public
-   CORS proxies, which would leak them). ESPN reads a private league with the
-   espn_s2 + SWID cookies the member's browser holds; the relay replays them so
-   it can read as the member. */
-function getEspnCreds(){
-  let rawS2 = '', rawSwid = '';
-  try{ rawS2 = localStorage.getItem('fsn.espn.s2.v1') || ''; }catch(e){}
-  try{ rawSwid = localStorage.getItem('fsn.espn.swid.v1') || ''; }catch(e){}
+/* Optional ESPN auth for PRIVATE leagues. Held per league in FSNLeagueStore and
+   forwarded only to the same-origin /api/espn and /api/league routes (never to
+   public CORS proxies, which would leak them). ESPN reads a private league with
+   the espn_s2 + SWID cookies the member's browser holds; the relay replays them
+   so it can read as the member.
+
+   The pair is bound to ONE league namespace. A reader in two private leagues
+   holds two different cookie pairs (different accounts, different expiries),
+   and the singleton these replaced meant whichever pair was pasted last went
+   out on every request — so the other league answered 401 for a member who is
+   in it. Passing an explicit scope key reads that league's pair and no other;
+   omitting it reads the league the app is pointed at right now. */
+function getEspnCreds(scopeKey){
+  const key = scopeKey === undefined ? activeLeagueScopeKey() : String(scopeKey || '');
+  const creds = FSNLeagueStore.credsFor(key);
   return {
-    s2: sanitizeEspnCookieValue('s2', rawS2),
-    swid: sanitizeEspnCookieValue('swid', rawSwid),
+    s2: sanitizeEspnCookieValue('s2', creds.s2),
+    swid: sanitizeEspnCookieValue('swid', creds.swid),
+    leagueKey: key,
   };
 }
 
-/* One place that decides what state the stored credentials are in, so the
-   status line, the failure messages and the transport guard never disagree.
+/* One place that decides what state a league's stored credentials are in, so
+   the status line, the failure messages and the transport guard never disagree.
      'none'      nothing stored — anonymous reads, public leagues only
      'partial'   one cookie stored — ESPN needs both for a private league
      'malformed' stored but untransmittable — the reason says what to fix
      'ready'     both present and header-safe */
-function espnCredDiagnostics(){
-  let rawS2 = '', rawSwid = '';
-  try{ rawS2 = localStorage.getItem('fsn.espn.s2.v1') || ''; }catch(e){}
-  try{ rawSwid = localStorage.getItem('fsn.espn.swid.v1') || ''; }catch(e){}
-  const s2 = inspectEspnCookieValue('s2', rawS2);
-  const swid = inspectEspnCookieValue('swid', rawSwid);
+function espnCredDiagnostics(scopeKey){
+  const leagueKey = scopeKey === undefined ? activeLeagueScopeKey() : String(scopeKey || '');
+  const stored = FSNLeagueStore.credsFor(leagueKey);
+  const s2 = inspectEspnCookieValue('s2', stored.s2);
+  const swid = inspectEspnCookieValue('swid', stored.swid);
   const faults = [s2, swid].filter(entry=> entry.present && !entry.ok);
 
   let state;
@@ -3311,6 +3920,9 @@ function espnCredDiagnostics(){
 
   return {
     state,
+    /* The namespace this verdict describes. A caller that logs or renders it
+       can say WHICH league was judged rather than implying "your cookies". */
+    leagueKey,
     s2: s2.value,
     swid: swid.value,
     faults,
@@ -3351,7 +3963,9 @@ function espnCredDiagnostics(){
    archive hydrator below calls it today, and the UI layer in the last block
    renders the verdict it produces. */
 function espnLeagueAccessMode(leagueId){
-  const diag = espnCredDiagnostics();
+  /* Judged against the credentials filed under THIS league, never the pair the
+     reader happens to have typed for another one. */
+  const diag = espnCredDiagnostics(leagueScopeKey('espn', leagueId));
   /* An envelope the SERVER holds for this league is every bit as private as a
      local paste — the relay attaches it, so ESPN still judges an identity and a
      refusal is still a credential verdict. */
@@ -3366,14 +3980,15 @@ function espnLeagueAccessMode(leagueId){
   return { isPrivate, publicProven, cloudCookies, diag };
 }
 
-function espnCredHeaders(){
-  const diag = espnCredDiagnostics();
+function espnCredHeaders(scopeKey){
+  const diag = espnCredDiagnostics(scopeKey);
   const headers = { Accept:'application/json,text/plain,*/*' };
   /* A stored-but-unusable cookie is the exact failure this whole seam exists to
      make visible. Say so once per request rather than shipping a header that
      makes fetch() throw, or omitting it and calling the result "no data". */
   diag.faults.forEach(fault=>{
-    console.error('[ESPN auth] Stored ' + fault.label + ' cookie is unusable and will not be sent — ' +
+    console.error('[ESPN auth] Stored ' + fault.label + ' cookie for league ' +
+      (diag.leagueKey || '(none selected)') + ' is unusable and will not be sent — ' +
       fault.reason + '. Re-paste it in Private League Access.',
       new Error('UNUSABLE_ESPN_COOKIE:' + fault.label));
   });
@@ -16283,13 +16898,10 @@ const ui = {
   activeLeagueKey: '',   // provider:id of the league currently resident in the stores
 };
 
-const STORE_KEY = 'fsn.setup.v1';
-const SAVED_LEAGUE_ID_KEY = 'fsn_saved_league_id';
-const SAVED_LEAGUES_KEY = 'mffu.saved.leagues.v1';
-const ACTIVE_TEAM_KEY = 'fsn_active_team_id';
-const PROFILE_ROLE_KEY = 'fsn_user_role';
-const LEGACY_PROFILE_ROLE_KEY = 'fsn_profile_role_v1';
-const LEAGUE_RUNTIME_CACHE = new Map();
+/* Every saved league, its view preferences, its private-league cookies and its
+   team profile live in the namespaced FSNLeagueStore (block 1) rather than in
+   the fixed singleton keys this build used to write. The one-time migration off
+   those keys happens inside the store; nothing in this layer reads them. */
 
 /* ============================================================
    SMALL HELPERS
@@ -16698,15 +17310,19 @@ function selectWeek(next, opts){
 /* ============================================================
    ACTIVE TEAM PROFILE
 ============================================================ */
+/* "Which team am I" is a per-league answer: a reader is a different franchise
+   in every league they are in. Held in that league's namespace so switching
+   leagues switches identity instead of carrying the previous league's team id
+   into a roster that has no such team. */
 function storedActiveTeam(){
-  try{ return localStorage.getItem(ACTIVE_TEAM_KEY) || ''; }catch(e){ return ''; }
+  const key = activeLeagueKey();
+  return key ? FSNLeagueStore.profileFor(key).teamId : '';
 }
 
 function storedProfileRole(){
-  try{
-    const role = localStorage.getItem(PROFILE_ROLE_KEY) || '';
-    return role ? 'member' : '';
-  }catch(e){ return ''; }
+  const key = activeLeagueKey();
+  const role = key ? FSNLeagueStore.profileFor(key).role : '';
+  return role ? 'member' : '';
 }
 
 function activeProfileRole(){
@@ -16769,11 +17385,10 @@ function profileRoleForTeam(teamId){
 function selectProfile(teamId){
   const role = profileRoleForTeam(teamId);
   ui.profileRole = role;
-  try{
-    localStorage.setItem(ACTIVE_TEAM_KEY, String(teamId));
-    localStorage.setItem(PROFILE_ROLE_KEY, role);
-    localStorage.removeItem(LEGACY_PROFILE_ROLE_KEY);
-  }catch(e){}
+  const key = activeLeagueKey();
+  if(key) FSNLeagueStore.setProfile(key, { teamId:String(teamId), role });
+  else console.warn('[Profile] No league is selected, so the chosen team could not be saved. ' +
+    'Enter a League ID in Setup first.');
   closeProfilePicker();
   renderAll();
   const creds = getEspnCreds();
@@ -19590,11 +20205,22 @@ function clearLeagueStateForSwitch(nextLeagueId, nextProvider){
   // First load, or a re-fetch of the exact same league/provider — nothing to wipe.
   if(!prevKey || (next && prevKey === nextKey)) return false;
 
+  /* Park the outgoing league before anything is wiped. Clearing the shared
+     globals is still exactly right — the incoming league must not inherit them
+     — but the payloads themselves belong to the league that fetched them, and
+     dropping them here is what made every league switch a one-way trip. Filed
+     under prevKey, they are restored verbatim the moment the reader switches
+     back, and are visible to no other league in the meantime. */
+  snapshotActiveLeague(prevKey);
+
   // Multi-season archive + everything derived from the Record Book.
   window._franchiseYearsData = null;
-  try{ LeagueData.setLeagueHistory(null); }catch(e){}
-  try{ LeagueData.setEspnData(null); }catch(e){}
-  try{ if(LeagueData.meta){ LeagueData.meta.leagueId = ''; LeagueData.meta.season = ''; LeagueData.meta.week = ''; } }catch(e){}
+  try{ LeagueData.setLeagueHistory(null); }
+  catch(err){ console.error('[LeagueSwitch] Could not clear the history store while leaving ' + prevKey + '.', err); }
+  try{ LeagueData.setEspnData(null); }
+  catch(err){ console.error('[LeagueSwitch] Could not clear the live store while leaving ' + prevKey + '.', err); }
+  try{ if(LeagueData.meta){ LeagueData.meta.leagueId = ''; LeagueData.meta.season = ''; LeagueData.meta.week = ''; } }
+  catch(err){ console.error('[LeagueSwitch] Could not reset the store meta while leaving ' + prevKey + '.', err); }
 
   // Week time-machine payloads and season/week scrubber state.
   ui.weekDataCache = {};
@@ -19605,6 +20231,11 @@ function clearLeagueStateForSwitch(nextLeagueId, nextProvider){
   ui.seasonLoading = null;
   ui.currentWeek = null;
   ui.week = null;
+  /* The scrubber fields belong to the outgoing league too. Leaving them up
+     labels the incoming league's (empty) board with the previous league's
+     season and week until its first payload lands. */
+  $('seasonYear').value = String(uiActiveSeasonYear());
+  $('weekNum').value = '';
 
   // A new league invalidates whatever rivalry pair the Vault had on screen and
   // any half-finished cloud hydration aimed at the previous league.
@@ -19727,7 +20358,7 @@ async function fetchSleeperLeagueData(opts){
     $('fetchStatus').textContent =
       `✓ Sleeper Season Connected · ${live.year} · ${live.leagueData.teams.length} teams · Week ${liveInfo.activeWeek}`;
 
-    try{ localStorage.setItem(SAVED_LEAGUE_ID_KEY, league); }catch(e){}
+    FSNLeagueStore.setActiveKey(leagueCacheKey('sleeper', league));
     savePrefs();
     registerSavedLeague(league, 'sleeper');
     if(navigate) setScreen('home');
@@ -19872,7 +20503,7 @@ async function fetchYahooLeagueData(opts){
     $('fetchStatus').style.color = 'var(--green)';
     $('fetchStatus').textContent =
       `✓ Yahoo Season Connected · ${live.year} · ${live.leagueData.teams.length} teams · Week ${liveInfo.activeWeek}`;
-    try{ localStorage.setItem(SAVED_LEAGUE_ID_KEY, league); }catch(e){}
+    FSNLeagueStore.setActiveKey(leagueCacheKey('yahoo', league));
     savePrefs();
     registerSavedLeague(league, 'yahoo');
     refreshYahooAuthStatus();
@@ -20144,7 +20775,7 @@ async function fetchLeagueData(options){
       $('historyStatus').textContent = 'Current season is ready. Upload an archive JSON only if you want historical Record Book seasons.';
     }
 
-    try{ localStorage.setItem(SAVED_LEAGUE_ID_KEY, league); }catch(e){}
+    FSNLeagueStore.setActiveKey(leagueCacheKey('espn', league));
     savePrefs();
     registerSavedLeague(league, 'espn');
 
@@ -20490,11 +21121,106 @@ function handleHistoryFile(file){
   }
 }
 
+/* ---- WHICH LEAGUE IS THIS PAYLOAD? ----
+   An ESPN/Sleeper season object carries its own league id, so an uploaded
+   archive can name the namespace it belongs in without the reader typing
+   anything. Deliberately a cheap, shallow scan rather than a second full
+   normalizeHistoryPayload() pass: it stops at the first season-shaped node and
+   never walks a team list, so a 25 MB archive costs nothing here.
+
+   Returns '' when the payload names no league — the caller then falls back to
+   whatever League ID is on screen, and says so if there is none. */
+function importedLeagueId(rawData){
+  const seen = new Set();
+  const CONTAINERS = ['leagueHistory','seasons','history','data','leagues','value','leagueData'];
+  let found = '';
+  const visit = (value, depth)=>{
+    if(found || value == null || depth > 6) return;
+    if(Array.isArray(value)){ value.forEach(item=> visit(item, depth + 1)); return; }
+    if(typeof value !== 'object' || seen.has(value)) return;
+    seen.add(value);
+    if(Array.isArray(value.teams)){
+      const raw = value.id != null ? value.id : (value.leagueId != null ? value.leagueId : value.league_id);
+      const id = String(raw == null ? '' : raw).trim();
+      if(/^[A-Za-z0-9._-]{1,40}$/.test(id) && id !== '0') found = id;
+      return;  // a season node — never descend into its rosters
+    }
+    CONTAINERS.forEach(key=>{
+      if(value[key] && typeof value[key] === 'object') visit(value[key], depth + 1);
+    });
+    Object.keys(value).forEach(key=>{
+      if(/^\d{4}$/.test(key) && value[key] && typeof value[key] === 'object') visit(value[key], depth + 1);
+    });
+  };
+  try{ visit(rawData, 0); }
+  catch(err){
+    console.warn('[Import] Could not read a league id out of the uploaded payload; ' +
+      'falling back to the League ID on screen.', err);
+  }
+  return found;
+}
+
+/* Point the app at the league an import belongs to WITHOUT destroying the one
+   already loaded. The resident league is parked in its own namespace first, so
+   importing a second league adds it to the dictionary and shows it, and the
+   first league is one switcher change away with its archive, cookies, profile
+   and view state intact. Returns the namespace the import should land in. */
+function adoptImportNamespace(rawData){
+  const typed = ($('leagueIdInput').value || '').trim();
+  const detected = importedLeagueId(rawData);
+  const targetId = detected || typed;
+  const targetKey = targetId ? leagueCacheKey(ui.provider, targetId) : '';
+  const currentKey = activeLeagueKey();
+
+  if(!targetKey){
+    console.warn('[Import] This payload names no league id and the League ID field is empty, so the ' +
+      'archive cannot be filed under a league. It will render for this session only — enter the ' +
+      'League ID in Setup to keep it alongside your other leagues.');
+    return '';
+  }
+  if(targetKey === currentKey) return targetKey;
+
+  /* A payload for a DIFFERENT league is an insert, never an overwrite. */
+  if(currentKey) snapshotActiveLeague(currentKey);
+  window._franchiseYearsData = null;
+  try{ LeagueData.setLeagueHistory(null); }
+  catch(err){ console.error('[Import] Could not clear the history store before adopting ' + targetKey + '.', err); }
+  try{ LeagueData.setEspnData(null); }
+  catch(err){ console.error('[Import] Could not clear the live store before adopting ' + targetKey + '.', err); }
+  ui.weekDataCache = {};
+  ui.weekCacheKey = '';
+  ui.weekFetchSeq = (ui.weekFetchSeq || 0) + 1;
+  ui.seasonFetchSeq = (ui.seasonFetchSeq || 0) + 1;
+  ui.weekLoading = null;
+  ui.seasonLoading = null;
+  ui.currentWeek = null;
+  ui.week = null;
+  ui.rivalA = ''; ui.rivalB = '';
+  ui.newsCache = null;
+  ui.cloudHydrateSeq = (ui.cloudHydrateSeq || 0) + 1;
+  ui.activeLeagueKey = '';
+  clearCloudVersion();
+
+  $('leagueIdInput').value = targetId;
+  FSNLeagueStore.setActiveKey(targetKey);
+  FSNLeagueStore.claimPendingCreds(targetKey);
+  syncCredentialFields();
+  setHistoryProbeState(ui.provider, targetId, 'idle');
+  if(currentKey){
+    console.warn('[Import] The uploaded payload belongs to ' + targetKey + ', not ' + currentKey +
+      '. Adding it as a separate league; ' + currentKey + ' keeps its own archive and settings.');
+  }
+  return targetKey;
+}
+
 /* One payload can be either a multi-season archive or a single week's league
    object, so try the archive path first and fall back to the live-season path.
    Cloud optimization happens automatically after the full-fidelity local
    Record Book has been constructed. */
 async function applyRawPayload(rawData, sourceLabel){
+  /* Upsert semantics: resolve (and if needed adopt) this payload's own league
+     namespace BEFORE anything writes to the shared globals. */
+  const targetKey = adoptImportNamespace(rawData);
   let historyOk = false;
   let historyResult = null;
   try{
@@ -20540,6 +21266,15 @@ async function applyRawPayload(rawData, sourceLabel){
     $('jsonStatus').textContent = '✓ ' + sourceLabel + ': current-season team data loaded and optimized.';
   }
 
+  /* The import is now this league's resident payload. Registering it here is
+     what puts it in the switcher and parks it in its own namespace, so the next
+     import — or the next switch — leaves it standing. */
+  if(targetKey){
+    ui.activeLeagueKey = targetKey;
+    registerSavedLeague(targetKey.slice(targetKey.indexOf(':') + 1), ui.provider);
+    savePrefs();
+  }
+  renderLeagueSwitcher();
   renderAll();
   const creds = getEspnCreds();
   if(creds.s2 && creds.swid){
@@ -20581,157 +21316,348 @@ dz.addEventListener('drop', (e)=>{
    PREFS — League ID / season / week survive an app relaunch.
 ============================================================ */
 function savedLeagues(){
-  try{
-    const value = JSON.parse(localStorage.getItem(SAVED_LEAGUES_KEY) || '[]');
-    return Array.isArray(value) ? value.filter(x=>
-      x && x.id && (x.provider === 'espn' || x.provider === 'sleeper' || x.provider === 'yahoo')
-    ) : [];
-  }catch(e){ return []; }
+  return FSNLeagueStore.list();
 }
-function leagueCacheKey(provider, id){ return (provider || 'espn') + ':' + String(id || '').trim(); }
-function snapshotActiveLeague(){
-  const id = $('leagueIdInput').value.trim();
-  if(!id || !LeagueData.hasLive()) return;
-  LEAGUE_RUNTIME_CACHE.set(leagueCacheKey(ui.provider,id), {
+function leagueCacheKey(provider, id){ return leagueScopeKey(provider, id); }
+function activeLeagueKey(){ return leagueCacheKey(ui.provider, $('leagueIdInput').value); }
+
+/* Park everything the active league has hydrated into ITS namespace, so the
+   next league can take over the shared globals without destroying it. This is
+   the whole non-destructive-switch contract in one function: whatever is
+   resident right now belongs to exactly one league, and it is filed under that
+   league before anything else is allowed to overwrite it. */
+function snapshotActiveLeague(key){
+  const scope = String(key || activeLeagueKey() || '').trim();
+  if(!scope) return false;
+  /* An uploaded archive with no live season is still this league's data, and
+     is exactly the payload a switch would otherwise destroy. */
+  const hasArchive = Array.isArray(window._franchiseYearsData) && window._franchiseYearsData.length > 0;
+  if(!LeagueData.hasLive() && !hasArchive) return false;
+  return FSNLeagueStore.runtimeSet(scope, {
     live:LeagueData.espnData,
     history:LeagueData.leagueHistory,
     years:Array.isArray(window._franchiseYearsData) ? window._franchiseYearsData.slice() : [],
+    weekDataCache:Object.assign({}, ui.weekDataCache || {}),
+    weekCacheKey:ui.weekCacheKey,
+    currentWeek:ui.currentWeek,
+    week:ui.week,
+    sourceMode:ui.sourceMode,
+    season:($('seasonYear').value || '').trim(),
   });
 }
+
+/* Restore a league's parked payloads onto the shared globals. Returns false
+   when that league has never been hydrated in this session, in which case the
+   caller falls through to a normal fetch. */
+function restoreLeagueRuntime(key){
+  const scope = String(key || '').trim();
+  const cached = scope ? FSNLeagueStore.runtimeGet(scope) : null;
+  const cachedArchive = cached && Array.isArray(cached.years) && cached.years.length > 0;
+  if(!cached || (!cached.live && !cachedArchive)) return false;
+  try{
+    window._franchiseYearsData = Array.isArray(cached.years) ? cached.years.slice() : null;
+    LeagueData.setLeagueHistory(cached.history || null);
+    LeagueData.setEspnData(cached.live || null);
+    LeagueData.setMeta('leagueId', scope.slice(scope.indexOf(':') + 1));
+    ui.weekDataCache = Object.assign({}, cached.weekDataCache || {});
+    ui.weekCacheKey = cached.weekCacheKey || '';
+    ui.currentWeek = cached.currentWeek || null;
+    ui.sourceMode = cached.sourceMode || 'none';
+    /* The season/week the caller has already restored from this league's SAVED
+       preferences wins: those are the reader's latest explicit choice, while
+       the snapshot only records where the payload happened to be parked. Fall
+       back to the snapshot only when the league has no stored preference. */
+    if(!($('seasonYear').value || '').trim() && cached.season) $('seasonYear').value = String(cached.season);
+    if(ui.week == null) ui.week = cached.week || null;
+    /* Keep the hidden week field in step with ui.week: savePrefs() reads the
+       field, so leaving it blank here would write an empty week back over this
+       league's stored preference on the next save. */
+    if(ui.week != null) $('weekNum').value = String(ui.week);
+    LeagueData.setMeta('season', ($('seasonYear').value || '').trim());
+    ui.newsCache = null;
+    /* The stores now hold this league again, so the next clear-on-switch check
+       compares against the right resident league instead of wiping what was
+       just restored. */
+    ui.activeLeagueKey = scope;
+    return true;
+  }catch(err){
+    console.error('[LeagueSwitch] Could not restore the cached payloads for ' + scope +
+      '; falling back to a fresh fetch.', err);
+    return false;
+  }
+}
+
+/* Upsert — never replace. Connecting or importing a league adds it to the
+   dictionary and marks it active; every other saved league is left exactly as
+   it was, along with its cookies, prefs, profile and parked payloads. */
 function registerSavedLeague(id, provider){
   const leagueId = String(id || '').trim();
-  if(!leagueId) return;
+  if(!leagueId) return null;
   const platform = normalizedLeagueProvider(provider);
-  const list = savedLeagues().filter(x=>!(x.id === leagueId && x.provider === platform));
+  const key = leagueCacheKey(platform, leagueId);
   const settings = LeagueData.espnData && LeagueData.espnData.settings;
-  const name = settings && settings.name ? settings.name : (platform.toUpperCase() + ' · ' + leagueId);
-  list.unshift({id:leagueId,provider:platform,name:String(name),lastUsed:Date.now()});
-  try{ localStorage.setItem(SAVED_LEAGUES_KEY, JSON.stringify(list.slice(0,20))); }catch(e){}
-  snapshotActiveLeague();
+  const existing = FSNLeagueStore.get(key);
+  const name = settings && settings.name
+    ? String(settings.name)
+    : ((existing && existing.name) || (platform.toUpperCase() + ' · ' + leagueId));
+  const record = FSNLeagueStore.upsert(key, { name, lastUsed:Date.now(), registered:true });
+  FSNLeagueStore.setActiveKey(key);
+  /* Cookies pasted before this league had an id belong to it now. */
+  FSNLeagueStore.claimPendingCreds(key);
+  snapshotActiveLeague(key);
   renderLeagueSwitcher();
+  return record;
 }
+function leagueOptionLabel(record){
+  const name = String(record.name || '').trim() || (record.provider.toUpperCase() + ' · ' + record.id);
+  return name + ' · ' + record.provider.toUpperCase();
+}
+
+/* Both switchers render from the same list and the same active key, so the
+   Setup dropdown and the always-on bar can never disagree about which league
+   the app is showing. */
 function renderLeagueSwitcher(){
-  const select = $('leagueSwitcher'), status = $('leagueSwitcherStatus'), forget = $('forgetLeagueBtn');
-  if(!select) return;
   const list = savedLeagues();
-  const active = leagueCacheKey(ui.provider, $('leagueIdInput').value.trim());
-  select.innerHTML = list.length
-    ? list.map(x=>`<option value="${esc(leagueCacheKey(x.provider,x.id))}" ${leagueCacheKey(x.provider,x.id)===active?'selected':''}>${esc(x.name)} · ${esc(x.provider.toUpperCase())}</option>`).join('')
+  const active = activeLeagueKey() || FSNLeagueStore.activeKey();
+  const options = list.length
+    ? list.map(x=> `<option value="${esc(x.key)}" ${x.key === active ? 'selected' : ''}>${esc(leagueOptionLabel(x))}</option>`).join('')
     : '<option value="">No saved leagues</option>';
-  select.disabled = !list.length;
-  if(forget) forget.disabled = !list.length;
-  if(status) status.textContent = list.length
-    ? `${list.length} saved league${list.length===1?'':'s'} · switching restores cached views immediately, then refreshes in the background.`
-    : 'Connect a league below to add it here.';
+
+  const select = $('leagueSwitcher'), status = $('leagueSwitcherStatus'), forget = $('forgetLeagueBtn');
+  if(select){
+    select.innerHTML = options;
+    select.value = list.some(x=> x.key === active) ? active : (list.length ? list[0].key : '');
+    select.disabled = !list.length;
+    if(forget) forget.disabled = !list.length;
+    if(status) status.textContent = list.length
+      ? `${list.length} saved league${list.length===1?'':'s'} · each keeps its own archive, cookies and team profile. Switching restores cached views immediately, then refreshes in the background.`
+      : 'Connect a league below to add it here.';
+  }
+
+  /* The global bar rides above every screen, so a reader on Matchups or the
+     Record Book can always see WHICH league they are looking at and swap
+     without going back to Setup. It stays out of the way entirely until at
+     least one league has been imported. */
+  const bar = $('leagueBar'), barSelect = $('globalLeagueSwitcher'), barCount = $('leagueBarCount');
+  if(bar){
+    bar.hidden = !list.length;
+    if(barSelect){
+      barSelect.innerHTML = options;
+      barSelect.value = list.some(x=> x.key === active) ? active : (list.length ? list[0].key : '');
+      barSelect.disabled = list.length < 2;
+      barSelect.setAttribute('aria-label', 'Active league' + (list.length ? ' — ' + list.length + ' saved' : ''));
+    }
+    if(barCount) barCount.textContent = list.length > 1 ? String(list.length) : '';
+  }
 }
+
+/* ---- ACTIVE LEAGUE SWITCH ----
+   Park the outgoing league, adopt the incoming league's own preferences,
+   cookies and profile, repaint from its cached payloads if we still hold them,
+   then refresh in the background. Nothing here reads or writes another
+   league's namespace, so switching is lossless in both directions. */
 async function switchSavedLeague(value){
-  const divider = String(value || '').indexOf(':');
-  if(divider < 1) return;
-  snapshotActiveLeague();
-  const provider = value.slice(0,divider), id = value.slice(divider+1);
+  const key = String(value || '').trim();
+  const divider = key.indexOf(':');
+  if(divider < 1) return false;
+  const provider = key.slice(0, divider), id = key.slice(divider + 1);
+  const from = activeLeagueKey();
+  if(from === key){
+    renderLeagueSwitcher();
+    return false;
+  }
+
+  snapshotActiveLeague(from);
   setProvider(provider);
   $('leagueIdInput').value = id;
-  try{ localStorage.setItem(SAVED_LEAGUE_ID_KEY,id); }catch(e){}
-  const cached = LEAGUE_RUNTIME_CACHE.get(leagueCacheKey(provider,id));
-  if(cached){
-    LeagueData.setEspnData(cached.live || null);
-    LeagueData.setLeagueHistory(cached.history || null);
-    window._franchiseYearsData = cached.years || [];
-    ui.newsCache = null;
-    renderAll();
+  FSNLeagueStore.setActiveKey(key);
+
+  /* Adopt this league's saved view state before anything renders, so the first
+     paint is already the right season/week rather than the previous league's. */
+  const prefs = FSNLeagueStore.prefsFor(key);
+  /* Blank when this league has no stored season: restoreLeagueRuntime() then
+     falls back to the parked snapshot, and the default below covers a league
+     with neither. Carrying the OUTGOING league's season across is the one
+     answer that is always wrong. */
+  $('seasonYear').value = prefs.season || '';
+  $('weekNum').value = prefs.week || '';
+  ui.week = parseInt(prefs.week, 10) > 0 ? parseInt(prefs.week, 10) : null;
+  if(prefs.statsMode === 'standings' || prefs.statsMode === 'advanced' || prefs.statsMode === 'power'){
+    ui.statsMode = prefs.statsMode;
   }
+  ui.profileRole = FSNLeagueStore.profileFor(key).role || 'member';
+
+  /* This league's own private-league cookies — never the pair the previous
+     league was using. */
+  syncCredentialFields();
+  hideHistoryBanner();
+  hideArchiveNotice();
+  clearCloudVersion();
+  ui.cloudHydrateSeq = (ui.cloudHydrateSeq || 0) + 1;
+  ui.rivalA = ''; ui.rivalB = '';
+  ui.newsCache = null;
+
+  const restored = restoreLeagueRuntime(key);
+  if(restored){
+    setConn(ui.sourceMode === 'live' ? 'live' : 'manual');
+  } else {
+    /* Nothing cached for this league in this session: clear the shared globals
+       so the previous league's board can never be shown under the new league's
+       name while the refetch is in flight. */
+    window._franchiseYearsData = null;
+    try{ LeagueData.setLeagueHistory(null); }catch(err){ console.error('[LeagueSwitch] could not clear the history store', err); }
+    try{ LeagueData.setEspnData(null); }catch(err){ console.error('[LeagueSwitch] could not clear the live store', err); }
+    ui.weekDataCache = {};
+    ui.weekCacheKey = '';
+    ui.currentWeek = null;
+    ui.sourceMode = 'none';
+    ui.activeLeagueKey = '';
+    setConn('none');
+  }
+  ui.weekFetchSeq = (ui.weekFetchSeq || 0) + 1;
+  ui.seasonFetchSeq = (ui.seasonFetchSeq || 0) + 1;
+  ui.weekLoading = null;
+  ui.seasonLoading = null;
+  setHistoryProbeState(provider, id, 'idle');
+  if(!($('seasonYear').value || '').trim()) $('seasonYear').value = String(uiActiveSeasonYear());
+
   savePrefs();
+  renderLeagueSwitcher();
   setScreen('home');
-  await fetchLeagueData({leagueId:id,silent:true,navigate:false});
-  registerSavedLeague(id,provider);
+
+  try{
+    await fetchLeagueData({ leagueId:id, silent:true, navigate:false });
+  }catch(err){
+    console.error('[LeagueSwitch] Background refresh for ' + key + ' failed; the cached view stays on screen.', err);
+  }
+  registerSavedLeague(id, provider);
+  renderLeagueSwitcher();
+  return true;
 }
-if($('leagueSwitcher')) $('leagueSwitcher').addEventListener('change', e=>switchSavedLeague(e.target.value));
+
+function bindLeagueSwitcher(id){
+  const el = $(id);
+  if(!el) return;
+  el.addEventListener('change', (e)=>{
+    const value = e.target.value;
+    switchSavedLeague(value).catch(err=>
+      console.error('[LeagueSwitch] Switching to ' + value + ' failed.', err));
+  });
+}
+bindLeagueSwitcher('leagueSwitcher');
+bindLeagueSwitcher('globalLeagueSwitcher');
+
 if($('forgetLeagueBtn')) $('forgetLeagueBtn').addEventListener('click', ()=>{
   const value = $('leagueSwitcher').value;
-  const next = savedLeagues().filter(x=>leagueCacheKey(x.provider,x.id)!==value);
-  try{ localStorage.setItem(SAVED_LEAGUES_KEY, JSON.stringify(next)); }catch(e){}
-  LEAGUE_RUNTIME_CACHE.delete(value);
+  if(!value) return;
+  const record = FSNLeagueStore.get(value);
+  if(!FSNLeagueStore.remove(value)){
+    console.warn('[LeagueSwitch] Nothing to forget for "' + value + '".');
+    return;
+  }
+  /* Forgetting the league currently on screen leaves the app pointed at
+     nothing, which is honest: the reader asked for its data to be gone. */
+  if(value === activeLeagueKey()){
+    $('leagueIdInput').value = '';
+    window._franchiseYearsData = null;
+    try{ LeagueData.setLeagueHistory(null); }catch(err){ console.error('[LeagueSwitch] could not clear the history store', err); }
+    try{ LeagueData.setEspnData(null); }catch(err){ console.error('[LeagueSwitch] could not clear the live store', err); }
+    ui.weekDataCache = {}; ui.weekCacheKey = ''; ui.currentWeek = null; ui.week = null;
+    ui.sourceMode = 'none'; ui.activeLeagueKey = ''; ui.newsCache = null;
+    clearCloudVersion();
+    setConn('none');
+    syncCredentialFields();
+    renderAll();
+  }
   renderLeagueSwitcher();
-  toast('Saved league removed from this device');
+  toast((record && record.name ? record.name : 'Saved league') + ' removed from this device');
 });
 
+/* View preferences belong to the league they were chosen for. Writing them to
+   one shared blob is what made a season/week chosen in league A reappear over
+   league B's board, and it is why connecting a second league erased the first
+   one's League ID from disk. */
 function savePrefs(){
-  try{
-    localStorage.setItem(STORE_KEY, JSON.stringify({
-      leagueId: $('leagueIdInput').value.trim(),
-      season:   $('seasonYear').value.trim(),
-      week:     $('weekNum').value.trim(),
-      provider: ui.provider,
-      statsMode: ui.statsMode,
-    }));
-  }catch(e){ /* private mode — prefs just won't persist */ }
+  const key = activeLeagueKey();
+  /* A League ID typed one character at a time walks through 1, 12, 123…, and
+     writing prefs on each keystroke would mint a record for every prefix.
+     Preferences belong to a league that already exists in the dictionary. */
+  if(!key || !FSNLeagueStore.has(key)) return;
+  FSNLeagueStore.setPrefs(key, {
+    season:   $('seasonYear').value.trim(),
+    week:     $('weekNum').value.trim(),
+    statsMode: ui.statsMode,
+  });
 }
+
+/* Load the league the reader left off in — its id, its provider, its season and
+   week, its cookies and its team profile — without touching any other league's
+   record. */
 function loadPrefs(){
-  let saved = null;
-  let savedLeagueId = '';
-  try{
-    saved = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
-    savedLeagueId = (localStorage.getItem(SAVED_LEAGUE_ID_KEY) || '').trim();
-    // One-time migration for users whose prior build only stored the League ID
-    // inside fsn.setup.v1. Future launches use fsn_saved_league_id directly.
-    if(!savedLeagueId && saved && saved.leagueId){
-      savedLeagueId = String(saved.leagueId).trim();
-      if(savedLeagueId) localStorage.setItem(SAVED_LEAGUE_ID_KEY, savedLeagueId);
+  const activeKey = FSNLeagueStore.activeKey();
+  const record = activeKey ? FSNLeagueStore.get(activeKey) : null;
+
+  if(record){
+    setProvider(record.provider);
+    $('leagueIdInput').value = record.id;
+    $('seasonYear').value = record.prefs.season || String(uiActiveSeasonYear());
+    $('weekNum').value = record.prefs.week || '';
+    if(record.prefs.statsMode === 'standings' || record.prefs.statsMode === 'advanced' || record.prefs.statsMode === 'power'){
+      ui.statsMode = record.prefs.statsMode;
     }
-  }catch(e){}
-  $('leagueIdInput').value = savedLeagueId || (saved && saved.leagueId) || '';
-  $('seasonYear').value = (saved && saved.season) || String(uiActiveSeasonYear());
-  $('weekNum').value = (saved && saved.week) || '';
-  if(saved && (saved.provider === 'sleeper' || saved.provider === 'espn' || saved.provider === 'yahoo')) setProvider(saved.provider);
-  if(saved && (saved.statsMode === 'standings' || saved.statsMode === 'advanced' || saved.statsMode === 'power')) ui.statsMode = saved.statsMode;
-/* One-time migration for readers whose credentials were stored by an earlier
-     build that persisted the raw paste. Re-canonicalise what is on disk so a
-     value carrying a "SWID=" prefix, quotes, or a line-wrap newline starts
-     working on this launch instead of continuing to fail every request. */
-  [['fsn.espn.s2.v1', 's2', 'espnS2Input'], ['fsn.espn.swid.v1', 'swid', 'espnSwidInput']]
-    .forEach(function(entry){
-      const key = entry[0], kind = entry[1], inputId = entry[2];
-      let raw = '';
-      try{ raw = localStorage.getItem(key) || ''; }catch(e){ return; }
-      const clean = sanitizeEspnCookieValue(kind, raw);
-      if(raw && clean !== raw){
-        if(clean){
-          console.warn('[Setup] Normalised the stored ' + kind + ' credential left by an earlier build ' +
-            '(stray cookie name, quotes or whitespace removed).');
-          try{ localStorage.setItem(key, clean); }catch(e){}
-        } else {
-          console.error('[Setup] The stored ' + kind + ' credential is unusable and cannot be repaired ' +
-            'automatically; it must be re-pasted.', new Error('UNUSABLE_STORED_ESPN_COOKIE:' + kind));
-        }
-      }
-      const input = $(inputId);
-      if(input) input.value = clean || raw;
-    });
+    ui.profileRole = record.profile.role || 'member';
+  } else {
+    $('leagueIdInput').value = '';
+    $('seasonYear').value = String(uiActiveSeasonYear());
+    $('weekNum').value = '';
+  }
+
+  syncCredentialFields();
   refreshEspnAuthStatus();
   syncCredValidity();
   renderLeagueSwitcher();
 }
 
-/* Reflect whether private-league cookies are saved, without ever echoing the
-   secret values back into the page. */
+/* Mirror the ACTIVE league's stored cookies into the Setup fields. Called on
+   boot, on every league switch and whenever the League ID changes, so the two
+   password fields always show the pair that will actually be sent for the
+   league on screen — and never the pair belonging to a different one. */
+function syncCredentialFields(){
+  const key = activeLeagueKey();
+  const creds = key ? FSNLeagueStore.credsFor(key) : FSNLeagueStore.pendingCreds();
+  const s2 = $('espnS2Input'), swid = $('espnSwidInput');
+  if(s2) s2.value = creds.s2 || '';
+  if(swid) swid.value = creds.swid || '';
+  syncCredValidity();
+  refreshEspnAuthStatus();
+}
+
+/* Reflect whether THIS league's private-league cookies are saved, without ever
+   echoing the secret values back into the page. The verdict is per league now,
+   so the line names the league it describes: "auth saved" for the league on
+   screen says nothing about the other leagues in the switcher. */
 function refreshEspnAuthStatus(){
   const el = $('espnAuthStatus');
   if(!el) return;
   const diag = espnCredDiagnostics();
   const escapeText = (value)=> String(value == null ? '' : value)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const leagueId = (($('leagueIdInput') && $('leagueIdInput').value) || '').trim();
+  const forLeague = leagueId ? ' for league ' + escapeText(leagueId) : '';
   if(diag.state === 'malformed'){
     // Never echo the secret itself — only the reason it cannot be transmitted.
     el.innerHTML = '<span style="color:var(--red)">UNUSABLE PASTE</span> · ' + escapeText(diag.reason) +
       '. Paste just the cookie value; the “SWID=” prefix, quotes and stray braces are handled for you.';
   } else if(diag.state === 'ready'){
-    el.innerHTML = '<span style="color:var(--green)">PRIVATE-LEAGUE AUTH SAVED</span> · Local fallback is ready; member saves encrypt a server-side copy.';
+    el.innerHTML = '<span style="color:var(--green)">PRIVATE-LEAGUE AUTH SAVED</span>' + forLeague +
+      ' · Local fallback is ready; member saves encrypt a server-side copy. Each saved league keeps its own pair.';
   } else if(diag.state === 'partial'){
-    el.innerHTML = '<span style="color:var(--gold)">INCOMPLETE</span> · Both espn_s2 and SWID are required for a private league.';
+    el.innerHTML = '<span style="color:var(--gold)">INCOMPLETE</span>' + forLeague +
+      ' · Both espn_s2 and SWID are required for a private league.';
   } else if(window._fsnCloudHasCookies){
     el.innerHTML = '<span style="color:var(--green)">CLOUD AUTH AVAILABLE</span> · The backend can read this private league without exposing its cookies.';
   } else {
-    el.innerHTML = 'Not set — anonymous reads (public leagues only).';
+    el.innerHTML = 'Not set' + forLeague + ' — anonymous reads (public leagues only).';
   }
 }
 function uiActiveSeasonYear(){
@@ -20762,7 +21688,6 @@ function isPreseasonWeek1(week, viewedYear){
 
 
 $('leagueIdInput').addEventListener('input', ()=>{
-  savePrefs();
   refreshHistoryUrlLink();
   clearTimeout($('leagueIdInput')._cloudTimer);
   const league = $('leagueIdInput').value.trim();
@@ -20771,6 +21696,27 @@ $('leagueIdInput').addEventListener('input', ()=>{
     setHistoryProbeState(ui.provider, league, 'idle');
     renderAll();
   }
+  /* The League ID field IS the namespace selector, so the moment it changes the
+     credential fields have to follow it. Showing (and sending) the previous
+     league's cookies against a newly typed league id is the authentication
+     bleed this refactor exists to end. Cookies pasted before any id existed are
+     claimed by this league here, and by no other. */
+  const key = league ? leagueCacheKey(ui.provider, league) : '';
+  if(key) FSNLeagueStore.claimPendingCreds(key);
+  /* Typing the id of a league already in the dictionary is a switch by another
+     route, so it adopts that league's own season/week rather than leaving the
+     previous league's on screen. */
+  if(key && FSNLeagueStore.has(key)){
+    const prefs = FSNLeagueStore.prefsFor(key);
+    if(prefs.season) $('seasonYear').value = prefs.season;
+    if(prefs.week){ $('weekNum').value = prefs.week; ui.week = parseInt(prefs.week, 10) || null; }
+    if(prefs.statsMode === 'standings' || prefs.statsMode === 'advanced' || prefs.statsMode === 'power'){
+      ui.statsMode = prefs.statsMode;
+    }
+  }
+  syncCredentialFields();
+  savePrefs();
+  renderLeagueSwitcher();
   if(ui.provider === 'espn'){
     $('leagueIdInput')._cloudTimer = setTimeout(()=> hydrateLeagueFromCloud(league, { silent:true }), 650);
   }
@@ -20849,18 +21795,20 @@ function syncCredValidity(){
    The field itself is only rewritten when the reader is not mid-edit and the
    cleanup actually changed something, so a paste visibly settles into the
    stored value without the caret jumping while someone types. */
-function bindCredentialField(inputId, storageKey, kind, validityBoxId){
+function bindCredentialField(inputId, kind, validityBoxId){
   const input = $(inputId);
   if(!input) return;
   input.addEventListener('input', ()=>{
     const clean = sanitizeEspnCookieValue(kind, input.value);
-    try{
-      if(clean) localStorage.setItem(storageKey, clean);
-      else localStorage.removeItem(storageKey);
-    }catch(err){
-      console.warn('[Setup] Could not persist the ' + kind + ' credential to localStorage ' +
-        '(private mode or blocked storage); it will not survive a reload.', err);
-    }
+    const key = activeLeagueKey();
+    const patch = {};
+    patch[kind] = clean;
+    /* Bound to the league in the League ID field, and to nothing else. With no
+       league id yet the pair waits in the store's pending slot and is claimed
+       by the first league connected — it is never attached to a request for a
+       league that did not receive it. */
+    if(key) FSNLeagueStore.setCreds(key, patch);
+    else FSNLeagueStore.setPendingCreds(patch);
     setCredValidity(validityBoxId, kind, input.value);
     refreshEspnAuthStatus();
   });
@@ -20874,8 +21822,8 @@ function bindCredentialField(inputId, storageKey, kind, validityBoxId){
     }
   });
 }
-bindCredentialField('espnS2Input', 'fsn.espn.s2.v1', 's2', 'espnS2Valid');
-bindCredentialField('espnSwidInput', 'fsn.espn.swid.v1', 'swid', 'espnSwidValid');
+bindCredentialField('espnS2Input', 's2', 'espnS2Valid');
+bindCredentialField('espnSwidInput', 'swid', 'espnSwidValid');
 
 // "Paste" buttons — pull from the clipboard so a manager never has to fight the
 // mobile paste menu on a password field. Falls back gracefully where the async
@@ -22848,6 +23796,11 @@ function renderScreenFallback(name){
 
 function renderAll(){
   safeRun('ticker', renderTicker);
+  /* The league bar is global chrome, so it repaints with every pass rather than
+     only on the paths that mutate the dictionary. A stale bar would name the
+     wrong league over another league's board, which is worse than a redundant
+     write of two <select>s. */
+  safeRun('leagueSwitcher', renderLeagueSwitcher);
   safeRun('weekScrubbers', renderWeekScrubbers);
   if(ui.screen === 'home'){
     safeRun('home', renderHome, ()=> renderScreenFallback('home'));
@@ -22913,8 +23866,10 @@ function bootApp(){
   // additive: with no params the app boots to Home exactly as before.
   const deepLink = applyDeepLink();
 
-  let savedLeagueId = '';
-  try{ savedLeagueId = (localStorage.getItem(SAVED_LEAGUE_ID_KEY) || '').trim(); }catch(e){}
+  /* loadPrefs() has already put the last-active league's id, provider, season
+     and week on screen; this is the league to rehydrate. Every other saved
+     league stays parked in the store, one switcher change away. */
+  const savedLeagueId = ($('leagueIdInput').value || '').trim();
   if(ui.provider === 'yahoo'){
     if(deepLink && deepLink.yahooError){
       $('fetchStatus').style.color = 'var(--red)';
