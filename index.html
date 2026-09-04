@@ -2386,6 +2386,39 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
         </div>
         <button id="cloudSyncBtn" type="button" class="btn-ghost mt-3">SAVE LEAGUE DATA NOW</button>
         <p class="text-[10px] text-[var(--dim)] leading-relaxed mt-2">Saving is accepted when ESPN confirms the cookies belong to a member who can read the league. Database reads return only a has_cookies flag—never raw credentials.</p>
+
+        <!-- ============================================================
+             LEAGUE INVITE LINK — the per-league share secret (H-1)
+
+             The League ID on its own no longer opens this league's archive or
+             its stored ESPN session. The invite link below carries the ID plus
+             the league's share token; any member can mint it and send it to a
+             league-mate, who lands in a fully connected app without ever
+             pasting cookies of their own.
+        ============================================================ -->
+        <div id="shareInvitePanel" class="mt-4 pt-3" style="border-top:1px solid var(--line)">
+          <div class="flex items-center justify-between gap-3">
+            <div class="min-w-0">
+              <div class="kicker text-[var(--cyan)]">Invite your league</div>
+              <p id="shareInviteHint" class="text-[10.5px] text-[var(--dim)] leading-relaxed mt-1">
+                Save the league once to mint a shareable invite link.
+              </p>
+            </div>
+            <button id="shareInviteBtn" type="button" class="btn-ghost flex-none" style="padding:8px 14px; font-size:11.5px;">SHARE</button>
+          </div>
+          <div id="shareInviteResult" class="mt-2.5 hidden">
+            <label class="label" for="shareInviteUrl">Invite link</label>
+            <input id="shareInviteUrl" class="field" type="text" readonly spellcheck="false"
+                   aria-label="League invite link" style="font-size:11px; padding:9px 11px;">
+            <div class="flex items-center gap-2 mt-2">
+              <button id="shareInviteCopy" type="button" class="btn-ghost flex-none" style="padding:7px 12px; font-size:11px;">COPY LINK</button>
+              <span id="shareInviteStatus" class="text-[10.5px] text-[var(--dim)]" aria-live="polite"></span>
+            </div>
+            <p class="text-[10px] text-[var(--dim)] leading-relaxed mt-2">
+              Treat this like a password: anyone holding it can read the league's shared archive and use its saved ESPN access. Send it in the league chat, not in public.
+            </p>
+          </div>
+        </div>
       </div>
 
       <div class="text-center py-2">
@@ -3289,6 +3322,125 @@ function getEspnCreds(){
   };
 }
 
+/* ============================================================
+   PER-LEAGUE SHARE SECRET  (H-1 — global scope, first block)
+
+   The numeric ESPN League ID is not a secret: it is in every league URL and
+   every screenshot. It used to be the only thing standing between a stranger
+   and (a) this league's whole shared archive and (b) a replay of a league-mate's
+   stored ESPN session through /api/espn. The share token is what actually
+   authorises those now.
+
+   Where it comes from: /api/league mints it on the first save ESPN confirms
+   came from a league member, and returns it to any caller who has already
+   proved they may hold it. This browser stores it per league id — a manager in
+   three leagues holds three tokens — and replays it as `x-league-token` on
+   every /api/espn and /api/league request for that league.
+
+   These live at global scope in the first script block per the Global Scope
+   Rule: the transport helpers below call them, the cloud-sync engine in block 2
+   reads and writes them, and the Setup UI in block 6 builds the invite link out
+   of them. A copy nested in any one of those IIFEs would be a ReferenceError in
+   the other two, mid-render.
+============================================================ */
+const LEAGUE_SHARE_TOKEN_PREFIX = 'fsn.league.token.v1:';
+/* base64url, as minted by api/league.js. 32 random bytes encode to 43
+   characters; the range is wider so a token from an older or newer build is
+   never discarded on length alone. */
+const LEAGUE_SHARE_TOKEN_RE = /^[A-Za-z0-9_-]{32,128}$/;
+
+function normalizeLeagueShareToken(value){
+  const token = String(value == null ? '' : value).trim();
+  return LEAGUE_SHARE_TOKEN_RE.test(token) ? token : '';
+}
+
+function leagueShareTokenKey(leagueId){
+  const id = String(leagueId == null ? '' : leagueId).trim();
+  return id ? LEAGUE_SHARE_TOKEN_PREFIX + id : '';
+}
+
+/* The token held for a league, or '' — never throws, never guesses. Defaults to
+   the league currently on screen so the transport helpers can call it bare. */
+function getLeagueShareToken(leagueId){
+  const key = leagueShareTokenKey(leagueId == null || leagueId === '' ? selectedLeagueId() : leagueId);
+  if(!key) return '';
+  let raw = '';
+  try{ raw = localStorage.getItem(key) || ''; }
+  catch(e){ return ''; }
+  const token = normalizeLeagueShareToken(raw);
+  if(raw && !token){
+    console.error('[League Share] The stored invite token for league ' + String(leagueId || '') +
+      ' is not a well-formed share token and will not be sent. Re-open the invite link a league-mate ' +
+      'sent you, or press Save League Data to mint a new one.',
+      new Error('UNUSABLE_LEAGUE_SHARE_TOKEN'));
+  }
+  return token;
+}
+
+/* Returns true when the token was persisted. A malformed value is refused
+   loudly rather than stored — a bad token in localStorage would make every
+   later read fail with a 401 the reader cannot explain. */
+function setLeagueShareToken(leagueId, value){
+  const key = leagueShareTokenKey(leagueId);
+  const token = normalizeLeagueShareToken(value);
+  if(!key || !token){
+    if(value){
+      console.error('[League Share] Refusing to store an invite token for league ' +
+        String(leagueId || '(none)') + ': ' + (key ? 'the token is malformed' : 'no league id was supplied') + '.',
+        new Error('UNUSABLE_LEAGUE_SHARE_TOKEN'));
+    }
+    return false;
+  }
+  try{
+    localStorage.setItem(key, token);
+    return true;
+  }catch(err){
+    /* Private mode or blocked storage. The token still works for this page
+       lifecycle (callers keep it in memory via ui.shareTokens), it just will
+       not survive a reload. */
+    console.warn('[League Share] Could not persist the invite token for league ' + leagueId +
+      ' to localStorage; it will not survive a reload.', err);
+    return false;
+  }
+}
+
+function forgetLeagueShareToken(leagueId){
+  const key = leagueShareTokenKey(leagueId);
+  if(!key) return;
+  try{ localStorage.removeItem(key); }catch(e){}
+}
+
+/* The copyable invite link. Deliberately built from this page's own origin and
+   path rather than a hard-coded host, so a preview deploy links to itself. */
+function buildLeagueInviteUrl(leagueId, token){
+  const id = String(leagueId == null ? '' : leagueId).trim();
+  const secret = normalizeLeagueShareToken(token);
+  if(!/^\d{1,20}$/.test(id) || !secret) return '';
+  let base = '/';
+  try{
+    base = window.location.origin + (window.location.pathname || '/');
+  }catch(e){
+    console.warn('[League Share] window.location was unreadable; building a relative invite link.', e);
+  }
+  return base + '?id=' + encodeURIComponent(id) + '&token=' + encodeURIComponent(secret) + '&goto=setup';
+}
+
+/* The league id an ESPN read is aimed at, so a request can carry the token for
+   the league it is actually reading rather than whatever is on screen. Matches
+   both the live (/leagues/<id>) and historical (/leagueHistory/<id>) routes. */
+function leagueIdFromEspnUrl(espnUrl){
+  const match = String(espnUrl || '').match(/\/(?:leagues|leagueHistory)\/(\d{1,20})(?:[/?#]|$)/);
+  return match ? match[1] : '';
+}
+
+/* The one header that carries the share secret. Empty when this browser holds
+   no token for the league — which is correct and common: a public league needs
+   none, and a reader with their own ESPN cookies authenticates as themselves. */
+function leagueShareHeaders(leagueId){
+  const token = getLeagueShareToken(leagueId);
+  return token ? { 'x-league-token': token } : {};
+}
+
 /* One place that decides what state the stored credentials are in, so the
    status line, the failure messages and the transport guard never disagree.
      'none'      nothing stored — anonymous reads, public leagues only
@@ -3366,7 +3518,10 @@ function espnLeagueAccessMode(leagueId){
   return { isPrivate, publicProven, cloudCookies, diag };
 }
 
-function espnCredHeaders(){
+/* `leagueId` is the league THIS read is aimed at. It defaults to the league on
+   screen, but a historical read for a different league must pass its own id so
+   the share token that travels with it belongs to the league being read. */
+function espnCredHeaders(leagueId){
   const diag = espnCredDiagnostics();
   const headers = { Accept:'application/json,text/plain,*/*' };
   /* A stored-but-unusable cookie is the exact failure this whole seam exists to
@@ -3379,6 +3534,10 @@ function espnCredHeaders(){
   });
   if(diag.s2)   headers['x-espn-s2']   = diag.s2;
   if(diag.swid) headers['x-espn-swid'] = diag.swid;
+  /* The per-league share secret (H-1). Without it the relay will not replay a
+     league-mate's stored ESPN session for us — by design. Absent for a public
+     league, and unnecessary when this reader sent their own cookies above. */
+  Object.assign(headers, leagueShareHeaders(leagueId));
   return headers;
 }
 
@@ -3429,7 +3588,7 @@ async function fetchLeagueDataViaProxies(espnUrl){
   if(typeof window !== 'undefined' && window.location && window.location.protocol !== 'file:'){
     const apiUrl = serverlessEspnUrl(espnUrl);
     try{
-      const res = await fetch(apiUrl, { headers: espnCredHeaders() });
+      const res = await fetch(apiUrl, { headers: espnCredHeaders(leagueIdFromEspnUrl(espnUrl)) });
       if(!res.ok) throw await espnRelayError(res, apiUrl);
       const rawData = parseEspnProxyPayload(await res.text());
       if(validEspnPayload(rawData)) return rawData;
@@ -18837,11 +18996,26 @@ function cloudVersionFor(leagueId, seasonYear){
   return token.updatedAt;
 }
 
-function cloudHeaders(includeBody, includeCredentials){
+/* `leagueId` scopes the share token to the league this request is about. Note
+   that the token goes out on EVERY /api/league request, credentialed or not:
+   since H-1 the league id alone no longer authorises a read, so a reader who
+   arrived through an invite link and holds no ESPN cookies of their own gets in
+   on the token and nothing else. */
+function cloudHeaders(includeBody, includeCredentials, leagueId){
   const headers = { Accept:'application/json' };
   if(includeBody) headers['Content-Type'] = 'application/json';
   if(includeCredentials){
-    try{ Object.assign(headers, espnCredHeaders() || {}); }catch(e){}
+    try{ Object.assign(headers, espnCredHeaders(leagueId) || {}); }
+    catch(err){
+      console.error('[League Storage] Could not assemble the ESPN credential headers for a cloud ' +
+        'request; the save will go out unverified and the server will refuse it.', err);
+    }
+  } else {
+    try{ Object.assign(headers, leagueShareHeaders(leagueId)); }
+    catch(err){
+      console.error('[League Storage] Could not attach the invite token for league ' +
+        String(leagueId || '(none)') + '; a protected read will be refused with HTTP 401.', err);
+    }
   }
   return headers;
 }
@@ -19235,11 +19409,43 @@ async function hydrateLeagueFromCloud(league, options){
   ui.cloudLeagueId = id;
   setCloudStatus('syncing', 'Checking Supabase for saved settings, cookies, and history…');
   try{
+    /* Credentialed on purpose. Since H-1 a read needs EITHER this league's
+       invite token or this reader's own ESPN cookies verified against the
+       league — sending both means a member who has never seen an invite link
+       still gets in (and gets the token back to share). */
     const response = await fetch('/api/league?league_id=' + encodeURIComponent(id) +
       '&season_year=' + encodeURIComponent(season), {
-      method:'GET', headers:cloudHeaders(false, false), cache:'no-store',
+      method:'GET', headers:cloudHeaders(false, true, id), cache:'no-store',
     });
     if(seq !== ui.cloudHydrateSeq || id !== String($('leagueIdInput').value || '').trim()) return null;
+    /* ---- H-1: the league id alone is not a key ----
+       This is not a transport failure, so it must not be retried, cached over,
+       or degraded into "cloud unavailable". Say exactly what is missing and how
+       to get it, and stop: the local archive still works. */
+    if(response.status === 401){
+      clearCloudVersion();
+      const denial = await response.json().catch(()=> ({}));
+      console.warn('[League Storage] The shared archive for league ' + id + ' is protected by a ' +
+        'per-league invite link and this browser presented neither a matching token nor ESPN cookies ' +
+        'ESPN would confirm as a member.', denial && denial.error);
+      /* If we DID send a token and it was still refused, that token does not
+         belong to this league — a stale one left by a previous league, or a
+         truncated paste. Keeping it would make every future read fail with no
+         way back short of clearing site data, and would stop a fresh invite
+         link from taking hold. Drop it and say so. */
+      if(getLeagueShareToken(id)){
+        console.error('[League Share] The stored invite token for league ' + id + ' was rejected by ' +
+          '/api/league and has been discarded. Open the current invite link from a league-mate again.',
+          new Error('REJECTED_LEAGUE_SHARE_TOKEN'));
+        forgetLeagueShareToken(id);
+      }
+      const local = applyLocalLeagueFallback(id, season, 'this browser has no invite link for this league');
+      setCloudStatus('error', 'This league\u2019s shared archive is protected by an invite link. Ask a ' +
+        'league-mate to press Share in Setup and send you the full link (it carries the League ID and a ' +
+        'token), or paste your own ESPN cookies above so ESPN can confirm you are a member.');
+      updateShareInviteUI();
+      return local;
+    }
     if(response.status === 404){
       clearCloudVersion();
       const local = applyLocalLeagueFallback(id, season, 'no cloud record exists yet');
@@ -19252,6 +19458,9 @@ async function hydrateLeagueFromCloud(league, options){
 
     const record = payload.record || payload;
     setCloudVersion(id, season, record.updated_at);
+    /* The server returns the token only to a caller it just authorised, so
+       holding on to it is how a verified member becomes able to share. */
+    rememberShareTokenFromRecord(id, record);
     const applied = applyCloudRecord(record, id);
     cacheLeagueRecord(record);
     const stored = storedHistoryPayload(record);
@@ -19356,7 +19565,7 @@ async function syncLeagueToCloud(options){
   try{
     const postArchive = ()=> fetch('/api/league', {
       method:'POST',
-      headers:cloudHeaders(true, true),
+      headers:cloudHeaders(true, true, league),
       body:requestData.serialized,
       cache:'no-store',
     });
@@ -19410,7 +19619,7 @@ async function syncLeagueToCloud(options){
         try{
           const fresh = await fetch('/api/league?league_id=' + encodeURIComponent(league) +
             '&season_year=' + encodeURIComponent(season), {
-            method:'GET', headers:cloudHeaders(false, false), cache:'no-store',
+            method:'GET', headers:cloudHeaders(false, true, league), cache:'no-store',
           });
           if(fresh.ok){
             const freshPayload = await fresh.json().catch(()=> ({}));
@@ -19464,6 +19673,10 @@ async function syncLeagueToCloud(options){
     const record = payload.record || {};
     setCloudVersion(league, season, record.updated_at);
     cacheLeagueRecord(record);
+    /* The save is the mint: ESPN just confirmed this browser belongs to the
+       league, so the server hands back the per-league share secret. This is
+       what the Share button turns into an invite link. */
+    rememberShareTokenFromRecord(league, record);
     window._fsnCloudHasCookies = !!record.has_cookies;
     // A partial success: history saved but cookie encryption was skipped. Log
     // and note it, but the save itself succeeded — local usage is never halted.
@@ -19990,7 +20203,7 @@ async function fetchLeagueData(options){
   try{
     const headers = { 'Accept':'application/json' };
     try{
-      Object.assign(headers, espnCredHeaders() || {});
+      Object.assign(headers, espnCredHeaders(league) || {});
     }catch(err){
       console.error('[ESPN live fetch] Could not assemble the ESPN credential headers; the read will go out ' +
         'unauthenticated and a private league will refuse it.', err);
@@ -20328,6 +20541,7 @@ function setProvider(provider){
         : 'Enter your ESPN League ID to load the live 2026 season.');
   }
   refreshHistoryUrlLink();
+  updateShareInviteUI();
 }
 if($('providerEspn')) $('providerEspn').addEventListener('click', ()=>{ setProvider('espn'); savePrefs(); });
 if($('providerSleeper')) $('providerSleeper').addEventListener('click', ()=>{ setProvider('sleeper'); savePrefs(); });
@@ -20764,6 +20978,7 @@ function isPreseasonWeek1(week, viewedYear){
 $('leagueIdInput').addEventListener('input', ()=>{
   savePrefs();
   refreshHistoryUrlLink();
+  updateShareInviteUI();
   clearTimeout($('leagueIdInput')._cloudTimer);
   const league = $('leagueIdInput').value.trim();
   if(clearLeagueStateForSwitch(league, ui.provider)){
@@ -20777,6 +20992,194 @@ $('leagueIdInput').addEventListener('input', ()=>{
 });
 
 if($('cloudSyncBtn')) $('cloudSyncBtn').addEventListener('click', ()=> syncLeagueToCloud());
+
+/* ============================================================
+   LEAGUE INVITE LINK  (H-1 — Share button)
+
+   Every function here lives in this block's IIFE alongside the cloud-sync
+   engine and the Setup handlers it talks to. The token accessors themselves
+   (getLeagueShareToken / setLeagueShareToken / buildLeagueInviteUrl) are global,
+   in the first block, because block 2's sync path uses them too.
+============================================================ */
+
+/* Persist a token the server just handed back. Called from BOTH cloud paths —
+   the hydrate that authorised us and the save that minted it — so a member
+   never has to guess which one gave them the ability to share. */
+function rememberShareTokenFromRecord(leagueId, record){
+  const token = normalizeLeagueShareToken(record && record.share_token);
+  if(token) setLeagueShareToken(leagueId, token);
+  else if(record && record.has_share_token === false){
+    /* The row exists and genuinely holds no token: a legacy save from before
+       H-1. Not an error — the next save mints one — but the Share button must
+       say so rather than offering a link it cannot build. */
+    console.warn('[League Share] League ' + String(leagueId || '') + ' has no share token stored yet ' +
+      '(a record saved before per-league invite links existed). The next save will mint one.');
+  }
+  updateShareInviteUI();
+  return token;
+}
+
+function shareInviteLeagueId(){
+  const input = $('leagueIdInput');
+  return String((input && input.value) || '').trim();
+}
+
+/* One place that decides what the Share panel says, so the hint, the button and
+   the revealed link can never disagree. Called after every hydrate, every save,
+   and every keystroke in the League ID field. */
+function updateShareInviteUI(){
+  const panel = $('shareInvitePanel');
+  if(!panel) return;
+  const hint = $('shareInviteHint');
+  const btn = $('shareInviteBtn');
+  const result = $('shareInviteResult');
+  const field = $('shareInviteUrl');
+  const league = shareInviteLeagueId();
+  const token = league ? getLeagueShareToken(league) : '';
+  const url = buildLeagueInviteUrl(league, token);
+
+  // A non-ESPN provider has no /api/league record and therefore no invite link.
+  const applicable = ui.provider === 'espn';
+  panel.classList.toggle('hidden', !applicable);
+  if(!applicable) return;
+
+  if(btn) btn.disabled = !league;
+
+  if(url){
+    if(hint) hint.textContent = 'Your league-mates can open this link and land in a fully connected app — no ESPN cookies to paste.';
+    if(field && field.value !== url) field.value = url;
+    if(result) result.classList.remove('hidden');
+  } else {
+    if(result) result.classList.add('hidden');
+    if(field) field.value = '';
+    if(hint){
+      hint.textContent = !league
+        ? 'Enter your League ID above, then press Share to mint an invite link.'
+        : 'No invite link for this league yet. Press Share — with your ESPN cookies saved above, ' +
+          'this browser will save the league and mint one.';
+    }
+  }
+}
+
+function setShareInviteStatus(message, tone){
+  const el = $('shareInviteStatus');
+  if(!el){
+    // Never let a missing surface swallow the verdict.
+    console.warn('[League Share] #shareInviteStatus is missing; the reader will not see: ' + message);
+    return;
+  }
+  el.textContent = message || '';
+  el.style.color = tone === 'error' ? 'var(--red)' : (tone === 'ok' ? 'var(--green)' : 'var(--dim)');
+}
+
+/* Copy with a real fallback. The async clipboard API is unavailable in plenty
+   of embedded and older mobile browsers, and a silent no-op there would look
+   exactly like a successful copy. Select the text instead and say so. */
+async function copyInviteLink(){
+  const field = $('shareInviteUrl');
+  const url = String((field && field.value) || '').trim();
+  if(!url){
+    setShareInviteStatus('No invite link to copy yet.', 'error');
+    return false;
+  }
+  try{
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      await navigator.clipboard.writeText(url);
+      setShareInviteStatus('Invite link copied ✓', 'ok');
+      toast('Invite link copied');
+      return true;
+    }
+  }catch(err){
+    console.warn('[League Share] The clipboard API refused the copy; falling back to selecting the field.', err);
+  }
+  try{
+    if(field){ field.focus(); field.select(); field.setSelectionRange(0, url.length); }
+    setShareInviteStatus('Link selected — press copy on your keyboard.', 'idle');
+  }catch(selectErr){
+    console.error('[League Share] Could not select the invite link field for a manual copy.', selectErr);
+    setShareInviteStatus('Copy the link from the field above.', 'error');
+  }
+  return false;
+}
+
+/* The Share button. Any authenticated member can mint: if this browser already
+   holds the league's token it just reveals the link, and otherwise it does the
+   one thing that mints a token — an ESPN-verified save — then reveals it. */
+async function handleShareInvite(){
+  const league = shareInviteLeagueId();
+  if(!/^\d{1,20}$/.test(league)){
+    setShareInviteStatus('Enter a valid numeric League ID first.', 'error');
+    return false;
+  }
+
+  if(getLeagueShareToken(league)){
+    updateShareInviteUI();
+    setShareInviteStatus('', 'idle');
+    return copyInviteLink();
+  }
+
+  /* No token held. Try a credentialed read first — a member who already saved
+     from another device gets the league's existing token back without
+     re-uploading the whole archive. */
+  const btn = $('shareInviteBtn');
+  if(btn) btn.disabled = true;
+  setShareInviteStatus('Checking for this league\u2019s invite link…', 'idle');
+  try{
+    await hydrateLeagueFromCloud(league, { silent:true });
+    if(getLeagueShareToken(league)){
+      updateShareInviteUI();
+      setShareInviteStatus('Invite link ready.', 'ok');
+      return copyInviteLink();
+    }
+
+    /* Still nothing: either the league has never been saved, or its record
+       predates share tokens. Minting one requires an ESPN-verified save, which
+       requires this reader's own cookies — say so plainly rather than failing
+       with a bare error. */
+    const creds = getEspnCreds();
+    if(!creds.s2 || !creds.swid){
+      setShareInviteStatus('', 'idle');
+      const hint = $('shareInviteHint');
+      if(hint){
+        hint.textContent = 'Minting an invite link needs your own ESPN cookies, so ESPN can confirm you are ' +
+          'a member of this league. Paste espn_s2 and SWID in Private League Access above, then press Share again.';
+      }
+      toast('Add your ESPN cookies to mint an invite link');
+      return false;
+    }
+
+    setShareInviteStatus('Minting this league\u2019s invite link…', 'idle');
+    const saved = await syncLeagueToCloud({ silent:true });
+    if(!saved){
+      // syncLeagueToCloud has already logged the exact reason and written it
+      // into the cloud status line; point the reader at it rather than
+      // inventing a second, vaguer explanation here.
+      setShareInviteStatus('Could not mint the link — see the League Cloud status above.', 'error');
+      return false;
+    }
+    if(!getLeagueShareToken(league)){
+      console.error('[League Share] The save for league ' + league + ' succeeded but returned no share ' +
+        'token, so no invite link can be built. The /api/league deployment may predate the H-1 share secret.',
+        new Error('MISSING_SHARE_TOKEN_AFTER_SAVE'));
+      setShareInviteStatus('The league saved, but the server returned no invite token. Check the /api/league deployment.', 'error');
+      return false;
+    }
+    updateShareInviteUI();
+    setShareInviteStatus('Invite link minted.', 'ok');
+    return copyInviteLink();
+  }catch(err){
+    console.error('[League Share] Minting the invite link for league ' + league + ' failed.', err);
+    setShareInviteStatus('Could not mint the invite link — ' +
+      String((err && err.message) || err || 'unknown error') + '.', 'error');
+    return false;
+  }finally{
+    if(btn) btn.disabled = false;
+  }
+}
+
+if($('shareInviteBtn')) $('shareInviteBtn').addEventListener('click', ()=> handleShareInvite());
+if($('shareInviteCopy')) $('shareInviteCopy').addEventListener('click', ()=> copyInviteLink());
+if($('shareInviteUrl')) $('shareInviteUrl').addEventListener('focus', function(){ this.select(); });
 
 $('historyUnlockToggle').addEventListener('click', ()=>{
   const panel = $('historyUploadPanel');
@@ -22879,6 +23282,47 @@ function applyDeepLink(){
   const yahooConnected = params.get('yahoo') === 'connected';
   const yahooError = String(params.get('yahoo_error') || '');
 
+  /* ---- LEAGUE INVITE LINK (H-1) ----
+     ?id=<leagueId>&token=<shareToken> — the link a league-mate pressed Share to
+     produce. The token is what authorises this browser to read the league's
+     shared archive and to have /api/espn replay the league's stored ESPN
+     session, so a member can join a private league without ever handling
+     cookies. Both halves are required: an id with no token is just a league id,
+     which since H-1 opens nothing. */
+  const invitedLeague = String(params.get('id') || params.get('league_id') || params.get('leagueId') || '').trim();
+  const invitedToken = normalizeLeagueShareToken(params.get('token') || params.get('share_token'));
+  let invited = '';
+  if(/^\d{1,20}$/.test(invitedLeague)){
+    invited = invitedLeague;
+    if(invitedToken){
+      if(setLeagueShareToken(invitedLeague, invitedToken)){
+        console.info('[League Share] Accepted an invite link for league ' + invitedLeague + '.');
+      }
+    } else {
+      /* An id with no token. Not fatal — the league may be public, or this
+         reader may hold their own ESPN cookies — but it is the exact shape of a
+         truncated paste, so name it rather than failing mysteriously later. */
+      console.warn('[League Share] The link carried League ID ' + invitedLeague + ' but no share token. ' +
+        'If this league is private you will need the FULL invite link from a league-mate.');
+    }
+    try{
+      const input = $('leagueIdInput');
+      if(input && input.value.trim() !== invitedLeague){
+        input.value = invitedLeague;
+        savePrefs();
+      }
+    }catch(err){
+      console.error('[League Share] Could not apply the invited League ID ' + invitedLeague +
+        ' to the Setup field; the invite will not open the league automatically.', err);
+    }
+    // localStorage alone: throws by design in private mode, and the invite
+    // still works for this page lifecycle without it.
+    try{ localStorage.setItem(SAVED_LEAGUE_ID_KEY, invitedLeague); }catch(e){}
+  } else if(invitedLeague || invitedToken){
+    console.warn('[League Share] Ignoring an invite link with a malformed League ID (' +
+      (invitedLeague || '(empty)') + ').');
+  }
+
   const target = (params.get('goto') || '').toLowerCase();
   const known = ['home','matchups','news','analytics','recordbook','setup'];
   // A platform hint implies the user came to connect a league, so default the
@@ -22886,12 +23330,17 @@ function applyDeepLink(){
   const dest = known.includes(target) ? target : (platform ? 'setup' : '');
   if(dest) setScreen(dest);
 
-  // Clean the query string so a refresh or share doesn't re-trigger the jump
-  // and the URL stays tidy. Guarded for older/embedded browsers.
-  if((target || platform || yahooConnected || yahooError) && window.history && window.history.replaceState){
+  /* Clean the query string so a refresh or share doesn't re-trigger the jump
+     and the URL stays tidy. For an invite link this is also a security measure:
+     the share token must not linger in the address bar, the back/forward stack,
+     a bookmark, or a Referer header once it has been stored. Guarded for
+     older/embedded browsers — a browser that refuses replaceState keeps a
+     working app, just a untidy URL. */
+  if((target || platform || yahooConnected || yahooError || invited || invitedToken) &&
+     window.history && window.history.replaceState){
     try{ window.history.replaceState({}, document.title, window.location.pathname); }catch(e){}
   }
-  return { platform, yahooConnected, yahooError };
+  return { platform, yahooConnected, yahooError, leagueId:invited };
 }
 
 /* ============================================================
@@ -22913,8 +23362,13 @@ function bootApp(){
   // additive: with no params the app boots to Home exactly as before.
   const deepLink = applyDeepLink();
 
-  let savedLeagueId = '';
-  try{ savedLeagueId = (localStorage.getItem(SAVED_LEAGUE_ID_KEY) || '').trim(); }catch(e){}
+  // An invite link names the league to open; otherwise fall back to the last
+  // league this browser used.
+  let savedLeagueId = String((deepLink && deepLink.leagueId) || '').trim();
+  if(!savedLeagueId){
+    try{ savedLeagueId = (localStorage.getItem(SAVED_LEAGUE_ID_KEY) || '').trim(); }catch(e){}
+  }
+  updateShareInviteUI();
   if(ui.provider === 'yahoo'){
     if(deepLink && deepLink.yahooError){
       $('fetchStatus').style.color = 'var(--red)';

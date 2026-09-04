@@ -8,9 +8,21 @@ create table if not exists public.leagues (
   season_year integer not null check (season_year between 1990 and 2100),
   history_json jsonb not null default '{}'::jsonb,
   cookies jsonb,
+  -- Per-league share secret (H-1). The numeric ESPN league id is public — it
+  -- appears in every league URL — so it can never be the thing that authorises
+  -- a read of this row or a replay of the cookie envelope above. The token is
+  -- 32 random bytes, base64url encoded, minted by /api/league on the first
+  -- ESPN-verified member save and reused by every later save for the league.
+  share_token text,
   updated_at timestamptz not null default now(),
   primary key (league_id, season_year)
 );
+
+-- Idempotent add for projects created before the share secret existed. Rows
+-- left with a null share_token are legacy: /api/league still serves them to an
+-- ESPN-verified member, and /api/espn refuses to lend their stored cookies to
+-- anyone, until the next member save mints the league's token.
+alter table public.leagues add column if not exists share_token text;
 
 alter table public.leagues enable row level security;
 
@@ -36,6 +48,11 @@ for each row execute function public.mffu_touch_league_updated_at();
 
 create index if not exists leagues_updated_at_idx
   on public.leagues (updated_at desc);
+
+-- The share-token lookup is always scoped to one league id, so index the pair
+-- rather than the secret alone.
+create index if not exists leagues_share_token_idx
+  on public.leagues (league_id, share_token);
 
 -- ------------------------------------------------------------
 -- Pre-launch waitlist. Populated only by the /api/waitlist route

@@ -11,7 +11,7 @@
    cannot be repurposed as an open relay for arbitrary URLs.
 ============================================================ */
 
-const { getStoredLeagueCookies } = require('./league');
+const { resolveStoredLeagueAccess } = require('./league');
 /* One sanitizer/serializer shared with api/league.js so the relay and the
    cookie-ingestion handler can never disagree about what a valid credential
    looks like. See api/espn-cookies.js for the paste shapes it repairs. */
@@ -32,7 +32,7 @@ const BROWSER_USER_AGENT =
 function applyCorsHeaders(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-espn-s2, x-espn-swid');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-espn-s2, x-espn-swid, x-league-token');
 }
 
 /* ============================================================
@@ -64,7 +64,13 @@ function applyCorsHeaders(res) {
       not trusted to be relevant:
 
         request         x-espn-s2 / x-espn-swid — this reader's own cookies
-        league-store    the encrypted envelope stored for THIS league id
+        league-store    the encrypted envelope stored for THIS league id, lent
+                        ONLY to a request carrying this league's share token
+                        (x-league-token, or ?token= on this relay's own URL).
+                        Knowing the numeric league id used to be enough to
+                        borrow a league-mate's ESPN session — that is H-1, and
+                        resolveStoredLeagueAccess in api/league.js is the gate
+                        that closes it.
         deployment-env  ESPN_S2 / ESPN_SWID — a deployment-wide fallback that
                         is scoped to no league at all. See the anonymous retry
                         in the handler: a read refused with these is retried
@@ -93,10 +99,42 @@ function credentialPair(source, swidRaw, s2Raw) {
   };
 }
 
-/* Returns { mode:'public'|'private', pair, rejected[] }. `rejected` holds every
-   source that supplied something unusable, so the handler can name it in the
-   logs instead of leaving a silently anonymous read behind. */
-async function resolveEspnCredentials(req, target) {
+/* The share token for the league being read. Two transports, because two very
+   different callers exist: the app sends x-league-token on every relay read,
+   while a link or a script pasted straight at /api/espn carries ?token= on the
+   relay's own query string (never on the inner ESPN url, which is forwarded
+   verbatim to ESPN). Vercel populates req.query; req.url is parsed as a
+   fallback so the function behaves identically under `vercel dev` or any host
+   that hands us a bare request object. */
+function requestShareToken(req) {
+  const headers = (req && req.headers) || {};
+  const query = (req && req.query) || {};
+  const candidates = [headers['x-league-token'], query.token, query.share_token];
+  for (const candidate of candidates) {
+    const value = Array.isArray(candidate) ? candidate[0] : candidate;
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  if (req && req.url) {
+    try {
+      const parsed = new URL(req.url, 'http://localhost');
+      const fromUrl = parsed.searchParams.get('token') || parsed.searchParams.get('share_token');
+      if (fromUrl && fromUrl.trim()) return fromUrl.trim();
+    } catch (error) {
+      console.warn('[api/espn] Could not parse req.url while looking for a share token; ' +
+        'the stored league session will not be available for this read.', error);
+    }
+  }
+  return '';
+}
+
+/* Returns { mode:'public'|'private', pair, rejected[], storedDenied }.
+   `rejected` holds every source that supplied something unusable, so the
+   handler can name it in the logs instead of leaving a silently anonymous read
+   behind. `storedDenied` is set when this league HAS a stored ESPN session that
+   this request may not borrow — the read still goes out anonymously (a public
+   league must never be blocked behind a token it does not need), and the
+   handler turns ESPN's refusal into the share-token 401. */
+async function resolveEspnCredentials(req, target, shareToken) {
   const rejected = [];
 
   const consider = (pair) => {
@@ -114,24 +152,37 @@ async function resolveEspnCredentials(req, target) {
     if (pair) return { mode: 'private', pair: pair, rejected: rejected };
   }
 
+  let storedDenied = null;
   const context = leagueContextFromTarget(target);
   if (context.leagueId) {
-    // getStoredLeagueCookies already swallows its own storage failures and
-    // returns null unless BOTH cookies decrypted, so an unconfigured or
-    // unreachable Supabase can never turn a public read into an error.
-    const stored = await getStoredLeagueCookies(context.leagueId, context.seasonYear);
-    if (stored) {
-      const pair = consider(credentialPair('league-store', stored.swid, stored.espn_s2));
-      if (pair) return { mode: 'private', pair: pair, rejected: rejected };
+    /* resolveStoredLeagueAccess swallows its own storage failures and answers
+       'none' unless BOTH cookies decrypted AND the share token matched, so an
+       unconfigured or unreachable Supabase can never turn a public read into
+       an error — and can never be talked into lending credentials either. */
+    const access = await resolveStoredLeagueAccess(context.leagueId, context.seasonYear, shareToken);
+    if (access.status === 'unauthorized') {
+      /* The league has a stored session and this caller may not use it. Do NOT
+         return here: falling straight to a 401 would break every PUBLIC league
+         whose archive a member happens to have saved, because those read
+         perfectly well anonymously. Record the denial, keep resolving, and let
+         ESPN's own answer decide — see the handler, which reports the
+         share-token verdict only once ESPN actually refuses the read. */
+      storedDenied = { leagueId: context.leagueId, reason: access.reason };
+      console.warn('[api/espn] Not attaching the stored ESPN session for league ' + context.leagueId +
+        ' — ' + access.reason + '. Reading ' + target.pathname + ' without it; if this league is ' +
+        'private the caller will be told they need the full invite link.');
+    } else if (access.status === 'ok') {
+      const pair = consider(credentialPair('league-store', access.cookies.swid, access.cookies.espn_s2));
+      if (pair) return { mode: 'private', pair: pair, rejected: rejected, storedDenied: null };
     }
   }
 
   if (process.env.ESPN_S2 || process.env.ESPN_SWID) {
     const pair = consider(credentialPair('deployment-env', process.env.ESPN_SWID, process.env.ESPN_S2));
-    if (pair) return { mode: 'private', pair: pair, rejected: rejected };
+    if (pair) return { mode: 'private', pair: pair, rejected: rejected, storedDenied: storedDenied };
   }
 
-  return { mode: 'public', pair: null, rejected: rejected };
+  return { mode: 'public', pair: null, rejected: rejected, storedDenied: storedDenied };
 }
 
 /* ESPN sometimes answers an inaccessible (private / not-visible) league with a
@@ -248,8 +299,10 @@ module.exports = async function handler(req, res) {
   }
 
   // Commit to public or private BEFORE a header is built. See the credential
-  // resolution block above for why the pair is atomic and source-tagged.
-  let creds = await resolveEspnCredentials(req, target);
+  // resolution block above for why the pair is atomic and source-tagged, and
+  // why the stored league session is now gated on this league's share token.
+  const shareToken = requestShareToken(req);
+  let creds = await resolveEspnCredentials(req, target, shareToken);
 
   // A credential that arrived but did not survive resolution is the single most
   // confusing private-league failure there is: the request looks authenticated
@@ -288,7 +341,7 @@ module.exports = async function handler(req, res) {
       const anonymous = await readEspnUpstream(target.toString(), '');
       if (!anonymous.refused) {
         read = anonymous;
-        creds = { mode: 'public', pair: null, rejected: creds.rejected };
+        creds = { mode: 'public', pair: null, rejected: creds.rejected, storedDenied: creds.storedDenied };
       } else {
         console.warn('[api/espn] The anonymous retry of ' + target.pathname + ' was refused too (HTTP ' +
           anonymous.upstream.status + '); this league really does require credentials.');
@@ -308,6 +361,37 @@ module.exports = async function handler(req, res) {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
+
+    /* ---- H-1: the share-token verdict ----
+       This league HAS a stored ESPN session, this caller was not allowed to
+       borrow it, and ESPN has now refused the read that went out without it.
+       That combination — and only that combination — means the reader needs
+       the full invite link. A public league never reaches here, because it
+       answered the anonymous read; a reader carrying their own cookies never
+       reaches here either, because their own pair was resolved first and their
+       refusal is a real credential verdict that must reach them intact. */
+    const shareTokenBlocked = !!(read.refused && creds.storedDenied &&
+      /* Not a private read at all, or private only by way of the deployment-wide
+         ESPN_S2 / ESPN_SWID pair — which is scoped to no league, so its refusal
+         says nothing about this reader and everything about the session they
+         were not allowed to borrow. A reader carrying their OWN cookies is
+         excluded: their refusal is a real credential verdict about them. */
+      (creds.mode !== 'private' || creds.pair.source === 'deployment-env'));
+    if (shareTokenBlocked) {
+      console.warn('[api/espn] Answering 401 SHARE_TOKEN_REQUIRED for league ' + creds.storedDenied.leagueId +
+        ' on ' + target.pathname + ' — ' + creds.storedDenied.reason +
+        ', and ESPN refused the read without the stored session (HTTP ' + upstream.status + ').');
+      return res.status(401).json({
+        error: 'This league\'s saved ESPN access is protected by a per-league invite link. Open the full ' +
+          'link a league-mate sent you — it carries both the League ID and the share token — or paste ' +
+          'your own espn_s2 and SWID cookies in Setup → Private League Access.',
+        code: 'SHARE_TOKEN_REQUIRED',
+        league_id: creds.storedDenied.leagueId,
+        detail: creds.storedDenied.reason,
+        espn: payload,
+        auth: 'share-token',
+      });
+    }
 
     // Parse and return the ESPN JSON payload. The leagueHistory route replies
     // with a top-level array, so we forward whatever JSON shape ESPN sends.
