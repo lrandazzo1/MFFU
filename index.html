@@ -2835,6 +2835,381 @@ function normalizedLeagueProvider(provider){
   return provider === 'sleeper' || provider === 'yahoo' ? provider : 'espn';
 }
 
+/* ============================================================
+   GLOBAL SCOPE — GUARDED DEVICE STORAGE (FSNStore)
+
+   Why this exists, and why it is global.
+
+   Every localStorage call in this file used to be wrapped in a bare
+   `try{...}catch(e){}`. On desktop that is invisible, because desktop Chrome
+   and Firefox hand an origin ~10MB and the writes simply succeed. On iOS
+   Safari the per-origin budget is ~5MB AND WebKit accounts for it in UTF-16,
+   so a stored string costs two bytes per character. The cloud archive mirror
+   (`fsn.league.storage.v2:<league>:<season>`) is deliberately optimized up to
+   CLOUD_ARCHIVE_TARGET_BYTES — 3.1MB of JSON — which is ~6.2MB against that
+   budget. It throws QuotaExceededError on every mobile launch, the empty catch
+   eats it, and nothing anywhere says so.
+
+   The consequences are the reported bug, in order:
+     1. The offline history mirror never lands, so a mobile reader who opens
+        the app without connectivity (or hits a slow /api/league) gets no
+        Record Book at all where desktop shows a full one.
+     2. Those mirrors are keyed per league AND per season and nothing ever
+        evicts them, so the origin fills permanently. Once it is full the
+        SMALL writes fail too — `fsn_saved_league_id`, `fsn.setup.v1`, the
+        saved-league list — and those are exactly what bootApp() reads to
+        decide whether to rehydrate. The next launch finds nothing, skips
+        rehydration entirely, and parks the reader on the empty skeleton.
+
+   So this facade does four things a bare try/catch cannot:
+     - falls back to an in-memory mirror, so a value that could not be
+       persisted is still readable for the rest of the page lifecycle
+       (a mobile session then behaves like desktop until it is closed);
+     - names the failure loudly, once per key, per CLAUDE.md rule 3;
+     - on a quota failure, evicts only regenerable network caches and retries,
+       which is what keeps the small critical keys writable on mobile;
+     - refuses an oversized write before attempting it, so a 3MB archive can
+       never be the thing that pushes the League ID out of storage.
+
+   It is global because blocks 1, 3, 5 and 6 all touch storage. A facade only
+   half the callers can reach is worse than none — the other half keep the
+   silent catches and the bug survives in them.
+============================================================ */
+window.FSNStore = (function(){
+  /* Values that could not reach the device. Reads consult this first, so a
+     mobile session with a full or blocked store still behaves correctly until
+     the tab is closed — that is the "safe fallback to in-memory state". */
+  const memory = new Map();
+  /* Keys already reported. A render loop must not print the same quota error
+     sixty times, but the FIRST occurrence is always loud. */
+  const reported = new Set();
+
+  /* Only regenerable network caches may be evicted to make room. Deliberately
+     NOT evictable: `mffu.narrative.body.*` (News Desk determinism state — a
+     reader who reloads must get the same article, CLAUDE.md rule 2),
+     `fsn.news.community.*` (manager-authored stories that exist nowhere else),
+     and the ESPN credential keys. Losing any of those to a cache eviction is a
+     worse bug than the one being fixed. */
+  const EVICTABLE_PREFIXES = ['fsn.league.storage.v2:', 'fsn_sleeper_players_v1'];
+
+  /* A single value above this never reaches localStorage. Sized for the iOS
+     budget described above: ~1.5MB of JSON is ~3MB of UTF-16, which leaves
+     real headroom for prefs, the saved-league list and the credential keys
+     rather than consuming the entire origin for one league's archive. */
+  const MAX_PERSIST_BYTES = Math.floor(1.5 * 1024 * 1024);
+
+  function backing(){
+    try{
+      const store = window.localStorage;
+      /* Presence is not availability. Safari in Lockdown/private mode and an
+         embedded webview with site data blocked both expose the object and
+         throw on first use, so the probe has to be a real write. */
+      const probe = '__fsn_probe__';
+      store.setItem(probe, '1');
+      store.removeItem(probe);
+      return store;
+    }catch(err){
+      /* Deliberately quiet HERE, and only here: this is the "optional browser
+         API that throws by design" case CLAUDE.md rule 3 carves out, and it is
+         probed on every single read and write, so logging it here would print
+         thousands of identical lines. The verdict is not swallowed — every
+         caller reports it through reportOnce() with the key that was actually
+         being read or written, which is the part a reader can act on. */
+      return null;
+    }
+  }
+
+  /* WebKit, Blink and Gecko all report a full origin differently, and older
+     WebKit throws a plain Error with only a legacy code on it. */
+  function isQuotaError(err){
+    if(!err) return false;
+    const name = String(err.name || '');
+    const code = Number(err.code);
+    return name === 'QuotaExceededError' ||
+           name === 'NS_ERROR_DOM_QUOTA_REACHED' ||
+           code === 22 || code === 1014;
+  }
+
+  /* UTF-8 length. Note this UNDERSTATES the cost on WebKit, which bills
+     localStorage in UTF-16 — that is the direction we want to be wrong in only
+     because the caps below are set against the UTF-16 figure already. Falls
+     back to character count where TextEncoder is missing, matching what
+     cloudJsonBytes() already does for the upload budget. */
+  function byteLength(value){
+    const text = String(value == null ? '' : value);
+    try{ return new TextEncoder().encode(text).length; }
+    catch(err){ return text.length; }
+  }
+
+  function reportOnce(key, message, err){
+    if(reported.has(key)) return;
+    reported.add(key);
+    console.error('[FSNStore] ' + message, err || new Error('FSN_STORE_WRITE_REFUSED:' + key));
+  }
+
+  /* Drop regenerable caches other than the key being written, newest-last so a
+     league the reader is not looking at goes before the one they are. Returns
+     how many bytes were released, which is what tells the caller whether a
+     retry is worth attempting at all. */
+  function evictRegenerable(store, exceptKey){
+    let freed = 0;
+    const doomed = [];
+    try{
+      for(let i = 0; i < store.length; i++){
+        const key = store.key(i);
+        if(!key || key === exceptKey) continue;
+        if(EVICTABLE_PREFIXES.some(prefix=> key.indexOf(prefix) === 0)) doomed.push(key);
+      }
+    }catch(err){
+      console.warn('[FSNStore] Could not enumerate localStorage to reclaim space.', err);
+      return 0;
+    }
+    doomed.forEach(function(key){
+      try{
+        freed += byteLength(store.getItem(key) || '');
+        store.removeItem(key);
+      }catch(err){
+        console.warn('[FSNStore] Could not evict the regenerable cache "' + key + '".', err);
+      }
+    });
+    if(doomed.length){
+      console.warn('[FSNStore] Reclaimed ' + doomed.length + ' regenerable cache entr' +
+        (doomed.length === 1 ? 'y' : 'ies') + ' (~' + Math.round(freed / 1024) + 'KB) to make room for "' +
+        exceptKey + '". Those entries refetch from the network on demand.');
+    }
+    return freed;
+  }
+
+  const api = {
+    isQuotaError,
+    byteLength,
+    MAX_PERSIST_BYTES,
+
+    /* True only if the device store both exists and accepts a write. */
+    available(){ return !!backing(); },
+
+    /* The in-memory mirror wins over the device copy, because it is by
+       definition the more recent of the two: it only holds a key at all when a
+       write to the device failed after it. */
+    get(key){
+      if(memory.has(key)) return memory.get(key);
+      const store = backing();
+      if(!store){
+        reportOnce('read:' + key, 'Device storage is unavailable, so "' + key + '" could not be read. ' +
+          'This session runs from memory only and will not survive a reload.');
+        return null;
+      }
+      try{ return store.getItem(key); }
+      catch(err){
+        console.error('[FSNStore] Reading "' + key + '" from localStorage threw.', err);
+        return null;
+      }
+    },
+
+    /* JSON read with a loud, specific failure. A corrupt or truncated value —
+       the normal result of a write that was cut off at the quota boundary — is
+       reported and cleared rather than being retried on every launch. */
+    getJSON(key, fallback){
+      const raw = api.get(key);
+      if(raw == null || raw === '') return fallback === undefined ? null : fallback;
+      try{ return JSON.parse(raw); }
+      catch(err){
+        console.error('[FSNStore] "' + key + '" holds unparseable JSON (' + byteLength(raw) +
+          ' bytes) and has been discarded; it was most likely truncated by a storage-quota failure.', err);
+        api.remove(key);
+        return fallback === undefined ? null : fallback;
+      }
+    },
+
+    /* Returns { ok, persisted, reason }. `ok` means the value is readable for
+       the rest of this lifecycle; `persisted` means it also reached the device.
+       Callers that care about the difference (the archive mirror) branch on
+       `persisted`; callers that only need the value to work now ignore it.
+
+       opts.maxBytes  — refuse to attempt a write larger than this.
+       opts.evictable — this key is itself a regenerable cache, so a quota
+                        failure on it is expected housekeeping, not an error. */
+    set(key, value, options){
+      const opts = options || {};
+      const text = String(value == null ? '' : value);
+      const size = byteLength(text);
+      const cap = Number(opts.maxBytes) || MAX_PERSIST_BYTES;
+
+      if(size > cap){
+        memory.set(key, text);
+        reportOnce('oversize:' + key, 'Refusing to persist "' + key + '" — ' +
+          Math.round(size / 1024) + 'KB exceeds the ' + Math.round(cap / 1024) +
+          'KB single-value cap. Attempting it would throw on iOS (a ~5MB origin budget counted in ' +
+          'UTF-16) and could evict the League ID and preferences with it. The value is held in memory ' +
+          'for this session only.');
+        return { ok:true, persisted:false, reason:'oversize', bytes:size };
+      }
+
+      const store = backing();
+      if(!store){
+        memory.set(key, text);
+        reportOnce('write:' + key, 'Device storage is unavailable (private mode, blocked site data, or an ' +
+          'embedded webview), so "' + key + '" is held in memory for this session and will not survive a reload.');
+        return { ok:true, persisted:false, reason:'unavailable', bytes:size };
+      }
+
+      try{
+        store.setItem(key, text);
+        memory.delete(key);
+        return { ok:true, persisted:true, reason:'', bytes:size };
+      }catch(err){
+        if(!isQuotaError(err)){
+          memory.set(key, text);
+          console.error('[FSNStore] Writing "' + key + '" (' + Math.round(size / 1024) +
+            'KB) to localStorage threw for a reason other than quota; the value is held in memory ' +
+            'for this session.', err);
+          return { ok:true, persisted:false, reason:'error', bytes:size };
+        }
+        /* Quota. Reclaim regenerable caches and try once more — this is the
+           step that keeps the small, critical keys writable on a mobile device
+           whose origin has filled up with old per-season archive mirrors. */
+        evictRegenerable(store, key);
+        try{
+          store.setItem(key, text);
+          memory.delete(key);
+          console.warn('[FSNStore] "' + key + '" was written after reclaiming regenerable caches.');
+          return { ok:true, persisted:true, reason:'evicted', bytes:size };
+        }catch(retryErr){
+          memory.set(key, text);
+          if(opts.evictable){
+            /* This key IS a cache. Not being able to keep it is a degraded
+               offline experience, not a fault — say so at warn, not error. */
+            console.warn('[FSNStore] Device storage is full; the regenerable cache "' + key + '" (' +
+              Math.round(size / 1024) + 'KB) stays in memory only and will refetch after a reload.', retryErr);
+          } else {
+            reportOnce('quota:' + key, 'Device storage is full and "' + key + '" could not be saved even ' +
+              'after reclaiming every regenerable cache. It is held in memory, so this session works, but it ' +
+              'will not survive a reload — which is what leaves a relaunch with nothing to rehydrate.');
+          }
+          return { ok:true, persisted:false, reason:'quota', bytes:size };
+        }
+      }
+    },
+
+    setJSON(key, value, options){
+      let text;
+      try{ text = JSON.stringify(value); }
+      catch(err){
+        console.error('[FSNStore] "' + key + '" could not be serialised and was not stored.', err);
+        return { ok:false, persisted:false, reason:'serialize', bytes:0 };
+      }
+      return api.set(key, text, options);
+    },
+
+    remove(key){
+      memory.delete(key);
+      const store = backing();
+      if(!store) return false;
+      try{ store.removeItem(key); return true; }
+      catch(err){
+        console.warn('[FSNStore] Could not remove "' + key + '" from localStorage.', err);
+        return false;
+      }
+    },
+  };
+  return api;
+})();
+
+/* ============================================================
+   GLOBAL SCOPE — BOUNDED NETWORK READS (FSNNet)
+
+   `fetch()` has no timeout. On desktop that is survivable: the connection
+   either completes or the OS resets it in a few seconds. On mobile it is the
+   second half of this bug. A cellular request that stalls mid-flight is not
+   reset — iOS holds the socket open, and WebKit suspends in-flight requests
+   outright when the tab is backgrounded (a lock screen, an app switch, an
+   incoming call). The promise never settles and never rejects.
+
+   Every fetch on the league path was unbounded, so a stalled /api/espn or
+   /api/league left setFetchLoading(true) latched on with no error to catch:
+   the spinner spins forever and the console stays clean. That is precisely
+   the reported "hangs" symptom, and it is why it is mobile-only.
+
+   Every read below therefore travels with an AbortController and a deadline,
+   and a request that trips it throws a tagged, logged error instead of
+   vanishing. The timer is intentionally NOT cleared when the response headers
+   arrive: a body that stalls halfway through a multi-megabyte archive is the
+   most common shape of this failure, so the deadline has to cover the body
+   read too. Aborting an already-completed request is a no-op.
+============================================================ */
+window.FSNNet = (function(){
+  /* Interactive reads the reader is actively waiting on. Long enough to ride
+     out a slow handoff between cell and wifi, short enough that a dead request
+     produces an error while the reader is still looking at the screen. */
+  const DEFAULT_TIMEOUT_MS = 20000;
+  /* The multi-season archive is megabytes over a mobile link, and it hydrates
+     in the background behind an already-connected live season, so it gets a
+     far longer leash than anything the reader is blocked on. */
+  const ARCHIVE_TIMEOUT_MS = 60000;
+
+  function timeoutError(label, ms){
+    const err = new Error('FETCH_TIMEOUT after ' + ms + 'ms: ' + label);
+    err.name = 'FSNTimeoutError';
+    err.timeout = true;
+    return err;
+  }
+
+  /* True for anything this module aborted, so a call site can tell a deadline
+     apart from a genuine network fault or an HTTP status. */
+  function isTimeout(err){
+    return !!(err && (err.timeout === true || err.name === 'FSNTimeoutError'));
+  }
+
+  async function fetchWithTimeout(url, options, settings){
+    const opts = options || {};
+    const cfg = settings || {};
+    const ms = Number(cfg.timeoutMs) || DEFAULT_TIMEOUT_MS;
+    const label = cfg.label || String(url).slice(0, 120);
+
+    /* An ancient webview without AbortController still gets a working app —
+       just an unbounded request, exactly as before this change. */
+    if(typeof AbortController !== 'function'){
+      console.warn('[FSNNet] AbortController is unavailable in this browser, so "' + label +
+        '" runs without a timeout and can hang if the network stalls.');
+      return fetch(url, opts);
+    }
+
+    const controller = new AbortController();
+    let tripped = false;
+    const timer = setTimeout(function(){
+      tripped = true;
+      /* Loud on purpose: before this existed, this exact condition produced a
+         spinner and total silence. */
+      console.error('[FSNNet] "' + label + '" exceeded its ' + ms + 'ms deadline and was aborted. ' +
+        'On mobile this is usually a suspended background request or a stalled cellular handoff.',
+        timeoutError(label, ms));
+      try{ controller.abort(); }
+      catch(err){ console.warn('[FSNNet] Aborting "' + label + '" threw.', err); }
+    }, ms);
+
+    try{
+      return await fetch(url, Object.assign({}, opts, { signal:controller.signal }));
+    }catch(err){
+      /* Translate the browser's generic AbortError into something the call
+         sites can classify and show honestly. */
+      if(tripped || (err && err.name === 'AbortError')) throw timeoutError(label, ms);
+      throw err;
+    }finally{
+      /* Left armed until the caller has read the body — see the note above. A
+         no-op abort on a finished request costs nothing; an uncovered body
+         read is the failure this exists to stop. */
+      setTimeout(function(){ clearTimeout(timer); }, 0);
+    }
+  }
+
+  return {
+    DEFAULT_TIMEOUT_MS,
+    ARCHIVE_TIMEOUT_MS,
+    isTimeout,
+    fetch: fetchWithTimeout,
+  };
+})();
+
 /* History completion is separate from history presence. An empty in-memory
    archive while ESPN/Sleeper is still loading (or after a network failure) is
    not evidence that a league is new. The News Desk may classify season one
@@ -3357,9 +3732,13 @@ function buildEspnCookieHeader(creds){
    espn_s2 + SWID cookies the member's browser holds; the relay replays them so
    it can read as the member. */
 function getEspnCreds(){
-  let rawS2 = '', rawSwid = '';
-  try{ rawS2 = localStorage.getItem('fsn.espn.s2.v1') || ''; }catch(e){}
-  try{ rawSwid = localStorage.getItem('fsn.espn.swid.v1') || ''; }catch(e){}
+  /* Through FSNStore so a credential the device refused to persist (a full
+     origin on mobile, private mode) is still served from the in-memory mirror
+     for the rest of this session. Otherwise a reader pastes valid cookies,
+     sees them accepted, and every subsequent private-league read goes out
+     unauthenticated because the value never came back. */
+  const rawS2 = FSNStore.get('fsn.espn.s2.v1') || '';
+  const rawSwid = FSNStore.get('fsn.espn.swid.v1') || '';
   return {
     s2: sanitizeEspnCookieValue('s2', rawS2),
     swid: sanitizeEspnCookieValue('swid', rawSwid),
@@ -3408,9 +3787,7 @@ function leagueShareTokenKey(leagueId){
 function getLeagueShareToken(leagueId){
   const key = leagueShareTokenKey(leagueId == null || leagueId === '' ? selectedLeagueId() : leagueId);
   if(!key) return '';
-  let raw = '';
-  try{ raw = localStorage.getItem(key) || ''; }
-  catch(e){ return ''; }
+  const raw = FSNStore.get(key) || '';
   const token = normalizeLeagueShareToken(raw);
   if(raw && !token){
     console.error('[League Share] The stored invite token for league ' + String(leagueId || '') +
@@ -3435,23 +3812,22 @@ function setLeagueShareToken(leagueId, value){
     }
     return false;
   }
-  try{
-    localStorage.setItem(key, token);
-    return true;
-  }catch(err){
-    /* Private mode or blocked storage. The token still works for this page
-       lifecycle (callers keep it in memory via ui.shareTokens), it just will
-       not survive a reload. */
-    console.warn('[League Share] Could not persist the invite token for league ' + leagueId +
-      ' to localStorage; it will not survive a reload.', err);
-    return false;
+  /* Private mode, blocked storage or a full origin. FSNStore keeps the token
+     readable for this page lifecycle either way, so the invite still opens the
+     league; `persisted` only reports whether it survives a reload. */
+  const written = FSNStore.set(key, token);
+  if(!written.persisted){
+    console.warn('[League Share] The invite token for league ' + leagueId +
+      ' could not be written to this device (' + written.reason + '); it works for this session ' +
+      'but will not survive a reload.');
   }
+  return written.persisted;
 }
 
 function forgetLeagueShareToken(leagueId){
   const key = leagueShareTokenKey(leagueId);
   if(!key) return;
-  try{ localStorage.removeItem(key); }catch(e){}
+  FSNStore.remove(key);
 }
 
 /* The copyable invite link. Deliberately built from this page's own origin and
@@ -3492,9 +3868,8 @@ function leagueShareHeaders(leagueId){
      'malformed' stored but untransmittable — the reason says what to fix
      'ready'     both present and header-safe */
 function espnCredDiagnostics(){
-  let rawS2 = '', rawSwid = '';
-  try{ rawS2 = localStorage.getItem('fsn.espn.s2.v1') || ''; }catch(e){}
-  try{ rawSwid = localStorage.getItem('fsn.espn.swid.v1') || ''; }catch(e){}
+  const rawS2 = FSNStore.get('fsn.espn.s2.v1') || '';
+  const rawSwid = FSNStore.get('fsn.espn.swid.v1') || '';
   const s2 = inspectEspnCookieValue('s2', rawS2);
   const swid = inspectEspnCookieValue('swid', rawSwid);
   const faults = [s2, swid].filter(entry=> entry.present && !entry.ok);
@@ -3632,7 +4007,13 @@ async function fetchLeagueDataViaProxies(espnUrl){
   if(typeof window !== 'undefined' && window.location && window.location.protocol !== 'file:'){
     const apiUrl = serverlessEspnUrl(espnUrl);
     try{
-      const res = await fetch(apiUrl, { headers: espnCredHeaders(leagueIdFromEspnUrl(espnUrl)) });
+      /* Archive-length deadline: this same helper carries both the small
+         per-season reads and the multi-megabyte consolidated leagueHistory
+         payload, and on a phone the latter legitimately takes tens of seconds.
+         Bounded all the same — before this, a stalled read here never settled
+         and the archive hydration simply never finished. */
+      const res = await FSNNet.fetch(apiUrl, { headers: espnCredHeaders(leagueIdFromEspnUrl(espnUrl)) },
+        { timeoutMs:FSNNet.ARCHIVE_TIMEOUT_MS, label:'/api/espn archive read' });
       if(!res.ok) throw await espnRelayError(res, apiUrl);
       const rawData = parseEspnProxyPayload(await res.text());
       if(validEspnPayload(rawData)) return rawData;
@@ -3675,7 +4056,11 @@ async function fetchLeagueDataViaProxies(espnUrl){
   for(const wrapWithProxy of CORS_PROXIES){
     const attemptUrl = wrapWithProxy(espnUrl);
     try{
-      const res = await fetch(attemptUrl);
+      /* A public CORS proxy that hangs used to consume the whole chain: the
+         loop awaited a promise that never settled, so the remaining proxies
+         were never tried and no error was ever thrown. */
+      const res = await FSNNet.fetch(attemptUrl, {},
+        { timeoutMs:FSNNet.ARCHIVE_TIMEOUT_MS, label:'CORS proxy ' + attemptUrl.slice(0, 60) });
       if(!res.ok){ lastErr = new Error('HTTP ' + res.status + ' from ' + attemptUrl); continue; }
       const rawData = parseEspnProxyPayload(await res.text());
       if(validEspnPayload(rawData)) return rawData;
@@ -4801,12 +5186,12 @@ const YAHOO_MAX_WEEK = 18;
 
 async function yahooApi(params){
   const query = new URLSearchParams(params || {});
-  const response = await fetch('/api/yahoo?' + query.toString(), {
+  const response = await FSNNet.fetch('/api/yahoo?' + query.toString(), {
     method:'GET',
     headers:{ Accept:'application/json' },
     credentials:'same-origin',
     cache:'no-store',
-  });
+  }, { label:'/api/yahoo ' + (params && params.action || '') });
   let payload = null;
   try{ payload = await response.json(); }
   catch(err){
@@ -5244,16 +5629,17 @@ const SLEEPER_BASE = 'https://api.sleeper.app/v1';
 async function sleeperGet(path){
   const direct = SLEEPER_BASE + path;
   try{
-    const res = await fetch(direct, { headers:{ Accept:'application/json' }, cache:'no-store' });
+    const res = await FSNNet.fetch(direct, { headers:{ Accept:'application/json' }, cache:'no-store' },
+      { label:'Sleeper ' + path });
     if(res.ok) return await res.json();
     // A real HTTP status (404/5xx) is authoritative — do not mask it behind the relay.
     throw new Error('SLEEPER_HTTP_' + res.status);
   }catch(err){
     if(/SLEEPER_HTTP_\d/.test(String(err && err.message))) throw err;
     // Transport failure (blocked host, DNS, offline). Try the same-origin relay.
-    const res = await fetch('/api/sleeper?url=' + encodeURIComponent(direct), {
+    const res = await FSNNet.fetch('/api/sleeper?url=' + encodeURIComponent(direct), {
       headers:{ Accept:'application/json' }, cache:'no-store',
-    });
+    }, { label:'/api/sleeper ' + path });
     if(!res.ok) throw new Error('SLEEPER_RELAY_HTTP_' + res.status);
     return await res.json();
   }
@@ -5289,7 +5675,7 @@ let playerIndexPromise = null;
 
 function readCachedPlayers(){
   try{
-    const raw = localStorage.getItem(PLAYER_CACHE_KEY);
+    const raw = FSNStore.get(PLAYER_CACHE_KEY);
     if(!raw) return null;
     const parsed = JSON.parse(raw);
     if(!parsed || !parsed.map || (Date.now() - (parsed.ts || 0)) > 7 * 864e5) return null;
@@ -5297,7 +5683,11 @@ function readCachedPlayers(){
   }catch(e){ return null; }
 }
 function writeCachedPlayers(map){
-  try{ localStorage.setItem(PLAYER_CACHE_KEY, JSON.stringify({ ts:Date.now(), map })); }catch(e){}
+  /* The trimmed player index is the other multi-hundred-KB cache competing for
+     a phone's origin budget, and it is pure convenience — News Desk colour
+     only. Marked evictable so a quota failure here is housekeeping (warn, and
+     it refetches) and so the league archive can reclaim it, never the reverse. */
+  FSNStore.setJSON(PLAYER_CACHE_KEY, { ts:Date.now(), map }, { evictable:true });
 }
 
 function loadPlayerIndex(){
@@ -16902,7 +17292,7 @@ function selectWeek(next, opts){
    ACTIVE TEAM PROFILE
 ============================================================ */
 function storedActiveTeam(){
-  try{ return localStorage.getItem(ACTIVE_TEAM_KEY) || ''; }catch(e){ return ''; }
+  return FSNStore.get(ACTIVE_TEAM_KEY) || '';
 }
 
 function storedProfileRole(){
@@ -16972,11 +17362,9 @@ function profileRoleForTeam(teamId){
 function selectProfile(teamId){
   const role = profileRoleForTeam(teamId);
   ui.profileRole = role;
-  try{
-    localStorage.setItem(ACTIVE_TEAM_KEY, String(teamId));
-    localStorage.setItem(PROFILE_ROLE_KEY, role);
-    localStorage.removeItem(LEGACY_PROFILE_ROLE_KEY);
-  }catch(e){}
+  FSNStore.set(ACTIVE_TEAM_KEY, String(teamId));
+  FSNStore.set(PROFILE_ROLE_KEY, role);
+  FSNStore.remove(LEGACY_PROFILE_ROLE_KEY);
   closeProfilePicker();
   renderAll();
   const creds = getEspnCreds();
@@ -18953,7 +19341,36 @@ function setConn(mode){
   el.style.borderColor = m.border;
 }
 
+/* Last-resort watchdog. Every request on this path now carries its own
+   deadline, so the `finally` that clears the spinner should always run — but
+   "should always run" is exactly what was believed about the old unbounded
+   fetches. If the button is ever still disabled long after the longest
+   possible request could have completed, something latched it that is not a
+   request at all, and a reader stuck behind a dead spinner has no way forward.
+   Release it and say so, loudly, rather than letting it sit. */
+let fetchLoadingWatchdog = null;
+const FETCH_LOADING_WATCHDOG_MS = 90000;
+
 function setFetchLoading(isLoading){
+  if(fetchLoadingWatchdog){
+    clearTimeout(fetchLoadingWatchdog);
+    fetchLoadingWatchdog = null;
+  }
+  if(isLoading){
+    fetchLoadingWatchdog = setTimeout(function(){
+      fetchLoadingWatchdog = null;
+      if(!$('fetchBtn') || !$('fetchBtn').disabled) return;
+      console.error('[FSN] The connect button was still latched ' + FETCH_LOADING_WATCHDOG_MS +
+        'ms after a fetch began, which no bounded request can produce. Releasing it so the reader ' +
+        'is not stranded behind a dead spinner.', new Error('FETCH_LOADING_STUCK'));
+      setFetchLoading(false);
+      const status = $('fetchStatus');
+      if(status){
+        status.style.color = 'var(--red)';
+        status.textContent = 'That request stopped responding and was cancelled. Tap Fetch League Data to try again.';
+      }
+    }, FETCH_LOADING_WATCHDOG_MS);
+  }
   $('fetchBtn').disabled = isLoading;
   $('fetchSpinner').classList.toggle('hidden', !isLoading);
   $('fetchLabel').textContent = isLoading
@@ -19068,30 +19485,78 @@ function cloudCacheKey(league, season){
   return 'fsn.league.storage.v2:' + String(league || '') + ':' + String(season || '');
 }
 
+/* The single largest thing this app writes to a device, and the reason mobile
+   diverged from desktop. optimizeArchiveForCloud() sizes the archive for the
+   UPLOAD gateway (CLOUD_ARCHIVE_TARGET_BYTES, 3.1MB) — a budget with nothing
+   to do with what a phone will hold. Mirroring that verbatim is a guaranteed
+   QuotaExceededError on iOS, where the origin gets ~5MB counted in UTF-16, and
+   the old empty catch turned it into silence.
+
+   So the write is now attempted in two tiers, largest first:
+
+     full     — the record including history_json, so an offline mobile launch
+                still paints a Record Book. Capped and evictable: if it does
+                not fit, it is not worth the whole origin.
+     settings — league_id, season_year, has_cookies and the settings block with
+                the archive stripped. Kilobytes, and it is what restores the
+                connection state, the auth banner and the league identity.
+
+   Tiering matters because the failure it replaces was all-or-nothing: one
+   oversized write failed, and the reader lost the settings record too. */
 function cacheLeagueRecord(record){
   if(!record || !record.league_id || !record.season_year) return false;
-  try{
-    // The API already strips the encrypted cookie envelope. Keep only the
-    // non-secret record used to restore the UI when cloud reads are unavailable.
-    localStorage.setItem(cloudCacheKey(record.league_id, record.season_year), JSON.stringify({
-      league_id:String(record.league_id),
-      season_year:Number(record.season_year),
-      history_json:record.history_json || {},
-      has_cookies:!!record.has_cookies,
-      updated_at:record.updated_at || new Date().toISOString(),
-      local_fallback:true,
-    }));
+  const key = cloudCacheKey(record.league_id, record.season_year);
+  const scope = String(record.league_id) + '/' + String(record.season_year);
+  // The API already strips the encrypted cookie envelope. Keep only the
+  // non-secret record used to restore the UI when cloud reads are unavailable.
+  const base = {
+    league_id:String(record.league_id),
+    season_year:Number(record.season_year),
+    has_cookies:!!record.has_cookies,
+    updated_at:record.updated_at || new Date().toISOString(),
+    local_fallback:true,
+  };
+
+  const full = FSNStore.setJSON(key, Object.assign({}, base, {
+    history_json:record.history_json || {},
+  }), { evictable:true });
+  if(full.persisted) return true;
+
+  /* The full mirror did not reach the device. It is still readable from the
+     in-memory mirror for this session, so nothing is broken right now — but a
+     relaunch would find nothing, so fall back to the small record that WILL
+     fit and say exactly what the reader loses. */
+  const settingsOnly = Object.assign({}, base, {
+    history_json:{
+      schemaVersion:2,
+      settings:(record.history_json && record.history_json.settings) || {},
+      yearsData:[],
+      archiveOmitted:true,
+    },
+    history_omitted:true,
+  });
+  const trimmed = FSNStore.setJSON(key, settingsOnly, { evictable:true });
+  if(trimmed.persisted){
+    console.warn('[League Storage] The offline history mirror for ' + scope + ' is ' +
+      Math.round(full.bytes / 1024) + 'KB and does not fit on this device (' + full.reason +
+      '); stored the league settings without the archive instead. History still loads from ' +
+      '/api/league and ESPN — only the offline copy is reduced.');
     return true;
-  }catch(e){
-    return false;
   }
+  console.error('[League Storage] Neither the full nor the reduced offline record for ' + scope +
+    ' could be written to this device (' + trimmed.reason + '). The league works for this session ' +
+    'from memory, but a relaunch will have no cached record to fall back on.',
+    new Error('LEAGUE_RECORD_NOT_PERSISTED:' + scope));
+  return false;
 }
 
 function readCachedLeagueRecord(league, season){
-  try{
-    const exact = localStorage.getItem(cloudCacheKey(league, season));
-    if(exact) return JSON.parse(exact);
-  }catch(e){}
+  /* Reads the in-memory mirror first, so a mobile session whose write was
+     refused for quota still restores exactly like desktop until the tab is
+     closed. A corrupt value is reported and cleared inside getJSON rather
+     than being re-parsed and re-swallowed on every launch. */
+  const record = FSNStore.getJSON(cloudCacheKey(league, season), null);
+  if(record && typeof record === 'object') return record;
   return null;
 }
 
@@ -19457,10 +19922,10 @@ async function hydrateLeagueFromCloud(league, options){
        invite token or this reader's own ESPN cookies verified against the
        league — sending both means a member who has never seen an invite link
        still gets in (and gets the token back to share). */
-    const response = await fetch('/api/league?league_id=' + encodeURIComponent(id) +
+    const response = await FSNNet.fetch('/api/league?league_id=' + encodeURIComponent(id) +
       '&season_year=' + encodeURIComponent(season), {
       method:'GET', headers:cloudHeaders(false, true, id), cache:'no-store',
-    });
+    }, { label:'/api/league read ' + id + '/' + season });
     if(seq !== ui.cloudHydrateSeq || id !== String($('leagueIdInput').value || '').trim()) return null;
     /* ---- H-1: the league id alone is not a key ----
        This is not a transport failure, so it must not be retried, cached over,
@@ -19576,7 +20041,11 @@ async function hydrateLeagueFromCloud(league, options){
          throwing on this specific league (500), instead of a catch-all that
          hides the difference. */
       let statusMessage;
-      if(status === 503){
+      if(FSNNet.isTimeout(err)){
+        statusMessage = 'League storage did not answer before the request timed out. Your saved ' +
+          'preferences and a direct ESPN load still work — reopen this screen with the app in the ' +
+          'foreground to retry.';
+      } else if(status === 503){
         statusMessage = 'League storage is not configured on the server (HTTP 503). ' +
           'Local preferences and direct ESPN loading are still available.';
       } else if(status === 502 || status === 504){
@@ -19674,12 +20143,17 @@ async function syncLeagueToCloud(options){
   if($('cloudSyncBtn')) $('cloudSyncBtn').disabled = true;
   setCloudStatus('syncing', 'Uploading optimized archive and verifying league-member access…');
   try{
-    const postArchive = ()=> fetch('/api/league', {
+    /* An archive upload is megabytes going UP a mobile link, which is the
+       slowest thing this app does, so it gets the long deadline rather than
+       the interactive one — but it does get one: an upload that stalls used to
+       leave the Save button disabled and the status stuck on "Uploading…"
+       with no way back short of a reload. */
+    const postArchive = ()=> FSNNet.fetch('/api/league', {
       method:'POST',
       headers:cloudHeaders(true, true, league),
       body:requestData.serialized,
       cache:'no-store',
-    });
+    }, { timeoutMs:FSNNet.ARCHIVE_TIMEOUT_MS, label:'/api/league save ' + league + '/' + season });
 
     let response = await postArchive();
 
@@ -19728,10 +20202,10 @@ async function syncLeagueToCloud(options){
         // Shape (b), or a server that did not report a version: ask outright.
         clearCloudVersion();
         try{
-          const fresh = await fetch('/api/league?league_id=' + encodeURIComponent(league) +
+          const fresh = await FSNNet.fetch('/api/league?league_id=' + encodeURIComponent(league) +
             '&season_year=' + encodeURIComponent(season), {
             method:'GET', headers:cloudHeaders(false, true, league), cache:'no-store',
-          });
+          }, { label:'/api/league version re-read ' + league + '/' + season });
           if(fresh.ok){
             const freshPayload = await fresh.json().catch(()=> ({}));
             const freshRecord = (freshPayload && freshPayload.record) || freshPayload || {};
@@ -19969,10 +20443,8 @@ function applyLiveLeaguePayload(league, leagueData, fallbackYear){
   // next Setup load can tell a real league switch from a same-league refresh.
   ui.activeLeagueKey = leagueCacheKey(ui.provider, league);
 
-  try{
-    localStorage.setItem('fsn_active_season', String(activeSeason));
-    localStorage.setItem('fsn_active_week', String(activeWeek));
-  }catch(e){}
+  FSNStore.set('fsn_active_season', String(activeSeason));
+  FSNStore.set('fsn_active_week', String(activeWeek));
 
   return { activeSeason, activeWeek };
 }
@@ -20051,7 +20523,7 @@ async function fetchSleeperLeagueData(opts){
     $('fetchStatus').textContent =
       `✓ Sleeper Season Connected · ${live.year} · ${live.leagueData.teams.length} teams · Week ${liveInfo.activeWeek}`;
 
-    try{ localStorage.setItem(SAVED_LEAGUE_ID_KEY, league); }catch(e){}
+    FSNStore.set(SAVED_LEAGUE_ID_KEY, league);
     savePrefs();
     registerSavedLeague(league, 'sleeper');
     if(navigate) setScreen('home');
@@ -20196,7 +20668,7 @@ async function fetchYahooLeagueData(opts){
     $('fetchStatus').style.color = 'var(--green)';
     $('fetchStatus').textContent =
       `✓ Yahoo Season Connected · ${live.year} · ${live.leagueData.teams.length} teams · Week ${liveInfo.activeWeek}`;
-    try{ localStorage.setItem(SAVED_LEAGUE_ID_KEY, league); }catch(e){}
+    FSNStore.set(SAVED_LEAGUE_ID_KEY, league);
     savePrefs();
     registerSavedLeague(league, 'yahoo');
     refreshYahooAuthStatus();
@@ -20335,9 +20807,14 @@ async function fetchLeagueData(options){
        only mask it. */
     let text = null;
     try{
-      const response = await fetch('/api/espn?url=' + encodeURIComponent(liveUrl), {
+      /* The interactive deadline. This is the request the reader is watching
+         the spinner for, and an unbounded version of it is what left mobile
+         "hanging": WebKit suspends in-flight requests when the tab goes to the
+         background, so the promise neither resolved nor rejected and
+         setFetchLoading(true) stayed latched forever. */
+      const response = await FSNNet.fetch('/api/espn?url=' + encodeURIComponent(liveUrl), {
         method:'GET', headers, cache:'no-store',
-      });
+      }, { label:'/api/espn live read ' + league });
       text = await response.text();
       if(!response.ok){
         /* The relay answers a 401/403/404 with { error:"<actionable sentence>",
@@ -20374,7 +20851,8 @@ async function fetchLeagueData(options){
       text = null;
       for(const wrapWithProxy of CORS_PROXIES){
         try{
-          const res = await fetch(wrapWithProxy(liveUrl), { cache:'no-store' });
+          const res = await FSNNet.fetch(wrapWithProxy(liveUrl), { cache:'no-store' },
+            { label:'CORS fallback for league ' + league });
           if(!res.ok) continue;
           const body = await res.text();
           if(body){ text = body; break; }
@@ -20468,7 +20946,7 @@ async function fetchLeagueData(options){
       $('historyStatus').textContent = 'Current season is ready. Upload an archive JSON only if you want historical Record Book seasons.';
     }
 
-    try{ localStorage.setItem(SAVED_LEAGUE_ID_KEY, league); }catch(e){}
+    FSNStore.set(SAVED_LEAGUE_ID_KEY, league);
     savePrefs();
     registerSavedLeague(league, 'espn');
 
@@ -20552,7 +21030,16 @@ async function fetchLeagueData(options){
        glance instead of always reading "could not be loaded". */
     let msg;
     const credReport = espnCredDiagnostics();
-    if(credReport.state === 'malformed'){
+    /* Checked before every other branch: a deadline is not an HTTP status and
+       not a "failed to fetch", so without its own arm it would fall through to
+       the catch-all and read as an unknown error. This is the branch mobile
+       readers will actually see when a request is suspended or the link
+       stalls, so it has to name the cause and give them the retry. */
+    if(FSNNet.isTimeout(err) || /FETCH_TIMEOUT/.test(message)){
+      msg = 'The league request timed out before ESPN answered. This is usually a slow or interrupted ' +
+        'mobile connection, or the app being sent to the background mid-request — reopen this screen ' +
+        'with the app in the foreground and tap Fetch League Data again.';
+    } else if(credReport.state === 'malformed'){
       // The stored paste itself is untransmittable, so the request never had a
       // chance regardless of what ESPN said. Lead with the fixable cause.
       msg = 'Your saved private-league cookies could not be sent — ' + credReport.reason +
@@ -20676,9 +21163,9 @@ async function refreshYahooAuthStatus(){
   const logout = $('yahooDisconnectBtn');
   if(status) status.textContent = 'Checking Yahoo login…';
   try{
-    const response = await fetch('/api/auth/yahoo?action=status', {
+    const response = await FSNNet.fetch('/api/auth/yahoo?action=status', {
       headers:{ Accept:'application/json' }, credentials:'same-origin', cache:'no-store',
-    });
+    }, { label:'/api/auth/yahoo status' });
     const payload = await response.json();
     if(!response.ok) throw new Error(String(payload && payload.error || ('YAHOO_STATUS_HTTP_' + response.status)));
     const connected = response.ok && !!payload.connected;
@@ -20701,9 +21188,9 @@ async function refreshYahooAuthStatus(){
 if($('yahooLoginBtn')) $('yahooLoginBtn').addEventListener('click', startYahooLogin);
 if($('yahooDisconnectBtn')) $('yahooDisconnectBtn').addEventListener('click', async ()=>{
   try{
-    const response = await fetch('/api/auth/yahoo?action=disconnect', {
+    const response = await FSNNet.fetch('/api/auth/yahoo?action=disconnect', {
       method:'POST', headers:{ Accept:'application/json' }, credentials:'same-origin', cache:'no-store',
-    });
+    }, { label:'/api/auth/yahoo disconnect' });
     if(!response.ok) throw new Error('YAHOO_DISCONNECT_HTTP_' + response.status);
     populateYahooLeaguePicker([], '');
     await refreshYahooAuthStatus();
@@ -20906,12 +21393,10 @@ dz.addEventListener('drop', (e)=>{
    PREFS — League ID / season / week survive an app relaunch.
 ============================================================ */
 function savedLeagues(){
-  try{
-    const value = JSON.parse(localStorage.getItem(SAVED_LEAGUES_KEY) || '[]');
-    return Array.isArray(value) ? value.filter(x=>
-      x && x.id && (x.provider === 'espn' || x.provider === 'sleeper' || x.provider === 'yahoo')
-    ) : [];
-  }catch(e){ return []; }
+  const value = FSNStore.getJSON(SAVED_LEAGUES_KEY, []);
+  return Array.isArray(value) ? value.filter(x=>
+    x && x.id && (x.provider === 'espn' || x.provider === 'sleeper' || x.provider === 'yahoo')
+  ) : [];
 }
 function leagueCacheKey(provider, id){ return (provider || 'espn') + ':' + String(id || '').trim(); }
 function snapshotActiveLeague(){
@@ -20931,7 +21416,7 @@ function registerSavedLeague(id, provider){
   const settings = LeagueData.espnData && LeagueData.espnData.settings;
   const name = settings && settings.name ? settings.name : (platform.toUpperCase() + ' · ' + leagueId);
   list.unshift({id:leagueId,provider:platform,name:String(name),lastUsed:Date.now()});
-  try{ localStorage.setItem(SAVED_LEAGUES_KEY, JSON.stringify(list.slice(0,20))); }catch(e){}
+  FSNStore.setJSON(SAVED_LEAGUES_KEY, list.slice(0,20));
   snapshotActiveLeague();
   renderLeagueSwitcher();
 }
@@ -20956,7 +21441,7 @@ async function switchSavedLeague(value){
   const provider = value.slice(0,divider), id = value.slice(divider+1);
   setProvider(provider);
   $('leagueIdInput').value = id;
-  try{ localStorage.setItem(SAVED_LEAGUE_ID_KEY,id); }catch(e){}
+  FSNStore.set(SAVED_LEAGUE_ID_KEY, id);
   const cached = LEAGUE_RUNTIME_CACHE.get(leagueCacheKey(provider,id));
   if(cached){
     LeagueData.setEspnData(cached.live || null);
@@ -20974,36 +21459,41 @@ if($('leagueSwitcher')) $('leagueSwitcher').addEventListener('change', e=>switch
 if($('forgetLeagueBtn')) $('forgetLeagueBtn').addEventListener('click', ()=>{
   const value = $('leagueSwitcher').value;
   const next = savedLeagues().filter(x=>leagueCacheKey(x.provider,x.id)!==value);
-  try{ localStorage.setItem(SAVED_LEAGUES_KEY, JSON.stringify(next)); }catch(e){}
+  FSNStore.setJSON(SAVED_LEAGUES_KEY, next);
   LEAGUE_RUNTIME_CACHE.delete(value);
   renderLeagueSwitcher();
   toast('Saved league removed from this device');
 });
 
+/* These two keys decide whether the next launch rehydrates a league at all,
+   which makes them the ones that must never fail silently. Routing them
+   through FSNStore means a quota failure first evicts the regenerable archive
+   mirrors to make room, and if it still cannot write, says so loudly instead
+   of leaving a relaunch with nothing to restore. */
 function savePrefs(){
-  try{
-    localStorage.setItem(STORE_KEY, JSON.stringify({
-      leagueId: $('leagueIdInput').value.trim(),
-      season:   $('seasonYear').value.trim(),
-      week:     $('weekNum').value.trim(),
-      provider: ui.provider,
-      statsMode: ui.statsMode,
-    }));
-  }catch(e){ /* private mode — prefs just won't persist */ }
+  FSNStore.setJSON(STORE_KEY, {
+    leagueId: $('leagueIdInput').value.trim(),
+    season:   $('seasonYear').value.trim(),
+    week:     $('weekNum').value.trim(),
+    provider: ui.provider,
+    statsMode: ui.statsMode,
+  });
 }
 function loadPrefs(){
   let saved = null;
   let savedLeagueId = '';
   try{
-    saved = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
-    savedLeagueId = (localStorage.getItem(SAVED_LEAGUE_ID_KEY) || '').trim();
+    saved = FSNStore.getJSON(STORE_KEY, null);
+    savedLeagueId = String(FSNStore.get(SAVED_LEAGUE_ID_KEY) || '').trim();
     // One-time migration for users whose prior build only stored the League ID
     // inside fsn.setup.v1. Future launches use fsn_saved_league_id directly.
     if(!savedLeagueId && saved && saved.leagueId){
       savedLeagueId = String(saved.leagueId).trim();
-      if(savedLeagueId) localStorage.setItem(SAVED_LEAGUE_ID_KEY, savedLeagueId);
+      if(savedLeagueId) FSNStore.set(SAVED_LEAGUE_ID_KEY, savedLeagueId);
     }
-  }catch(e){}
+  }catch(err){
+    console.error('[Setup] Reading saved preferences failed; this launch starts from defaults.', err);
+  }
   $('leagueIdInput').value = savedLeagueId || (saved && saved.leagueId) || '';
   $('seasonYear').value = (saved && saved.season) || String(uiActiveSeasonYear());
   $('weekNum').value = (saved && saved.week) || '';
@@ -21016,14 +21506,13 @@ function loadPrefs(){
   [['fsn.espn.s2.v1', 's2', 'espnS2Input'], ['fsn.espn.swid.v1', 'swid', 'espnSwidInput']]
     .forEach(function(entry){
       const key = entry[0], kind = entry[1], inputId = entry[2];
-      let raw = '';
-      try{ raw = localStorage.getItem(key) || ''; }catch(e){ return; }
+      const raw = FSNStore.get(key) || '';
       const clean = sanitizeEspnCookieValue(kind, raw);
       if(raw && clean !== raw){
         if(clean){
           console.warn('[Setup] Normalised the stored ' + kind + ' credential left by an earlier build ' +
             '(stray cookie name, quotes or whitespace removed).');
-          try{ localStorage.setItem(key, clean); }catch(e){}
+          FSNStore.set(key, clean);
         } else {
           console.error('[Setup] The stored ' + kind + ' credential is unusable and cannot be repaired ' +
             'automatically; it must be re-pasted.', new Error('UNUSABLE_STORED_ESPN_COOKIE:' + kind));
@@ -21427,12 +21916,15 @@ function bindCredentialField(inputId, storageKey, kind, validityBoxId){
   if(!input) return;
   input.addEventListener('input', ()=>{
     const clean = sanitizeEspnCookieValue(kind, input.value);
-    try{
-      if(clean) localStorage.setItem(storageKey, clean);
-      else localStorage.removeItem(storageKey);
-    }catch(err){
-      console.warn('[Setup] Could not persist the ' + kind + ' credential to localStorage ' +
-        '(private mode or blocked storage); it will not survive a reload.', err);
+    if(clean){
+      const written = FSNStore.set(storageKey, clean);
+      if(!written.persisted){
+        console.warn('[Setup] The ' + kind + ' credential could not be written to this device (' +
+          written.reason + '). It is held in memory so private-league reads work now, but it will ' +
+          'not survive a reload.');
+      }
+    } else {
+      FSNStore.remove(storageKey);
     }
     setCredValidity(validityBoxId, kind, input.value);
     refreshEspnAuthStatus();
@@ -23485,9 +23977,11 @@ function applyDeepLink(){
       console.error('[League Share] Could not apply the invited League ID ' + invitedLeague +
         ' to the Setup field; the invite will not open the league automatically.', err);
     }
-    // localStorage alone: throws by design in private mode, and the invite
-    // still works for this page lifecycle without it.
-    try{ localStorage.setItem(SAVED_LEAGUE_ID_KEY, invitedLeague); }catch(e){}
+    /* FSNStore keeps the invited league readable for this page lifecycle even
+       when the device refuses the write (private mode, a full origin), so the
+       invite opens the league now and reports honestly whether it will still
+       be there after a relaunch. */
+    FSNStore.set(SAVED_LEAGUE_ID_KEY, invitedLeague);
   } else if(invitedLeague || invitedToken){
     console.warn('[League Share] Ignoring an invite link with a malformed League ID (' +
       (invitedLeague || '(empty)') + ').');
@@ -23517,28 +24011,54 @@ function applyDeepLink(){
    BOOT — render immediately, then silently rehydrate a saved league.
 ============================================================ */
 function bootApp(){
-  loadPrefs();
-  refreshHistoryUrlLink();
-  setConn('none');
-  const savedWeek = parseInt($('weekNum').value, 10);
-  if(savedWeek > 0) ui.week = savedWeek;
-  renderAll();
-  setScreen('home');
+  /* Every step is isolated. Boot used to be a straight sequence, so a throw in
+     any one of them — and the first three all read device storage, which is
+     exactly what behaves differently on a phone — skipped renderAll() and
+     setScreen() and left the reader on the bare skeleton with nothing in the
+     console. safeRun keeps the rest of boot running and names whatever died.
+
+     Note what is NOT here: no window.innerWidth, no matchMedia, no layout
+     measurement. Boot order does not depend on viewport at all, and renderHome
+     reads only LeagueData plus its own DOM nodes, so there is no desktop-only
+     dimension for a phone to trip over. The mobile divergence is storage and
+     network, addressed above and below. */
+  safeRun('boot:loadPrefs', loadPrefs);
+  safeRun('boot:historyUrlLink', refreshHistoryUrlLink);
+  safeRun('boot:conn', ()=> setConn('none'));
+  safeRun('boot:week', ()=>{
+    const savedWeek = parseInt($('weekNum').value, 10);
+    if(savedWeek > 0) ui.week = savedWeek;
+  });
+  /* The two steps that actually put pixels on screen. They run even if every
+     step above failed, so the worst case is an app with default preferences
+     rather than a blank one. */
+  safeRun('boot:renderAll', renderAll);
+  safeRun('boot:screen', ()=> setScreen('home'));
 
   // Deep-link entry from the marketing landing page (or any external link).
   // The apex/www landing site sends visitors here with ?goto=setup and an
   // optional &platform=espn|sleeper|yahoo so an external connect click lands
   // directly on the Setup screen with the right provider preselected. This is
   // additive: with no params the app boots to Home exactly as before.
-  const deepLink = applyDeepLink();
+  let deepLink = null;
+  safeRun('boot:deepLink', ()=>{ deepLink = applyDeepLink(); });
 
   // An invite link names the league to open; otherwise fall back to the last
   // league this browser used.
   let savedLeagueId = String((deepLink && deepLink.leagueId) || '').trim();
   if(!savedLeagueId){
-    try{ savedLeagueId = (localStorage.getItem(SAVED_LEAGUE_ID_KEY) || '').trim(); }catch(e){}
+    savedLeagueId = String(FSNStore.get(SAVED_LEAGUE_ID_KEY) || '').trim();
   }
-  updateShareInviteUI();
+  /* The single most useful line in a mobile bug report: it separates "the
+     device forgot which league to open" — the downstream effect of a storage
+     write that was refused on a previous launch — from "rehydration ran and
+     the network failed", which look identical from the outside. */
+  if(!savedLeagueId){
+    console.warn('[FSN] Boot found no saved League ID' +
+      (FSNStore.available() ? '' : ' and device storage is unavailable on this browser') +
+      ', so no league is rehydrated. Connect a league from Setup.');
+  }
+  safeRun('boot:shareInviteUI', updateShareInviteUI);
   if(ui.provider === 'yahoo'){
     if(deepLink && deepLink.yahooError){
       $('fetchStatus').style.color = 'var(--red)';
