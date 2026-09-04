@@ -3322,6 +3322,50 @@ function espnCredDiagnostics(){
   };
 }
 
+/* ------------------------------------------------------------
+   PUBLIC vs PRIVATE LEAGUE ACCESS  (global scope — block 1)
+
+   Every ESPN read this app makes is one of exactly two things, and the
+   historical pipeline has to know which BEFORE it interprets a single status
+   code — because the two modes disagree about what a 401 MEANS:
+
+     private  This browser is sending espn_s2 + SWID, or a leaguemate stored an
+              encrypted envelope the relay replays on our behalf. ESPN judged an
+              identity and refused it, so a 401 is a real credential verdict:
+              expired, incomplete, or not a member. Say so.
+
+     public   No credentials are in play at all. The read went out anonymous —
+              which is exactly how ESPN expects a public league to be read — so
+              a 401 says nothing whatsoever about cookies that were never sent.
+              For a PAST season it usually means only "not on this endpoint":
+              the direct seasons/{year} route does not serve that season for
+              this league and the leagueHistory route does.
+
+   Reading an anonymous 401 as a credential verdict is the regression this
+   exists to prevent. It aborted the leagueHistory fallback that public
+   historical seasons depend on, then told the reader to re-paste cookies their
+   public league never needed — advice they cannot act on, in front of a Record
+   Book that stays permanently empty.
+
+   Lives at global scope in the first block per the Global Scope Rule: the
+   archive hydrator below calls it today, and the UI layer in the last block
+   renders the verdict it produces. */
+function espnLeagueAccessMode(leagueId){
+  const diag = espnCredDiagnostics();
+  /* An envelope the SERVER holds for this league is every bit as private as a
+     local paste — the relay attaches it, so ESPN still judges an identity and a
+     refusal is still a credential verdict. */
+  const cloudCookies = typeof window !== 'undefined' && !!window._fsnCloudHasCookies;
+  const isPrivate = diag.attempted || cloudCookies;
+  const requested = String(leagueId || '').trim();
+  /* Proof, not assumption: the live season for THIS league came back carrying
+     teams while this browser sent nothing. A league that answers an anonymous
+     read IS public, whatever a past season's endpoint replies afterwards. */
+  const publicProven = !isPrivate && !!(requested &&
+    String(selectedLeagueId()) === requested && LeagueData.hasLive());
+  return { isPrivate, publicProven, cloudCookies, diag };
+}
+
 function espnCredHeaders(){
   const diag = espnCredDiagnostics();
   const headers = { Accept:'application/json,text/plain,*/*' };
@@ -3578,6 +3622,12 @@ async function fetchAllTimeHistory(leagueId) {
      come back as a shell that looks like an empty season. */
   const views = HISTORICAL_VIEWS;
   const archiveDelay = (ms)=> new Promise(resolve=> setTimeout(resolve, ms));
+  /* Resolved ONCE, before the first request, so every season in this run is
+     judged against the same access mode. A public league carries no cookies at
+     any point in the loop below — no Cookie header, no credential gate, no
+     credential verdict — and a private one keeps the full validation path it
+     had before. See espnLeagueAccessMode(). */
+  const access = espnLeagueAccessMode(requestedLeagueId);
   /* A 401/403 across the archive is a credential verdict, not a per-season
      gap: it means ESPN accepted the request and refused the identity. Counting
      those separately is what lets the caller say "your cookies were rejected"
@@ -3625,14 +3675,28 @@ async function fetchAllTimeHistory(leagueId) {
         const status = Number(err && err.status) ||
           (/\bHTTP (\d{3})\b/.exec(message) ? Number(/\bHTTP (\d{3})\b/.exec(message)[1]) : 0);
         if (status === 401 || status === 403) {
-          /* Credentials were refused. Retrying the same read through a second
-             endpoint would refuse identically, so stop this season here. */
-          console.error(`[FSN] Season ${year} archive read was refused by ESPN (HTTP ${status}) — ` +
-            'the private-league cookies were rejected.', err);
           if(!authDetail) authDetail = String(err && err.relayDetail || '').trim();
-          break;
+          if(access.isPrivate){
+            /* Credentials WERE sent and ESPN refused the identity behind them.
+               The second endpoint authenticates against that same identity, so
+               it would refuse identically — stop this season here. */
+            console.error(`[FSN] Season ${year} archive read was refused by ESPN (HTTP ${status}) — ` +
+              'the private-league cookies were rejected.', err);
+            break;
+          }
+          /* PUBLIC read. Nothing was sent for ESPN to reject, so this 401 is
+             not a credential verdict — it is ESPN declining to serve a past
+             season on the direct seasons/{year} route, which is precisely the
+             case leagueHistory?seasonId= exists to answer. Falling through to
+             it is what restores public multi-season coverage; breaking here
+             was the regression. */
+          console.warn(`[FSN] Season ${year} returned HTTP ${status} on ` +
+            `${attempt === 0 ? 'the direct season route' : 'the leagueHistory route'} for an anonymous ` +
+            'read (no cookies were sent, so this is not a credential failure). Continuing to the ' +
+            'public historical archive endpoint.', err);
+        } else {
+          console.warn(`[FSN] Season ${year} archive read failed on ${attempt === 0 ? 'the direct season route' : 'the leagueHistory route'}:`, err);
         }
-        console.warn(`[FSN] Season ${year} archive read failed on ${attempt === 0 ? 'the direct season route' : 'the leagueHistory route'}:`, err);
       }
       if(!historyRequestIsCurrent(requestedLeagueId, 'espn')){
         console.warn('[FSN] Stopped stale ESPN history hydration for league ' + requestedLeagueId + '.');
@@ -3700,24 +3764,35 @@ async function fetchAllTimeHistory(leagueId) {
      The caller only decides whether to show it. */
   let authError = '';
   if(authFailures > 0 && !yearsData.length){
-    const creds = espnCredDiagnostics();
-    if(creds.state === 'malformed'){
+    const creds = access.diag;
+    if(access.isPrivate && creds.state === 'malformed'){
       authError = 'ESPN refused every past season because the saved private-league cookies are unusable — ' +
         creds.reason + '. Re-paste espn_s2 and SWID in Private League Access.';
-    } else if(creds.state === 'partial'){
+    } else if(access.isPrivate && creds.state === 'partial'){
       authError = 'ESPN refused every past season — only one cookie is saved, and a private league needs BOTH ' +
         'espn_s2 and SWID. Add the missing value in Private League Access, then fetch again.';
-    } else if(creds.state === 'ready'){
-      authError = 'ESPN rejected your saved private-league cookies on every past season (HTTP 401/403). ' +
+    } else if(access.isPrivate){
+      authError = 'ESPN rejected the private-league credentials on every past season (HTTP 401/403). ' +
         'They are likely expired — re-copy espn_s2 and SWID from your logged-in ESPN browser and paste them again.';
+    } else if(access.publicProven){
+      /* The one case that must NOT read as a credential failure. This league
+         answered an anonymous read for the live season, so it is public and the
+         reader has nothing to re-paste. Its EARLIER seasons are what ESPN is
+         withholding — season visibility is per-season — and saying "your
+         cookies were rejected" here is both false and unactionable. */
+      authError = 'ESPN would not release this league\u2019s past seasons to an anonymous read, even though the ' +
+        'live season loaded without any credentials — those earlier seasons are not publicly visible. ' +
+        'Adding espn_s2 + SWID from a member account in Private League Access would unlock them; until then ' +
+        'the Record Book covers the current season.';
     } else {
       authError = 'ESPN would not release this league\u2019s past seasons without credentials (HTTP 401/403). ' +
         'Paste your espn_s2 + SWID cookies into Private League Access to unlock the Record Book.';
     }
     console.error('[FSN] All-time archive hydration was refused by ESPN for league ' + requestedLeagueId +
-      ' (' + authFailures + ' season' + (authFailures === 1 ? '' : 's') + ' returned 401/403)' +
+      ' (' + authFailures + ' season' + (authFailures === 1 ? '' : 's') + ' returned 401/403 on ' +
+      (access.isPrivate ? 'an authenticated read' : 'an anonymous read that sent no cookies') + ')' +
       (authDetail ? ' — ' + authDetail : '') + '.',
-      new Error('ESPN_ARCHIVE_UNAUTHORIZED'));
+      new Error(access.isPrivate ? 'ESPN_ARCHIVE_UNAUTHORIZED' : 'ESPN_ARCHIVE_REFUSED_ANONYMOUS'));
   }
 
   return {
@@ -3726,6 +3801,9 @@ async function fetchAllTimeHistory(leagueId) {
     stale:false,
     authFailures,
     authError,
+    /* Which pipeline produced this result, so the caller cannot announce a
+       cookie rejection for a league that never sent a cookie. */
+    authMode:access.isPrivate ? 'private' : 'public',
     probeStatus:archiveFailed ? 'failed' : 'complete',
   };
 }
@@ -3774,6 +3852,7 @@ async function fetchLeagueHistoryArchive(leagueId){
        credential rejection apart from a genuine first-season league. */
     authFailures:Number(seq.authFailures) || 0,
     authError:String(seq.authError || ''),
+    authMode:seq.authMode === 'private' ? 'private' : 'public',
   };
 }
 
@@ -20099,7 +20178,13 @@ async function fetchLeagueData(options){
                "this league has no history". Say so where they will see it. */
             if(archive.authError){
               showArchiveNotice(archive.authError);
-              if(!silent) toast('Past seasons locked — ESPN rejected the private-league cookies');
+              /* A public league sent no cookies, so "ESPN rejected your cookies"
+                 would be a false diagnosis of a league that needs none. */
+              if(!silent){
+                toast(archive.authMode === 'private'
+                  ? 'Past seasons locked — ESPN rejected the private-league cookies'
+                  : 'Past seasons locked — ESPN is not serving this league\u2019s archive anonymously');
+              }
             }
             safeRun('desk', renderDesk, ()=> renderScreenFallback('home'));
             safeRun('news', renderNews, ()=> renderScreenFallback('news'));
