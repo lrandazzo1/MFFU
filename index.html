@@ -3,7 +3,13 @@
 <head>
 <meta charset="UTF-8">
 
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
+<!-- maximum-scale / user-scalable are deliberately absent: blocking pinch-zoom
+     fails WCAG 1.4.4 and takes the only magnification tool away from a reader
+     who needs it. They are normally added to stop iOS zooming in when a field
+     with text under 16px takes focus — that cause is fixed properly in the
+     stylesheet instead (see "TOUCH FORM CONTROLS"), so the symptom is gone
+     without disabling zoom for everyone. -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Fantasy Sports Network</title>
 
 <!-- ============================================================
@@ -434,6 +440,27 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
 }
 .field:focus{ border-color:var(--cyan); box-shadow:0 0 0 3px rgba(0,224,255,.14); }
 .field::placeholder{ color:#4d5666; }
+
+/* ---------- TOUCH FORM CONTROLS ----------
+   iOS zooms the whole page in when a field whose text is under 16px takes
+   focus, and then leaves the reader zoomed. The usual workaround is
+   user-scalable=no in the viewport, which cures it by disabling pinch-zoom for
+   everything — a WCAG 1.4.4 failure that costs every low-vision reader their
+   magnification to spare everyone else one animation.
+
+   Fixing the cause instead: on touch devices every text-entry control is at
+   least 16px, so nothing triggers the zoom and pinch-zoom stays available. The
+   !important is load-bearing — several controls carry inline font sizes
+   (11px on the JSON textarea, 12.5px on the rivalry selects) that would
+   otherwise still trip it. Pointer-fine devices keep the tighter density. */
+@media (pointer:coarse){
+  input.field, textarea.field, select.field,
+  input[type="text"], input[type="password"], input[type="number"],
+  input[type="email"], input[type="search"], input[type="tel"], input[type="url"],
+  textarea, select{
+    font-size:16px !important;
+  }
+}
 .label{
   display:block; margin:0 0 6px;
   font-size:10px; font-weight:600; letter-spacing:.18em;
