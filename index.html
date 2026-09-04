@@ -51,6 +51,10 @@
   --dim:#7c8698;
   --nav-h:64px;
   --ticker-h:34px;
+  /* Measured from the live offline banner whenever it is shown, so the shell
+     offsets by the height the text actually took (it wraps to two lines on a
+     320px screen) rather than a guessed constant. 0 while it is hidden. */
+  --offline-h:0px;
 }
 
 *{ -webkit-tap-highlight-color:transparent; }
@@ -1138,6 +1142,83 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
   font-family:'Anton',sans-serif; font-size:34px; color:#232c3b; letter-spacing:.08em;
 }
 
+/* ============================================================
+   OFFLINE BANNER
+
+   Sits directly under the fixed ticker and pushes nothing around: it is part
+   of the fixed chrome, and #appShell's top padding grows by its height only
+   while it is shown, so the scroll position underneath never jumps when the
+   connection drops or returns.
+
+   Sized in rem/ch and safe-area units rather than fixed pixels so it holds on
+   a 320px iPhone SE and a 430px Pro Max alike.
+============================================================ */
+#offlineBanner{
+  position:fixed; z-index:59; left:0; right:0;
+  top:calc(var(--ticker-h) + env(safe-area-inset-top));
+  display:flex; align-items:center; gap:8px;
+  padding:7px calc(14px + env(safe-area-inset-left)) 7px calc(14px + env(safe-area-inset-right));
+  background:linear-gradient(90deg,#2a1206,#3a1a08 60%,#2a1206);
+  border-bottom:1px solid rgba(255,196,0,.34);
+  color:#ffdf9a; font-size:11px; line-height:1.35; font-weight:600;
+  letter-spacing:.04em;
+  transform:translateY(-100%); opacity:0; pointer-events:none;
+  transition:transform .22s ease,opacity .22s ease;
+}
+#offlineBanner[data-state="offline"],
+#offlineBanner[data-state="restored"]{ transform:translateY(0); opacity:1; pointer-events:auto; }
+#offlineBanner[data-state="restored"]{
+  background:linear-gradient(90deg,#04231a,#063527 60%,#04231a);
+  border-bottom-color:rgba(57,255,140,.34); color:#a9f5cd;
+}
+.offline-dot{
+  width:7px; height:7px; border-radius:50%; flex:none;
+  background:var(--gold); box-shadow:0 0 9px rgba(255,196,0,.7);
+  animation:offlinePulse 1.6s ease-in-out infinite;
+}
+#offlineBanner[data-state="restored"] .offline-dot{
+  background:var(--green); box-shadow:0 0 9px rgba(57,255,140,.7); animation:none;
+}
+.offline-banner-text{ min-width:0; flex:1 1 auto; }
+@keyframes offlinePulse{ 0%,100%{ opacity:1; } 50%{ opacity:.35; } }
+/* While the banner is up the shell gains exactly its height, so the first card
+   on every screen stays fully visible instead of sliding under the chrome. */
+body[data-offline="true"] #appShell{
+  padding-top:calc(var(--ticker-h) + env(safe-area-inset-top) + var(--offline-h) + 1px);
+}
+
+/* ============================================================
+   SKELETONS — the shape of the answer while it is still loading
+
+   Rehydrating a saved league takes as long as ESPN takes, and until it
+   returned the Desk painted its "NO SIGNAL · connect your league" empty state:
+   a returning reader, and a reviewer opening the app a second time, were told
+   the app was unconnected while it was in fact mid-fetch. These stand in for
+   the real cards so the wait reads as loading rather than as nothing.
+============================================================ */
+.sk{
+  position:relative; overflow:hidden; border-radius:6px;
+  background:#161c27;
+}
+.sk::after{
+  content:''; position:absolute; inset:0;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.055) 50%,transparent);
+  transform:translateX(-100%);
+  animation:skShimmer 1.25s ease-in-out infinite;
+}
+.sk-line{ height:11px; }
+.sk-line.tall{ height:17px; }
+.sk-line.short{ width:42%; }
+.sk-line.mid{ width:68%; }
+.sk-block{ height:74px; border-radius:12px; }
+.sk-stack{ display:grid; gap:9px; }
+.sk-row{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
+@keyframes skShimmer{ to{ transform:translateX(100%); } }
+@media (prefers-reduced-motion:reduce){
+  .sk::after{ animation:none; }
+  .offline-dot{ animation:none; }
+}
+
 @media (prefers-reduced-motion:reduce){
   .ticker-track{ animation:none; }
   .screen{ animation:none; }
@@ -1988,6 +2069,16 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
   <div class="ticker-track" id="tickerTrack"></div>
 </div>
 
+<!-- ============================================================
+     OFFLINE BANNER — part of the fixed chrome, hidden until the device
+     actually loses its connection. role="status" (not "alert") so VoiceOver
+     announces it without stealing focus mid-scroll.
+============================================================ -->
+<div id="offlineBanner" data-state="online" role="status" aria-live="polite">
+  <span class="offline-dot" aria-hidden="true"></span>
+  <span class="offline-banner-text" id="offlineBannerText">You’re offline — showing the last data FSN loaded.</span>
+</div>
+
 <div id="appShell">
 
   <!-- ==========================================================
@@ -1999,12 +2090,19 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
       <div class="flex items-start justify-between gap-3">
         <div class="min-w-0">
           <div class="kicker text-[var(--cyan)]">Fantasy Sports Network</div>
-          <h1 class="font-display text-[27px] leading-none mt-1.5 truncate" id="homeLeagueName">MERGE</h1>
+          <!-- Seeded with the app's own neutral fallback, the same string
+               renderHome() uses when a league has no name. It previously read
+               "MERGE" — a real league name left over from development, shown
+               above a "connect your league" card to every first-run reader. -->
+          <h1 class="font-display text-[27px] leading-none mt-1.5 truncate" id="homeLeagueName">THE DESK</h1>
           <div class="text-[10.5px] text-[var(--dim)] mt-1.5 font-mono tabular truncate" id="homeLeagueMeta"></div>
         </div>
-        <div class="text-right">
+        <!-- Week and season are unknown until a league loads. Hidden rather
+             than seeded with a fixed "WEEK 1 · 2025 SEASON", which read as live
+             data on a screen that had none. renderHome() reveals it. -->
+        <div class="text-right hidden" id="homeWeekBlock">
           <div id="homeWeekPill" class="pill pill-cyan">WEEK 1</div>
-          <div class="text-[10px] text-[var(--dim)] mt-1.5 font-mono tabular" id="homeSeasonLabel">2025 SEASON</div>
+          <div class="text-[10px] text-[var(--dim)] mt-1.5 font-mono tabular" id="homeSeasonLabel"></div>
         </div>
       </div>
     </header>
@@ -2012,13 +2110,34 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
     <!-- WEEK TIME-MACHINE -->
     <div id="homeWeekScrubber" class="px-4 pb-3"></div>
 
+    <!-- Rehydrating a saved league takes as long as ESPN takes. Until this
+         existed the Desk showed "NO SIGNAL · connect your league" for that
+         whole window, telling a returning reader the app was unconnected while
+         it was in fact mid-fetch. The skeleton holds the shape of the answer
+         instead; renderHome() owns which of the three states is visible. -->
+    <div id="homeLoading" class="px-4 hidden" aria-hidden="true">
+      <div class="sk-stack mb-4">
+        <div class="sk sk-block"></div>
+      </div>
+      <div class="sk-row mb-4">
+        <div class="card p-3 sk-stack"><div class="sk sk-line short"></div><div class="sk sk-line tall mid"></div></div>
+        <div class="card p-3 sk-stack"><div class="sk sk-line short"></div><div class="sk sk-line tall mid"></div></div>
+        <div class="card p-3 sk-stack"><div class="sk sk-line short"></div><div class="sk sk-line tall mid"></div></div>
+      </div>
+      <div class="sk-stack mb-4">
+        <div class="sk sk-block" style="height:108px"></div>
+        <div class="sk sk-block" style="height:88px"></div>
+      </div>
+      <p class="text-[11px] text-[var(--dim)] text-center leading-relaxed" id="homeLoadingLabel">Loading your league…</p>
+    </div>
+
     <div id="homeNoData" class="px-4">
       <div class="card p-6 text-center">
         <div class="glyph font-display text-[30px] text-[#232c3b]">NO SIGNAL</div>
-        <p class="text-[13px] text-[var(--dim)] mt-2 leading-relaxed">
+        <p class="text-[13px] text-[var(--dim)] mt-2 leading-relaxed" id="homeNoDataCopy">
           Connect your ESPN league to bring the broadcast online.
         </p>
-        <button class="btn-primary mt-4" data-goto="setup">OPEN SETUP</button>
+        <button class="btn-primary mt-4" data-goto="setup" id="homeNoDataBtn">OPEN SETUP</button>
       </div>
     </div>
 
@@ -2845,6 +2964,86 @@ window.FSNBridge = {
     catch(err){ console.error('[FSNBridge] "' + name + '" threw', err); return undefined; }
   },
 };
+
+/* ============================================================
+   NETWORK STATE  (global scope — block 1, per the cross-block scope rule)
+
+   Every screen in this app is a read of somebody else's API, so "the phone
+   lost signal" is the single most common failure a reader will ever hit — and
+   until now it was also the least legible one. A dropped connection surfaced
+   as a bare fetch() rejection ("Failed to fetch"), which the Setup screen
+   translated into deployment advice aimed at whoever runs the Vercel project:
+   "the serverless function may not be deployed … confirm the api/ routes
+   shipped". A reader on a train, and an App Store reviewer in airplane mode,
+   both read that as a broken app.
+
+   This module is the one place that answers "are we online?", so the transport
+   layer, the failure copy and the offline banner can never disagree. It is
+   consulted by blocks 1 and 7, which is why it sits at global scope rather
+   than inside either IIFE.
+
+   navigator.onLine is only ever trustworthy in the negative: false reliably
+   means no network interface, while true only means an interface exists — a
+   captive portal or a dead uplink still reports true. So offline() gates the
+   copy and the banner, and a real fetch failure is still the authority on
+   whether a request actually got through.
+============================================================ */
+window.FSNNetwork = (function(){
+  const listeners = [];
+  /* An older or embedded WebView may not implement navigator.onLine at all;
+     treating "unknown" as online keeps the app's behaviour identical to what
+     it was before this module existed. */
+  const supported = typeof navigator !== 'undefined' && typeof navigator.onLine === 'boolean';
+
+  function offline(){ return supported ? navigator.onLine === false : false; }
+
+  function announce(){
+    const state = offline();
+    listeners.forEach(fn=>{
+      try{ fn(state); }
+      catch(err){ console.error('[FSNNetwork] a connectivity listener threw for state offline=' + state, err); }
+    });
+  }
+
+  if(typeof window.addEventListener === 'function'){
+    window.addEventListener('online', announce);
+    window.addEventListener('offline', announce);
+  }
+
+  /* True when this error is the shape a request takes when it never left the
+     device. Browsers disagree on the wording — Chrome throws "Failed to fetch",
+     Firefox "NetworkError when attempting to fetch resource", Safari and iOS
+     WKWebView "Load failed" — and the relay adds its own RELAY_UNREACHABLE
+     when /api answered with nothing at all. */
+  function isTransportFailure(err){
+    const message = String((err && (err.message || err)) || '');
+    return /Failed to fetch|NetworkError|Load failed|RELAY_UNREACHABLE|ERR_INTERNET_DISCONNECTED|The Internet connection appears to be offline/i
+      .test(message);
+  }
+
+  return {
+    offline,
+    online(){ return !offline(); },
+    isTransportFailure,
+    /* Returns reader-facing copy when the device is the reason a read failed,
+       and '' when it is not — so callers keep their own, more specific
+       diagnosis for every other case rather than blaming the network for a
+       401 or a bad League ID. */
+    describeFailure(err){
+      if(!offline()) return '';
+      return isTransportFailure(err)
+        ? 'You’re offline. FSN will pick this up automatically as soon as the connection is back.'
+        : 'You’re offline, so this could not be sent. Reconnect and try again.';
+    },
+    subscribe(fn){
+      if(typeof fn !== 'function') return fn;
+      listeners.push(fn);
+      try{ fn(offline()); }
+      catch(err){ console.error('[FSNNetwork] a connectivity listener threw on subscribe', err); }
+      return fn;
+    },
+  };
+})();
 
 /* ============================================================
    SHARED STORE — one league object, one history object, and the
@@ -16230,6 +16429,11 @@ const ui = {
   weekDataCache: {},
   weekFetchSeq: 0,
   weekLoading: null,
+  /* True while a league read is in flight with nothing yet on screen — the
+     silent boot rehydration, and the first fetch of a newly entered League ID.
+     renderHome() reads it to choose the skeleton over the "connect your
+     league" card, so a wait never presents itself as an unconnected app. */
+  hydrating: false,
   seasonFetchSeq: 0,
   seasonLoading: null,
   cloudHydrateSeq: 0,
@@ -16896,9 +17100,31 @@ function leaguePlatformLabel(){
 
 function renderHome(){
   const live = LeagueData.hasLive();
-  $('homeNoData').classList.toggle('hidden', live);
+  /* Three states, not two. Without data the Desk is either still loading
+     (skeleton) or genuinely unconnected ("NO SIGNAL") — and telling a
+     returning reader mid-rehydration that they have no league connected is
+     what made a normal wait look like a dead app. */
+  const loading = !live && !!ui.hydrating;
+  $('homeLoading').classList.toggle('hidden', !loading);
+  $('homeNoData').classList.toggle('hidden', live || loading);
   $('homeContent').classList.toggle('hidden', !live);
-  if(!live) return;
+  const weekBlock = $('homeWeekBlock');
+  if(weekBlock) weekBlock.classList.toggle('hidden', !live);
+  if(!live){
+    /* An unconnected Desk with no network is a different problem from an
+       unconnected Desk with one, and only one of the two is fixed by opening
+       Setup. Say which it is. */
+    try{
+      const copy = $('homeNoDataCopy'), btn = $('homeNoDataBtn'), glyph = $('homeNoData').querySelector('.glyph');
+      const offline = window.FSNNetwork && FSNNetwork.offline();
+      if(copy) copy.textContent = offline
+        ? 'You’re offline. Reconnect and FSN will load your league automatically.'
+        : 'Connect your ESPN league to bring the broadcast online.';
+      if(glyph) glyph.textContent = offline ? 'OFFLINE' : 'NO SIGNAL';
+      if(btn) btn.classList.toggle('hidden', !!offline);
+    }catch(err){ console.error('[Home] no-data state copy failed', err); }
+    return;
+  }
 
   const d = LeagueData.espnData;
   const week = effectiveWeek();
@@ -18734,6 +18960,19 @@ function setFetchLoading(isLoading){
   $('fetchLabel').textContent = isLoading
     ? 'CONNECTING…'
     : (ui.provider === 'yahoo' ? 'LOAD YAHOO LEAGUE' : 'FETCH LEAGUE DATA');
+
+  /* Every provider path (ESPN, Sleeper, Yahoo) funnels through here, so this
+     is the one seam that knows a league read is in flight. The Desk is on a
+     different screen and has no button to disable — it repaints from
+     ui.hydrating instead, showing a skeleton rather than "connect your league"
+     while the request is outstanding. Repaint only when the Desk currently has
+     nothing to show, so an in-place refresh never blanks live cards. */
+  const next = !!isLoading;
+  if(ui.hydrating === next) return;
+  ui.hydrating = next;
+  if(LeagueData.hasLive()) return;
+  try{ if(ui.screen === 'home') renderHome(); }
+  catch(err){ console.error('[Home] loading-state repaint failed', err); }
 }
 
 /* ============================================================
@@ -19766,7 +20005,12 @@ async function fetchSleeperLeagueData(opts){
     } else if(/SLEEPER_HTTP_5\d\d|SLEEPER_RELAY/.test(message)){
       msg = 'Sleeper’s API responded with a server error (' + message + '). This is usually transient — try again in a moment.';
     } else if(/Failed to fetch|NetworkError|Load failed/i.test(message)){
-      msg = 'Could not reach Sleeper (network error). A browser extension or content filter may be blocking api.sleeper.app — disable it and retry.';
+      /* A phone with no signal and a desktop with a blocking extension throw
+         the same rejection. Only one of those readers can act on the extension
+         advice, so lead with the device state when we know it. */
+      msg = FSNNetwork.offline()
+        ? 'You\u2019re offline, so FSN could not reach Sleeper. Reconnect and this will retry automatically.'
+        : 'Could not reach Sleeper (network error). A browser extension or content filter may be blocking api.sleeper.app \u2014 disable it and retry.';
     } else {
       msg = 'The Sleeper league could not be loaded (' + (message || 'unknown error') + '). Check the League ID and try again.';
     }
@@ -20225,10 +20469,13 @@ async function fetchLeagueData(options){
         ? 'ESPN has no 2026 season at this League ID (HTTP 404). Your cookies are saved, so this is the ID or the season — confirm the league renewed for 2026 and that the ID matches the one in your ESPN league URL.'
         : 'ESPN has no 2026 season for this League ID (HTTP 404). Confirm the league renewed for 2026 and the ID is correct.';
     } else if(/PRIVATE_RELAY_UNREACHABLE/.test(message)){
-      msg = 'Your private-league cookies are saved, but the same-origin /api/espn relay could not be reached. ' +
-        'Private leagues can only be read through that relay (public proxies cannot carry your cookies), so ' +
-        'there is no fallback — confirm the Vercel api/ routes are deployed, disable any request-blocking ' +
-        'extension, and retry.';
+      msg = FSNNetwork.offline()
+        ? 'You\u2019re offline, so FSN could not reach your private league. Your saved cookies are fine \u2014 ' +
+          'reconnect and this will retry automatically.'
+        : 'Your private-league cookies are saved, but the same-origin /api/espn relay could not be reached. ' +
+          'Private leagues can only be read through that relay (public proxies cannot carry your cookies), so ' +
+          'there is no fallback \u2014 confirm the Vercel api/ routes are deployed, disable any request-blocking ' +
+          'extension, and retry.';
     } else if(/NO_LIVE_LEAGUE_DATA/.test(message)){
       msg = credReport.state === 'ready'
         ? 'ESPN answered for this League ID but returned no teams — which is what a private league looks like when the cookies do not belong to a member of it. Confirm the espn_s2 + SWID you pasted come from an ESPN account that is in this league, then try again.'
@@ -20236,7 +20483,13 @@ async function fetchLeagueData(options){
     } else if(/INVALID_ESPN_JSON/.test(message)){
       msg = 'The /api/espn relay returned an unexpected (non-JSON) response — the serverless function may not be deployed. Verify the Vercel deployment includes the api/ routes.';
     } else if(/RELAY_UNREACHABLE|Failed to fetch|NetworkError|Load failed/i.test(message)){
-      msg = 'Could not reach the /api/espn relay or any fallback (network error). The serverless function may not be deployed on Vercel, or a browser extension is blocking the request — confirm the api/ routes shipped and retry.';
+      /* Same rejection, two entirely different readers. On a phone that has
+         lost signal this is "you're offline"; the deployment advice below is
+         for whoever runs the Vercel project and is meaningless — and alarming —
+         to everyone else, including a reviewer testing in airplane mode. */
+      msg = FSNNetwork.offline()
+        ? 'You’re offline, so FSN could not reach ESPN. Reconnect and this will retry automatically.'
+        : 'Could not reach the /api/espn relay or any fallback (network error). The serverless function may not be deployed on Vercel, or a browser extension is blocking the request — confirm the api/ routes shipped and retry.';
     } else if(/\bHTTP 5\d\d\b/.test(message) || /upstream/.test(message)){
       msg = 'The ESPN relay failed upstream (' + (message || 'server error') + '). This is usually a transient ESPN outage — try again in a moment.';
     } else {
@@ -22867,6 +23120,81 @@ function applyDeepLink(){
 }
 
 /* ============================================================
+   OFFLINE CHROME
+
+   Reads the shared FSNNetwork state (block 1) and drives the fixed banner.
+   Losing the connection now says so once, at the top of every screen, instead
+   of leaving each screen to discover it separately through a failed fetch —
+   and regaining it re-runs the read the reader was waiting on rather than
+   making them find the Setup tab and press FETCH again.
+============================================================ */
+let offlineRestoreTimer = null;
+/* 'online' | 'offline' | 'restored'. Held here rather than read back off the
+   banner's dataset, because the browser fires `online` more than once when an
+   interface flaps or a VPN reconnects — and reading the DOM made the second
+   event look like a fresh online->online transition, which cleared the "back
+   online" confirmation the instant it appeared. */
+let offlineBannerState = 'online';
+
+function measureOfflineBanner(){
+  const el = $('offlineBanner');
+  if(!el) return;
+  /* Offset the shell by the height the banner actually took — it wraps to two
+     lines on a 320px screen — rather than a guessed constant. */
+  const h = Math.round(el.getBoundingClientRect().height) || 0;
+  document.documentElement.style.setProperty('--offline-h', h + 'px');
+}
+
+function paintOfflineBanner(isOffline){
+  const el = $('offlineBanner'), text = $('offlineBannerText');
+  if(!el) return;
+
+  if(isOffline){
+    clearTimeout(offlineRestoreTimer);
+    if(text) text.textContent = LeagueData.hasLive()
+      ? 'You’re offline — showing the last data FSN loaded.'
+      : 'You’re offline. FSN will connect as soon as you’re back.';
+    offlineBannerState = 'offline';
+    el.dataset.state = 'offline';
+    document.body.dataset.offline = 'true';
+    measureOfflineBanner();
+    return;
+  }
+
+  /* A repeat `online` event while the confirmation is still up is not a new
+     transition — leave the running timer alone rather than tearing the banner
+     down early or firing a second rehydration. */
+  if(offlineBannerState !== 'offline') return;
+
+  /* Confirm the recovery rather than just vanishing — a banner that disappears
+     silently leaves the reader unsure whether the stale scores on screen have
+     been refreshed. It clears itself after a few seconds. */
+  clearTimeout(offlineRestoreTimer);
+  if(text) text.textContent = 'Back online — refreshing your league.';
+  offlineBannerState = 'restored';
+  el.dataset.state = 'restored';
+  document.body.dataset.offline = 'true';
+  measureOfflineBanner();
+  offlineRestoreTimer = setTimeout(()=>{
+    offlineBannerState = 'online';
+    el.dataset.state = 'online';
+    document.body.dataset.offline = 'false';
+    document.documentElement.style.setProperty('--offline-h', '0px');
+  }, 3200);
+
+  /* Only re-fetch a league the reader already had, and only when the last
+     attempt did not land. A reconnect must never kick off a fetch for someone
+     who has not connected a league, and never disturb a screen that is
+     already showing live data. */
+  if(ui.hydrating || LeagueData.hasLive()) return;
+  let savedLeagueId = '';
+  try{ savedLeagueId = (localStorage.getItem(SAVED_LEAGUE_ID_KEY) || '').trim(); }catch(e){}
+  if(!savedLeagueId && ui.provider !== 'yahoo') return;
+  fetchLeagueData({ leagueId:savedLeagueId, silent:true, navigate:false })
+    .catch(err=> console.warn('[FSN] Reconnect rehydration failed', err));
+}
+
+/* ============================================================
    BOOT — render immediately, then silently rehydrate a saved league.
 ============================================================ */
 function bootApp(){
@@ -22875,8 +23203,29 @@ function bootApp(){
   setConn('none');
   const savedWeek = parseInt($('weekNum').value, 10);
   if(savedWeek > 0) ui.week = savedWeek;
+
+  /* A reader who has connected a league before is about to be rehydrated from
+     the network a few lines below. Mark that BEFORE the first paint, so the
+     Desk opens on the skeleton rather than flashing "NO SIGNAL · connect your
+     league" for the life of the request. Readers with nothing saved fall
+     through unchanged and get the real connect card immediately. */
+  try{
+    const pending = (localStorage.getItem(SAVED_LEAGUE_ID_KEY) || '').trim();
+    if(pending || ui.provider === 'yahoo') ui.hydrating = true;
+  }catch(e){ /* localStorage is unavailable in private mode; boot unchanged */ }
+
   renderAll();
   setScreen('home');
+
+  /* Subscribe after the first paint so the banner measures against a laid-out
+     document. FSNNetwork fires the handler once immediately, which paints the
+     banner for a reader who opened the app already offline. */
+  try{
+    FSNNetwork.subscribe(paintOfflineBanner);
+    window.addEventListener('resize', ()=>{
+      if(document.body.dataset.offline === 'true') measureOfflineBanner();
+    });
+  }catch(err){ console.error('[FSN] Offline banner wiring failed', err); }
 
   // Deep-link entry from the marketing landing page (or any external link).
   // The apex/www landing site sends visitors here with ?goto=setup and an
@@ -22885,6 +23234,18 @@ function bootApp(){
   // additive: with no params the app boots to Home exactly as before.
   const deepLink = applyDeepLink();
 
+  /* Whatever happens below, the Desk must not be left on the skeleton. Not
+     every branch reaches setFetchLoading() — a Yahoo reader who is not logged
+     in, a saved id that no longer resolves to a URL, a rejected status probe —
+     and any of those would otherwise shimmer forever. This is the one exit. */
+  const endBootHydration = ()=>{
+    if(!ui.hydrating) return;
+    ui.hydrating = false;
+    if(LeagueData.hasLive()) return;
+    try{ if(ui.screen === 'home') renderHome(); }
+    catch(err){ console.error('[Home] boot loading-state teardown failed', err); }
+  };
+
   let savedLeagueId = '';
   try{ savedLeagueId = (localStorage.getItem(SAVED_LEAGUE_ID_KEY) || '').trim(); }catch(e){}
   if(ui.provider === 'yahoo'){
@@ -22892,19 +23253,25 @@ function bootApp(){
       $('fetchStatus').style.color = 'var(--red)';
       $('fetchStatus').textContent = 'Yahoo login was not completed (' + deepLink.yahooError + '). Tap Log In to try again.';
       refreshYahooAuthStatus();
+      endBootHydration();
       return;
     }
     refreshYahooAuthStatus().then(connected=>{
-      if(!connected) return;
+      if(!connected){ endBootHydration(); return; }
       const yahooLeague = window.YahooAdapter.normalizeYahooLeagueKey($('leagueIdInput').value);
-      fetchYahooLeagueData({ leagueId:yahooLeague, silent:true, navigate:false })
+      return fetchYahooLeagueData({ leagueId:yahooLeague, silent:true, navigate:false })
         .catch(err=> console.warn('[YahooAdapter] silent league rehydration failed', err));
-    }).catch(err=> console.error('[Yahoo OAuth UI] boot status check failed', err));
+    })
+      .catch(err=> console.error('[Yahoo OAuth UI] boot status check failed', err))
+      .then(endBootHydration, endBootHydration);
   } else if(savedLeagueId){
     // Fire-and-forget inside this page lifecycle: fetchLeagueData itself awaits
     // both concurrent network operations and repaints when hydration completes.
     fetchLeagueData({ leagueId:savedLeagueId, silent:true, navigate:false })
-      .catch(err=> console.warn('[FSN] Silent league rehydration failed', err));
+      .catch(err=> console.warn('[FSN] Silent league rehydration failed', err))
+      .then(endBootHydration, endBootHydration);
+  } else {
+    endBootHydration();
   }
 }
 
