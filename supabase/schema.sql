@@ -46,9 +46,11 @@ create table if not exists public.waitlist_signups (
   platform text,
   source text,
   user_agent text,
-  -- Optional pre-collection: commissioners can paste these ahead of launch so
-  -- their desk is ready on day one. Written only via the service-role route.
+  -- Optional pre-collection: a commissioner can paste their League ID ahead of
+  -- launch so their desk is ready on day one. Written only via the
+  -- service-role route. A League ID is not a credential.
   league_id text,
+  -- RETIRED — no longer written by /api/waitlist. See the purge below.
   espn_swid text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -57,6 +59,32 @@ create table if not exists public.waitlist_signups (
 -- Idempotent add for projects created before these columns existed.
 alter table public.waitlist_signups add column if not exists league_id text;
 alter table public.waitlist_signups add column if not exists espn_swid text;
+
+-- ------------------------------------------------------------
+-- RETIRING waitlist_signups.espn_swid
+--
+-- The landing form used to collect an ESPN SWID cookie in a plain text input
+-- and store it here unencrypted: a persistent ESPN account identifier, in the
+-- clear, beside an email address, in a marketing table. Everywhere else in
+-- this codebase the same value is treated as a credential (password field,
+-- AES-256-GCM at rest in public.leagues, never returned to a browser). It also
+-- bought nothing — a SWID cannot read a private league without espn_s2, which
+-- was never collected here.
+--
+-- The form and /api/waitlist no longer collect or write it, so the column
+-- stops growing on deploy. Rows captured BEFORE that change still hold
+-- plaintext values and are not cleaned up automatically, because dropping
+-- data is not something a schema file should do to a live project without the
+-- operator deciding to.
+--
+-- Run this once against production to clear the historical values:
+--
+--   update public.waitlist_signups set espn_swid = null where espn_swid is not null;
+--
+-- Then, once you have confirmed nothing reads it, drop the column:
+--
+--   alter table public.waitlist_signups drop column if exists espn_swid;
+-- ------------------------------------------------------------
 
 alter table public.waitlist_signups enable row level security;
 -- Intentionally no anon/authenticated policies: writes go through the

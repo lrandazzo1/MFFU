@@ -349,7 +349,9 @@ footer{ border-top:1px solid var(--line); padding:34px 0 46px; color:var(--dim);
 }
 .device::before{
   content:""; position:absolute; top:17px; left:50%; transform:translateX(-50%);
-  width:104px; height:6px; border-radius:6px; background:rgba(255,255,255,.16); z-index:2;
+  /* Proportional, so the speaker slot stays a slot rather than spanning almost
+     the whole frame once the device shrinks on a narrow screen. */
+  width:min(104px, 39%); height:6px; border-radius:6px; background:rgba(255,255,255,.16); z-index:2;
 }
 .device-screen{
   position:relative; border-radius:27px; overflow:hidden;
@@ -376,7 +378,26 @@ footer{ border-top:1px solid var(--line); padding:34px 0 46px; color:var(--dim);
   .showcase-row{ grid-template-columns:1fr; gap:28px; }
   .showcase-row.reverse .showcase-media{ order:0; }
   .showcase-copy p{ max-width:none; }
-  .showcase-media.pair .device{ max-width:180px; }
+  /* Two 180px frames plus the 22px gap need 382px, so a paired showcase ran
+     off any phone narrower than that — one frame clipped at the left edge, the
+     other past the right. flex:0 0 auto on .device meant they could not give
+     the space back. Let them share the row instead, capped at the same 180px
+     wherever there is room for it. */
+  .showcase-media{ gap:clamp(10px,4vw,22px); }
+  .showcase-media.pair .device{ flex:1 1 0; min-width:0; max-width:180px; }
+}
+
+/* Small phones (iPhone SE and anything else at or under ~400px).
+   The sticky header packs a 44px badge, the full "FANTASY SPORTS NETWORK"
+   wordmark and a nowrap "Join the Waitlist" button into 276px of usable width,
+   which overflowed by 51px — the CTA, the one element in the header that has
+   to be tappable, was the part hanging off the screen. */
+@media (max-width:400px){
+  .wrap{ padding:0 16px; }
+  .topbar-inner{ gap:10px; }
+  /* The badge still carries the brand; the wordmark is what does not fit. */
+  .brand-name{ display:none; }
+  .cta-mini{ padding:9px 13px; font-size:12px; letter-spacing:.03em; }
 }
 </style>
 </head>
@@ -702,14 +723,13 @@ footer{ border-top:1px solid var(--line); padding:34px 0 46px; color:var(--dim);
       Yahoo API access is currently undergoing final approval. Enter your email to receive early access the moment the integration goes live.
     </p>
 
-    <!-- Optional pre-collection: League ID + ESPN SWID so commissioners can be
-         ready on launch day. Collapsed by default so it never blocks the email. -->
+    <!-- Optional pre-collection: League ID only, so commissioners can be ready
+         on launch day. Collapsed by default so it never blocks the email. -->
     <details class="wl-optional">
       <summary>Commissioner? Add your league now <span class="wl-optional-tag">optional</span></summary>
       <div class="wl-optional-body">
         <p class="wl-optional-lead">
-          Paste these and your desk lights up the second FSN drops. Sleeper &amp;
-          public ESPN leagues only need the League ID.
+          Drop your League ID and your desk lights up the second FSN drops.
         </p>
         <label class="wl-field">
           <span>League ID</span>
@@ -717,15 +737,24 @@ footer{ border-top:1px solid var(--line); padding:34px 0 46px; color:var(--dim);
                  inputmode="numeric" autocomplete="off" placeholder="e.g. 123456"
                  aria-label="Your ESPN or Sleeper league ID">
         </label>
-        <label class="wl-field">
-          <span>ESPN SWID cookie <em>(private ESPN leagues)</em></span>
-          <input class="wl-input" id="waitlistSwid" type="text" name="swid"
-                 autocomplete="off" placeholder="{AB12CD34-…}"
-                 aria-label="Your ESPN SWID cookie">
-        </label>
+        <!-- The ESPN SWID cookie is deliberately NOT collected here.
+
+             This form used to ask for it in a plain type="text" field and the
+             waitlist route stored it unencrypted in waitlist_signups.espn_swid
+             — a persistent ESPN account identifier, in the clear, next to an
+             email address, in a marketing table, months before the app that
+             would use it existed. The app's own private-league flow treats the
+             same value as a credential: a password field, never logged,
+             AES-256-GCM at rest, and only after ESPN confirms league
+             membership.
+
+             It also bought nothing. A SWID cannot read a private league on its
+             own — that needs espn_s2 too, which was never collected here — and
+             the app asks for both anyway on first connect. Least data that
+             works: the League ID, which is not a credential. -->
         <p class="wl-optional-hint">
-          Find the SWID in your signed-in ESPN browser: DevTools →
-          Application → Cookies → espn.com → <b>SWID</b>.
+          Private ESPN league? Nothing else to do now — FSN will walk you
+          through connecting it, in the app, on launch day.
         </p>
       </div>
     </details>
@@ -761,7 +790,6 @@ footer{ border-top:1px solid var(--line); padding:34px 0 46px; color:var(--dim);
   var form     = document.getElementById('waitlistForm');
   var email    = document.getElementById('waitlistEmail');
   var leagueId = document.getElementById('waitlistLeagueId');
-  var swid     = document.getElementById('waitlistSwid');
   var msg      = document.getElementById('waitlistMsg');
   var submit   = document.getElementById('waitlistSubmit');
   var helper   = document.getElementById('platformHelper');
@@ -838,11 +866,13 @@ footer{ border-top:1px solid var(--line); padding:34px 0 46px; color:var(--dim);
       return;
     }
 
+    /* No credential is collected here — see the note on the form above. The
+       entry is also mirrored to localStorage below, which is a second reason
+       not to put an ESPN identifier in it. */
     var entry = {
       email: value,
       platform: normalizePlatform(email.dataset.platform),
       league_id: (leagueId && leagueId.value || '').trim(),
-      swid: (swid && swid.value || '').trim(),
       ts: new Date().toISOString()
     };
     saveLocal(entry);
@@ -854,7 +884,6 @@ footer{ border-top:1px solid var(--line); padding:34px 0 46px; color:var(--dim);
       msg.textContent = 'Submitting…'; msg.setAttribute('data-state','ok');
       var payload = { email: entry.email, platform: entry.platform, source: 'landing' };
       if(entry.league_id) payload.league_id = entry.league_id;
-      if(entry.swid) payload.swid = entry.swid;
       fetch(WAITLIST_ENDPOINT, {
         method:'POST',
         headers:{ 'Content-Type':'application/json', 'Accept':'application/json' },

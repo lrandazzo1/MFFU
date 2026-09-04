@@ -1,7 +1,7 @@
 /* ============================================================
    MFFU WAITLIST — /api/waitlist
 
-   POST { email, platform?, source?, league_id?, swid? }
+   POST { email, platform?, source?, league_id? }
 
    Stores a pre-launch signup in public.waitlist_signups via the
    Supabase service-role key. Called cross-origin from the marketing
@@ -91,14 +91,26 @@ function cleanLeagueId(value) {
   return cleaned || null;
 }
 
-// ESPN SWID cookie, e.g. {AB12CD34-...}. Normalize to the braced form ESPN
-// expects (matching api/espn.js) so it's ready to use at launch.
-function cleanSwid(value) {
-  let s = String(value || '').trim();
-  if (!s) return null;
-  s = s.slice(0, 80);
-  if (s[0] !== '{') s = '{' + s.replace(/^\{|\}$/g, '') + '}';
-  return s;
+/* The ESPN SWID is deliberately NOT accepted here any more.
+
+   This route used to normalize and store it in waitlist_signups.espn_swid as
+   plaintext: a persistent ESPN account identifier, in the clear, beside an
+   email address, in a marketing table. Everywhere else in this codebase the
+   same value is treated as a credential — a password field in the app,
+   AES-256-GCM at rest in public.leagues, never returned to a browser, and
+   written only after ESPN confirms league membership. None of that applied on
+   this path, and none of it needed to: a SWID cannot read a private league
+   without espn_s2, which was never collected, and the app asks for both on
+   first connect regardless.
+
+   The landing form no longer offers the field. This ignores anything a cached
+   copy of the old page still posts, so the column stops growing immediately
+   rather than after every browser has refreshed. */
+function rejectSuppliedSwid(body) {
+  const supplied = body && (body.swid || body.SWID || body.espn_swid);
+  if (!supplied) return;
+  console.warn('[waitlist] Ignored an ESPN SWID posted by an old cached landing page. ' +
+    'Credentials are not collected on the waitlist; it was discarded, not stored.');
 }
 
 function escapeHtml(value) {
@@ -244,7 +256,7 @@ async function handler(req, res) {
   if (!email) return res.status(400).json({ error: 'A valid email address is required.' });
 
   const leagueId = cleanLeagueId(body && (body.league_id != null ? body.league_id : body.leagueId));
-  const swid = cleanSwid(body && body.swid);
+  rejectSuppliedSwid(body);
 
   const row = {
     email,
@@ -255,7 +267,6 @@ async function handler(req, res) {
   // Only overwrite the optional pre-collection columns when the visitor
   // actually supplied them, so a later bare signup can't wipe earlier details.
   if (leagueId) row.league_id = leagueId;
-  if (swid) row.espn_swid = swid;
 
   // Detect first-time signups so we only send one welcome email per address.
   let isNew = true;
@@ -283,7 +294,7 @@ async function handler(req, res) {
 
   // Fire the welcome email for new signups only, awaited but never fatal.
   if (isNew) {
-    await sendWelcomeEmail(email, Boolean(leagueId || swid));
+    await sendWelcomeEmail(email, Boolean(leagueId));
   }
 
   return res.status(200).json({ ok: true, email, emailed: isNew });
