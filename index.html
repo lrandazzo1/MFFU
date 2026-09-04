@@ -575,6 +575,25 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
 }
 .onboard-link:active{ opacity:.7; }
 
+/* Privacy & Data card — App Store 5.1.1 policy access + local erasure.
+   Links open the hosted policy pages in the system browser; the erase
+   button pairs the ghost silhouette with a red border so a destructive
+   tap reads distinctly against the neutral controls above it. */
+.privacy-links{ display:flex; flex-direction:column; gap:8px; }
+.privacy-link{
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+  padding:13px 14px; border-radius:12px; min-height:44px;
+  background:#0f1420; border:1px solid var(--line-2); color:var(--off);
+  text-decoration:none;
+  transition:border-color .12s ease, background .12s ease, transform .12s ease;
+}
+.privacy-link:active{ transform:scale(.99); }
+.privacy-link:focus-visible{ outline:none; border-color:var(--cyan); box-shadow:0 0 0 3px rgba(0,224,255,.16); }
+.privacy-link-label{ font-size:12.5px; font-weight:600; letter-spacing:.02em; }
+.privacy-link-arrow{ color:var(--cyan); font-size:14px; }
+.btn-ghost.btn-danger{ border-color:rgba(255,45,85,.5); color:#ff5470; }
+.btn-ghost.btn-danger:active{ border-color:rgba(255,45,85,.75); }
+
 #onboardModal{
   position:fixed; inset:0; z-index:120;
   background:var(--ink);
@@ -2419,6 +2438,31 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
             </p>
           </div>
         </div>
+      </div>
+
+      <!-- PRIVACY & DATA — hosted-policy links + local storage erasure.
+           Required by App Store Guideline 5.1.1: visible in-app access to
+           the Privacy Policy and Terms of Service, plus a control that
+           clears every locally-stored token and cache. -->
+      <div class="card p-4">
+        <div class="section-head"><span class="bar" style="background:var(--red)"></span><h2>Privacy &amp; Data</h2></div>
+        <p class="text-[11.5px] text-[var(--dim)] leading-relaxed mb-3">
+          Review how Fantasy Sports Network handles your League ID, ESPN cookies, and historical archive, and wipe every local trace from this device with one tap.
+        </p>
+        <div class="privacy-links">
+          <a class="privacy-link" href="https://www.fantasysportsnetwork.app/privacy" target="_blank" rel="noopener noreferrer">
+            <span class="privacy-link-label">Privacy Policy</span>
+            <span class="privacy-link-arrow" aria-hidden="true">↗</span>
+          </a>
+          <a class="privacy-link" href="https://www.fantasysportsnetwork.app/terms" target="_blank" rel="noopener noreferrer">
+            <span class="privacy-link-label">Terms of Service</span>
+            <span class="privacy-link-arrow" aria-hidden="true">↗</span>
+          </a>
+        </div>
+        <button id="eraseLocalDataBtn" type="button" class="btn-ghost btn-danger mt-3">ERASE STORED DATA &amp; DISCONNECT</button>
+        <p class="text-[10px] text-[var(--dim)] leading-relaxed mt-2">
+          Clears every saved League ID, ESPN cookie, historical archive cache, and preference stored on this device (all <span class="onboard-code">fsn.</span>, <span class="onboard-code">fsn_</span>, and <span class="onboard-code">mffu.</span> keys). Shared cloud records are not affected — sign out of the League Cloud on a member browser if you want those removed too.
+        </p>
       </div>
 
       <div class="text-center py-2">
@@ -21247,6 +21291,62 @@ async function handleShareInvite(){
 if($('shareInviteBtn')) $('shareInviteBtn').addEventListener('click', ()=> handleShareInvite());
 if($('shareInviteCopy')) $('shareInviteCopy').addEventListener('click', ()=> copyInviteLink());
 if($('shareInviteUrl')) $('shareInviteUrl').addEventListener('focus', function(){ this.select(); });
+
+/* PRIVACY & DATA — App Store 5.1.1 local-erasure control.
+   Wipes every localStorage/sessionStorage key whose name begins with one of
+   the app's three prefix families (fsn., fsn_, mffu.) — the exhaustive set
+   of storage keys this build owns — then reloads without the current query
+   string so in-memory ui/LeagueData state and any invite token cannot
+   rehydrate what was just erased. */
+function eraseLocalDataAndDisconnect(){
+  const btn = $('eraseLocalDataBtn');
+  const ok = window.confirm(
+    'Erase every League ID, ESPN cookie, saved history, and preference stored on this device? ' +
+    'Shared cloud records are not affected. This cannot be undone.'
+  );
+  if(!ok) return;
+  const PREFIXES = ['fsn.', 'fsn_', 'mffu.'];
+  const matches = (key)=> !!key && PREFIXES.some(function(p){ return key.indexOf(p) === 0; });
+  function purge(store, label){
+    if(!store) return 0;
+    let n = 0;
+    try{
+      // Snapshot keys first — removeItem during iteration shifts indices
+      // and would silently leave half the matching keys behind.
+      const keys = [];
+      for(let i = 0; i < store.length; i++){
+        const k = store.key(i);
+        if(matches(k)) keys.push(k);
+      }
+      keys.forEach(function(k){
+        try{ store.removeItem(k); n++; }
+        catch(err){ console.warn('[Privacy] ' + label + ' remove failed for ' + k, err); }
+      });
+    }catch(err){
+      // localStorage/sessionStorage can throw wholesale in private mode or
+      // when site data is disabled; nothing to erase in that case.
+      console.warn('[Privacy] ' + label + ' unavailable during erasure', err);
+    }
+    return n;
+  }
+  const removed =
+    purge(typeof localStorage !== 'undefined' ? localStorage : null, 'localStorage') +
+    purge(typeof sessionStorage !== 'undefined' ? sessionStorage : null, 'sessionStorage');
+  console.warn('[Privacy] Erased ' + removed + ' local key(s) at user request.');
+  if(btn){ btn.disabled = true; btn.textContent = 'ERASED · RELOADING'; }
+  try{ toast('Local data erased · reloading'); }catch(err){ console.warn('[Privacy] toast failed', err); }
+  // Reload from a bare pathname so any share/invite token in the URL is
+  // dropped alongside the wiped storage — otherwise the invite handler
+  // would immediately re-save the League ID we just cleared.
+  setTimeout(function(){
+    try{ location.replace(location.pathname); }
+    catch(err){
+      console.error('[Privacy] reload via location.replace failed', err);
+      try{ location.reload(); }catch(e){ console.error('[Privacy] reload fallback failed', e); }
+    }
+  }, 350);
+}
+if($('eraseLocalDataBtn')) $('eraseLocalDataBtn').addEventListener('click', eraseLocalDataAndDisconnect);
 
 $('historyUnlockToggle').addEventListener('click', ()=>{
   const panel = $('historyUploadPanel');
