@@ -545,30 +545,40 @@ async function handler(req, res) {
         current_updated_at: error.currentUpdatedAt,
       });
     }
-    // Surface the EXACT database error (message / code / details / hint) so the
-    // real cause — an RLS policy, a missing column, a constraint violation, a
-    // connection failure — is visible in the response and server logs instead
-    // of a generic "save failed". Supabase/PostgREST errors carry these fields.
+    // Log the EXACT database error — message, code, details, hint — so the real
+    // cause (an RLS policy, a missing column, a constraint violation, a
+    // connection failure) is fully recoverable from the server logs.
     console.error('[api/league] save failed', {
       message: error && error.message,
       code: error && error.code,
       details: error && error.details,
       hint: error && error.hint,
     });
-    const parts = [
-      error && error.message ? String(error.message) : 'Unknown database error',
-      error && error.details ? 'Details: ' + String(error.details) : '',
-      error && error.hint ? 'Hint: ' + String(error.hint) : '',
-      error && error.code ? 'Code: ' + String(error.code) : '',
-    ].filter(Boolean);
+
+    // What comes BACK is deliberately narrower than what is logged. The
+    // response previously carried PostgREST's message, details and hint
+    // verbatim, which name policies, columns, constraints and occasionally the
+    // connection target — a map of the schema, handed to a caller over
+    // Access-Control-Allow-Origin: *. The bare SQLSTATE is kept because it is a
+    // stable five-character class with no schema in it, and it is the one thing
+    // that made the original diagnosable: it distinguishes "your RLS policy is
+    // wrong" from "you violated a constraint" without describing either.
+    const sqlState = error && /^[0-9A-Z]{5}$/.test(String(error.code || '')) ? String(error.code) : '';
+    const CAUSE_BY_SQLSTATE = {
+      '42501': 'the database rejected the write (insufficient privilege — check the service-role key and RLS policies)',
+      '42P01': 'the leagues table is missing (run supabase/schema.sql)',
+      '42703': 'the leagues table is missing a column (re-run supabase/schema.sql)',
+      '23505': 'a row for this league and season already exists',
+      '23514': 'the league id or season year failed a table constraint',
+      '57014': 'the database timed out',
+      '08006': 'the database connection failed',
+    };
+    const cause = CAUSE_BY_SQLSTATE[sqlState] || '';
     return res.status(502).json({
-      error: 'League storage save failed — ' + parts.join(' · '),
-      db_error: {
-        message: (error && error.message) || null,
-        code: (error && error.code) || null,
-        details: (error && error.details) || null,
-        hint: (error && error.hint) || null,
-      },
+      error: 'League storage save failed' + (cause ? ' — ' + cause + '.' : '. Please try again.') +
+        (sqlState ? ' (database code ' + sqlState + ')' : ''),
+      code: 'LEAGUE_STORAGE_WRITE_FAILED',
+      db_code: sqlState || null,
     });
   }
 }

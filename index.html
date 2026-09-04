@@ -19696,13 +19696,17 @@ async function syncLeagueToCloud(options){
     }
 
     if(!response.ok){
-      // Log the EXACT server/database error so a save failure is never silent.
-      // The /api/league route now returns the real Supabase error (message,
-      // code, details, hint) in payload.db_error — surface all of it to the
-      // console and carry the human-readable message into the caught branch.
+      // Log everything the route is willing to tell a browser so a save failure
+      // is never silent. That is now a stable error code plus the bare SQLSTATE
+      // rather than PostgREST's message/details/hint, which named policies,
+      // columns and constraints — a schema map returned over
+      // Access-Control-Allow-Origin: *. The full database error is in the
+      // server logs, where it belongs; db_code is enough to tell an RLS
+      // rejection from a constraint violation from here.
       console.error('[League Storage] save failed (HTTP ' + response.status + ')', {
         error: payload && payload.error,
-        db_error: payload && payload.db_error,
+        code: payload && payload.code,
+        db_code: payload && payload.db_code,
         payload,
       });
       let automaticMessage;

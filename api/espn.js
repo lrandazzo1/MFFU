@@ -35,6 +35,66 @@ function applyCorsHeaders(res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-espn-s2, x-espn-swid');
 }
 
+/* ------------------------------------------------------------
+   WHO MAY BORROW ANOTHER MEMBER'S STORED COOKIES
+
+   When a caller supplies no credentials of its own, this relay falls back to
+   the encrypted cookies a member of that league saved earlier. That is a real
+   product feature — one commissioner pastes their cookies and the rest of the
+   league reads the private league without pasting anything — but it makes the
+   relay a deputy that acts with somebody else's ESPN session, and the only
+   thing the caller has to present is the numeric league id, which league-mates
+   share openly.
+
+   This does not close that gap; only a per-league share secret or per-member
+   cookies can (see the audit note). What it does remove is the cheapest form
+   of abuse: the fallback now runs only for requests that actually came from
+   an FSN page. A third-party site can no longer read a private league through
+   a plain <img>/fetch to this endpoint, because the browser stamps its own
+   Origin and it will not be on this list.
+
+   A scripted caller can forge either header, so this is defence in depth, not
+   authentication. Requests carrying their own x-espn-s2 / x-espn-swid are
+   unaffected — those are the caller's own credentials, not a borrowed grant.
+------------------------------------------------------------ */
+const FIRST_PARTY_HOSTS = new Set([
+  'fantasysportsnetwork.app',
+  'www.fantasysportsnetwork.app',
+  'app.fantasysportsnetwork.app',
+  'localhost',
+  '127.0.0.1',
+]);
+
+function hostOf(value) {
+  try {
+    return new URL(String(value)).hostname.toLowerCase();
+  } catch (error) {
+    return '';
+  }
+}
+
+function isFirstPartyRequest(req) {
+  const headers = (req && req.headers) || {};
+  const origin = String(headers.origin || '');
+  const referer = String(headers.referer || headers.referrer || '');
+  const self = String(headers.host || '').toLowerCase().split(':')[0];
+
+  // A cross-origin browser request always carries Origin; a same-origin GET
+  // usually carries only Referer. Either matching is enough.
+  const candidates = [hostOf(origin), hostOf(referer)].filter(Boolean);
+  if (!candidates.length) {
+    // No Origin and no Referer. A same-origin fetch from the app always sends
+    // one of them, so this is a bare script, a curl, or a stripped proxy —
+    // exactly the caller this fallback should not lend credentials to.
+    return false;
+  }
+  return candidates.some(function (host) {
+    // Match the deployment's own host too, so preview deployments and any
+    // future domain work without editing this list.
+    return FIRST_PARTY_HOSTS.has(host) || (!!self && host === self);
+  });
+}
+
 function leagueContextFromTarget(target) {
   const path = String(target && target.pathname || '');
   const leagueMatch = path.match(/\/(?:leagues|leagueHistory)\/(\d{1,20})(?:\/|$)/);
@@ -98,11 +158,30 @@ module.exports = async function handler(req, res) {
     ? sanitizeCookieValue('SWID', req.headers['x-espn-swid'])
     : '';
 
+  // Sanitization above collapses an unusable header to '', which then falls
+  // through the precedence chain below and looks identical to "no header was
+  // sent". Record that a header WAS present here, while we can still tell, so
+  // the alarm further down can fire for the case its message describes — a
+  // reader who pasted a credential and is about to get an anonymous read.
+  const headerS2Present = typeof req.headers['x-espn-s2'] === 'string' && !!String(req.headers['x-espn-s2']).trim();
+  const headerSwidPresent = typeof req.headers['x-espn-swid'] === 'string' && !!String(req.headers['x-espn-swid']).trim();
+
   let stored = null;
   if (!headerS2 || !headerSwid) {
     const context = leagueContextFromTarget(target);
     if (context.leagueId) {
-      stored = await getStoredLeagueCookies(context.leagueId, context.seasonYear);
+      if (isFirstPartyRequest(req)) {
+        stored = await getStoredLeagueCookies(context.leagueId, context.seasonYear);
+      } else {
+        // Named in the logs rather than silently degraded, because from the
+        // caller's side this is indistinguishable from "the league has no
+        // saved cookies" — and if it ever fires for a real reader, the host
+        // allowlist above is what needs updating.
+        console.warn('[api/espn] Declining to replay stored league cookies for a request that did not ' +
+          'come from an FSN page (origin: ' + (req.headers.origin || 'none') +
+          ', referer host: ' + (hostOf(req.headers.referer || '') || 'none') +
+          '). The read continues anonymously.');
+      }
     }
   }
 
@@ -121,10 +200,20 @@ module.exports = async function handler(req, res) {
   // A credential that arrived but did not survive sanitization is the single
   // most confusing private-league failure there is: the request looks
   // authenticated to the caller and anonymous to ESPN. Name it in the logs.
-  if ((rawS2 && !cookie.s2) || (rawSwid && !cookie.swid)) {
+  // buildEspnCookieHeader returns the sanitized value on `.espn_s2`, not `.s2`.
+  // Reading the wrong property made this condition true for EVERY request that
+  // carried an espn_s2 — so the one alarm that says "a good-looking credential
+  // did not survive sanitization" fired on every successful private-league read
+  // instead, which is the fastest way to train an operator to ignore it.
+  const s2Usable = !!cookie.espn_s2;
+  const swidUsable = !!cookie.swid;
+  const s2Supplied = headerS2Present || !!rawS2;
+  const swidSupplied = headerSwidPresent || !!rawSwid;
+  if ((s2Supplied && !s2Usable) || (swidSupplied && !swidUsable)) {
     console.error('[api/espn] A supplied ESPN credential was dropped as unusable ' +
-      '(espn_s2 usable: ' + (!rawS2 || !!cookie.s2) + ', SWID usable: ' + (!rawSwid || !!cookie.swid) +
-      '). The upstream read will be treated as anonymous.');
+      '(espn_s2 usable: ' + (!s2Supplied || s2Usable) + ', SWID usable: ' + (!swidSupplied || swidUsable) +
+      '). The upstream read will be treated as anonymous.' +
+      (cookie.reason ? ' Reason: ' + cookie.reason : ''));
   }
 
   const upstreamHeaders = {
