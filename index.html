@@ -21277,9 +21277,12 @@ function credLooksValid(kind, value){
     return /^\{[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\}$/.test(v)
       ? 'valid' : 'invalid';
   }
-  // espn_s2 is a long URL-encoded token; anything substantial with the right
-  // character set reads as well-formed.
-  return (v.length >= 60 && /^[A-Za-z0-9%._+/=-]+$/.test(v)) ? 'valid' : 'invalid';
+  // espn_s2 is a URL-encoded token whose length ESPN changes without notice —
+  // a hard length gate here would falsely reject a perfectly good paste and
+  // block the fetch that would prove it wrong. The real acceptance test is
+  // ESPN's response to the relayed request; client-side we only confirm the
+  // value is transmittable (correct character set, non-empty).
+  return (v.length > 0 && /^[A-Za-z0-9%._+/=-]+$/.test(v)) ? 'valid' : 'invalid';
 }
 function setCredValidity(boxId, kind, value){
   const box = $(boxId);
@@ -21296,7 +21299,7 @@ function setCredValidity(boxId, kind, value){
     if(tick) tick.textContent = '!';
     if(msg) msg.textContent = kind === 'swid'
       ? 'Doesn’t look like a SWID yet — expected {XXXXXXXX-XXXX-…}'
-      : 'That looks too short for an espn_s2 value';
+      : 'That espn_s2 value contains characters ESPN wouldn’t send';
   } else {
     if(tick) tick.textContent = '•';
     if(msg) msg.textContent = 'Not set yet';
