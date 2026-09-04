@@ -4192,6 +4192,101 @@ function normalizeHistoryPayload(raw){
   return { yearsData, skipped };
 }
 
+/* ------------------------------------------------------------
+   STORED ARCHIVE ROWS  (global scope — block 1)
+
+   The shared archive in Supabase (`history_json.yearsData`) is NOT raw ESPN
+   payload. It is the app's own already-normalized row shape, written by
+   sanitizeSeasonForCloud / compactSeasonForCloud:
+
+     [ { year:2019, cloudSummary:true, leagueData:{ teams:[...], ... } }, ... ]
+
+   normalizeHistoryPayload() cannot read that. It only descends into arrays and
+   a fixed set of container keys (leagueHistory, seasons, history, data,
+   leagues, value, contents) plus 4-digit year keys — and `leagueData` is none
+   of those. A row object has no `teams` of its own, so the walker collects
+   nothing and returns zero seasons. Every cloud read therefore looked like an
+   empty archive, which is invisible to a member whose browser already holds the
+   history and total to a reader who arrived on an invite link and has no other
+   source for it: current season connects, the Record Book stays empty.
+
+   So stored rows are read directly here, and anything that is NOT already in
+   row shape (a legacy array of bare season objects, a stringified blob, a
+   year-keyed export) still falls through to normalizeHistoryPayload exactly as
+   before. This is additive: normalizeHistoryPayload itself is untouched, and
+   every one of its other callers keeps its current behaviour.
+
+   Global, in the first block, because the cloud-sync engine and the Setup UI
+   both live in later blocks and a copy nested in either would be invisible to
+   the other. */
+function isStoredArchiveRow(entry){
+  return !!(entry && typeof entry === 'object' && !Array.isArray(entry) &&
+    entry.leagueData && typeof entry.leagueData === 'object' &&
+    Array.isArray(entry.leagueData.teams));
+}
+
+function storedArchiveRowYear(entry){
+  const league = (entry && entry.leagueData) || {};
+  const candidates = [entry && entry.year, league.seasonId, league.season];
+  for(const candidate of candidates){
+    const year = parseInt(candidate, 10);
+    if(Number.isFinite(year) && year >= 1900 && year <= 2200) return year;
+  }
+  return 0;
+}
+
+/* Same return contract as normalizeHistoryPayload: { yearsData, skipped },
+   ascending by year, at most one row per year. */
+function normalizeStoredArchiveRows(raw, sourceLabel){
+  const label = String(sourceLabel || 'stored archive');
+  const list = Array.isArray(raw) ? raw : (raw == null ? [] : [raw]);
+  const byYear = new Map();
+  const skippedSet = new Set();
+  const passthrough = [];
+
+  list.forEach(function(entry){
+    if(!isStoredArchiveRow(entry)){
+      if(entry != null) passthrough.push(entry);
+      return;
+    }
+    const year = storedArchiveRowYear(entry);
+    if(!year){
+      console.warn('[League Storage] A ' + label + ' row carries team data but no resolvable season ' +
+        'year; skipping it rather than filing it under the wrong season.');
+      return;
+    }
+    if(!entry.leagueData.teams.length){
+      /* A season the archive knows about but has no usable team data for —
+         reported the same way normalizeHistoryPayload reports one. */
+      skippedSet.add(year);
+      return;
+    }
+    byYear.set(year, { year, leagueData:entry.leagueData });
+  });
+
+  /* Legacy / foreign shapes keep the original walker. Row-shaped seasons win a
+     year collision because they are this app's own canonical output. */
+  if(passthrough.length){
+    try{
+      const walked = normalizeHistoryPayload(passthrough);
+      walked.yearsData.forEach(function(row){
+        if(row && row.year && !byYear.has(row.year)) byYear.set(row.year, row);
+      });
+      walked.skipped.forEach(function(year){ if(!byYear.has(year)) skippedSet.add(year); });
+    }catch(err){
+      console.error('[League Storage] The non-row portion of the ' + label + ' (' + passthrough.length +
+        ' entr' + (passthrough.length === 1 ? 'y' : 'ies') + ') could not be normalized; ' +
+        'those seasons are dropped, the row-shaped ones are kept.', err);
+    }
+  }
+
+  const yearsData = Array.from(byYear.values()).sort(function(a, b){ return a.year - b.year; });
+  const skipped = Array.from(skippedSet)
+    .filter(function(year){ return !byYear.has(year); })
+    .sort(function(a, b){ return a - b; });
+  return { yearsData, skipped };
+}
+
 /* Fetch each completed modern season independently through the direct season
    endpoint. Requests stay sequential and use only the five lightweight views
    needed by the Record Book, keeping proxy payloads and gateway pressure low. */
@@ -16858,6 +16953,11 @@ const ui = {
   seasonFetchSeq: 0,
   seasonLoading: null,
   cloudHydrateSeq: 0,
+  /* The single in-flight shared-archive read, as { key:'<league>:<season>',
+     promise }. Boot (invite link) and fetchLeagueData both ask for one; they
+     must share it, or the loser's sequence check discards a record it already
+     downloaded. Cleared when it settles and whenever the league changes. */
+  cloudHydrateInFlight: null,
   cloudLeagueId: '',
   /* Optimistic-concurrency token for the shared league archive. It is stored
      as { leagueId, seasonYear, updatedAt } rather than a bare timestamp
@@ -19879,13 +19979,37 @@ function applyCloudRecord(record, league){
   let loaded = false;
   if(stored.yearsData.length){
     try{
-      const normalized = normalizeHistoryPayload(stored.yearsData);
+      /* normalizeStoredArchiveRows, not normalizeHistoryPayload: the cloud
+         archive is stored in this app's own { year, leagueData } row shape,
+         which the raw-payload walker cannot see into. See its definition in the
+         first block — reading it with the wrong normalizer is exactly how a
+         fully populated multi-season archive read back as zero seasons. */
+      const normalized = normalizeStoredArchiveRows(stored.yearsData, 'shared cloud archive');
       if(normalized.yearsData.length){
         applyLeagueHistory(withCurrentSeason(normalized.yearsData), normalized.skipped, 'League Cloud', { silent:true });
-        renderWeekScrubbers();
+        /* The history is already in the stores at this point. A repaint that
+           throws must not roll that back into "nothing loaded", or the reader
+           keeps a single-season view over a hydrated archive. */
         loaded = true;
+        try{
+          renderWeekScrubbers();
+        }catch(scrubberErr){
+          console.error('[League Storage] The week/season scrubbers failed to repaint after hydrating ' +
+            normalized.yearsData.length + ' shared season(s) for league ' + String(league) +
+            '; the archive is loaded but the season picker may be stale.', scrubberErr);
+        }
+      } else {
+        /* A record that carries rows but yields no seasons is a real defect —
+           a shape this build cannot read, not an empty league. Name it. */
+        console.error('[League Storage] The shared archive for league ' + String(league) + ' carried ' +
+          stored.yearsData.length + ' stored season row(s) but none could be normalized into a usable ' +
+          'season; the Record Book will show only the live season.',
+          new Error('UNREADABLE_SHARED_ARCHIVE_ROWS'));
       }
-    }catch(err){ console.warn('[League Storage] history payload could not be applied', err); }
+    }catch(err){
+      console.error('[League Storage] The shared history payload for league ' + String(league) +
+        ' could not be applied; the live season stays connected without the archive.', err);
+    }
   }
   window._fsnCloudSettings = stored.settings;
   window._fsnCloudHasCookies = !!record.has_cookies;
@@ -19895,6 +20019,91 @@ function applyCloudRecord(record, league){
     safeRun('analytics', renderAnalytics, ()=> renderScreenFallback('analytics'));
   }
   return loaded || Object.keys(stored.settings || {}).length > 0;
+}
+
+/* Everything that happens to a record the server just authorised: version
+   token, share token, stores, offline mirror, status line. Extracted so the
+   season-specific read and the latest-season fallback read below cannot drift
+   apart — the fallback is the path an invite-link reader takes, and a copy of
+   this that forgot to cache or to keep the token would be silent.
+
+   The version token is stamped with the record's OWN season_year, never the
+   season that was asked for, so cloudVersionFor() can still refuse to send one
+   row's version while saving another. */
+function adoptCloudRecord(leagueId, record, options){
+  const opts = options || {};
+  const id = String(leagueId || '').trim();
+  if(!record){
+    console.error('[League Storage] adoptCloudRecord was handed no record for league ' + id + '.',
+      new Error('MISSING_CLOUD_RECORD'));
+    return null;
+  }
+  const recordSeason = Number(record.season_year) || 0;
+  setCloudVersion(id, recordSeason, record.updated_at);
+  /* The server returns the token only to a caller it just authorised, so
+     holding on to it is how a verified member becomes able to share. */
+  rememberShareTokenFromRecord(id, record);
+  const applied = applyCloudRecord(record, id);
+  cacheLeagueRecord(record);
+  const stored = storedHistoryPayload(record);
+  const seasons = stored.yearsData.length;
+  setCloudStatus('ready', (applied ? 'League storage connected' : 'Saved league configuration loaded') +
+    (seasons ? ' · ' + seasons + ' shared season' + (seasons===1?'':'s') : '') +
+    (record.has_cookies ? ' · private-league access ready' : '') +
+    ' · updated ' + (record.updated_at ? new Date(record.updated_at).toLocaleString() : 'recently') + '.');
+  if(!opts.silent) toast('Saved league record loaded');
+  return record;
+}
+
+/* The same GET with no season_year, which /api/league answers with the league's
+   NEWEST stored season row. Used only after a season-specific read came back
+   404 (see hydrateLeagueFromCloud), because that 404 does not mean "this league
+   has no archive" — it means "this league has no row for the season this
+   browser happens to be pointed at". A reader who opened an invite link has
+   never run a live fetch, so their season is whatever the calendar defaulted to
+   (uiActiveSeasonYear()), which is exactly the case where it disagrees with the
+   season the archive was saved under.
+
+   Returns the record, or null. Never throws: the caller's next step is the
+   local fallback either way. */
+async function readLatestSharedArchive(leagueId){
+  const id = String(leagueId || '').trim();
+  if(!/^\d{1,20}$/.test(id)) return null;
+  let response;
+  try{
+    response = await FSNNet.fetch('/api/league?league_id=' + encodeURIComponent(id), {
+      method:'GET', headers:cloudHeaders(false, true, id), cache:'no-store',
+    }, { label:'/api/league latest-season read ' + id });
+  }catch(err){
+    console.error('[League Storage] The latest-season fallback read for league ' + id +
+      ' never completed; no shared archive could be loaded for this season.', err);
+    return null;
+  }
+  if(response.status === 404) return null;
+  if(!response.ok){
+    const body = await response.text().catch(function(){ return ''; });
+    console.error('[League Storage] The latest-season fallback read for league ' + id +
+      ' returned HTTP ' + response.status + '.', {
+      status: response.status,
+      server_error: (body || '(empty body)').slice(0, 500),
+    });
+    return null;
+  }
+  let payload = null;
+  try{
+    payload = await response.json();
+  }catch(parseErr){
+    console.error('[League Storage] The latest-season fallback read for league ' + id +
+      ' returned a body that is not JSON; the shared archive was not loaded.', parseErr);
+    return null;
+  }
+  const record = (payload && (payload.record || payload)) || null;
+  if(!record || !record.league_id){
+    console.error('[League Storage] The latest-season fallback read for league ' + id +
+      ' returned no usable record.', new Error('EMPTY_LATEST_SEASON_RECORD'));
+    return null;
+  }
+  return record;
 }
 
 function applyLocalLeagueFallback(league, season, reason){
@@ -19957,6 +20166,27 @@ async function hydrateLeagueFromCloud(league, options){
     }
     if(response.status === 404){
       clearCloudVersion();
+      /* ---- season handshake ----
+         404 answers "no row for league + THIS season", not "this league has no
+         archive". The season sent above comes from #seasonYear, which a reader
+         who arrived on an invite link has never had populated by a live fetch —
+         it is still the calendar default. Ask again for the league's newest
+         stored season before concluding there is nothing to hydrate.
+
+         Gated on actually holding a way in, so a browser that would only be
+         answered with a 401 does not spend a second request to learn it. */
+      const canAuthorize = !!getLeagueShareToken(id) || espnCredDiagnostics().state === 'ready';
+      if(canAuthorize){
+        console.warn('[League Storage] No shared record for league ' + id + ' season ' + season +
+          '; re-reading the league’s most recent stored season before falling back to local data.');
+        const latest = await readLatestSharedArchive(id);
+        if(seq !== ui.cloudHydrateSeq || id !== String($('leagueIdInput').value || '').trim()) return null;
+        if(latest){
+          console.info('[League Storage] Hydrated league ' + id + ' from its stored ' +
+            (latest.season_year || 'latest') + ' season row.');
+          return adoptCloudRecord(id, latest, { silent:opts.silent });
+        }
+      }
       const local = applyLocalLeagueFallback(id, season, 'no cloud record exists yet');
       if(local) return local;
       setCloudStatus('idle', 'No stored league record exists yet. Any authenticated member can save it after connecting.');
@@ -19994,20 +20224,7 @@ async function hydrateLeagueFromCloud(league, options){
     }
 
     const record = payload.record || payload;
-    setCloudVersion(id, season, record.updated_at);
-    /* The server returns the token only to a caller it just authorised, so
-       holding on to it is how a verified member becomes able to share. */
-    rememberShareTokenFromRecord(id, record);
-    const applied = applyCloudRecord(record, id);
-    cacheLeagueRecord(record);
-    const stored = storedHistoryPayload(record);
-    const seasons = stored.yearsData.length;
-    setCloudStatus('ready', (applied ? 'League storage connected' : 'Saved league configuration loaded') +
-      (seasons ? ' · ' + seasons + ' shared season' + (seasons===1?'':'s') : '') +
-      (record.has_cookies ? ' · private-league access ready' : '') +
-      ' · updated ' + (record.updated_at ? new Date(record.updated_at).toLocaleString() : 'recently') + '.');
-    if(!opts.silent) toast('Saved league record loaded');
-    return record;
+    return adoptCloudRecord(id, record, { silent:opts.silent });
   }catch(err){
     if(seq === ui.cloudHydrateSeq){
       /* A failed read means we do NOT know the server's version. Holding on to
@@ -20068,6 +20285,49 @@ async function hydrateLeagueFromCloud(league, options){
     }
     return null;
   }
+}
+
+/* ---- ONE shared-archive read per league ----
+   Boot now starts the archive read for an invite link BEFORE the live ESPN
+   fetch (see bootApp), and fetchLeagueData starts one of its own. Two
+   concurrent hydrations for the same league are not merely wasteful: each one
+   takes a new ui.cloudHydrateSeq, so the first to return finds its sequence
+   superseded and drops the record it just read on the floor. Handing both
+   callers the same in-flight promise makes that structurally impossible.
+
+   Resolves with the record or null, and never rejects — a caller that only
+   wants to repaint afterwards can .then() it without a rejection path. */
+function ensureSharedArchiveHydrated(leagueId, options){
+  const opts = options || {};
+  const id = String(leagueId || '').trim();
+  if(!/^\d{1,20}$/.test(id)){
+    console.warn('[League Storage] Refusing to hydrate the shared archive for a non-numeric League ID (' +
+      (id || '(empty)') + ').');
+    return Promise.resolve(null);
+  }
+  const season = Number(opts.seasonYear || cloudSeasonYear()) || 0;
+  const key = id + ':' + season;
+  const pending = ui.cloudHydrateInFlight;
+  if(pending && pending.key === key && pending.promise) return pending.promise;
+
+  const promise = Promise.resolve()
+    .then(function(){
+      return hydrateLeagueFromCloud(id, Object.assign({}, opts, { seasonYear:season }));
+    })
+    .catch(function(err){
+      /* hydrateLeagueFromCloud handles its own failures, so reaching here means
+         it threw outside its own try — a real defect, not a network fault. */
+      console.error('[League Storage] The shared-archive hydration for league ' + id +
+        ' threw outside its own error handling; no archive was applied.', err);
+      return null;
+    })
+    .then(function(record){
+      if(ui.cloudHydrateInFlight && ui.cloudHydrateInFlight.key === key) ui.cloudHydrateInFlight = null;
+      return record;
+    });
+
+  ui.cloudHydrateInFlight = { key, promise };
+  return promise;
 }
 
 async function syncLeagueToCloud(options){
@@ -20408,6 +20668,10 @@ function clearLeagueStateForSwitch(nextLeagueId, nextProvider){
   // any half-finished cloud hydration aimed at the previous league.
   ui.rivalA = ''; ui.rivalB = '';
   ui.cloudHydrateSeq = (ui.cloudHydrateSeq || 0) + 1;
+  /* Any archive read still in the air belongs to the league being left. Drop
+     the handle so the next ensureSharedArchiveHydrated() starts a fresh read
+     for the new league instead of reusing one whose sequence is now stale. */
+  ui.cloudHydrateInFlight = null;
   clearCloudVersion();
   ui.activeLeagueKey = '';
 
@@ -20771,7 +21035,10 @@ async function fetchLeagueData(options){
   clearLeagueStateForSwitch(league, 'espn');
   // Cloud history/settings hydrate in parallel with the live ESPN request.
   // A missing/unconfigured cloud record never blocks the live connection.
-  hydrateLeagueFromCloud(league, { silent:true });
+  // ensureSharedArchiveHydrated (not hydrateLeagueFromCloud directly) so an
+  // invite-link boot that already started this read is joined rather than
+  // raced — see its definition.
+  ensureSharedArchiveHydrated(league, { silent:true });
   setFetchLoading(true);
   hideHistoryBanner();
   hideArchiveNotice();
@@ -24004,7 +24271,17 @@ function applyDeepLink(){
      window.history && window.history.replaceState){
     try{ window.history.replaceState({}, document.title, window.location.pathname); }catch(e){}
   }
-  return { platform, yahooConnected, yahooError, leagueId:invited };
+  /* hasInviteToken is what tells bootApp this reader's ONLY key to the shared
+     multi-season archive arrived in the URL: no ESPN cookies, no previously
+     stored record, nothing else to hydrate from. Boot forces the archive read
+     on that signal rather than leaving it to the live-fetch path alone. */
+  return {
+    platform,
+    yahooConnected,
+    yahooError,
+    leagueId:invited,
+    hasInviteToken:!!(invited && invitedToken),
+  };
 }
 
 /* ============================================================
@@ -24059,6 +24336,50 @@ function bootApp(){
       ', so no league is rehydrated. Connect a league from Setup.');
   }
   safeRun('boot:shareInviteUI', updateShareInviteUI);
+
+  /* ---- INVITE LINK: hydrate the shared archive, unconditionally ----
+     A reader who arrived on ?id=…&token=… has exactly one source for this
+     league's multi-year history — the shared archive behind /api/league — and
+     no ESPN cookies, no cached record, and no local _franchiseYearsData to fall
+     back on. Leaving that read to fetchLeagueData alone made it conditional on
+     the live ESPN path being reached at all (a non-ESPN provider left in
+     prefs returns above it) and on that path surviving, so an invited reader
+     could end up connected to the current season with an empty Record Book and
+     nothing in the console to say why.
+
+     So it is started HERE, before the provider branch and before the live
+     fetch, and fetchLeagueData joins this same read instead of racing it.
+     Nothing below is blocked on it: the app has already rendered, and the
+     repaint happens when the archive lands. */
+  let inviteHydration = null;
+  if(deepLink && deepLink.hasInviteToken && deepLink.leagueId){
+    if(ui.provider !== 'espn'){
+      console.warn('[League Share] An ESPN invite link for league ' + deepLink.leagueId +
+        ' was opened while this browser is set to the ' + ui.provider + ' provider. The shared archive ' +
+        'will still load; switch the provider to ESPN in Setup to connect the live season.');
+    }
+    safeRun('boot:inviteArchive', ()=>{
+      inviteHydration = ensureSharedArchiveHydrated(deepLink.leagueId, { silent:true });
+    });
+  }
+  if(inviteHydration){
+    inviteHydration.then(record=>{
+      if(!record){
+        console.error('[League Share] The invite link for league ' + deepLink.leagueId +
+          ' did not yield a shared league record; the Record Book and multi-season views will be empty ' +
+          'until a league-mate re-shares a current link or this browser connects with its own ESPN cookies.',
+          new Error('INVITE_ARCHIVE_NOT_HYDRATED'));
+        return;
+      }
+      /* applyCloudRecord repaints the Record Book and Analytics itself. Home,
+         the Desk and News read the archive too, so an invited reader gets the
+         full repaint once — and only once — the history is actually in the
+         stores. */
+      safeRun('boot:inviteArchiveRepaint', renderAll);
+    }).catch(err=> console.error('[League Share] The invite-link archive hydration for league ' +
+      deepLink.leagueId + ' failed after boot.', err));
+  }
+
   if(ui.provider === 'yahoo'){
     if(deepLink && deepLink.yahooError){
       $('fetchStatus').style.color = 'var(--red)';
