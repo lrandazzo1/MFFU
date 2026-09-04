@@ -2397,22 +2397,22 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
              pasting cookies of their own.
         ============================================================ -->
         <div id="shareInvitePanel" class="mt-4 pt-3" style="border-top:1px solid var(--line)">
-          <div class="flex items-center justify-between gap-3">
-            <div class="min-w-0">
+          <div class="flex items-center justify-between gap-3 flex-wrap">
+            <div class="min-w-0 flex-1" style="flex:1 1 60%;">
               <div class="kicker text-[var(--cyan)]">Invite your league</div>
               <p id="shareInviteHint" class="text-[10.5px] text-[var(--dim)] leading-relaxed mt-1">
                 Save the league once to mint a shareable invite link.
               </p>
             </div>
-            <button id="shareInviteBtn" type="button" class="btn-ghost flex-none" style="padding:8px 14px; font-size:11.5px;">SHARE</button>
+            <button id="shareInviteBtn" type="button" class="btn-ghost flex-none" style="width:auto; padding:8px 14px; font-size:11.5px;">SHARE</button>
           </div>
           <div id="shareInviteResult" class="mt-2.5 hidden">
             <label class="label" for="shareInviteUrl">Invite link</label>
             <input id="shareInviteUrl" class="field" type="text" readonly spellcheck="false"
                    aria-label="League invite link" style="font-size:11px; padding:9px 11px;">
-            <div class="flex items-center gap-2 mt-2">
-              <button id="shareInviteCopy" type="button" class="btn-ghost flex-none" style="padding:7px 12px; font-size:11px;">COPY LINK</button>
-              <span id="shareInviteStatus" class="text-[10.5px] text-[var(--dim)]" aria-live="polite"></span>
+            <div class="flex items-center gap-2 mt-2 flex-wrap">
+              <button id="shareInviteCopy" type="button" class="btn-ghost flex-none" style="width:auto; padding:7px 12px; font-size:11px;">COPY LINK</button>
+              <span id="shareInviteStatus" class="text-[10.5px] text-[var(--dim)] min-w-0" style="flex:1 1 auto;" aria-live="polite"></span>
             </div>
             <p class="text-[10px] text-[var(--dim)] leading-relaxed mt-2">
               Treat this like a password: anyone holding it can read the league's shared archive and use its saved ESPN access. Send it in the league chat, not in public.
@@ -19453,8 +19453,36 @@ async function hydrateLeagueFromCloud(league, options){
       setCloudStatus('idle', 'No stored league record exists yet. Any authenticated member can save it after connecting.');
       return null;
     }
-    const payload = await response.json().catch(()=> ({}));
-    if(!response.ok) throw new Error(payload.error || ('League storage read failed (HTTP ' + response.status + ').'));
+    /* Read the body once, in a form the diagnostics can inspect even when the
+       server returned HTML (a Vercel 502 page, an nginx timeout) instead of the
+       JSON envelope we asked for. Anything short of "the payload parses AND the
+       response is ok" needs the raw text preserved so the console shows exactly
+       what came back. */
+    const rawBody = await response.text().catch(()=> '');
+    let payload = {};
+    try{ payload = rawBody ? JSON.parse(rawBody) : {}; }catch(parseErr){ payload = {}; }
+    if(!response.ok){
+      const serverError = (payload && (payload.error || payload.message)) ||
+        (rawBody ? rawBody.slice(0, 500) : '');
+      const dbError = payload && payload.db_error;
+      /* [League Storage] is loud on purpose: the read failed for a real reason
+         (a 500/502/503 from /api/league, a misconfigured SUPABASE env, an RLS
+         denial, a network fault the browser reports as HTTP 0) and swallowing
+         it as a generic "cloud unavailable" is exactly what CLAUDE.md rule 3
+         forbids. Show the status, the code, and whatever the server said. */
+      console.error('[League Storage] /api/league read for league ' + id +
+        ' returned HTTP ' + response.status + '.', {
+        status: response.status,
+        server_error: serverError || '(empty body)',
+        db_error: dbError || null,
+        content_type: response.headers.get('content-type') || '',
+      });
+      const err = new Error(serverError || ('League storage read failed (HTTP ' + response.status + ').'));
+      err.status = response.status;
+      err.serverError = serverError;
+      err.dbError = dbError || null;
+      throw err;
+    }
 
     const record = payload.record || payload;
     setCloudVersion(id, season, record.updated_at);
@@ -19480,11 +19508,50 @@ async function hydrateLeagueFromCloud(league, options){
          with no token the save is a first write, and a row that does exist
          answers with a conflict the save path below resolves by re-reading. */
       clearCloudVersion();
-      console.warn('[League Storage] hydration failed; version token dropped so the next save is not ' +
-        'rejected against a row this browser never read.', err);
+      const status = err && err.status;
+      const serverMsg = err && (err.serverError || err.message);
+      /* Real failure — log loudly per CLAUDE.md rule 3. Distinguish the three
+         classes so the console tells us WHICH fault surfaced the banner: a
+         server status (500/502/503 → look at Vercel logs, likely env or DB), a
+         thrown fetch (TypeError: Failed to fetch → network / CORS / offline),
+         or anything else. */
+      console.error('[League Storage] hydration for league ' + id + ' failed; ' +
+        'version token dropped so the next save is not rejected against a row ' +
+        'this browser never read.', {
+        http_status: status || '(no response — network fault)',
+        server_error: serverMsg || null,
+        db_error: (err && err.dbError) || null,
+        error_name: err && err.name,
+        error_message: err && err.message,
+      }, err);
       const local = applyLocalLeagueFallback(id, season, 'cloud temporarily unavailable');
       if(local) return local;
-      setCloudStatus('error', 'Could not reach league storage. Local preferences and direct ESPN loading are still available.');
+      /* Prefer the server's actual verdict over the generic "could not reach"
+         copy so the reader (and any support triaging the screenshot) can see
+         whether the backend is misconfigured (503), overloaded (502/504), or
+         throwing on this specific league (500), instead of a catch-all that
+         hides the difference. */
+      let statusMessage;
+      if(status === 503){
+        statusMessage = 'League storage is not configured on the server (HTTP 503). ' +
+          'Local preferences and direct ESPN loading are still available.';
+      } else if(status === 502 || status === 504){
+        statusMessage = 'League storage is temporarily unreachable (HTTP ' + status + '). ' +
+          'Local preferences and direct ESPN loading are still available.';
+      } else if(status && status >= 500){
+        statusMessage = 'League storage returned an error (HTTP ' + status +
+          (serverMsg ? ' — ' + String(serverMsg).slice(0, 180) : '') +
+          '). Local preferences and direct ESPN loading are still available.';
+      } else if(status){
+        statusMessage = 'League storage refused the read (HTTP ' + status +
+          (serverMsg ? ' — ' + String(serverMsg).slice(0, 180) : '') +
+          '). Local preferences and direct ESPN loading are still available.';
+      } else {
+        statusMessage = 'Could not reach league storage — the network request never ' +
+          'completed (' + (err && err.message ? String(err.message).slice(0, 140) : 'no response') +
+          '). Local preferences and direct ESPN loading are still available.';
+      }
+      setCloudStatus('error', statusMessage);
     }
     return null;
   }
