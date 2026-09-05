@@ -65,26 +65,49 @@ jobs:
           mkdir -p "$HOME/private_keys"
           KEY_PATH="$HOME/private_keys/AuthKey_${APPSTORE_CONNECT_KEY_ID}.p8"
 
-          # xcodebuild's CryptoKit PEM parser is strict: CRLF line endings, a
-          # missing trailing newline, or a value stored as bare base64 all
-          # produce "invalidPEMDocument". Normalize into a canonical PEM so the
-          # step works regardless of how the secret was pasted/stored.
-          CLEAN="$(printf '%s' "$API_PRIVATE_KEY" | tr -d '\r')"
+          # xcodebuild's CryptoKit PEM parser is strict — a UTF-8 BOM, CRLF
+          # endings, trailing whitespace, or junk around the PEM block all
+          # yield "invalidPEMDocument". Reconstruct a canonical PEM regardless
+          # of how the secret was pasted/stored, then validate it before use.
+
+          # Strip a leading UTF-8 BOM and all carriage returns up front.
+          CLEAN="$(printf '%s' "$API_PRIVATE_KEY" | sed '1s/^\xEF\xBB\xBF//' | tr -d '\r')"
+
+          write_pem() {
+            # Extract exactly the BEGIN..END block, trimming trailing
+            # whitespace on each line, and terminate with a single newline.
+            printf '%s\n' "$1" \
+              | awk '/-----BEGIN/{p=1} p{print} /-----END/{p=0}' \
+              | sed 's/[[:space:]]*$//' > "$KEY_PATH"
+          }
+
           if printf '%s' "$CLEAN" | grep -q 'BEGIN PRIVATE KEY'; then
-            printf '%s\n' "$CLEAN" > "$KEY_PATH"
+            # Value is already a PEM (possibly wrapped in extra text/whitespace).
+            write_pem "$CLEAN"
           else
-            {
-              echo "-----BEGIN PRIVATE KEY-----"
-              printf '%s' "$CLEAN" | tr -d '[:space:]' | fold -w 64
-              echo "-----END PRIVATE KEY-----"
-            } > "$KEY_PATH"
+            # Value may be base64 of a PEM/DER, or a bare base64 key body.
+            DECODED="$(printf '%s' "$CLEAN" | tr -d '[:space:]' | base64 --decode 2>/dev/null || true)"
+            if printf '%s' "$DECODED" | grep -q 'BEGIN PRIVATE KEY'; then
+              write_pem "$DECODED"
+            else
+              {
+                echo "-----BEGIN PRIVATE KEY-----"
+                printf '%s' "$CLEAN" | tr -d '[:space:]' | fold -w 64
+                echo "-----END PRIVATE KEY-----"
+              } > "$KEY_PATH"
+            fi
           fi
 
-          # Fail early with a clear message rather than a cryptic xcodebuild error.
-          if ! grep -q 'BEGIN PRIVATE KEY' "$KEY_PATH"; then
-            echo "APPSTORE_CONNECT_PRIVATE_KEY did not yield a valid .p8 PEM." >&2
+          # Validate the reconstructed key with openssl so a bad/mis-stored
+          # secret fails here with a clear message instead of a cryptic
+          # xcodebuild CryptoKit error. openssl never prints key material.
+          if ! openssl pkey -in "$KEY_PATH" -noout 2>/tmp/pkeyerr; then
+            echo "::error::APPSTORE_CONNECT_PRIVATE_KEY is not a valid App Store Connect .p8 key."
+            echo "openssl reported:" >&2
+            cat /tmp/pkeyerr >&2
             exit 1
           fi
+          echo "App Store Connect API key validated."
           echo "API_KEY_PATH=$KEY_PATH" >> "$GITHUB_ENV"
 
       - name: Archive app
