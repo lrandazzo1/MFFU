@@ -145,24 +145,92 @@ Requires a Mac — see `ios/HANDOFF.md`. After `npm install && npx cap sync ios`
 Capacitor's `@capacitor/push-notifications` handles `AppDelegate` registration;
 no Swift changes are needed.
 
-## Verifying
+## Triggering the dispatcher externally
+
+The route authenticates every caller against `CRON_SECRET` and **fails closed**:
+if the variable is unset, the route returns 401 to everyone rather than
+defaulting open. Two header forms are accepted, because not every scheduler can
+set an `Authorization` header:
 
 ```bash
-npm run verify          # scope scan + trigger self-test + headless render
-npm run test:triggers   # 37 assertions: DST, grace window, opt-in gate, determinism
-npm run check:scope     # CLAUDE.md rule 1 — every identifier resolves
-npm run check:render    # Chromium: all six screens, zero errors, opt-in contract
+# What Vercel Cron sends automatically.
+curl -H "Authorization: Bearer $CRON_SECRET" \
+  "https://<deployment>/api/notifications-dispatch"
+
+# Equivalent, for schedulers that only allow custom headers.
+curl -H "x-cron-secret: $CRON_SECRET" \
+  "https://<deployment>/api/notifications-dispatch"
 ```
 
-Once deployed, dry-run the schedule without sending anything:
+`GET` and `POST` both work; anything else returns 405. The secret is compared in
+constant time.
+
+This is the path to use on Vercel Hobby, where cron is limited to once per day —
+point GitHub Actions, cron-job.org, or any hourly scheduler at the URL above.
+
+## Health check (`?dry=1`)
+
+`?dry=1` runs the **entire** evaluation lifecycle — reads every live device,
+scans the send ledger, normalises each timezone, and applies every cadence rule
+— then returns what it *would* have done and stops. It opens no APNs session,
+sends no Web Push, and writes no database row.
 
 ```bash
 curl -H "Authorization: Bearer $CRON_SECRET" \
   "https://<deployment>/api/notifications-dispatch?dry=1"
 ```
 
-That reports which devices are due for which trigger, the target instant, and
-how late the run is — with no pushes sent and no ledger rows written.
+```jsonc
+{
+  "ok": true,
+  "dryRun": true,
+  "now": "2026-09-08T13:05:00.000Z",
+  "transports": { "apns": false, "web": true },  // which providers are provisioned
+  "deliverable": true,                           // could a live run send anything at all
+  "evaluated": 4,                                // live devices considered
+  "due": 1,                                      // alerts a live run would send now
+  "ledgerRowsScanned": 0,                        // dedupe rows inside the lookback
+  "ledgerLookbackDays": 21,
+  "devices": {
+    "total": 4, "ios": 1, "web": 3,
+    "missingTimezone": 1,                        // rows whose zone Intl rejects
+    "noGroupsEnabled": 1                         // registered but every switch off
+  },
+  "planTruncated": false,                        // `due` is always the real total
+  "plan": [{
+    "deviceId": "…", "platform": "web", "timezone": "America/New_York",
+    "trigger": "waiver_wire", "group": "tuesday",
+    "targetAt": "2026-09-08T13:00:00.000Z",
+    "lateByMinutes": 5,
+    "wouldDeliver": true                         // false when that transport is unconfigured
+  }]
+}
+```
+
+`missingTimezone` and `noGroupsEnabled` exist so an empty `plan` is diagnosable
+rather than mysterious — they are the two conditions that silence a device
+outright.
+
+A dry run still **requires** the secret, and it deliberately still answers `200`
+when no transport is provisioned: the first health check anyone runs is against
+a deployment whose keys are not set yet, and that is exactly when the schedule
+needs verifying. A *live* run with no transport configured returns `503`.
+
+## Verifying
+
+```bash
+npm run verify              # everything below, in order
+npm run check:scope         # CLAUDE.md rule 1 — every identifier resolves
+npm run test:triggers       # 37 assertions: DST, grace window, opt-in gate, determinism
+npm run audit:notifications # 42 assertions: cron auth + dry-run safety + doc sync
+npm run check:render        # Chromium: all six screens, zero errors, opt-in contract
+```
+
+`audit:notifications` replaces the Supabase client and both transports with
+instrumented doubles, drives the real route handler, and asserts the recordings
+are empty for `?dry=1`. It does not read the source or trust a flag — it proves
+no provider was called and no row was written, with a live-run control in the
+same file to show the doubles are actually wired.
 
 ## Determinism
 

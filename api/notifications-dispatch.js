@@ -155,6 +155,36 @@ async function retire(supabase, deviceId, reason) {
   }
 }
 
+/* --------------------------------------------------------------------------
+   isDryRun(req)
+
+   `req.query` is a convenience the Vercel Node helper layer adds; it is NOT
+   part of Node's own http.IncomingMessage. Reading the flag from there alone
+   made the safety of a dry run depend on a runtime nicety, and the failure
+   mode is the worst one available: on any runtime that does not pre-parse the
+   query string, `?dry=1` silently became a REAL dispatch while the operator
+   believed they were rehearsing. (The route audit reproduces exactly that —
+   one live push and three ledger writes from a ?dry=1 request.)
+
+   So the URL is the source of truth, with req.query accepted as well. A
+   malformed URL falls back to a LIVE run only if req.query says nothing about
+   dry, because defaulting an unparseable request to "dry" would silently
+   suppress a real cron run instead.
+-------------------------------------------------------------------------- */
+function isDryRun(req) {
+  const fromQuery = req && req.query ? String(req.query.dry || '') : '';
+  if (fromQuery === '1') return true;
+
+  try {
+    const url = new URL(String((req && req.url) || ''), 'http://dispatch.local');
+    if (String(url.searchParams.get('dry') || '') === '1') return true;
+  } catch (err) {
+    console.warn('[FSNPush] could not parse the request URL to look for ?dry=1; ' +
+      'falling back to req.query only. Request URL was: ' + String(req && req.url), err);
+  }
+  return false;
+}
+
 async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
 
@@ -174,7 +204,7 @@ async function handler(req, res) {
     return;
   }
 
-  const dryRun = String((req.query && req.query.dry) || '') === '1';
+  const dryRun = isDryRun(req);
   const now = Date.now();
 
   const supabase = getSupabase();
@@ -188,12 +218,24 @@ async function handler(req, res) {
 
   const apnsReady = apns.isConfigured();
   const webReady = webpush.isConfigured();
-  if (!apnsReady && !webReady) {
+
+  /* A LIVE run with nowhere to send is a misconfiguration and must fail loudly.
+     A DRY run must not: the first health check anyone performs is against a
+     deployment whose keys are not provisioned yet, and that is precisely when
+     an operator needs to see that the schedule, timezones and ledger all
+     evaluate correctly. Refusing there would answer "503" to the one question
+     the dry run exists to answer, so the readiness of each transport is
+     reported in the diagnostic instead. */
+  if (!apnsReady && !webReady && !dryRun) {
     console.error('[FSNPush] dispatch has no configured transport. Set the APNS_* ' +
       'variables for iOS, the VAPID_* variables for browsers, or both.',
       new Error('NO_TRANSPORT_CONFIGURED'));
     res.status(503).json({ error: 'NO_TRANSPORT_CONFIGURED' });
     return;
+  }
+  if (!apnsReady && !webReady) {
+    console.warn('[FSNPush] dry run proceeding with NO transport configured. The plan ' +
+      'below is what would be attempted once APNS_* or VAPID_* variables are set.');
   }
 
   /* ---- 1. Live devices -------------------------------------------------- */
@@ -259,19 +301,50 @@ async function handler(req, res) {
   }
 
   if (dryRun) {
+    const PLAN_LIMIT = 50;
+
+    /* The most useful thing a health check can report is why nothing is due,
+       so summarise the two conditions that silence a device entirely — an
+       unusable timezone and every group switched off — rather than leaving an
+       operator to guess from an empty plan. */
+    let missingTimezone = 0;
+    let noGroupsEnabled = 0;
+    let ios = 0;
+    let web = 0;
+    for (const row of devices) {
+      if (row.platform === 'ios') ios++; else web++;
+      if (!engine.normalizeTimeZone(row.timezone)) missingTimezone++;
+      const prefs = (row.prefs && typeof row.prefs === 'object') ? row.prefs : {};
+      if (!engine.PREF_GROUPS.some((g) => prefs[g] === true)) noGroupsEnabled++;
+    }
+
     res.status(200).json({
       ok: true,
       dryRun: true,
       now: new Date(now).toISOString(),
+
+      /* Whether a real run could actually deliver anything right now. */
+      transports: { apns: apnsReady, web: webReady },
+      deliverable: apnsReady || webReady,
+
       evaluated: devices.length,
       due: work.length,
-      plan: work.slice(0, 50).map((w) => ({
+      ledgerRowsScanned: (ledger || []).length,
+      ledgerLookbackDays: LEDGER_LOOKBACK_DAYS,
+
+      devices: { total: devices.length, ios, web, missingTimezone, noGroupsEnabled },
+
+      /* Truncation is stated rather than silent: `due` is the real total. */
+      planTruncated: work.length > PLAN_LIMIT,
+      plan: work.slice(0, PLAN_LIMIT).map((w) => ({
         deviceId: w.row.device_id,
         platform: w.row.platform,
         timezone: w.row.timezone,
         trigger: w.due.trigger.id,
+        group: w.due.trigger.group,
         targetAt: new Date(w.due.target).toISOString(),
         lateByMinutes: Math.round(w.due.age / 60000),
+        wouldDeliver: w.row.platform === 'ios' ? apnsReady : webReady,
       })),
     });
     return;
