@@ -42,7 +42,19 @@ jobs:
             npx cap sync ios
           else
             echo "Native iOS project missing — generating with 'cap add ios'."
+            # 'cap add ios' refuses if any ios/ directory already exists
+            # ("ios platform already exists"). The repo ships ios/HANDOFF.md
+            # (a doc, not a generated project), so move ios/ aside, generate a
+            # clean native project, then restore any non-generated files
+            # without clobbering what Capacitor just created.
+            if [ -d "ios" ]; then
+              rm -rf "$RUNNER_TEMP/ios-preexisting"
+              mv ios "$RUNNER_TEMP/ios-preexisting"
+            fi
             npx cap add ios
+            if [ -d "$RUNNER_TEMP/ios-preexisting" ]; then
+              cp -Rn "$RUNNER_TEMP/ios-preexisting/." ios/ || true
+            fi
             npx cap sync ios
           fi
 
