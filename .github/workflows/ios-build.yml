@@ -65,13 +65,18 @@ jobs:
           mkdir -p "$HOME/private_keys"
           KEY_PATH="$HOME/private_keys/AuthKey_${APPSTORE_CONNECT_KEY_ID}.p8"
 
-          # xcodebuild's CryptoKit PEM parser is strict — a UTF-8 BOM, CRLF
-          # endings, trailing whitespace, or junk around the PEM block all
-          # yield "invalidPEMDocument". Reconstruct a canonical PEM regardless
-          # of how the secret was pasted/stored, then validate it before use.
+          # xcodebuild's CryptoKit PEM parser is strict — literal "\n" escape
+          # sequences (a single-line secret), a UTF-8 BOM, CRLF endings,
+          # trailing whitespace, or junk around the PEM block all yield
+          # "invalidPEMDocument" / openssl "bad end line". Reconstruct a
+          # canonical PEM regardless of how the secret was pasted/stored, then
+          # validate it before use.
 
-          # Strip a leading UTF-8 BOM and all carriage returns up front.
-          CLEAN="$(printf '%s' "$API_PRIVATE_KEY" | sed '1s/^\xEF\xBB\xBF//' | tr -d '\r')"
+          # printf %b turns literal "\n"/"\r" escape sequences into real
+          # newlines; it is a no-op on a proper PEM (base64/PEM contain no
+          # backslashes). Then strip a UTF-8 BOM (real bytes, so it works on
+          # the runner's BSD sed too) and any carriage returns.
+          CLEAN="$(printf '%b' "$API_PRIVATE_KEY" | sed $'s/\xEF\xBB\xBF//g' | tr -d '\r')"
 
           write_pem() {
             # Extract exactly the BEGIN..END block, trimming trailing
@@ -102,9 +107,10 @@ jobs:
           # secret fails here with a clear message instead of a cryptic
           # xcodebuild CryptoKit error. openssl never prints key material.
           if ! openssl pkey -in "$KEY_PATH" -noout 2>/tmp/pkeyerr; then
-            echo "::error::APPSTORE_CONNECT_PRIVATE_KEY is not a valid App Store Connect .p8 key."
-            echo "openssl reported:" >&2
-            cat /tmp/pkeyerr >&2
+            echo "::error::APPSTORE_CONNECT_PRIVATE_KEY did not parse as a valid App Store Connect .p8 key."
+            # Structure only — never the base64 body.
+            echo "  reconstructed lines=$(wc -l < "$KEY_PATH" | tr -d ' ') begin=$(grep -c 'BEGIN PRIVATE KEY' "$KEY_PATH") end=$(grep -c 'END PRIVATE KEY' "$KEY_PATH")" >&2
+            echo "  openssl: $(cat /tmp/pkeyerr)" >&2
             exit 1
           fi
           echo "App Store Connect API key validated."
