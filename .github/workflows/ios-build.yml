@@ -24,6 +24,12 @@ jobs:
       - name: Build web assets
         run: npm run build:ios
 
+      - name: Add Capacitor iOS platform
+        run: |
+          if [ ! -d ios/App ]; then
+            npx cap add ios
+          fi
+
       - name: Sync Capacitor iOS project
         run: npx cap sync ios
 
