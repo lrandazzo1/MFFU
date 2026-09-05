@@ -10,15 +10,24 @@
     "build:ios": "node scripts/build-ios.mjs",
     "ios:assets": "npx @capacitor/assets generate --ios --assetPath assets",
     "ios:sync": "npm run build:ios && npx cap sync ios",
-    "ios:open": "npx cap open ios"
+    "ios:open": "npx cap open ios",
+    "test:triggers": "node api/notifications/selftest.js",
+    "check:scope": "node scripts/scope-scan.mjs",
+    "check:render": "node scripts/render-check.mjs",
+    "verify": "npm run check:scope && npm run test:triggers && npm run check:render"
   },
   "dependencies": {
     "@capacitor/core": "^6.1.2",
     "@capacitor/ios": "^6.1.2",
-    "@supabase/supabase-js": "^2.57.4"
+    "@capacitor/push-notifications": "^6.0.5",
+    "@supabase/supabase-js": "^2.57.4",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@capacitor/assets": "^3.0.5",
-    "@capacitor/cli": "^6.1.2"
+    "@capacitor/cli": "^6.1.2",
+    "acorn": "^8.18.0",
+    "acorn-walk": "^8.3.5",
+    "playwright": "^1.63.0"
   }
 }

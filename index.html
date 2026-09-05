@@ -29,6 +29,17 @@
   by more than one IIFE lives outside every IIFE.
 -->
 <script src="editorialScheduleEngine.js"></script>
+<!--
+  Push notification service. Same reasoning as the schedule engine above: the
+  Setup screen (block 6) drives it and the data engine (block 1) feeds it the
+  live league context, so it loads at global scope outside every IIFE and
+  publishes window.FSNNotifications.
+
+  Loading this file does NOT request notification permission. It only reads the
+  permission state the OS already holds; the system prompt is reached solely
+  from the reader's tap on the Setup toggle. See the header of the file.
+-->
+<script src="notificationService.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Anton&family=Oswald:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700;800&display=swap" rel="stylesheet">
@@ -205,6 +216,82 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
 }
 .provider-tab:active{ transform:scale(.97); }
 .provider-tab:focus-visible{ outline:2px solid var(--cyan); outline-offset:2px; }
+
+/* ---------- PUSH ALERT SWITCHES ----------
+   A native checkbox is kept as the real control (label-wrapped, so the whole
+   row is a tap target and VoiceOver reads state without any aria plumbing);
+   the visible track is drawn from ::before/::after on a sibling span. The input
+   itself is moved off-screen rather than display:none — a hidden input is not
+   focusable, which would put the switches out of reach of a keyboard and of
+   Switch Control on iOS. */
+.notify-row{
+  display:flex; align-items:center; justify-content:space-between; gap:12px;
+  padding:11px 0; cursor:pointer;
+}
+.notify-row + .notify-row{ border-top:1px solid var(--line); }
+.notify-row-text{ min-width:0; flex:1 1 auto; }
+.notify-row-title{
+  font-size:12.5px; font-weight:700; color:var(--off); letter-spacing:.02em;
+}
+.notify-row-sub{
+  font-size:10.5px; line-height:1.5; color:var(--dim); margin-top:2px;
+}
+.notify-row input[type="checkbox"]{
+  position:absolute; width:1px; height:1px; margin:-1px;
+  padding:0; border:0; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap;
+}
+.notify-switch{
+  flex:none; position:relative; width:44px; height:26px; border-radius:13px;
+  background:#161d29; border:1px solid var(--line-2);
+  transition:background .16s ease, border-color .16s ease;
+}
+.notify-switch::after{
+  content:''; position:absolute; top:2px; left:2px; width:20px; height:20px;
+  border-radius:50%; background:#5d6879;
+  transition:transform .16s ease, background .16s ease;
+}
+.notify-row input:checked + .notify-switch{
+  background:rgba(0,224,255,.22); border-color:var(--cyan);
+}
+.notify-row input:checked + .notify-switch::after{
+  transform:translateX(18px); background:var(--cyan);
+}
+.notify-row input:focus-visible + .notify-switch{
+  outline:2px solid var(--cyan); outline-offset:2px;
+}
+/* Disabled while a registration round-trip is in flight, or when the device
+   cannot receive push at all. */
+.notify-row[data-disabled="true"]{ opacity:.45; cursor:default; }
+
+/* The per-cadence switches are meaningless until the master switch is on, so
+   they collapse rather than sitting there inert. */
+#notifyGroups[hidden]{ display:none; }
+.notify-groups{ margin-top:4px; border-top:1px solid var(--line); }
+
+/* Pre-permission rationale. This is the whole point of the opt-in flow: the
+   reader reads what they are agreeing to and taps a button, and only THAT tap
+   reaches the OS prompt. */
+.notify-rationale{
+  margin-top:12px; padding:12px; border-radius:12px;
+  border:1px solid rgba(0,224,255,.28); background:rgba(0,224,255,.06);
+}
+.notify-rationale-title{
+  font-size:11.5px; font-weight:800; letter-spacing:.06em; text-transform:uppercase;
+  color:var(--cyan); margin-bottom:6px;
+}
+.notify-rationale-list{ margin:0 0 10px; padding:0; }
+.notify-rationale-list li{
+  position:relative; padding-left:16px; margin-bottom:5px;
+  font-size:11px; line-height:1.55; color:var(--off);
+}
+.notify-rationale-list li::before{
+  content:''; position:absolute; left:3px; top:7px;
+  width:5px; height:5px; border-radius:50%; background:var(--cyan);
+}
+.notify-status{ font-size:10.5px; line-height:1.5; margin-top:10px; color:var(--dim); }
+.notify-status[data-tone="ok"]{ color:var(--green); }
+.notify-status[data-tone="warn"]{ color:var(--gold); }
+.notify-status[data-tone="error"]{ color:var(--red); }
 
 /* ---------- SAVED LEAGUES / SEASON STATS CONTROLS ---------- */
 .league-switcher{ display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; align-items:end; }
@@ -2438,6 +2525,79 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
             </p>
           </div>
         </div>
+      </div>
+
+      <!-- ============================================================
+           PUSH ALERTS — opt-in, never a cold prompt
+
+           The system permission dialog is reachable from exactly one control
+           on this screen: the "TURN ON ALERTS" button inside the rationale
+           panel, which only appears after the reader flips the master switch
+           and reads what they are agreeing to. Nothing on app launch, and
+           nothing on this screen's first paint, asks the OS for anything —
+           see notificationService.js.
+      ============================================================ -->
+      <div class="card p-4" id="notifyCard">
+        <div class="section-head"><span class="bar" style="background:var(--gold)"></span><h2>Push Alerts</h2></div>
+        <p class="text-[11.5px] text-[var(--dim)] leading-relaxed mb-3">
+          Three moments a week, on your clock: waivers and the power index on Tuesday, the Thursday night lineup lock, and Sunday's lineup check. Nothing else — no score-by-score spam.
+        </p>
+
+        <label class="notify-row" for="notifyMaster" id="notifyMasterRow">
+          <span class="notify-row-text">
+            <span class="notify-row-title">Weekly alerts</span>
+            <span class="notify-row-sub" id="notifyMasterSub">Off — this device receives nothing.</span>
+          </span>
+          <input type="checkbox" id="notifyMaster">
+          <span class="notify-switch" aria-hidden="true"></span>
+        </label>
+
+        <!-- Shown only between "reader flipped the master switch" and "reader
+             granted permission". This is the graceful pre-prompt. -->
+        <div class="notify-rationale hidden" id="notifyRationale">
+          <div class="notify-rationale-title">Before your phone asks</div>
+          <ul class="notify-rationale-list">
+            <li><b>Tuesday</b> — waivers cleared, plus the recap and re-cut power index.</li>
+            <li><b>Thursday</b> — two hours before kickoff, so nobody starts a locked player.</li>
+            <li><b>Sunday</b> — a morning lineup check and a nudge when the slate goes live.</li>
+          </ul>
+          <button id="notifyEnableBtn" type="button" class="btn-primary" style="padding:12px;font-size:13px">
+            <span id="notifyEnableSpinner" class="spinner hidden"></span>
+            <span id="notifyEnableLabel">TURN ON ALERTS</span>
+          </button>
+          <p class="text-[10px] text-[var(--dim)] leading-relaxed mt-2" style="margin-bottom:0">
+            Your device will ask for permission once. Decline and nothing breaks — the rest of the app works exactly the same.
+          </p>
+        </div>
+
+        <div class="notify-groups" id="notifyGroups" hidden>
+          <label class="notify-row" for="notifyTuesday">
+            <span class="notify-row-text">
+              <span class="notify-row-title">Tuesday · Waivers &amp; Recap</span>
+              <span class="notify-row-sub">Waiver results at 9am, the post-mortem and power index at 6pm.</span>
+            </span>
+            <input type="checkbox" id="notifyTuesday" data-notify-group="tuesday">
+            <span class="notify-switch" aria-hidden="true"></span>
+          </label>
+          <label class="notify-row" for="notifyThursday">
+            <span class="notify-row-text">
+              <span class="notify-row-title">Thursday · Lineup Lock</span>
+              <span class="notify-row-sub">Two hours before the week's opening kickoff.</span>
+            </span>
+            <input type="checkbox" id="notifyThursday" data-notify-group="thursday">
+            <span class="notify-switch" aria-hidden="true"></span>
+          </label>
+          <label class="notify-row" for="notifySunday">
+            <span class="notify-row-text">
+              <span class="notify-row-title">Sunday · Lineup &amp; Game Day</span>
+              <span class="notify-row-sub">A 9am lineup check and a game day pulse at kickoff.</span>
+            </span>
+            <input type="checkbox" id="notifySunday" data-notify-group="sunday">
+            <span class="notify-switch" aria-hidden="true"></span>
+          </label>
+        </div>
+
+        <p class="notify-status" id="notifyStatus" role="status" aria-live="polite"></p>
       </div>
 
       <!-- PRIVACY & DATA — hosted-policy links + local storage erasure.
@@ -22104,6 +22264,268 @@ function eraseLocalDataAndDisconnect(){
 }
 if($('eraseLocalDataBtn')) $('eraseLocalDataBtn').addEventListener('click', eraseLocalDataAndDisconnect);
 
+/* ============================================================
+   PUSH ALERTS — Setup card controller
+
+   All of the transport, permission and registration logic lives in
+   notificationService.js at global scope (CLAUDE.md rule 1: it is driven from
+   here in block 6 and fed league context from the data engine in block 1, so
+   it cannot live inside either IIFE). This section is only the screen: it
+   renders the service's state and turns taps into service calls.
+
+   The opt-in contract, restated because it is the easiest thing to break by
+   accident later: NOTHING in this file may call enable(). The system prompt is
+   reached from the reader's tap on #notifyEnableBtn and from nowhere else.
+   Flipping the master switch on does not prompt — it reveals the rationale
+   panel, and the reader decides from there.
+============================================================ */
+const NOTIFY_GROUP_INPUTS = ['notifyTuesday', 'notifyThursday', 'notifySunday'];
+
+/* notificationService.js is a separate <script src>, so unlike a cross-block
+   helper it can be genuinely absent — a 404, a blocked request, a stripped
+   iOS bundle. That is a real runtime condition rather than a scoping mistake,
+   so it is reported loudly and the card degrades to an honest message instead
+   of a dead switch. */
+function notifyService(){
+  return window.FSNNotifications || null;
+}
+
+function setNotifyStatus(message, tone){
+  const el = $('notifyStatus');
+  if(!el) return;
+  el.textContent = message || '';
+  if(tone) el.setAttribute('data-tone', tone);
+  else el.removeAttribute('data-tone');
+}
+
+/* The league context the dispatcher needs: which league and week the alerts
+   are about, and when the week's opening kickoff actually is so the Thursday
+   alert can anchor to the real game rather than a fixed hour.
+
+   The kickoff read goes through EditorialScheduleEngine, which already owns
+   exactly this question for the News Desk's release calendar. */
+function notifyLeagueContext(){
+  const season = uiActiveSeasonYear();
+  const week = currentLeagueWeek();
+
+  let kickoff = null;
+  const engine = window.EditorialScheduleEngine;
+  if(engine && typeof engine.firstGameTimestamp === 'function'){
+    try{
+      kickoff = engine.firstGameTimestamp(season, week);
+    }catch(err){
+      console.error('[FSNPush] could not resolve the Week ' + week + ' kickoff for the ' +
+        'Thursday alert anchor; it will fall back to a fixed local hour.', err);
+      kickoff = null;
+    }
+  }
+
+  return {
+    leagueId: selectedLeagueId(),
+    teamId: storedActiveTeam(),
+    seasonYear: season,
+    week: week,
+    firstKickoffMs: kickoff,
+  };
+}
+
+/* Paint the card from one state snapshot. Every branch writes a specific,
+   honest line — "this browser cannot receive push" and "you declined in iOS
+   Settings" are different problems with different fixes, and a single generic
+   "notifications unavailable" would hide both. */
+function renderNotifySettings(snap){
+  const card = $('notifyCard');
+  if(!card) return;
+
+  const master = $('notifyMaster');
+  const masterRow = $('notifyMasterRow');
+  const masterSub = $('notifyMasterSub');
+  const rationale = $('notifyRationale');
+  const groups = $('notifyGroups');
+  if(!master || !rationale || !groups) return;
+
+  const service = notifyService();
+  if(!service){
+    master.checked = false;
+    master.disabled = true;
+    if(masterRow) masterRow.setAttribute('data-disabled', 'true');
+    rationale.classList.add('hidden');
+    groups.hidden = true;
+    if(masterSub) masterSub.textContent = 'Unavailable on this build.';
+    setNotifyStatus('The notification service did not load, so alerts cannot be switched on. ' +
+      'Reload the app; if it persists the build is missing notificationService.js.', 'error');
+    return;
+  }
+
+  const busy = !!snap.busy;
+  master.disabled = busy || !snap.supported || snap.configured === false;
+  if(masterRow) masterRow.setAttribute('data-disabled', String(master.disabled));
+
+  NOTIFY_GROUP_INPUTS.forEach(id=>{
+    const input = $(id);
+    if(!input) return;
+    const group = input.getAttribute('data-notify-group');
+    input.checked = snap.prefs[group] === true;
+    input.disabled = busy;
+    const row = input.closest('.notify-row');
+    if(row) row.setAttribute('data-disabled', String(busy));
+  });
+
+  /* ---- device cannot receive push at all ---- */
+  if(!snap.supported){
+    master.checked = false;
+    rationale.classList.add('hidden');
+    groups.hidden = true;
+    if(masterSub) masterSub.textContent = 'Not supported on this device.';
+    setNotifyStatus('This browser cannot receive push notifications. Install the FSN app, ' +
+      'or add this site to your home screen, to switch alerts on.', 'warn');
+    return;
+  }
+
+  /* ---- push not provisioned for this deployment ---- */
+  if(snap.configured === false){
+    master.checked = false;
+    rationale.classList.add('hidden');
+    groups.hidden = true;
+    if(masterSub) masterSub.textContent = 'Not yet available.';
+    setNotifyStatus('Push alerts are not configured on this deployment yet.', 'warn');
+    return;
+  }
+
+  /* ---- reader (or the OS) has denied permission ---- */
+  if(snap.permission === 'denied'){
+    master.checked = false;
+    rationale.classList.add('hidden');
+    groups.hidden = true;
+    if(masterSub) masterSub.textContent = 'Blocked in system settings.';
+    setNotifyStatus('Notifications are turned off for FSN in your device settings. ' +
+      'Re-enable them there, then come back to this screen.', 'warn');
+    return;
+  }
+
+  /* ---- opted in and registered ---- */
+  if(snap.optedIn && snap.registered){
+    master.checked = true;
+    rationale.classList.add('hidden');
+    groups.hidden = false;
+    if(masterSub) masterSub.textContent = 'On — alerts arrive on this device.';
+    setNotifyStatus(busy ? 'Saving…' : 'This device is registered. Pick the moments you want below.',
+      busy ? null : 'ok');
+    return;
+  }
+
+  /* ---- master flipped on, permission not yet granted: show the rationale ---- */
+  if(master.checked){
+    rationale.classList.remove('hidden');
+    groups.hidden = false;
+    if(masterSub) masterSub.textContent = 'One more step below.';
+    setNotifyStatus(snap.lastError
+      ? 'That did not work: ' + snap.lastError + '.'
+      : 'Choose your moments, then turn alerts on.',
+      snap.lastError ? 'error' : null);
+    return;
+  }
+
+  /* ---- default: off ---- */
+  rationale.classList.add('hidden');
+  groups.hidden = true;
+  if(masterSub) masterSub.textContent = 'Off — this device receives nothing.';
+  setNotifyStatus(snap.lastError ? 'Last attempt failed: ' + snap.lastError + '.' : '',
+    snap.lastError ? 'error' : null);
+}
+
+function bindNotifySettings(){
+  const service = notifyService();
+  if(!service){
+    console.error('[FSNPush] window.FSNNotifications is not defined, so the Setup screen ' +
+      'cannot offer push alerts. Check that notificationService.js is served alongside ' +
+      'index.html (and staged into www/ for the iOS build).',
+      new Error('NOTIFICATION_SERVICE_MISSING'));
+    renderNotifySettings({ supported:false, prefs:{}, busy:false });
+    return;
+  }
+
+  const master = $('notifyMaster');
+  if(master){
+    master.addEventListener('change', ()=>{
+      if(master.checked){
+        /* Deliberately does NOT prompt. Revealing the rationale is the whole
+           opt-in flow; the OS is only asked from the button inside it. */
+        renderNotifySettings(service.state());
+        return;
+      }
+      service.disable().catch(err=>
+        console.error('[FSNPush] switching alerts off did not complete cleanly', err));
+    });
+  }
+
+  const enableBtn = $('notifyEnableBtn');
+  if(enableBtn){
+    enableBtn.addEventListener('click', ()=>{
+      const spinner = $('notifyEnableSpinner');
+      const label = $('notifyEnableLabel');
+      if(spinner) spinner.classList.remove('hidden');
+      if(label) label.textContent = 'ASKING…';
+
+      /* Context first, so the very first registration already carries the
+         league, week and kickoff rather than waiting for the next repaint. */
+      service.setLeagueContext(notifyLeagueContext());
+
+      const prefs = {};
+      NOTIFY_GROUP_INPUTS.forEach(id=>{
+        const input = $(id);
+        if(input) prefs[input.getAttribute('data-notify-group')] = !!input.checked;
+      });
+
+      service.enable(prefs).then(snap=>{
+        if(snap.optedIn) toast('Push alerts are on for this device');
+        else if(snap.permission === 'denied') toast('Notifications were declined');
+      }).catch(err=>{
+        /* enable() has already logged the cause and pushed an error state into
+           the card; this is the reader-facing half. */
+        console.warn('[FSNPush] the reader-initiated opt-in did not complete', err);
+        toast('Could not turn on alerts');
+      }).then(()=>{
+        if(spinner) spinner.classList.add('hidden');
+        if(label) label.textContent = 'TURN ON ALERTS';
+      });
+    });
+  }
+
+  NOTIFY_GROUP_INPUTS.forEach(id=>{
+    const input = $(id);
+    if(!input) return;
+    input.addEventListener('change', ()=>{
+      const prefs = {};
+      NOTIFY_GROUP_INPUTS.forEach(other=>{
+        const el = $(other);
+        if(el) prefs[el.getAttribute('data-notify-group')] = !!el.checked;
+      });
+      /* Only persists to the server once the reader has actually opted in;
+         before that it is a local preference they are pre-setting. */
+      service.setPrefs(prefs).catch(err=>
+        console.error('[FSNPush] could not save the alert preferences', err));
+    });
+  });
+
+  /* One subscription drives every repaint of the card. */
+  service.subscribe(renderNotifySettings);
+
+  service.boot().catch(err=>
+    console.error('[FSNPush] the notification service failed to boot', err));
+
+  /* Keep the registered row pointed at the live league and week. The service
+     compares before writing, so a repaint storm cannot become a write storm. */
+  LeagueData.subscribe(()=>{
+    try{
+      service.setLeagueContext(notifyLeagueContext());
+    }catch(err){
+      console.error('[FSNPush] could not refresh the notification league context ' +
+        'after a LeagueData publish', err);
+    }
+  });
+}
+
 $('historyUnlockToggle').addEventListener('click', ()=>{
   const panel = $('historyUploadPanel');
   const btn = $('historyUnlockToggle');
@@ -24311,6 +24733,16 @@ function bootApp(){
      rather than a blank one. */
   safeRun('boot:renderAll', renderAll);
   safeRun('boot:screen', ()=> setScreen('home'));
+
+  /* Push alerts. Isolated like every other boot step, and deliberately AFTER
+     the two that paint: the notification service does a network read for its
+     configuration, and nothing about the first paint may wait on that.
+
+     This does not prompt for permission — see the controller above and the
+     header of notificationService.js. It reads the permission the OS already
+     holds and, only for a device that has already opted in and been granted
+     it, silently refreshes a possibly-rotated push token. */
+  safeRun('boot:notifications', bindNotifySettings);
 
   // Deep-link entry from the marketing landing page (or any external link).
   // The apex/www landing site sends visitors here with ?goto=setup and an
