@@ -14,7 +14,8 @@
     "test:triggers": "node api/notifications/selftest.js",
     "check:scope": "node scripts/scope-scan.mjs",
     "check:render": "node scripts/render-check.mjs",
-    "verify": "npm run check:scope && npm run test:triggers && npm run check:render"
+    "verify": "npm run check:scope && npm run test:triggers && npm run audit:notifications && npm run check:render",
+    "audit:notifications": "node scripts/audit-notifications.mjs"
   },
   "dependencies": {
     "@capacitor/core": "^6.1.2",
