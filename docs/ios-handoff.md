@@ -1,5 +1,23 @@
 # FSN iOS — Capacitor handoff
 
+> **A Mac is no longer required to ship a build.** The `iOS Build` GitHub
+> Actions workflow (`.github/workflows/ios-build.yml`) archives, signs,
+> exports and uploads to TestFlight on a hosted macOS runner. See
+> **`ios-release.md`** for the secrets it needs. This document covers the
+> local Xcode loop for anyone who does have a Mac.
+>
+> Two things that page explains and this one predates:
+>
+> - The native project is **not** committed. Both CI and a fresh clone
+>   generate it with `npx cap add ios`. That command refuses to run if an
+>   `ios/` directory already exists, which is why this file lives in `docs/`
+>   rather than `ios/`.
+> - Because the project is regenerated, the "Manual steps in Xcode" and
+>   "Info.plist snippets" sections below are applied automatically by
+>   `npm run ios:configure` (`scripts/ios-configure.mjs`). Edit that script,
+>   not the generated project — anything changed by hand in Xcode is
+>   discarded on the next `cap add`.
+
 Everything below the "Manual steps in Xcode" heading requires a Mac with
 Xcode 15+, an Apple Developer account, and App Store Connect access.
 Everything above it is scriptable and reproducible on any machine with
@@ -13,13 +31,19 @@ Node 18+ and CocoaPods.
 # From the repo root.
 npm install
 
-# Adds the native iOS project at ./ios/. Only run this once per repo —
-# after the first run, `ios/` is committed and every subsequent clone
-# skips straight to `npm run ios:sync`.
+# Adds the native iOS project at ./ios/. `ios/` is gitignored and not
+# committed, so this runs once per clone (and on every CI run). It fails
+# with "ios platform already exists" if the directory is present — delete
+# it first if you are regenerating.
 npx cap add ios
 
 # Install CocoaPods deps for the generated Xcode project.
 cd ios/App && pod install && cd ../..
+
+# Apply the Info.plist keys, push entitlement, signing settings and shared
+# scheme. Everything under "Manual steps in Xcode" below except team
+# selection is handled here.
+IOS_TEAM_ID=YOURTEAMID npm run ios:configure
 ```
 
 ## 2. Generate app icons and launch images
