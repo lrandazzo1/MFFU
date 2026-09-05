@@ -59,10 +59,32 @@ jobs:
           fi
 
       - name: Install App Store Connect API key
+        env:
+          API_PRIVATE_KEY: ${{ secrets.APPSTORE_CONNECT_PRIVATE_KEY }}
         run: |
           mkdir -p "$HOME/private_keys"
           KEY_PATH="$HOME/private_keys/AuthKey_${APPSTORE_CONNECT_KEY_ID}.p8"
-          printf '%s' "${{ secrets.APPSTORE_CONNECT_PRIVATE_KEY }}" > "$KEY_PATH"
+
+          # xcodebuild's CryptoKit PEM parser is strict: CRLF line endings, a
+          # missing trailing newline, or a value stored as bare base64 all
+          # produce "invalidPEMDocument". Normalize into a canonical PEM so the
+          # step works regardless of how the secret was pasted/stored.
+          CLEAN="$(printf '%s' "$API_PRIVATE_KEY" | tr -d '\r')"
+          if printf '%s' "$CLEAN" | grep -q 'BEGIN PRIVATE KEY'; then
+            printf '%s\n' "$CLEAN" > "$KEY_PATH"
+          else
+            {
+              echo "-----BEGIN PRIVATE KEY-----"
+              printf '%s' "$CLEAN" | tr -d '[:space:]' | fold -w 64
+              echo "-----END PRIVATE KEY-----"
+            } > "$KEY_PATH"
+          fi
+
+          # Fail early with a clear message rather than a cryptic xcodebuild error.
+          if ! grep -q 'BEGIN PRIVATE KEY' "$KEY_PATH"; then
+            echo "APPSTORE_CONNECT_PRIVATE_KEY did not yield a valid .p8 PEM." >&2
+            exit 1
+          fi
           echo "API_KEY_PATH=$KEY_PATH" >> "$GITHUB_ENV"
 
       - name: Archive app
