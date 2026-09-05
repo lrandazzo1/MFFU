@@ -134,13 +134,26 @@ plainly and the switch stays disabled.
 
 ### 3. Xcode (native only)
 
-Requires a Mac — see `ios/HANDOFF.md`. After `npm install && npx cap sync ios`:
+See `docs/ios-handoff.md`. The `iOS Build` GitHub Actions workflow
+(`.github/workflows/ios-build.yml`) builds and signs the binary on a hosted
+macOS runner, so a Mac is no longer required for a TestFlight build.
 
-1. **Signing & Capabilities → + Capability → Push Notifications**
-2. **+ Capability → Background Modes → Remote notifications**
+Steps 1 and 2 below are applied automatically by `npm run ios:configure`
+(`scripts/ios-configure.mjs`), which writes the `aps-environment` entitlement
+and the `remote-notification` background mode into the generated Xcode
+project on every CI run. Step 3 is a one-time portal change only a human can
+make.
+
+1. **Signing & Capabilities → + Capability → Push Notifications** — automated.
+2. **+ Capability → Background Modes → Remote notifications** — automated.
 3. In the Apple Developer portal, confirm the App ID for
    `app.fantasysportsnetwork` has the Push Notifications service enabled, and
-   that the `.p8` key in `APNS_KEY_P8` is authorised for it.
+   that the `.p8` key in `APNS_KEY_P8` is authorised for it. **The archive
+   fails to sign if the App ID lacks the Push Notifications service**, since
+   the entitlement above has to be satisfied by the provisioning profile.
+   The iOS build workflow has a repository variable that turns the push
+   entitlement off if you need a build before that is sorted out — see
+   docs/ios-release.md.
 
 Capacitor's `@capacitor/push-notifications` handles `AppDelegate` registration;
 no Swift changes are needed.

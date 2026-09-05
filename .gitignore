@@ -3,13 +3,16 @@ node_modules/
 *.log
 .DS_Store
 
-# Capacitor iOS wrapper — the native project (ios/) is committed, but its
-# staged web payload and CocoaPods artifacts are regenerated per build.
+# Capacitor iOS wrapper. The native project is generated, not committed:
+# `npx cap add ios` scaffolds it from the Capacitor template on every CI run
+# and on each fresh clone, and `npm run ios:configure` re-applies the
+# Info.plist keys, entitlement, signing settings and shared scheme on top.
+# See docs/ios-release.md.
+#
+# `npx cap add ios` refuses to run when ios/ already exists, so nothing may
+# be committed inside it. To switch to a committed native project, remove
+# the ios/ line below and force-add the tree; the workflow detects
+# ios/App/App.xcodeproj and runs `npx cap sync ios` instead of `cap add`.
 www/
-ios/App/App/public/
-ios/App/Pods/
-ios/App/build/
-ios/App/App.xcworkspace/xcuserdata/
-ios/App/App.xcodeproj/xcuserdata/
-ios/App/App.xcodeproj/project.xcworkspace/xcuserdata/
+ios/
 DerivedData/
