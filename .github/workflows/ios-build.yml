@@ -73,18 +73,20 @@ jobs:
       - name: Archive app
         working-directory: ios/App
         run: |
+          # Build the archive WITHOUT code signing. All signing is deferred to
+          # the export step, which mints/uses the Apple Distribution certificate
+          # and App Store provisioning profile via the App Store Connect API key
+          # (-allowProvisioningUpdates). Signing here would resolve to a
+          # *development* identity and fail on the runner's empty keychain
+          # ("Revoke certificate … private key is not installed"); an unsigned
+          # archive avoids that entirely and lets export do distribution signing.
           xcodebuild archive \
             -workspace App.xcworkspace \
             -scheme App \
             -configuration Release \
             -destination 'generic/platform=iOS' \
             -archivePath "$RUNNER_TEMP/App.xcarchive" \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath "$API_KEY_PATH" \
-            -authenticationKeyID "$APPSTORE_CONNECT_KEY_ID" \
-            -authenticationKeyIssuerID "$APPSTORE_CONNECT_ISSUER_ID" \
-            CODE_SIGN_STYLE=Automatic \
-            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            CODE_SIGNING_ALLOWED=NO \
             CURRENT_PROJECT_VERSION=${{ github.run_number }}
 
       - name: Export IPA
