@@ -414,9 +414,10 @@ try {
 
   /* ---- 6.5 FIRST-TIME WALKTHROUGH --------------------------------------
      The intro is re-openable from Setup. Open it, confirm it lands on the
-     Hook slide, step Hook → Value → CTA (dots and Back tracking the position),
-     then finish and confirm both that it closed and that completion persisted
-     to the localStorage flag the boot check reads. */
+     Welcome slide, step through the five tab-tour slides to the CTA (dots and
+     Back tracking the position), confirm each tab tour renders its mini
+     bottom-nav map, then finish and confirm both that it closed and that
+     completion persisted to the localStorage flag the boot check reads. */
   await page.click('#tabBar .tab-btn[data-tab="setup"]');
   await page.waitForTimeout(300);
 
@@ -434,18 +435,37 @@ try {
     if (backHiddenAtStart === null) fail('Back is offered on the first slide — nothing to go back to');
     else pass('first slide hides the Back control');
 
-    // Hook → Value → CTA.
-    await page.click('#ftuNext');
-    await page.waitForTimeout(450);
-    await page.click('#ftuNext');
-    await page.waitForTimeout(450);
+    // The five core tabs each get a tour slide with a highlighted bottom-nav map.
+    const tourAudit = await page.evaluate(() => {
+      const wanted = ['home', 'matchups', 'news', 'analytics', 'recordbook'];
+      return wanted.map((key) => {
+        const slide = document.querySelector('.ftu-tour[data-tour-tab="' + key + '"]');
+        if (!slide) return { key, ok: false, why: 'missing slide' };
+        const lit = slide.querySelector('.ftu-tabstrip .ftu-tab[data-on="true"]');
+        const litLabel = lit ? (lit.querySelector('span') || {}).textContent : '';
+        const cells = slide.querySelectorAll('.ftu-tabstrip .ftu-tab').length;
+        return { key, ok: cells === 5 && !!lit, litLabel: litLabel || '' };
+      });
+    });
+    const brokenTour = tourAudit.find((t) => !t.ok);
+    if (brokenTour) fail('a tab-tour slide is malformed: ' + JSON.stringify(brokenTour));
+    else pass('all 5 tab tours render a 5-cell nav map with the right tab lit');
+
+    // Welcome → Desk → Matchups → News → Season Stats → Record Book → CTA.
+    const dotCount = await page.evaluate(
+      () => document.querySelectorAll('#ftuDots .ftu-dot').length
+    );
+    for (let i = 0; i < dotCount - 1; i++) {
+      await page.click('#ftuNext');
+      await page.waitForTimeout(420);
+    }
 
     const onLastDot = await page.evaluate(() => {
       const dots = Array.from(document.querySelectorAll('#ftuDots .ftu-dot'));
-      return dots.length === 3 && dots[2].dataset.active === 'true';
+      return dots.length === 7 && dots[dots.length - 1].dataset.active === 'true';
     });
     if (!onLastDot) fail('the dot indicator did not advance to the final (CTA) slide');
-    else pass('advanced Hook → Value → CTA with dots tracking');
+    else pass('advanced Welcome → 5 tab tours → CTA with dots tracking');
 
     const nextHiddenOnLast = await page.getAttribute('#ftuNext', 'hidden');
     if (nextHiddenOnLast === null) fail('the footer Next button still shows on the CTA slide, duplicating the CTA');

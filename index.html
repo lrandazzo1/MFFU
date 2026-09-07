@@ -714,15 +714,21 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
 .ftu-skip:focus-visible{ outline:none; color:var(--cyan); border-color:var(--cyan); }
 .ftu-viewport{ flex:1; overflow:hidden; position:relative; }
 .ftu-track{
-  display:flex; width:300%; height:100%;
+  display:flex; width:100%; height:100%;
   transition:transform .38s cubic-bezier(.2,.7,.3,1);
 }
 .ftu-slide{
-  width:33.3333%; flex:none;
+  flex:0 0 100%; width:100%;
   display:flex; flex-direction:column; justify-content:center;
   padding:12px 24px 20px;
-  min-height:0;
+  min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch;
 }
+/* Tour slides carry a UI preview + description + mini tab map, so they align to
+   the top and scroll rather than vertically centering their taller content. */
+.ftu-slide.ftu-tour{ justify-content:flex-start; padding-top:16px; }
+.ftu-tour .ftu-headline{ font-size:23px; margin-bottom:9px; }
+.ftu-tour .ftu-body{ font-size:12.5px; line-height:1.55; }
+.ftu-badge svg{ width:12px; height:12px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
 .ftu-badge{
   align-self:flex-start; display:inline-flex; align-items:center; gap:6px;
   font-family:'JetBrains Mono',monospace; font-size:9.5px; font-weight:700;
@@ -875,6 +881,96 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
 .ftu-demo-rec{ flex:none; font-family:'JetBrains Mono',monospace; font-size:11px; color:var(--dim); }
 .ftu-demo-idx{ flex:none; font-family:'JetBrains Mono',monospace; font-size:12px; font-weight:700; color:var(--gold); min-width:46px; text-align:right; }
 .ftu-demo-note{ font-size:11px; line-height:1.5; color:var(--dim); text-align:center; margin:4px 0 0; }
+
+/* ---------- FTU TAB TOUR — compact, hand-authored UI previews ----------
+   Every element here is static, presentational markup: no generator call, no
+   league data, no randomness. It exists purely to show a new visitor what each
+   core tab looks like and does, with a clear highlight on the defining element
+   and a mini map of the bottom nav so they know where to find it. */
+.ftu-shot{
+  width:100%; border-radius:14px; margin-bottom:15px; overflow:hidden;
+  background:linear-gradient(165deg,#0e1622,#0a0e16);
+  border:1px solid var(--line-2);
+  box-shadow:0 16px 40px -22px rgba(0,0,0,.9);
+}
+.ftu-shot-bar{
+  display:flex; align-items:center; gap:7px;
+  padding:9px 12px; border-bottom:1px solid var(--line);
+  background:rgba(0,224,255,.05);
+}
+.ftu-slide[data-accent="gold"] .ftu-shot-bar{ background:rgba(255,196,0,.05); }
+.ftu-shot-dot{ width:7px; height:7px; border-radius:999px; background:var(--cyan); box-shadow:0 0 8px var(--cyan); }
+.ftu-slide[data-accent="gold"] .ftu-shot-dot{ background:var(--gold); box-shadow:0 0 8px var(--gold); }
+.ftu-shot-title{
+  font-family:'JetBrains Mono',monospace; font-size:8.5px; font-weight:700;
+  letter-spacing:.18em; text-transform:uppercase; color:var(--dim);
+}
+.ftu-shot-body{ padding:12px; display:flex; flex-direction:column; gap:9px; }
+/* The callout ring — draws the eye to the element the slide is explaining. */
+.ftu-hl{
+  border-radius:11px; border:1px solid rgba(0,224,255,.5);
+  box-shadow:0 0 0 3px rgba(0,224,255,.12); padding:10px 11px;
+  background:linear-gradient(160deg,rgba(0,224,255,.07),rgba(11,15,23,.35));
+}
+.ftu-slide[data-accent="gold"] .ftu-hl{
+  border-color:rgba(255,196,0,.55); box-shadow:0 0 0 3px rgba(255,196,0,.14);
+  background:linear-gradient(160deg,rgba(255,196,0,.07),rgba(11,15,23,.35));
+}
+.ftu-m-card{ padding:10px 11px; border-radius:10px; background:#0f1420; border:1px solid var(--line); }
+.ftu-m-kicker{ font-family:'JetBrains Mono',monospace; font-size:8px; font-weight:700; letter-spacing:.16em; text-transform:uppercase; color:var(--cyan); margin-bottom:5px; }
+.ftu-slide[data-accent="gold"] .ftu-m-kicker{ color:var(--gold); }
+.ftu-m-head{ font-family:'Anton',sans-serif; font-size:13.5px; line-height:1.12; color:#eef2f8; text-transform:uppercase; }
+.ftu-m-sub{ font-size:10px; line-height:1.45; color:var(--dim); margin-top:5px; }
+.ftu-m-row{ display:flex; align-items:center; gap:8px; }
+.ftu-m-team{ flex:1; min-width:0; font-size:11px; font-weight:600; color:#dde5ef; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.ftu-m-score{ flex:none; font-family:'JetBrains Mono',monospace; font-size:11px; font-weight:700; color:var(--cyan); }
+.ftu-m-vs{ flex:none; font-family:'Anton',sans-serif; font-size:9px; color:var(--dim); padding:0 2px; }
+.ftu-m-prob{ height:7px; border-radius:999px; background:#10161f; overflow:hidden; border:1px solid var(--line); margin-top:2px; }
+.ftu-m-prob>span{ display:block; height:100%; background:linear-gradient(90deg,var(--cyan),#00a6cc); }
+.ftu-m-problabel{ display:flex; justify-content:space-between; font-family:'JetBrains Mono',monospace; font-size:8.5px; letter-spacing:.06em; color:var(--dim); margin-top:5px; }
+.ftu-m-bars{ display:flex; align-items:flex-end; gap:7px; height:50px; }
+.ftu-m-bar{ flex:1; border-radius:5px 5px 0 0; background:linear-gradient(180deg,var(--cyan),rgba(0,224,255,.22)); }
+.ftu-m-pill{ display:inline-flex; align-items:center; gap:6px; align-self:flex-start; font-family:'JetBrains Mono',monospace; font-size:9px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--gold); background:rgba(255,196,0,.1); border:1px solid rgba(255,196,0,.32); border-radius:999px; padding:4px 9px; }
+.ftu-m-rankn{ flex:none; width:20px; height:20px; border-radius:6px; display:flex; align-items:center; justify-content:center; font-family:'Anton',sans-serif; font-size:11px; color:var(--gold); background:rgba(255,196,0,.1); border:1px solid rgba(255,196,0,.3); }
+.ftu-m-stat{ flex:none; font-family:'JetBrains Mono',monospace; font-size:11px; font-weight:700; color:var(--gold); }
+/* Mini bottom-nav map — mirrors the real tab bar so the tour lands each section
+   on the exact tab the reader will tap. Built by buildFtuTabStrips(). */
+.ftu-tabstrip{
+  display:flex; gap:4px; margin-top:15px;
+  padding:8px; border-radius:13px;
+  background:#0b0f17; border:1px solid var(--line);
+}
+.ftu-tab{
+  flex:1; display:flex; flex-direction:column; align-items:center; gap:3px;
+  padding:6px 2px; border-radius:9px; color:var(--dim);
+  border:1px solid transparent;
+}
+.ftu-tab svg{ width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+.ftu-tab span{ font-size:7.5px; font-weight:600; letter-spacing:.01em; text-align:center; line-height:1.05; }
+.ftu-tab[data-on="true"]{ color:var(--cyan); background:rgba(0,224,255,.12); border-color:rgba(0,224,255,.34); }
+.ftu-slide[data-accent="gold"] .ftu-tab[data-on="true"]{ color:var(--gold); background:rgba(255,196,0,.12); border-color:rgba(255,196,0,.34); }
+
+/* ---------- LEAGUE SWITCH CURTAIN ----------
+   A fast fade that covers the app while an active-league swap resolves, so no
+   stale or half-empty screen flashes before the new league's data lands. Purely
+   presentational overlay; shown by showLeagueCurtain() / hidden on resolve. */
+#leagueCurtain{
+  position:fixed; inset:0; z-index:150;
+  display:flex; align-items:center; justify-content:center;
+  background:radial-gradient(120% 90% at 50% 18%,rgba(0,224,255,.09),transparent 55%),var(--ink);
+  opacity:0; visibility:hidden; pointer-events:none;
+  transition:opacity .26s ease, visibility .26s ease;
+}
+#leagueCurtain[data-open="true"]{ opacity:1; visibility:visible; pointer-events:auto; }
+.league-curtain-inner{ display:flex; flex-direction:column; align-items:center; gap:14px; }
+.league-curtain-spin{
+  width:34px; height:34px; border-radius:999px;
+  border:3px solid rgba(0,224,255,.18); border-top-color:var(--cyan);
+  animation:ftuSpin .8s linear infinite;
+}
+@keyframes ftuSpin{ to{ transform:rotate(360deg); } }
+.league-curtain-brand{ font-family:'Anton',sans-serif; font-size:20px; letter-spacing:.22em; color:#eef2f8; }
+.league-curtain-label{ font-family:'JetBrains Mono',monospace; font-size:10.5px; letter-spacing:.13em; text-transform:uppercase; color:var(--dim); text-align:center; max-width:270px; padding:0 16px; }
 
 .onboard-link{
   flex:none; font-size:10px; font-weight:600; letter-spacing:.04em;
@@ -3105,35 +3201,127 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
     <div class="ftu-viewport">
       <div class="ftu-track" id="ftuTrack">
 
-        <!-- SLIDE 1 — THE HOOK -->
-        <div class="ftu-slide" data-slide="0" data-accent="cyan" role="group" aria-roledescription="slide" aria-label="1 of 3">
+        <!-- SLIDE 1 — WELCOME / THE HOOK -->
+        <div class="ftu-slide" data-slide="0" data-accent="cyan" role="group" aria-roledescription="slide" aria-label="1 of 7">
           <span class="ftu-badge" data-accent="cyan">The Vision</span>
           <div class="ftu-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24"><path d="M4 5h16v14H4z"></path><path d="M4 9h16"></path><path d="M7 13h6"></path><path d="M7 16h9"></path></svg>
           </div>
           <h2 class="ftu-headline" id="ftuHeadline0">Turn Your League Into Headline News.</h2>
-          <p class="ftu-body">Your league's group chat shouldn't be the only place with drama. FSN transforms amateur fantasy matchups into professional sports journalism, automated power rankings, and historical record books.</p>
+          <p class="ftu-body">Your league's group chat shouldn't be the only place with drama. FSN turns your fantasy season into professional sports coverage. Here's a quick tour of the five tabs that do it — swipe through, then connect your league.</p>
         </div>
 
-        <!-- SLIDE 2 — THE VALUE -->
-        <div class="ftu-slide" data-slide="1" data-accent="cyan" role="group" aria-roledescription="slide" aria-label="2 of 3">
-          <span class="ftu-badge" data-accent="cyan">How It Works</span>
-          <div class="ftu-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8z"></path></svg>
+        <!-- SLIDE 2 — DESK TAB -->
+        <div class="ftu-slide ftu-tour" data-slide="1" data-accent="cyan" data-tour-tab="home" role="group" aria-roledescription="slide" aria-label="2 of 7">
+          <span class="ftu-badge" data-accent="cyan">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"></path><path d="M5 9.5V21h14V9.5"></path><path d="M9.5 21v-6h5v6"></path></svg>
+            Tab 1 · Desk
+          </span>
+          <div class="ftu-shot" aria-hidden="true">
+            <div class="ftu-shot-bar"><span class="ftu-shot-dot"></span><span class="ftu-shot-title">Desk · Home</span></div>
+            <div class="ftu-shot-body">
+              <div class="ftu-hl">
+                <div class="ftu-m-kicker">Top Story · Week 7</div>
+                <div class="ftu-m-head">Thunderstruck Seize First Place</div>
+                <div class="ftu-m-sub">The lead headline, refreshed every week.</div>
+              </div>
+              <div class="ftu-m-card"><div class="ftu-m-row"><span class="ftu-m-team">Ghouls</span><span class="ftu-m-score">138.1</span><span class="ftu-m-vs">·</span><span class="ftu-m-score">142.6</span><span class="ftu-m-team" style="text-align:right">Thunderstruck</span></div></div>
+            </div>
           </div>
-          <h2 class="ftu-headline">Zero-Jargon Setup. Instant Media Desk.</h2>
-          <p class="ftu-body">Paste your <strong>ESPN, Sleeper, or Yahoo</strong> ID in seconds. The automated FSN News Desk immediately builds your Tale of the Tape, tracks advanced consistency metrics, and generates custom narrative prose without you lifting a finger.</p>
+          <h2 class="ftu-headline">The Desk</h2>
+          <p class="ftu-body">Your <strong>home dashboard</strong>. Every launch opens to the week's top story, live scores, and the biggest movers — a single command center for the whole league.</p>
+        </div>
+
+        <!-- SLIDE 3 — MATCHUPS TAB -->
+        <div class="ftu-slide ftu-tour" data-slide="2" data-accent="cyan" data-tour-tab="matchups" role="group" aria-roledescription="slide" aria-label="3 of 7">
+          <span class="ftu-badge" data-accent="cyan">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M12 5v14"></path><path d="M6.5 10.5h2"></path><path d="M15.5 10.5h2"></path></svg>
+            Tab 2 · Matchups
+          </span>
+          <div class="ftu-shot" aria-hidden="true">
+            <div class="ftu-shot-bar"><span class="ftu-shot-dot"></span><span class="ftu-shot-title">Matchups · Week 7</span></div>
+            <div class="ftu-shot-body">
+              <div class="ftu-m-card"><div class="ftu-m-row"><span class="ftu-m-team">Thunderstruck</span><span class="ftu-m-vs">VS</span><span class="ftu-m-team" style="text-align:right">Cover Two Crew</span></div></div>
+              <div class="ftu-hl">
+                <div class="ftu-m-kicker">Win Probability</div>
+                <div class="ftu-m-prob"><span style="width:68%"></span></div>
+                <div class="ftu-m-problabel"><span>Thunderstruck 68%</span><span>32% Cover Two</span></div>
+              </div>
+            </div>
+          </div>
+          <h2 class="ftu-headline">Matchups</h2>
+          <p class="ftu-body">The full <strong>head-to-head slate</strong>. Every game on the board with a live <strong>win probability</strong> read, so you know who's favored before kickoff.</p>
+        </div>
+
+        <!-- SLIDE 4 — NEWS TAB -->
+        <div class="ftu-slide ftu-tour" data-slide="3" data-accent="cyan" data-tour-tab="news" role="group" aria-roledescription="slide" aria-label="4 of 7">
+          <span class="ftu-badge" data-accent="cyan">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h12v14H5.5A1.5 1.5 0 0 1 4 17.5Z"></path><path d="M16 9h3.5A1.5 1.5 0 0 1 21 10.5v7a1.5 1.5 0 0 1-1.5 1.5H16"></path><path d="M7 8.5h6"></path><path d="M7 11.5h6"></path><path d="M7 14.5h4"></path></svg>
+            Tab 3 · News
+          </span>
+          <div class="ftu-shot" aria-hidden="true">
+            <div class="ftu-shot-bar"><span class="ftu-shot-dot"></span><span class="ftu-shot-title">News · The Wire</span></div>
+            <div class="ftu-shot-body">
+              <div class="ftu-hl">
+                <div class="ftu-m-kicker">Recap</div>
+                <div class="ftu-m-head">Shootout Survivor Takes The Top Seed</div>
+              </div>
+              <div class="ftu-m-card"><div class="ftu-m-kicker">Power Shift</div><div class="ftu-m-team">Ghouls tumble after a two-week skid</div></div>
+            </div>
+          </div>
+          <h2 class="ftu-headline">News</h2>
+          <p class="ftu-body"><strong>Automated sports journalism.</strong> The FSN Desk writes full recaps, power shifts, and rivalry pieces from your real results — no writing required.</p>
           <button type="button" class="ftu-preview-btn" data-ftu-preview aria-controls="ftuDemo"><span aria-hidden="true">▶</span> Preview a Sample Story</button>
         </div>
 
-        <!-- SLIDE 3 — THE CTA -->
-        <div class="ftu-slide" data-slide="2" data-accent="gold" role="group" aria-roledescription="slide" aria-label="3 of 3">
+        <!-- SLIDE 5 — SEASON STATS TAB -->
+        <div class="ftu-slide ftu-tour" data-slide="4" data-accent="cyan" data-tour-tab="analytics" role="group" aria-roledescription="slide" aria-label="5 of 7">
+          <span class="ftu-badge" data-accent="cyan">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V9"></path><path d="M10 19V5"></path><path d="M16 19v-7"></path><path d="M22 19H2"></path></svg>
+            Tab 4 · Season Stats
+          </span>
+          <div class="ftu-shot" aria-hidden="true">
+            <div class="ftu-shot-bar"><span class="ftu-shot-dot"></span><span class="ftu-shot-title">Season Stats · Analytics</span></div>
+            <div class="ftu-shot-body">
+              <div class="ftu-hl">
+                <div class="ftu-m-kicker">FSN Index · Top 5</div>
+                <div class="ftu-m-bars"><div class="ftu-m-bar" style="height:100%"></div><div class="ftu-m-bar" style="height:82%"></div><div class="ftu-m-bar" style="height:71%"></div><div class="ftu-m-bar" style="height:60%"></div><div class="ftu-m-bar" style="height:47%"></div></div>
+              </div>
+              <span class="ftu-m-pill">Consistency · Power · Luck</span>
+            </div>
+          </div>
+          <h2 class="ftu-headline">Season Stats</h2>
+          <p class="ftu-body"><strong>Analytics & the FSN Index.</strong> Power ratings, consistency, luck, and standings — the advanced numbers that settle every group-chat argument.</p>
+        </div>
+
+        <!-- SLIDE 6 — RECORD BOOK TAB -->
+        <div class="ftu-slide ftu-tour" data-slide="5" data-accent="gold" data-tour-tab="recordbook" role="group" aria-roledescription="slide" aria-label="6 of 7">
+          <span class="ftu-badge" data-accent="gold">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><circle cx="12" cy="12" r="3.5"></circle><path d="M12 6v2"></path><path d="M12 16v2"></path></svg>
+            Tab 5 · Record Book
+          </span>
+          <div class="ftu-shot" aria-hidden="true">
+            <div class="ftu-shot-bar"><span class="ftu-shot-dot"></span><span class="ftu-shot-title">Record Book · All-Time</span></div>
+            <div class="ftu-shot-body">
+              <div class="ftu-hl">
+                <div class="ftu-m-kicker">All-Time Wins</div>
+                <div class="ftu-m-row"><span class="ftu-m-rankn">1</span><span class="ftu-m-team">Dynasty Dogs</span><span class="ftu-m-stat">148–72</span></div>
+              </div>
+              <div class="ftu-m-card"><div class="ftu-m-kicker">Rivalry</div><div class="ftu-m-team">Dogs lead the series 14–11</div></div>
+            </div>
+          </div>
+          <h2 class="ftu-headline">Record Book</h2>
+          <p class="ftu-body"><strong>The all-time history vault.</strong> Every season, champion, record, and <strong>rivalry</strong> your league has ever produced — reconstructed automatically.</p>
+        </div>
+
+        <!-- SLIDE 7 — THE CTA -->
+        <div class="ftu-slide" data-slide="6" data-accent="gold" role="group" aria-roledescription="slide" aria-label="7 of 7">
           <span class="ftu-badge" data-accent="gold">Kickoff</span>
           <div class="ftu-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 10 10"></path><path d="M22 2 12 12"></path><path d="M16 2h6v6"></path></svg>
           </div>
           <h2 class="ftu-headline">The Season Awaits.</h2>
-          <p class="ftu-body">Ready to give your league the media coverage it deserves?</p>
+          <p class="ftu-body">Paste your <strong>ESPN, Sleeper, or Yahoo</strong> ID and the five tabs above fill with your league in seconds.</p>
           <button type="button" class="ftu-cta" id="ftuFinish">Connect Your League &amp; Write Your First Story Now!</button>
           <button type="button" class="ftu-preview-btn" data-ftu-preview aria-controls="ftuDemo"><span aria-hidden="true">▶</span> See a Sample First</button>
         </div>
@@ -3174,12 +3362,29 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
         <span class="ftu-dot" data-active="true"></span>
         <span class="ftu-dot"></span>
         <span class="ftu-dot"></span>
+        <span class="ftu-dot"></span>
+        <span class="ftu-dot"></span>
+        <span class="ftu-dot"></span>
+        <span class="ftu-dot"></span>
       </div>
       <div class="ftu-nav">
         <button type="button" class="ftu-back" id="ftuBack" hidden>Back</button>
         <button type="button" class="ftu-next" id="ftuNext">Next →</button>
       </div>
     </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     LEAGUE SWITCH CURTAIN — fast fade shown while an active-league swap
+     resolves, so no stale/half-empty screen flashes before the new
+     league's data lands. Additive, presentational overlay only.
+============================================================ -->
+<div id="leagueCurtain" data-open="false" aria-hidden="true">
+  <div class="league-curtain-inner">
+    <span class="league-curtain-spin" aria-hidden="true"></span>
+    <div class="league-curtain-brand">FSN</div>
+    <div class="league-curtain-label" id="leagueCurtainLabel">Loading league…</div>
   </div>
 </div>
 
@@ -22320,11 +22525,35 @@ function renderLeagueSwitcher(){
     ? `${list.length} saved league${list.length===1?'':'s'} · switching restores cached views immediately, then refreshes in the background.`
     : 'Connect a league below to add it here.';
 }
+/* The league-switch curtain: a fast fade that hides the app while the active
+   league is swapped, so the reader never sees the previous league's cards, an
+   emptied mid-swap screen, or a "hit a snag" flash before the new data lands.
+   Presentational only — pure DOM toggles on the additive #leagueCurtain overlay. */
+function showLeagueCurtain(label){
+  const el = $('leagueCurtain');
+  if(!el) return;
+  const lbl = $('leagueCurtainLabel');
+  if(lbl) lbl.textContent = label || 'Loading league…';
+  el.dataset.open = 'true';
+  el.setAttribute('aria-hidden', 'false');
+}
+function hideLeagueCurtain(){
+  const el = $('leagueCurtain');
+  if(!el) return;
+  el.dataset.open = 'false';
+  el.setAttribute('aria-hidden', 'true');
+}
+
 async function switchSavedLeague(value){
   const divider = String(value || '').indexOf(':');
   if(divider < 1) return;
+  const startedAt = Date.now();
   snapshotActiveLeague();
   const provider = value.slice(0,divider), id = value.slice(divider+1);
+  // Name the destination league on the curtain so the transition reads as a
+  // deliberate load, not a hang. Fall back to the id when no saved name exists.
+  const savedRow = savedLeagues().find(x=> leagueCacheKey(x.provider,x.id) === leagueCacheKey(provider,id));
+  showLeagueCurtain('Loading ' + ((savedRow && savedRow.name) || (provider.toUpperCase() + ' · ' + id)) + '…');
   setProvider(provider);
   $('leagueIdInput').value = id;
   FSNStore.set(SAVED_LEAGUE_ID_KEY, id);
@@ -22338,8 +22567,21 @@ async function switchSavedLeague(value){
   }
   savePrefs();
   setScreen('home');
-  await fetchLeagueData({leagueId:id,silent:true,navigate:false});
-  registerSavedLeague(id,provider);
+  try{
+    // The curtain stays up through the whole refresh — including the state wipe
+    // clearLeagueStateForSwitch() does inside fetchLeagueData — so the UI is only
+    // revealed once the new league is fully resolved.
+    await fetchLeagueData({leagueId:id,silent:true,navigate:false});
+  }catch(err){
+    console.error('[LeagueSwitch] Background refresh failed after switching to league ' + id + '; leaving cached views in place.', err);
+  }finally{
+    registerSavedLeague(id,provider);
+    // A tiny floor on visible time keeps an instant (cached) swap from flashing
+    // the curtain; the .26s CSS fade does the rest of the smoothing.
+    const remaining = 260 - (Date.now() - startedAt);
+    if(remaining > 0) setTimeout(hideLeagueCurtain, remaining);
+    else hideLeagueCurtain();
+  }
 }
 if($('leagueSwitcher')) $('leagueSwitcher').addEventListener('change', e=>switchSavedLeague(e.target.value));
 if($('forgetLeagueBtn')) $('forgetLeagueBtn').addEventListener('click', ()=>{
@@ -23316,8 +23558,41 @@ document.addEventListener('keydown', (event)=>{
    value in this file already handles.
 ============================================================ */
 const FTU_DONE_KEY = 'hasCompletedOnboarding';
-const FTU_SLIDE_COUNT = 3;
+const FTU_SLIDE_COUNT = 7;
 let ftuSlide = 0;
+
+/* The five core tabs, in bottom-nav order, with their real nav icons. The tour
+   slides each render this strip with one tab lit so a new visitor sees exactly
+   where the section they just read about lives. Static markup, no data. */
+const FTU_TAB_MAP = [
+  { key:'home',       label:'Desk',         icon:'<path d="M3 10.5 12 3l9 7.5"></path><path d="M5 9.5V21h14V9.5"></path><path d="M9.5 21v-6h5v6"></path>' },
+  { key:'matchups',   label:'Matchups',     icon:'<rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M12 5v14"></path><path d="M6.5 10.5h2"></path><path d="M15.5 10.5h2"></path>' },
+  { key:'news',       label:'News',         icon:'<path d="M4 5h12v14H5.5A1.5 1.5 0 0 1 4 17.5Z"></path><path d="M16 9h3.5A1.5 1.5 0 0 1 21 10.5v7a1.5 1.5 0 0 1-1.5 1.5H16"></path><path d="M7 8.5h6"></path><path d="M7 11.5h6"></path><path d="M7 14.5h4"></path>' },
+  { key:'analytics',  label:'Season Stats', icon:'<path d="M4 19V9"></path><path d="M10 19V5"></path><path d="M16 19v-7"></path><path d="M22 19H2"></path>' },
+  { key:'recordbook', label:'Record Book',  icon:'<rect x="3" y="4" width="18" height="16" rx="2"></rect><circle cx="12" cy="12" r="3.5"></circle><path d="M12 6v2"></path><path d="M12 16v2"></path>' },
+];
+
+// Inject the mini bottom-nav map into each tour slide, highlighting the tab the
+// slide is teaching. Runs once at init; a failure only drops a decorative strip.
+function buildFtuTabStrips(){
+  try{
+    document.querySelectorAll('.ftu-tour[data-tour-tab]').forEach((slide)=>{
+      const active = slide.getAttribute('data-tour-tab');
+      const strip = document.createElement('div');
+      strip.className = 'ftu-tabstrip';
+      strip.setAttribute('aria-hidden', 'true');
+      strip.innerHTML = FTU_TAB_MAP.map((t)=>
+        '<span class="ftu-tab" data-on="' + (t.key === active ? 'true' : 'false') + '">' +
+          '<svg viewBox="0 0 24 24">' + t.icon + '</svg>' +
+          '<span>' + t.label + '</span>' +
+        '</span>'
+      ).join('');
+      slide.appendChild(strip);
+    });
+  }catch(err){
+    console.warn('[FTU] Could not build the tab-map strips; tour still works without them.', err);
+  }
+}
 
 function ftuHasCompleted(){
   return FSNStore.get(FTU_DONE_KEY) === 'true';
@@ -23333,7 +23608,11 @@ function ftuMarkCompleted(){
 
 function ftuRenderSlide(){
   const track = $('ftuTrack');
-  if(track) track.style.transform = 'translateX(' + (-ftuSlide * 33.3333) + '%)';
+  if(track) track.style.transform = 'translateX(' + (-ftuSlide * 100) + '%)';
+  // Each tour slide scrolls independently; reset it to the top on entry so a
+  // reader never lands mid-preview after scrolling a previous slide.
+  const slides = document.querySelectorAll('#ftuTrack .ftu-slide');
+  slides.forEach((s, i)=>{ if(i === ftuSlide) s.scrollTop = 0; });
 
   const dots = document.querySelectorAll('#ftuDots .ftu-dot');
   dots.forEach((dot, i)=>{ dot.dataset.active = (i === ftuSlide) ? 'true' : 'false'; });
@@ -23393,6 +23672,9 @@ if($('ftuFinish')) $('ftuFinish').addEventListener('click', ()=> closeFtu(true))
 // The Setup-tab trigger always shows the intro on demand, regardless of the
 // stored flag, so a commissioner can revisit or demo it anytime.
 if($('ftuReopenBtn')) $('ftuReopenBtn').addEventListener('click', openFtu);
+
+// Populate the per-slide bottom-nav maps once the walkthrough markup is parsed.
+buildFtuTabStrips();
 
 // Live sample preview — reveals a hand-authored demo of the News Desk over
 // the walkthrough so a visitor sees real output before connecting a league.
