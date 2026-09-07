@@ -199,6 +199,12 @@ await page.addInitScript(() => {
   window.__fsnPermissionRequested = false;
   window.__fsnSubscribeCalled = false;
 
+  /* Mark onboarding complete before boot so the first-time walkthrough does not
+     auto-present over the six-screen walk below. This mirrors a returning
+     visitor; the walkthrough's own open/navigate/finish behaviour is exercised
+     explicitly in its dedicated section. */
+  try { window.localStorage.setItem('hasCompletedOnboarding', 'true'); } catch (err) { /* private mode */ }
+
   const realRequest = window.Notification && window.Notification.requestPermission;
   if (realRequest) {
     window.Notification.requestPermission = function () {
@@ -404,6 +410,67 @@ try {
       fail('the client did not send a usable season/week: ' +
         JSON.stringify({ season: payload.seasonYear, week: payload.week }));
     } else pass('client sent league context: season ' + payload.seasonYear + ', week ' + payload.week);
+  }
+
+  /* ---- 6.5 FIRST-TIME WALKTHROUGH --------------------------------------
+     The intro is re-openable from Setup. Open it, confirm it lands on the
+     Hook slide, step Hook → Value → CTA (dots and Back tracking the position),
+     then finish and confirm both that it closed and that completion persisted
+     to the localStorage flag the boot check reads. */
+  await page.click('#tabBar .tab-btn[data-tab="setup"]');
+  await page.waitForTimeout(300);
+
+  if (!(await page.$('#ftuReopenBtn'))) {
+    fail('the Setup tab has no walkthrough re-open trigger');
+  } else {
+    await page.click('#ftuReopenBtn');
+    await page.waitForTimeout(500);
+
+    const opened = await page.getAttribute('#ftuModal', 'data-open');
+    if (opened !== 'true') fail('the walkthrough did not open from the Setup trigger');
+    else pass('walkthrough opened from Setup');
+
+    const backHiddenAtStart = await page.getAttribute('#ftuBack', 'hidden');
+    if (backHiddenAtStart === null) fail('Back is offered on the first slide — nothing to go back to');
+    else pass('first slide hides the Back control');
+
+    // Hook → Value → CTA.
+    await page.click('#ftuNext');
+    await page.waitForTimeout(450);
+    await page.click('#ftuNext');
+    await page.waitForTimeout(450);
+
+    const onLastDot = await page.evaluate(() => {
+      const dots = Array.from(document.querySelectorAll('#ftuDots .ftu-dot'));
+      return dots.length === 3 && dots[2].dataset.active === 'true';
+    });
+    if (!onLastDot) fail('the dot indicator did not advance to the final (CTA) slide');
+    else pass('advanced Hook → Value → CTA with dots tracking');
+
+    const nextHiddenOnLast = await page.getAttribute('#ftuNext', 'hidden');
+    if (nextHiddenOnLast === null) fail('the footer Next button still shows on the CTA slide, duplicating the CTA');
+    else pass('CTA slide hands off to its own action button');
+
+    const ctaText = (await page.innerText('#ftuFinish')).trim();
+    if (!/connect your league/i.test(ctaText)) fail('the CTA button copy is wrong: ' + ctaText);
+    else pass('CTA reads: ' + ctaText);
+
+    await page.click('#ftuFinish');
+    await page.waitForTimeout(500);
+
+    const closedAfterFinish = await page.getAttribute('#ftuModal', 'data-open');
+    if (closedAfterFinish === 'true') fail('the walkthrough stayed open after the CTA');
+    else pass('CTA closed the walkthrough');
+
+    const flag = await page.evaluate(() => {
+      try { return window.localStorage.getItem('hasCompletedOnboarding'); } catch (err) { return null; }
+    });
+    if (flag !== 'true') fail('completion was not persisted (hasCompletedOnboarding=' + flag + ')');
+    else pass('completion persisted so returning visitors are not pestered');
+
+    const landedOnSetup = await page.getAttribute('.screen[data-screen="setup"]', 'data-active');
+    if (landedOnSetup !== 'true') fail('the CTA did not land the reader on the Setup screen');
+    else pass('CTA landed the reader on Setup to connect their league');
   }
 
   /* ---- 7. Error budget --------------------------------------------------- */
