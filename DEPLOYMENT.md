@@ -43,8 +43,26 @@ schema, or the 800 KB app bundle. It ships nothing but the marketing page.
   vars on **this** project only (see `SUPABASE_SETUP.md`). The landing project needs none.
 - **Domain:** `app.fantasysportsnetwork.app`.
 
-The app deploys exactly as it does today — no root `vercel.json` was added, so its
-working configuration is untouched.
+The root `vercel.json` states the no-build shape explicitly — `framework: null`,
+an empty `buildCommand`, `outputDirectory: "."` — so Vercel's auto-detection does
+not pick up `npm run build` (which is the *iOS* staging step and writes to the
+gitignored `www/`) and then fail with `STATIC_BUILD_NO_OUT_DIR`. It deliberately
+declares **no** `functions`, `routes`, or `rewrites` block: `api/*.js` are
+zero-config Node serverless functions, and adding routing config is what would
+break them.
+
+Verified against production (`app.fantasysportsnetwork.app`):
+
+| Request | Response |
+| --- | --- |
+| `GET /api/espn` (no `url`) | `400` `application/json` — `{"error":"Missing url query parameter"}` |
+| `GET /api/league` (no `league_id`) | `400` `application/json` — `{"error":"A valid numeric league_id is required."}` |
+| `GET /api/auth/yahoo?action=status` | `200` `application/json` — `{"connected":false,...}` |
+| `GET /api/espn.js` | routed to the **function**, not served as source text |
+
+All of them carry `content-type: application/json`, so the routes are recognised
+correctly — a 404 or an HTML body from the app is a *client-side URL* problem, not
+a Vercel one. See §6.
 
 ---
 
@@ -112,3 +130,54 @@ POST https://app.fantasysportsnetwork.app/api/waitlist
   including `api/waitlist.js`, `supabase/`, `package.json`).
 - The only coupling is the outbound links / the waitlist API call above. Neither build
   imports from the other, so a change on one side cannot break the other.
+
+---
+
+## 6. API base URL in the native iOS app
+
+`index.html` is one file shipped to two places, and they disagree about what a
+root-relative URL means:
+
+| Shell | How `index.html` is loaded | What `'/api/espn'` resolves to |
+| --- | --- | --- |
+| Web | served by the `mffu` Vercel project | `https://app.fantasysportsnetwork.app/api/espn` — the function |
+| iOS | staged into `www/` by `npm run build:ios`, packaged into the app bundle, loaded by WKWebView over `capacitor://localhost` | `capacitor://localhost/api/espn` — **a file that is not in the bundle** |
+
+In the native container that second row 404s with a non-JSON body, every relay
+read dies at its `response.json()` seam, and the app tells the reader the
+serverless function may not be deployed while the functions are live and healthy.
+
+`window.FSNApi` (first script block in `index.html`) closes that gap:
+
+- On an **http(s)** page — production, a preview deploy, `vercel dev`, plain
+  localhost — `/api/…` paths are returned **unchanged**, so a preview deploy keeps
+  talking to its own functions rather than reaching across to production.
+- In a **native shell** — Capacitor reports a native platform, or the page
+  protocol is not http(s) — they are rewritten onto
+  `https://app.fantasysportsnetwork.app`.
+- Nothing else is touched: `/sw.js`, already-absolute URLs (ESPN, the CORS
+  proxies), and protocol-relative URLs pass straight through.
+
+`FSNNet.fetch` applies it, so every call site in the app inherits it; the Yahoo
+OAuth navigation and `notificationService.js` call `FSNApi.resolve` directly.
+
+**Pointing a native build at a staging deployment:** set
+`window.FSN_API_ORIGIN = 'https://<deployment>.vercel.app'` before the first
+inline script block. It must be a bare `https` origin; anything else is rejected
+with a `[FSNApi]` console error and the default is used.
+
+**Why this needs no server change:** the routes the native app actually reaches
+(`/api/espn`, `/api/league`, `/api/sleeper`, `/api/notifications-register`) all
+answer with `Access-Control-Allow-Origin: *`, allowlist the app's custom headers
+(`x-espn-s2`, `x-espn-swid`, `x-league-token`), and carry their credentials in
+those headers rather than in cookies — so they work cross-origin as-is.
+
+**Known limit — Yahoo login is web-only.** `/api/auth/yahoo` and `/api/yahoo` are
+cookie-scoped and send no CORS headers at all, so a cross-origin call from the
+app bundle cannot complete a session. The paths are resolved for correctness, but
+enabling Yahoo in the native app needs those two handlers to send
+`Access-Control-Allow-Origin` for the app's origin plus
+`Access-Control-Allow-Credentials: true` (or an in-app browser flow), which is a
+separate change to `api/`.
+
+`npm run check:apibase` (in the `npm run verify` chain) pins all of the above.

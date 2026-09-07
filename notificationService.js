@@ -50,6 +50,31 @@
   var REGISTER_ENDPOINT = '/api/notifications-register';
   var SERVICE_WORKER_PATH = '/sw.js';
 
+  /* This file is a separate <script src> that runs BEFORE index.html's first
+     inline block, so window.FSNApi does not exist yet at this point — the
+     endpoint has to be resolved per call, not once at load. On the web
+     FSNApi.resolve is the identity and this stays the relative path it has
+     always been; inside the packaged iOS bundle it becomes an absolute URL on
+     the deployed app project, because `capacitor://localhost/api/...` is a
+     path in the app bundle and 404s with a non-JSON body.
+
+     index.html is the only page that loads this file today, so the fallback is
+     belt-and-braces: it keeps push working on the web if this script is ever
+     pulled into a page without FSNApi, where the relative path is correct
+     anyway. It cannot rescue a native shell — nothing here can invent the
+     origin — so it warns rather than failing silently. */
+  function registerEndpoint() {
+    try {
+      if (window.FSNApi && typeof window.FSNApi.resolve === 'function') {
+        return window.FSNApi.resolve(REGISTER_ENDPOINT);
+      }
+    } catch (err) {
+      console.warn('[FSNPush] FSNApi could not resolve ' + REGISTER_ENDPOINT +
+        '; falling back to the relative path, which only works on the web.', err);
+    }
+    return REGISTER_ENDPOINT;
+  }
+
   /* Under the `fsn.` prefix so the Setup screen's "Erase stored data" control
      already sweeps these up without needing to learn about them. */
   var PREFS_KEY = 'fsn.notify.prefs.v1';
@@ -377,7 +402,7 @@
   ========================================================================== */
 
   function loadServerConfig() {
-    return fetch(REGISTER_ENDPOINT, { method: 'GET', headers: { Accept: 'application/json' } })
+    return fetch(registerEndpoint(), { method: 'GET', headers: { Accept: 'application/json' } })
       .then(function (response) {
         if (!response.ok) throw new Error('HTTP_' + response.status);
         return response.json();
@@ -399,7 +424,7 @@
   }
 
   function postRegistration(payload) {
-    return fetch(REGISTER_ENDPOINT, {
+    return fetch(registerEndpoint(), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify(payload),

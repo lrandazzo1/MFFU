@@ -3906,6 +3906,110 @@ window.FSNStore = (function(){
 })();
 
 /* ============================================================
+   GLOBAL SCOPE — API ORIGIN RESOLUTION (FSNApi)
+
+   Every serverless call in this app is written as a root-relative path
+   ('/api/espn?url=…'). On the web that is exactly right: a preview deploy
+   talks to its own functions, production talks to production, and
+   `credentials:'same-origin'` keeps meaning something because the request
+   never leaves the page's origin.
+
+   Inside the Capacitor iOS binary it is exactly wrong. `npm run build:ios`
+   stages index.html into www/ and Capacitor packages it into the app bundle,
+   where WKWebView loads it over the custom `capacitor://localhost` scheme.
+   There is no server behind that origin — only the bundle's own files — so
+   '/api/espn' resolves to `capacitor://localhost/api/espn`, a path that does
+   not exist in the bundle. The webview answers with a 404 whose body is not
+   JSON, every relay read dies at its `response.json()` seam, and the reader
+   is told "the serverless function may not be deployed" while the functions
+   are in fact live and healthy. Same file, same code, works on the web.
+
+   resolve() rewrites those paths onto the deployed app project, and only when
+   this document is NOT itself being served over http(s):
+
+     - http/https page (production, a preview deploy, `vercel dev`, plain
+       localhost) → returned unchanged, so a preview keeps hitting its own
+       functions instead of reaching across to production.
+     - capacitor:// | ionic:// | file:// page, or Capacitor reporting a native
+       platform → prefixed with the deployed origin.
+
+   Only '/api/…' is rewritten. Everything else — '/sw.js', an already-absolute
+   ESPN or CORS-proxy URL, a protocol-relative URL — is returned untouched.
+
+   `window.FSN_API_ORIGIN`, set before this block runs, overrides the default.
+   That is the seam for pointing a native build at a staging deployment
+   without editing this file.
+
+   The routes this reaches natively (/api/espn, /api/league, /api/sleeper,
+   /api/notifications-register) all answer with `Access-Control-Allow-Origin:
+   *` and already allowlist this app's custom headers (x-espn-s2, x-espn-swid,
+   x-league-token), and they carry their credentials in those headers rather
+   than in cookies — so the cross-origin form works with no server change. The
+   Yahoo OAuth routes are the exception: they are cookie-scoped and send no
+   CORS headers at all, so they remain web-only. They are resolved here for
+   correctness, not because native Yahoo login works.
+============================================================ */
+window.FSNApi = (function(){
+  /* The `mffu` Vercel project — repo root, so it is the deployment that
+     carries api/. See DEPLOYMENT.md; `fsn-landing` has no api/ at all. */
+  const DEFAULT_ORIGIN = 'https://app.fantasysportsnetwork.app';
+
+  function configuredOrigin(){
+    let raw = '';
+    try{
+      raw = String(window.FSN_API_ORIGIN == null ? '' : window.FSN_API_ORIGIN);
+    }catch(err){
+      console.warn('[FSNApi] window.FSN_API_ORIGIN was unreadable; using ' + DEFAULT_ORIGIN + '.', err);
+      return DEFAULT_ORIGIN;
+    }
+    const trimmed = raw.trim().replace(/\/+$/, '');
+    if(!trimmed) return DEFAULT_ORIGIN;
+    /* A bare https origin and nothing else. A stray path or a http:// value
+       would produce silently malformed request URLs (and, in the native
+       shell, a blocked insecure request) rather than an obvious failure. */
+    if(!/^https:\/\/[A-Za-z0-9.-]+(?::\d+)?$/.test(trimmed)){
+      console.error('[FSNApi] window.FSN_API_ORIGIN ("' + raw + '") is not a bare https origin, ' +
+        'so it has been ignored and API reads fall back to ' + DEFAULT_ORIGIN + '.');
+      return DEFAULT_ORIGIN;
+    }
+    return trimmed;
+  }
+
+  /* True when this document came out of the app bundle rather than off the
+     deployment — i.e. when a root-relative /api path has nothing to hit. */
+  function isNativeShell(){
+    try{
+      const cap = window.Capacitor;
+      if(cap && typeof cap.isNativePlatform === 'function' && cap.isNativePlatform()) return true;
+    }catch(err){
+      /* Not fatal: the protocol check below answers the same question for
+         every shell this app actually ships in. */
+      console.warn('[FSNApi] Capacitor platform detection threw; falling back to the page protocol.', err);
+    }
+    let protocol = '';
+    try{
+      protocol = String((window.location && window.location.protocol) || '');
+    }catch(err){
+      console.warn('[FSNApi] window.location.protocol was unreadable; treating this page as web-hosted ' +
+        'and leaving /api paths relative.', err);
+      return false;
+    }
+    if(!protocol) return false;
+    return protocol !== 'http:' && protocol !== 'https:';
+  }
+
+  /* '/api/espn?url=…' → the same path made absolute, when this shell needs it. */
+  function resolve(url){
+    const path = String(url == null ? '' : url);
+    if(path.slice(0, 5) !== '/api/' && path !== '/api') return path;
+    if(!isNativeShell()) return path;
+    return configuredOrigin() + path;
+  }
+
+  return { DEFAULT_ORIGIN, isNativeShell, origin: configuredOrigin, resolve };
+})();
+
+/* ============================================================
    GLOBAL SCOPE — BOUNDED NETWORK READS (FSNNet)
 
    `fetch()` has no timeout. On desktop that is survivable: the connection
@@ -3956,12 +4060,18 @@ window.FSNNet = (function(){
     const ms = Number(cfg.timeoutMs) || DEFAULT_TIMEOUT_MS;
     const label = cfg.label || String(url).slice(0, 120);
 
+    /* Root-relative '/api/…' paths are rewritten onto the deployed app project
+       when this document is the packaged iOS bundle rather than the deployment
+       itself. On the web this is the identity, so nothing about a browser read
+       changes. See FSNApi above for why the native shell needs it. */
+    const target = FSNApi.resolve(url);
+
     /* An ancient webview without AbortController still gets a working app —
        just an unbounded request, exactly as before this change. */
     if(typeof AbortController !== 'function'){
       console.warn('[FSNNet] AbortController is unavailable in this browser, so "' + label +
         '" runs without a timeout and can hang if the network stalls.');
-      return fetch(url, opts);
+      return fetch(target, opts);
     }
 
     const controller = new AbortController();
@@ -3978,7 +4088,7 @@ window.FSNNet = (function(){
     }, ms);
 
     try{
-      return await fetch(url, Object.assign({}, opts, { signal:controller.signal }));
+      return await fetch(target, Object.assign({}, opts, { signal:controller.signal }));
     }catch(err){
       /* Translate the browser's generic AbortError into something the call
          sites can classify and show honestly. */
@@ -22322,7 +22432,14 @@ function yahooReturnPath(){
 }
 function startYahooLogin(){
   const returnTo = yahooReturnPath();
-  window.location.assign('/api/auth/yahoo?action=start&return_to=' + encodeURIComponent(returnTo));
+  /* Resolved through FSNApi like every other /api read. On the web this is the
+     same relative navigation it has always been; in the native shell it at
+     least aims at the real OAuth route rather than a nonexistent path inside
+     the app bundle. Yahoo login is still web-only — /api/auth/yahoo is
+     cookie-scoped and sends no CORS headers — so the native path ends at a
+     Yahoo consent screen the app cannot complete a session from. */
+  window.location.assign(FSNApi.resolve('/api/auth/yahoo?action=start&return_to=' +
+    encodeURIComponent(returnTo)));
 }
 async function refreshYahooAuthStatus(){
   const status = $('yahooAuthStatus');
