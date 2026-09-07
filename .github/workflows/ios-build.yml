@@ -201,6 +201,25 @@ jobs:
           issuer-id: ${{ secrets.APPSTORE_CONNECT_ISSUER_ID }}
           api-key-id: ${{ secrets.APPSTORE_CONNECT_KEY_ID }}
           api-private-key: ${{ env.APPSTORE_CONNECT_PRIVATE_KEY_PEM }}
+          # Return once Apple has the binary; do not sit on the runner polling
+          # for the processing result. Run 31 uploaded cleanly and then failed
+          # anyway: the action polls the Builds endpoint with the bearer token
+          # it minted at the start, and after ~13 minutes of backoff (60s, 120s,
+          # 240s, 300s...) Apple rejected that aged token with 401
+          # NOT_AUTHORIZED. The credential was fine -- the same key had already
+          # passed the preflight and carried the upload -- so waiting longer
+          # only guarantees the token is even more expired.
+          #
+          # Processing is asynchronous on Apple's side and routinely outlasts
+          # any token, so the upload is the honest end of this job. It is also
+          # the expensive one to get wrong: macOS runner minutes bill at 10x,
+          # and run 31 burned 13 of them to reach a foregone 401.
+          #
+          # Disabling the wait also skips the action's post-processing metadata
+          # push, which costs nothing here: export compliance is declared in
+          # Info.plist by the step above, so it travels inside the binary, and
+          # no release-notes input is set.
+          wait-for-processing: 'false'
 
       - name: Upload IPA artifact
         if: steps.signing.outputs.available == 'true'
