@@ -21,6 +21,15 @@
      - the outgoing league's teams are gone
      - nothing rendered a "hit a snag" fallback
      - a switch superseded by a newer one does not lift the curtain early
+
+   And it asserts the second half of the same contract AFTER the instant: that
+   the home screen is not still rebuilding once the reveal has happened. The
+   stub relay deliberately serves the league's completed seasons LATE, because
+   the multi-year archive walk is detached from the live fetch and applying it
+   rewrites the ticker, the Record Book and the Desk's lead story. A curtain
+   tied to the live season alone drops before that lands and the reader watches
+   the Desk rewrite itself — which is a flash the content checks above cannot
+   see, since the DOM they read is already the new league's.
 ============================================================================ */
 
 import { createServer } from 'node:http';
@@ -40,11 +49,16 @@ const TYPES = {
 };
 
 const CURRENT_YEAR = 2026;
+const ARCHIVE_YEAR = CURRENT_YEAR - 1;
 const RELAY_DELAY_MS = 700;
+/* The completed seasons answer well after the live one, which is the whole
+   point: it reproduces the real ordering (live season connects, archive walk
+   lands seconds later) that a prematurely dropped curtain exposes. */
+const ARCHIVE_DELAY_MS = 900;
 
 /* An ESPN-shaped payload whose every visible string carries the League ID, so
    "which league is painted right now" is answerable from the DOM alone. */
-function leaguePayload(leagueId) {
+function leaguePayload(leagueId, season = CURRENT_YEAR) {
   const tag = 'L' + leagueId;
   const team = (i, wins, losses, pf, pa) => ({
     id: i,
@@ -67,7 +81,7 @@ function leaguePayload(leagueId) {
   });
   return {
     id: Number(leagueId),
-    seasonId: CURRENT_YEAR,
+    seasonId: season,
     scoringPeriodId: 2,
     status: { currentMatchupPeriod: 2, latestScoringPeriod: 2, finalScoringPeriod: 17, isActive: true },
     settings: {
@@ -97,9 +111,10 @@ function leaguePayload(leagueId) {
 }
 
 /* Serve the repo plus a stub /api/espn relay. The relay answers the CURRENT
-   season for any league and 404s completed seasons, so the background
-   multi-year archive walk resolves quickly with nothing to add — the switch is
-   measured against the live mount, which is what the curtain covers. */
+   season promptly and the consolidated leagueHistory route LATE, so the mount
+   has the two-stage shape it has in production: a live season the reader could
+   be shown early, and an archive that rewrites the Desk when it arrives. The
+   curtain has to cover both. */
 function startServer() {
   return new Promise((resolve) => {
     const server = createServer((req, res) => {
@@ -113,6 +128,14 @@ function startServer() {
         const target = url.searchParams.get('url') || '';
         const season = (target.match(/seasons\/(\d{4})/) || [])[1];
         const league = (target.match(/leagues\/(\d+)/) || [])[1];
+        const historyLeague = (target.match(/leagueHistory\/(\d+)/) || [])[1];
+        if (historyLeague) {
+          setTimeout(() => {
+            res.writeHead(200, { 'content-type': 'application/json' });
+            res.end(JSON.stringify([leaguePayload(historyLeague, ARCHIVE_YEAR)]));
+          }, ARCHIVE_DELAY_MS);
+          return;
+        }
         if (!league || Number(season) !== CURRENT_YEAR) {
           res.writeHead(404, { 'content-type': 'application/json' });
           res.end(JSON.stringify({ error: 'No such season for this league.' }));
@@ -170,6 +193,10 @@ if (!executablePath) {
 }
 console.log('[switch-curtain-check] chromium: ' + executablePath);
 
+/* Long enough to span the late archive the stub relay serves, so a curtain
+   that lifts on the live season alone is caught rebuilding afterwards. */
+const POST_DROP_SAMPLE_MS = 2500;
+
 const LEAGUE_A = '111111';
 const LEAGUE_B = '222222';
 const LEAGUE_C = '333333';
@@ -180,7 +207,7 @@ const page = await browser.newPage({ viewport: { width: 414, height: 896 } });
 /* Seed the switcher with three saved leagues and open on one of them, then
    install the curtain observer — all before a line of app script runs, so the
    very first close of the curtain is captured. */
-await page.addInitScript(({ a, b, c }) => {
+await page.addInitScript(({ a, b, c, POST_DROP_SAMPLE_MS }) => {
   try {
     const store = window.localStorage;
     store.setItem('hasCompletedOnboarding', 'true');
@@ -198,12 +225,16 @@ await page.addInitScript(({ a, b, c }) => {
   /* Read the DOM in the same task as the attribute flip. Anything polled
      afterwards would be measuring a later frame than the reader's.
 
-     The second measurement is the one that catches a curtain dropped a frame
-     early: count how much the home screen is still rebuilt AFTER the reveal.
-     A repaint the store publishes queued but the browser has not run yet is
-     invisible to a content check — the DOM already holds the new league — but
-     the reader sees it as the flash the curtain exists to hide. A curtain held
-     until the mount is settled leaves nothing behind it to rebuild. */
+     The second measurement is the one that catches a curtain dropped early:
+     count how much the home screen is still rebuilt AFTER the reveal. A repaint
+     the store publishes queued but the browser has not run yet is invisible to
+     a content check — the DOM already holds the new league — but the reader
+     sees it as the flash the curtain exists to hide. A curtain held until the
+     mount is settled leaves nothing behind it to rebuild.
+
+     The window is measured in MILLISECONDS, not frames, because the rebuild
+     that matters most arrives on the archive walk's own schedule — a second or
+     so after the live season, not on the next animation frame. */
   window.__curtainDrops = [];
   window.__homeMutations = 0;
   const watch = () => {
@@ -225,12 +256,10 @@ await page.addInitScript(({ a, b, c }) => {
             mutationsAfterDrop: 0,
           };
           window.__curtainDrops.push(drop);
-          /* Three frames is the whole window a queued repaint can hide in:
-             the coalescing gate schedules one animation frame ahead. */
-          let frames = 0;
+          const until = performance.now() + POST_DROP_SAMPLE_MS;
           const sample = () => {
             drop.mutationsAfterDrop = window.__homeMutations - drop.mutationsAtDrop;
-            if (++frames < 3) requestAnimationFrame(sample);
+            if (performance.now() < until) requestAnimationFrame(sample);
           };
           requestAnimationFrame(sample);
         }
@@ -238,7 +267,7 @@ await page.addInitScript(({ a, b, c }) => {
     }).observe(el, { attributes: true, attributeFilter: ['data-open'] });
   };
   watch();
-}, { a: LEAGUE_A, b: LEAGUE_B, c: LEAGUE_C });
+}, { a: LEAGUE_A, b: LEAGUE_B, c: LEAGUE_C, POST_DROP_SAMPLE_MS });
 
 const pageErrors = [];
 const consoleErrors = [];
@@ -294,9 +323,9 @@ try {
 
   /* ---- 1. A single switch ------------------------------------------------ */
   await switchTo(LEAGUE_A);
-  await page.waitForFunction(() => window.__curtainDrops.length >= 1, null, { timeout: 15000 })
+  await page.waitForFunction(() => window.__curtainDrops.length >= 1, null, { timeout: 25000 })
     .catch(() => fail('the curtain never came down after switching to league ' + LEAGUE_A));
-  await page.waitForTimeout(1200);
+  await page.waitForTimeout(POST_DROP_SAMPLE_MS + 800);
 
   const afterFirst = await drops();
   if (afterFirst.length === 1) pass('the curtain came down exactly once for one switch');
@@ -309,9 +338,14 @@ try {
   else fail('at the drop, the outgoing league (' + LEAGUE_B + ') was still on screen — stale state was revealed');
   if (!first.snag) pass('at the drop, no "hit a snag" fallback was showing');
   else fail('at the drop, a "hit a snag" fallback was on screen');
-  if (first.mutationsAfterDrop === 0) pass('the home screen was finished rebuilding before the curtain lifted');
-  else fail('the home screen was still being rebuilt ' + first.mutationsAfterDrop +
-    ' time(s) AFTER the curtain lifted — the reveal beat the render');
+  if (first.mutationsAfterDrop === 0) {
+    pass('the home screen was finished rebuilding before the curtain lifted (' +
+      POST_DROP_SAMPLE_MS + 'ms window, spanning the late archive)');
+  } else {
+    fail('the home screen was still being rebuilt ' + first.mutationsAfterDrop +
+      ' time(s) in the ' + POST_DROP_SAMPLE_MS + 'ms AFTER the curtain lifted — the reveal beat the ' +
+      'archive walk, so the reader watches the Desk rewrite itself');
+  }
 
   /* ---- 2. Two switches in flight at once --------------------------------- */
   /* An older switch settling must not pull the curtain off a newer one that is
@@ -319,7 +353,7 @@ try {
   await switchTo(LEAGUE_B);
   await page.waitForTimeout(40);
   await switchTo(LEAGUE_C);
-  await page.waitForTimeout(4000);
+  await page.waitForTimeout(6000 + POST_DROP_SAMPLE_MS);
 
   const afterRace = (await drops()).slice(afterFirst.length);
   if (!afterRace.length) {

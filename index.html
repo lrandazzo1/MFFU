@@ -21699,7 +21699,7 @@ async function fetchSleeperLeagueData(opts){
     safeRun('news', renderNews, ()=> renderScreenFallback('news'));
 
     // Background: walk previous_league_id for the full multi-year Record Book.
-    (async ()=>{
+    trackLeagueArchiveWalk('sleeper', league, async ()=>{
       setHistoryProbeState('sleeper', league, 'loading');
       try{
         const archive = await window.SleeperAdapter.fetchHistory(league, 12);
@@ -21727,7 +21727,7 @@ async function fetchSleeperLeagueData(opts){
         setHistoryProbeState('sleeper', league, 'failed');
         console.warn('[Sleeper] multi-year history hydration failed; live season stays connected.', histErr);
       }
-    })();
+    });
 
     if(!silent) toast(`Sleeper league connected · Week ${liveInfo.activeWeek}`);
     return true;
@@ -21844,7 +21844,7 @@ async function fetchYahooLeagueData(opts){
     safeRun('recordbook', renderRecordBook, ()=> renderScreenFallback('recordbook'));
     safeRun('news', renderNews, ()=> renderScreenFallback('news'));
 
-    (async ()=>{
+    trackLeagueArchiveWalk('yahoo', league, async ()=>{
       setHistoryProbeState('yahoo', league, 'loading');
       try{
         const archive = await window.YahooAdapter.fetchHistory(league, {
@@ -21882,7 +21882,7 @@ async function fetchYahooLeagueData(opts){
         setHistoryProbeState('yahoo', league, 'failed');
         console.warn('[YahooAdapter] multi-year history hydration failed; live season stays connected.', histErr);
       }
-    })();
+    });
 
     if(!silent) toast(`Yahoo league connected · Week ${liveInfo.activeWeek}`);
     return true;
@@ -22134,7 +22134,7 @@ async function fetchLeagueData(options){
     // a slow, rate-limited, or failed history payload never delays or demotes
     // the live-season success state, and the current season stays connected.
     if(!uploadedArchive.length){
-      (async ()=>{
+      trackLeagueArchiveWalk('espn', league, async ()=>{
         try{
           const archive = await fetchLeagueHistoryArchive(league);
           if(!archive || archive.stale || !historyRequestIsCurrent(league, 'espn')) return;
@@ -22175,7 +22175,7 @@ async function fetchLeagueData(options){
         }catch(histErr){
           console.warn('[ESPN live fetch] automatic multi-year history hydration failed; live season stays connected.', histErr);
         }
-      })();
+      });
     }
 
     if(!silent) toast(`2026 league connected · Week ${liveInfo.activeWeek}`);
@@ -22613,6 +22613,18 @@ function showLeagueCurtain(label){
   el.dataset.open = 'true';
   el.setAttribute('aria-hidden', 'false');
 }
+/* Re-word an ALREADY OPEN curtain. The hold has distinct phases — connecting
+   the live season, then walking the archive that finishes the Desk — and the
+   second one can legitimately run for seconds. Naming it is what keeps a long
+   hold reading as a deliberate broadcast load instead of a hang. Never opens a
+   curtain that is down: a stale phase message must not resurrect an overlay a
+   newer switch has already dismissed. */
+function updateLeagueCurtainLabel(label){
+  const el = $('leagueCurtain');
+  if(!el || el.dataset.open !== 'true') return;
+  const lbl = $('leagueCurtainLabel');
+  if(lbl) lbl.textContent = label || 'Loading league…';
+}
 function hideLeagueCurtain(){
   const el = $('leagueCurtain');
   if(!el) return;
@@ -22634,18 +22646,30 @@ function hideLeagueCurtain(){
         frame, so in the tick the fetch resolves the DOM is still the pre-publish
         one: the outgoing league's cards, or the emptied screen that
         clearLeagueStateForSwitch left behind;
-     3. even once that repaint has run, the browser has not committed the paint.
+     3. the multi-year archive walk every provider path starts — and detaches —
+        once the live season is connected is still running. It is not the
+        enrichment its detachment implies: applying it rewrites the Vault line
+        in the ticker, the Record Book, the analytics boards AND the Desk's lead
+        story, because the deterministic generators read league history. Reveal
+        before it lands and the reader gets a Desk built from the current season
+        (over a ticker still carrying the league they just left), which then
+        rewrites itself under them a few seconds later;
+     4. the crests in whatever that render produced are <img> elements that
+        paint as empty boxes until the network answers — the monogram is an
+        onerror fallback, so even a crest that will never load is a hole until
+        the error fires;
+     5. even once all of that has run, the browser has not committed the paint.
 
    Each of those is waited on through its own signal below — an in-flight
-   hydration promise, a forced repaint, then a committed frame — so the reveal
-   is tied to the league finishing its mount rather than to a duration. The only
-   timer left in the path is a watchdog, because a hydration promise that never
-   settles must not strand the reader behind an opaque overlay forever.
+   hydration promise, the archive walk's own handle, a forced repaint, the
+   images the reader can actually see, then a committed frame — so the reveal is
+   tied to the league finishing its mount rather than to a duration. The only
+   timers left in the path are watchdogs, because a promise that never settles
+   must not strand the reader behind an opaque overlay forever.
 
-   Deliberately NOT waited on: the background multi-year archive walk the fetch
-   paths kick off after the live season is connected. That is enrichment landing
-   on an already-mounted league (it repaints the Record Book when it arrives, and
-   can take tens of seconds), not part of the initial mount. */
+   Deliberately NOT waited on: nothing that changes the mounted view. Work that
+   lands on an already-settled league (a later week's box scores the reader
+   scrubs to, a cloud sync write) is not part of the mount and never blocks it. */
 const LEAGUE_MOUNT_WATCHDOG_MS = 9000;
 /* Rapid switches overlap: an older switch's gate must never pull the curtain
    off a newer one that is still loading. The newest switch owns the curtain. */
@@ -22653,16 +22677,17 @@ let leagueSwitchSeq = 0;
 
 /* Await a promise that is allowed to fail or hang without holding the reveal.
    Always resolves — never rejects — and says loudly which case it took. */
-function withMountWatchdog(promise, label){
+function withMountWatchdog(promise, label, timeoutMs){
+  const limit = Number(timeoutMs) > 0 ? Number(timeoutMs) : LEAGUE_MOUNT_WATCHDOG_MS;
   return new Promise(resolve=>{
     let settled = false;
     const finish = ()=>{ if(!settled){ settled = true; resolve(); } };
     const timer = setTimeout(()=>{
       if(settled) return;
-      console.warn('[LeagueSwitch] ' + label + ' did not settle within ' + LEAGUE_MOUNT_WATCHDOG_MS +
+      console.warn('[LeagueSwitch] ' + label + ' did not settle within ' + limit +
         'ms; revealing the app rather than holding the broadcast curtain up indefinitely.');
       finish();
-    }, LEAGUE_MOUNT_WATCHDOG_MS);
+    }, limit);
     Promise.resolve(promise).then(
       ()=>{ clearTimeout(timer); finish(); },
       err=>{
@@ -22685,6 +22710,118 @@ function awaitPendingLeagueHydration(leagueId){
   if(!id || !pending || !pending.promise) return Promise.resolve();
   if(String(pending.key || '').indexOf(id + ':') !== 0) return Promise.resolve();
   return withMountWatchdog(pending.promise, 'Shared-archive hydration for league ' + id);
+}
+
+/* ---- IN-FLIGHT MULTI-YEAR ARCHIVE WALKS ----
+   Every provider path (ESPN, Sleeper, Yahoo) connects the live season first and
+   then walks the league's completed seasons in a DETACHED async task, so a slow
+   or rate-limited archive can never delay or demote the live connection. That
+   is right for the fetch and wrong for the curtain: the walk is what finally
+   settles the mounted view, because applying its history repaints the ticker's
+   Vault line, the Record Book, the analytics boards and — through the
+   deterministic generators, which read league history — the Desk's lead story.
+
+   So each walk publishes its handle here on the way out. The walk's own body is
+   untouched and still owns its errors; this only captures the promise so the
+   reveal can be tied to it. One entry per league key, removed when it settles,
+   which also makes "is this league still mounting?" a question the gate can
+   answer synchronously. */
+const LEAGUE_ARCHIVE_WALKS = new Map();
+function trackLeagueArchiveWalk(provider, leagueId, run){
+  const key = leagueCacheKey(provider, leagueId);
+  let started;
+  try{
+    started = Promise.resolve(run());
+  }catch(err){
+    /* run() is an async function in every caller, so a synchronous throw here
+       means the walk never began — the live season is connected and there is
+       nothing for the curtain to wait on. */
+    console.error('[LeagueSwitch] The multi-year archive walk for ' + key + ' threw before it started; ' +
+      'the live season stays connected and the reveal will not wait on it.', err);
+    return Promise.resolve();
+  }
+  const tracked = started
+    .catch(err=>{
+      /* Each walk handles its own failures internally, so reaching here is a
+         defect in one rather than a network fault. Either way the reader must
+         not be held behind the curtain for it. */
+      console.error('[LeagueSwitch] The multi-year archive walk for ' + key +
+        ' rejected outside its own error handling; revealing the app anyway.', err);
+    })
+    .then(()=>{
+      if(LEAGUE_ARCHIVE_WALKS.get(key) === tracked) LEAGUE_ARCHIVE_WALKS.delete(key);
+    });
+  LEAGUE_ARCHIVE_WALKS.set(key, tracked);
+  return tracked;
+}
+
+/* The archive walk for THIS league, if one is still running.
+
+   Its own ceiling, and a generous one: a twelve-season walk is a dozen
+   sequential reads of a multi-megabyte payload, which on a phone legitimately
+   takes far longer than the general mount watchdog allows. The ceiling exists
+   because no archive is worth an overlay that never lifts — it is a failsafe,
+   never the signal, and it says so loudly when it trips. */
+const LEAGUE_ARCHIVE_WATCHDOG_MS = 20000;
+function awaitPendingLeagueArchive(provider, leagueId){
+  const key = leagueCacheKey(provider, leagueId);
+  const pending = LEAGUE_ARCHIVE_WALKS.get(key);
+  if(!pending) return Promise.resolve();
+  return withMountWatchdog(pending, 'Multi-year archive walk for ' + key, LEAGUE_ARCHIVE_WATCHDOG_MS);
+}
+
+/* ---- CRESTS ----
+   Team logos render as <img> elements with a monogram onerror fallback, so
+   between the DOM being built and the network answering they are empty boxes —
+   and a crest that will never load stays one until the error fires and swaps
+   the monogram in. Lifting the curtain in that window is the "unrendered
+   layout" flash: the reader watches the artwork pop into a page that was
+   supposed to arrive finished.
+
+   Only the images the reader can actually see are waited on — the active
+   screen, in or just below the viewport — and only up to a short ceiling. A
+   crest is decoration: a dead CDN should cost the reveal a moment, not the
+   whole transition. */
+const LEAGUE_MOUNT_IMAGE_WATCHDOG_MS = 1500;
+function awaitLeagueImagesSettled(){
+  let pending;
+  try{
+    const active = document.querySelector('.screen[data-active="true"]');
+    if(!active) return Promise.resolve();
+    // A little past the fold, so a crest one scroll-nudge away is not a hole.
+    const reach = (window.innerHeight || 0) * 1.25;
+    pending = Array.prototype.slice.call(active.querySelectorAll('img')).filter(img=>{
+      if(img.complete) return false;
+      const box = img.getBoundingClientRect();
+      return box.top < reach;
+    });
+  }catch(err){
+    console.error('[LeagueSwitch] Could not inspect the incoming league\u2019s crests; revealing without ' +
+      'waiting on them.', err);
+    return Promise.resolve();
+  }
+  if(!pending.length) return Promise.resolve();
+  return new Promise(resolve=>{
+    let outstanding = pending.length;
+    let done = false;
+    const finish = ()=>{ if(!done){ done = true; resolve(); } };
+    const timer = setTimeout(()=>{
+      if(done) return;
+      console.warn('[LeagueSwitch] ' + outstanding + ' crest image(s) had not settled within ' +
+        LEAGUE_MOUNT_IMAGE_WATCHDOG_MS + 'ms; revealing rather than holding the broadcast curtain on artwork.');
+      finish();
+    }, LEAGUE_MOUNT_IMAGE_WATCHDOG_MS);
+    /* 'error' counts as settled: the inline onerror has already swapped the
+       monogram in by the time this runs, so the box is filled either way. */
+    const settle = ()=>{
+      outstanding -= 1;
+      if(outstanding <= 0){ clearTimeout(timer); finish(); }
+    };
+    pending.forEach(img=>{
+      img.addEventListener('load', settle, { once:true });
+      img.addEventListener('error', settle, { once:true });
+    });
+  });
 }
 
 /* One animation frame. Resolving inside a frame callback means the previous
@@ -22718,15 +22855,30 @@ async function awaitLeagueRenderSettled(){
   // Frame 2 only fires after the frame above has been composited, so by the
   // time this resolves the new league is on the glass, not merely in the DOM.
   await nextAnimationFrame();
+  /* Layout is committed now, which is the first moment the crests have real
+     boxes and "which of these can the reader see" is answerable at all. */
+  await awaitLeagueImagesSettled();
+  // One more frame so a crest that arrived (or fell back to its monogram)
+  // during that wait is painted before the mask comes off it.
+  await nextAnimationFrame();
 }
 
 /* Hold the curtain until the switch identified by `token` has finished mounting,
    then reveal. Resolves after the curtain is down, or after handing ownership to
    a newer switch that started while this one was in flight. */
-async function settleLeagueMount(token, leagueId, startedAt){
+async function settleLeagueMount(token, provider, leagueId, label, startedAt){
   if(token !== leagueSwitchSeq) return;
   await awaitPendingLeagueHydration(leagueId);
   if(token !== leagueSwitchSeq) return;
+  /* The live season is on the DOM by now, so the app underneath is populated —
+     but the archive walk that produces the ticker's Vault line, the Record Book
+     and the lead story is still out. This is the long phase of the hold, so it
+     is named on the curtain rather than left looking like a stall. */
+  if(LEAGUE_ARCHIVE_WALKS.has(leagueCacheKey(provider, leagueId))){
+    updateLeagueCurtainLabel('Loading ' + label + ' history…');
+    await awaitPendingLeagueArchive(provider, leagueId);
+    if(token !== leagueSwitchSeq) return;
+  }
   await awaitLeagueRenderSettled();
   if(token !== leagueSwitchSeq) return;
   /* A minimum visible time so an instant (cached) swap still reads as a
@@ -22748,7 +22900,8 @@ async function switchSavedLeague(value){
   // Name the destination league on the curtain so the transition reads as a
   // deliberate load, not a hang. Fall back to the id when no saved name exists.
   const savedRow = savedLeagues().find(x=> leagueCacheKey(x.provider,x.id) === leagueCacheKey(provider,id));
-  showLeagueCurtain('Loading ' + ((savedRow && savedRow.name) || (provider.toUpperCase() + ' · ' + id)) + '…');
+  const leagueLabel = (savedRow && savedRow.name) || (provider.toUpperCase() + ' · ' + id);
+  showLeagueCurtain('Loading ' + leagueLabel + '…');
   setProvider(provider);
   $('leagueIdInput').value = id;
   FSNStore.set(SAVED_LEAGUE_ID_KEY, id);
@@ -22776,7 +22929,7 @@ async function switchSavedLeague(value){
        The gate cannot reject, but it is wrapped anyway — a defect in the reveal
        path must degrade to a visible app, never to a permanent curtain. */
     try{
-      await settleLeagueMount(token, id, startedAt);
+      await settleLeagueMount(token, provider, id, leagueLabel, startedAt);
     }catch(settleErr){
       console.error('[LeagueSwitch] The broadcast-curtain gate failed while waiting for league ' + id +
         ' to mount; revealing the app immediately.', settleErr);
