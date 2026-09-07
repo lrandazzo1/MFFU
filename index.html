@@ -655,6 +655,140 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
 .onboard-cta-sub{ font-size:10.5px; line-height:1.4; color:var(--dim); }
 .onboard-cta-arrow{ flex:none; color:var(--cyan); font-size:18px; }
 
+/* ============================================================
+   FIRST-TIME USER WALKTHROUGH (FTU) — Hook → Value → CTA
+   A dismissible three-slide intro shown once to new visitors. It is
+   additive and self-contained: its own overlay, its own state, no
+   dependency on the existing "How do I connect my league?" guide
+   (#onboardModal), which stays exactly as it was.
+============================================================ */
+#ftuModal{
+  position:fixed; inset:0; z-index:140;
+  display:none; align-items:center; justify-content:center;
+  padding:calc(18px + env(safe-area-inset-top)) 16px calc(18px + env(safe-area-inset-bottom));
+}
+#ftuModal[data-open="true"]{ display:flex; }
+.ftu-backdrop{
+  position:absolute; inset:0;
+  background:radial-gradient(120% 90% at 50% 0%,rgba(0,224,255,.10),transparent 55%),rgba(4,6,10,.86);
+  backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+}
+#ftuModal[data-open="true"] .ftu-shell{ animation:readerIn .3s cubic-bezier(.2,.7,.3,1) both; }
+.ftu-shell{
+  position:relative; z-index:1;
+  width:100%; max-width:440px; max-height:100%;
+  display:flex; flex-direction:column; overflow:hidden;
+  border-radius:22px;
+  background:linear-gradient(165deg,#12202b 0%,#0b0f17 60%,#080a0e 100%);
+  border:1px solid rgba(0,224,255,.22);
+  box-shadow:0 30px 80px -24px rgba(0,0,0,.85),0 0 0 1px rgba(255,255,255,.02) inset;
+}
+.ftu-topbar{
+  flex:none; display:flex; align-items:center; justify-content:space-between;
+  padding:14px 16px 4px;
+}
+.ftu-brand{
+  display:flex; align-items:center; gap:7px;
+  font-family:'Anton',sans-serif; font-size:12px; letter-spacing:.16em;
+  text-transform:uppercase; color:var(--dim);
+}
+.ftu-brand::before{
+  content:""; width:8px; height:8px; border-radius:2px;
+  background:var(--cyan); box-shadow:0 0 10px var(--cyan);
+}
+.ftu-skip{
+  flex:none; font-size:11px; font-weight:600; letter-spacing:.1em;
+  text-transform:uppercase; color:var(--dim);
+  padding:6px 10px; border-radius:9px; border:1px solid transparent;
+  transition:color .15s ease, border-color .15s ease;
+}
+.ftu-skip:hover{ color:var(--off); border-color:var(--line-2); }
+.ftu-skip:focus-visible{ outline:none; color:var(--cyan); border-color:var(--cyan); }
+.ftu-viewport{ flex:1; overflow:hidden; position:relative; }
+.ftu-track{
+  display:flex; width:300%; height:100%;
+  transition:transform .38s cubic-bezier(.2,.7,.3,1);
+}
+.ftu-slide{
+  width:33.3333%; flex:none;
+  display:flex; flex-direction:column; justify-content:center;
+  padding:12px 24px 20px;
+  min-height:0;
+}
+.ftu-badge{
+  align-self:flex-start; display:inline-flex; align-items:center; gap:6px;
+  font-family:'JetBrains Mono',monospace; font-size:9.5px; font-weight:700;
+  letter-spacing:.22em; text-transform:uppercase;
+  padding:5px 10px; border-radius:999px; margin-bottom:16px;
+}
+.ftu-badge[data-accent="cyan"]{ color:var(--cyan); background:rgba(0,224,255,.1); border:1px solid rgba(0,224,255,.32); }
+.ftu-badge[data-accent="gold"]{ color:var(--gold); background:rgba(255,196,0,.1); border:1px solid rgba(255,196,0,.34); }
+.ftu-icon{
+  width:56px; height:56px; border-radius:16px; margin-bottom:18px;
+  display:flex; align-items:center; justify-content:center;
+  background:linear-gradient(150deg,rgba(0,224,255,.18),rgba(0,224,255,.04));
+  border:1px solid rgba(0,224,255,.28);
+}
+.ftu-slide[data-accent="gold"] .ftu-icon{
+  background:linear-gradient(150deg,rgba(255,196,0,.18),rgba(255,196,0,.04));
+  border-color:rgba(255,196,0,.3);
+}
+.ftu-icon svg{ width:28px; height:28px; fill:none; stroke:var(--cyan); stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+.ftu-slide[data-accent="gold"] .ftu-icon svg{ stroke:var(--gold); }
+.ftu-headline{
+  font-family:'Anton',Impact,sans-serif; font-weight:400;
+  font-size:29px; line-height:1.04; letter-spacing:.005em;
+  color:#f2f5fa; margin:0 0 14px; text-transform:uppercase;
+}
+.ftu-body{ font-size:13.5px; line-height:1.65; color:var(--off); margin:0; }
+.ftu-body strong{ color:#eef2f8; font-weight:600; }
+.ftu-cta{
+  width:100%; margin-top:22px; border-radius:13px; padding:16px 18px;
+  background:linear-gradient(100deg,var(--cyan),#00a6cc);
+  color:#03151c; font-family:'Anton',sans-serif;
+  font-size:14px; line-height:1.2; letter-spacing:.05em; text-transform:uppercase;
+  box-shadow:0 10px 30px -10px rgba(0,224,255,.7);
+  transition:transform .12s ease, box-shadow .16s ease;
+}
+.ftu-cta:active{ transform:scale(.98); }
+.ftu-cta:focus-visible{ outline:none; box-shadow:0 0 0 3px rgba(0,224,255,.35); }
+.ftu-footer{
+  flex:none; display:flex; align-items:center; justify-content:space-between;
+  gap:12px; padding:12px 18px calc(16px + env(safe-area-inset-bottom));
+  border-top:1px solid var(--line);
+}
+.ftu-dots{ display:flex; align-items:center; gap:7px; }
+.ftu-dot{
+  width:7px; height:7px; border-radius:999px;
+  background:var(--line-2); transition:width .28s ease, background .28s ease;
+}
+.ftu-dot[data-active="true"]{ width:20px; background:var(--cyan); }
+.ftu-nav{ display:flex; align-items:center; gap:8px; }
+.ftu-back{
+  font-size:11.5px; font-weight:600; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--dim); padding:11px 14px; border-radius:11px;
+  border:1px solid var(--line-2); background:#0f1420;
+  transition:color .15s ease, opacity .15s ease;
+}
+.ftu-back:hover{ color:var(--off); }
+.ftu-back[hidden]{ display:none; }
+.ftu-next{
+  font-family:'Anton',sans-serif; font-size:13px; letter-spacing:.07em; text-transform:uppercase;
+  color:#03151c; padding:11px 20px; border-radius:11px;
+  background:linear-gradient(100deg,var(--cyan),#00a6cc);
+  box-shadow:0 6px 20px -8px rgba(0,224,255,.6);
+  transition:transform .12s ease;
+}
+.ftu-next:active{ transform:scale(.97); }
+.ftu-next:focus-visible, .ftu-back:focus-visible{ outline:none; box-shadow:0 0 0 3px rgba(0,224,255,.3); }
+@media (max-width:380px){
+  .ftu-headline{ font-size:25px; }
+  .ftu-slide{ padding:10px 20px 18px; }
+}
+@media (min-height:760px){
+  .ftu-slide{ padding-top:26px; padding-bottom:28px; }
+}
+
 .onboard-link{
   flex:none; font-size:10px; font-weight:600; letter-spacing:.04em;
   color:var(--cyan); text-decoration:underline dotted; text-underline-offset:2px;
@@ -2345,6 +2479,16 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
         <span class="onboard-cta-arrow" aria-hidden="true">→</span>
       </button>
 
+      <!-- RE-OPEN THE FIRST-TIME WALKTHROUGH (commissioners can revisit anytime) -->
+      <button id="ftuReopenBtn" type="button" class="onboard-cta">
+        <span class="onboard-cta-icon" aria-hidden="true">★</span>
+        <span class="onboard-cta-text">
+          <span class="onboard-cta-title">Replay the FSN intro</span>
+          <span class="onboard-cta-sub">The 30-second tour · Turn your league into headline news</span>
+        </span>
+        <span class="onboard-cta-arrow" aria-hidden="true">→</span>
+      </button>
+
       <div class="card p-4">
         <div class="section-head"><span class="bar" style="background:var(--green)"></span><h2>Saved Leagues</h2></div>
         <div class="league-switcher">
@@ -2850,6 +2994,70 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
     </div>
 
     <button type="button" id="onboardDoneBtn" class="btn-primary mt-4">GOT IT — BACK TO SETUP</button>
+  </div>
+</div>
+
+<!-- ============================================================
+     FIRST-TIME USER WALKTHROUGH — Hook → Value → CTA
+     Shown once to new visitors (localStorage: hasCompletedOnboarding),
+     re-openable anytime from the Setup tab.
+============================================================ -->
+<div id="ftuModal" data-open="false" role="dialog" aria-modal="true" aria-labelledby="ftuHeadline0">
+  <div class="ftu-backdrop" id="ftuBackdrop"></div>
+  <div class="ftu-shell">
+    <div class="ftu-topbar">
+      <span class="ftu-brand">FSN · New Here?</span>
+      <button type="button" class="ftu-skip" id="ftuSkip">Skip</button>
+    </div>
+
+    <div class="ftu-viewport">
+      <div class="ftu-track" id="ftuTrack">
+
+        <!-- SLIDE 1 — THE HOOK -->
+        <div class="ftu-slide" data-slide="0" data-accent="cyan" role="group" aria-roledescription="slide" aria-label="1 of 3">
+          <span class="ftu-badge" data-accent="cyan">The Vision</span>
+          <div class="ftu-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M4 5h16v14H4z"></path><path d="M4 9h16"></path><path d="M7 13h6"></path><path d="M7 16h9"></path></svg>
+          </div>
+          <h2 class="ftu-headline" id="ftuHeadline0">Turn Your League Into Headline News.</h2>
+          <p class="ftu-body">Your league's group chat shouldn't be the only place with drama. FSN transforms amateur fantasy matchups into professional sports journalism, automated power rankings, and historical record books.</p>
+        </div>
+
+        <!-- SLIDE 2 — THE VALUE -->
+        <div class="ftu-slide" data-slide="1" data-accent="cyan" role="group" aria-roledescription="slide" aria-label="2 of 3">
+          <span class="ftu-badge" data-accent="cyan">How It Works</span>
+          <div class="ftu-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M13 2 4 14h7l-1 8 9-12h-7l1-8z"></path></svg>
+          </div>
+          <h2 class="ftu-headline">Zero-Jargon Setup. Instant Media Desk.</h2>
+          <p class="ftu-body">Paste your <strong>ESPN, Sleeper, or Yahoo</strong> ID in seconds. The automated FSN News Desk immediately builds your Tale of the Tape, tracks advanced consistency metrics, and generates custom narrative prose without you lifting a finger.</p>
+        </div>
+
+        <!-- SLIDE 3 — THE CTA -->
+        <div class="ftu-slide" data-slide="2" data-accent="gold" role="group" aria-roledescription="slide" aria-label="3 of 3">
+          <span class="ftu-badge" data-accent="gold">Kickoff</span>
+          <div class="ftu-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 10 10"></path><path d="M22 2 12 12"></path><path d="M16 2h6v6"></path></svg>
+          </div>
+          <h2 class="ftu-headline">The Season Awaits.</h2>
+          <p class="ftu-body">Ready to give your league the media coverage it deserves?</p>
+          <button type="button" class="ftu-cta" id="ftuFinish">Connect Your League &amp; Write Your First Story Now!</button>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="ftu-footer">
+      <div class="ftu-dots" id="ftuDots" aria-hidden="true">
+        <span class="ftu-dot" data-active="true"></span>
+        <span class="ftu-dot"></span>
+        <span class="ftu-dot"></span>
+      </div>
+      <div class="ftu-nav">
+        <button type="button" class="ftu-back" id="ftuBack" hidden>Back</button>
+        <button type="button" class="ftu-next" id="ftuNext">Next →</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -17241,7 +17449,7 @@ function toast(msg){
    strand every primary screen behind overflow:hidden. Recompute from actual
    DOM state after every transition instead of trusting paired assignments. */
 function syncBodyScrollLock(){
-  const overlayIds = ['reader','franchiseModal','onboardModal','storyComposer','profilePicker','fsnIndexInfoModal'];
+  const overlayIds = ['reader','franchiseModal','onboardModal','ftuModal','storyComposer','profilePicker','fsnIndexInfoModal'];
   const locked = overlayIds.some(id=>{
     const node = $(id);
     return node && node.dataset && node.dataset.open === 'true';
@@ -22974,6 +23182,117 @@ document.addEventListener('keydown', (event)=>{
 
 
 /* ============================================================
+   FIRST-TIME USER WALKTHROUGH (FTU) — controller
+
+   A dismissible three-slide intro (Hook → Value → CTA) shown once to new
+   visitors. Self-contained and additive: it drives only #ftuModal and a
+   single localStorage flag, and never touches the existing connect guide.
+
+   The completion flag lives under the exact key the spec names,
+   'hasCompletedOnboarding', and is read/written through FSNStore so it
+   survives the same private-mode / quota edge cases every other stored
+   value in this file already handles.
+============================================================ */
+const FTU_DONE_KEY = 'hasCompletedOnboarding';
+const FTU_SLIDE_COUNT = 3;
+let ftuSlide = 0;
+
+function ftuHasCompleted(){
+  return FSNStore.get(FTU_DONE_KEY) === 'true';
+}
+
+function ftuMarkCompleted(){
+  // A refused write (private mode, quota) is expected and non-fatal — the
+  // worst case is the intro shows again next launch, never a broken boot.
+  if(!FSNStore.set(FTU_DONE_KEY, 'true')){
+    console.warn('[FTU] Could not persist the onboarding-complete flag; the intro may reappear on next launch.');
+  }
+}
+
+function ftuRenderSlide(){
+  const track = $('ftuTrack');
+  if(track) track.style.transform = 'translateX(' + (-ftuSlide * 33.3333) + '%)';
+
+  const dots = document.querySelectorAll('#ftuDots .ftu-dot');
+  dots.forEach((dot, i)=>{ dot.dataset.active = (i === ftuSlide) ? 'true' : 'false'; });
+
+  const back = $('ftuBack');
+  if(back) back.hidden = (ftuSlide === 0);
+
+  // The final slide carries its own primary CTA, so the footer's Next button
+  // steps out of the way there rather than duplicating the action.
+  const next = $('ftuNext');
+  if(next) next.hidden = (ftuSlide >= FTU_SLIDE_COUNT - 1);
+}
+
+function ftuGo(index){
+  ftuSlide = Math.max(0, Math.min(FTU_SLIDE_COUNT - 1, index));
+  ftuRenderSlide();
+}
+
+function openFtu(){
+  const modal = $('ftuModal');
+  if(!modal) return;
+  ftuSlide = 0;
+  ftuRenderSlide();
+  modal.dataset.open = 'true';
+  syncBodyScrollLock();
+  setTimeout(()=>{
+    const skip = $('ftuSkip');
+    if(skip) skip.focus();
+  }, 0);
+}
+
+// Every exit path — Skip, backdrop, Escape, or the final CTA — records
+// completion so a returning visitor is never pestered. `navigate` sends the
+// finisher to the Setup screen so the promised "connect your league" action
+// is one tap away.
+function closeFtu(navigate){
+  const modal = $('ftuModal');
+  if(!modal) return;
+  ftuMarkCompleted();
+  modal.dataset.open = 'false';
+  syncBodyScrollLock();
+  if(navigate){
+    setScreen('setup');
+    const idField = $('leagueIdInput');
+    if(idField){
+      setTimeout(()=>{ try{ idField.focus(); }catch(e){} }, 60);
+    }
+  }
+}
+
+if($('ftuNext')) $('ftuNext').addEventListener('click', ()=> ftuGo(ftuSlide + 1));
+if($('ftuBack')) $('ftuBack').addEventListener('click', ()=> ftuGo(ftuSlide - 1));
+if($('ftuSkip')) $('ftuSkip').addEventListener('click', ()=> closeFtu(false));
+if($('ftuBackdrop')) $('ftuBackdrop').addEventListener('click', ()=> closeFtu(false));
+if($('ftuFinish')) $('ftuFinish').addEventListener('click', ()=> closeFtu(true));
+// The Setup-tab trigger always shows the intro on demand, regardless of the
+// stored flag, so a commissioner can revisit or demo it anytime.
+if($('ftuReopenBtn')) $('ftuReopenBtn').addEventListener('click', openFtu);
+
+document.addEventListener('keydown', (event)=>{
+  const modal = $('ftuModal');
+  if(!modal || modal.dataset.open !== 'true') return;
+  if(event.key === 'Escape'){ closeFtu(false); return; }
+  if(event.key === 'ArrowRight') ftuGo(ftuSlide + 1);
+  else if(event.key === 'ArrowLeft') ftuGo(ftuSlide - 1);
+});
+
+// Auto-present once for genuinely new visitors. Isolated so a storage hiccup
+// can never take down boot, and deferred a beat so it layers cleanly over the
+// first paint rather than racing it.
+function maybeShowFtu(){
+  try{
+    if(ftuHasCompleted()) return;
+    setTimeout(openFtu, 450);
+  }catch(err){
+    console.error('[FTU] First-run check failed; skipping the intro this launch.', err);
+  }
+}
+
+
+/* ============================================================
    NEWS DESK — PRESENTATION
    The engine writes the stories; this half puts them on glass:
    the Desk carousel, the wire feed, the full-screen reader and
@@ -24881,6 +25200,11 @@ function bootApp(){
      holds and, only for a device that has already opted in and been granted
      it, silently refreshes a possibly-rotated push token. */
   safeRun('boot:notifications', bindNotifySettings);
+
+  // First-time visitor intro (Hook → Value → CTA). Isolated and after the
+  // paint: it only reads one storage flag and, for a brand-new browser,
+  // presents the dismissible walkthrough over the already-rendered app.
+  safeRun('boot:ftu', maybeShowFtu);
 
   // Deep-link entry from the marketing landing page (or any external link).
   // The apex/www landing site sends visitors here with ?goto=setup and an
