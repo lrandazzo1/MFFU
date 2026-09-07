@@ -1,7 +1,9 @@
 # FSN iOS — Capacitor handoff
 
 Everything below the "Manual steps in Xcode" heading requires a Mac with
-Xcode 15+, an Apple Developer account, and App Store Connect access.
+Xcode 26+, an Apple Developer account, and App Store Connect access.
+Xcode 26 is not a preference: since 28 April 2026 App Store Connect rejects
+any upload not built with the iOS 26 SDK (`ITMS-90725`).
 Everything above it is scriptable and reproducible on any machine with
 Node 18+ and CocoaPods.
 
@@ -17,6 +19,10 @@ npm install
 # after the first run, `ios/` is committed and every subsequent clone
 # skips straight to `npm run ios:sync`.
 npx cap add ios
+
+# Raise the generated project to the App Store's minimum OS version
+# (Capacitor scaffolds it at iOS 13.0, which Apple rejects with ITMS-90068).
+node scripts/ios-min-os.mjs
 
 # Install CocoaPods deps for the generated Xcode project.
 cd ios/App && pod install && cd ../..
@@ -46,6 +52,11 @@ npm run build:ios
 # Copy www/ into ios/App/App/public/ and re-link native plugins.
 npx cap sync ios
 
+# Re-apply the minimum OS version. `cap sync` regenerates the project from
+# Capacitor's template, so this has to run after every sync — and the pods
+# have to be resolved again against the raised platform line.
+node scripts/ios-min-os.mjs && (cd ios/App && pod install)
+
 # Open the Xcode workspace.
 npx cap open ios
 ```
@@ -69,8 +80,10 @@ Once `npx cap open ios` opens `App.xcworkspace`:
 3. **Team Signing** — set **Team** to the Apple Developer team that owns
    the `app.fantasysportsnetwork` App ID. Leave **Automatically manage
    signing** checked unless the team uses manual provisioning profiles.
-4. **General → Deployment Info** — confirm minimum iOS version (Capacitor 6
-   defaults to iOS 13.0; App Store currently requires 12.0+).
+4. **General → Deployment Info** — confirm minimum iOS version reads
+   **15.0**. Capacitor 6 defaults to iOS 13.0, which App Store Connect
+   rejects (`ITMS-90068`); `scripts/ios-min-os.mjs` raises it, and CI applies
+   the same bump on every run.
 5. **Version + Build** — bump `CFBundleShortVersionString` (marketing
    version) and `CFBundleVersion` (build number) on every archive.
 6. **Product → Destination → Any iOS Device (arm64)**. Archiving against a

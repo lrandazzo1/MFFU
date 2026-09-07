@@ -21,7 +21,10 @@ permissions:
 
 jobs:
   build:
-    runs-on: macos-14
+    # macos-14 is deprecated and its newest Xcode is 15.x (iOS 17 SDK), which
+    # App Store Connect no longer accepts. macos-15 ships Xcode 26.x alongside
+    # the older ones; the exact one is pinned in the 'Select Xcode' step below.
+    runs-on: macos-15
     timeout-minutes: 40
 
     env:
@@ -35,6 +38,36 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
+
+      # Apple requires every iOS upload to be built with the current SDK: since
+      # 28 April 2026 that is the iOS 26 SDK, shipped in Xcode 26. A build made
+      # with an older one is rejected at upload with
+      #
+      #   ITMS-90725: SDK version issue. This app was built with the iOS <n> SDK.
+      #
+      # which happens after a green 40-minute run, so it is worth pinning rather
+      # than discovering. The runner image carries several Xcodes and its default
+      # is still 16.4 (iOS 18 SDK), so the version is selected explicitly instead
+      # of inherited. '26' resolves to the newest stable 26.x on the image; bump
+      # the major here when Apple raises the requirement again.
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: '26'
+
+      # Fail here, in ten seconds, rather than at the upload step 40 minutes
+      # later, if the image ever stops carrying the SDK the App Store requires.
+      - name: Verify iOS SDK
+        env:
+          REQUIRED_IOS_SDK_MAJOR: 26
+        run: |
+          xcodebuild -version
+          SDK="$(xcrun --sdk iphoneos --show-sdk-version)"
+          echo "iOS SDK $SDK (Xcode at $(xcode-select -p))"
+          if [ "${SDK%%.*}" -lt "$REQUIRED_IOS_SDK_MAJOR" ]; then
+            echo "::error title=iOS SDK too old::Selected Xcode provides the iOS $SDK SDK, but App Store Connect requires iOS $REQUIRED_IOS_SDK_MAJOR or later (ITMS-90725). Raise xcode-version in the 'Select Xcode' step, or move to a runner image that ships it."
+            exit 1
+          fi
 
       - uses: actions/setup-node@v5
         with:
@@ -73,6 +106,25 @@ jobs:
             fi
             npx cap sync ios
           fi
+
+      # Capacitor 6 scaffolds the project at iOS 13.0, which App Store Connect
+      # rejects with "ITMS-90068: ... the value provided for the key
+      # MinimumOSVersion is not acceptable". MinimumOSVersion in the built
+      # Info.plist comes from IPHONEOS_DEPLOYMENT_TARGET, so the fix is to raise
+      # the deployment target — in the Xcode project and in the Podfile platform
+      # line the pods inherit — before anything is compiled.
+      #
+      # Like the export-compliance step below, this cannot live in the repo:
+      # ios/ holds only HANDOFF.md and the native project is regenerated on
+      # every run, so it is re-applied here after the Capacitor sync.
+      - name: Set minimum iOS version
+        env:
+          MIN_IOS_VERSION: '15.0'
+        run: |
+          node scripts/ios-min-os.mjs
+          # The sync already resolved the pods against the old platform line, so
+          # they have to be resolved again now that it reads 15.0.
+          cd ios/App && pod install
 
       # Capacitor generates Info.plist from its own template, which does not
       # declare export compliance. Without ITSAppUsesNonExemptEncryption every
@@ -141,6 +193,27 @@ jobs:
             -archivePath "$RUNNER_TEMP/App.xcarchive" \
             CODE_SIGNING_ALLOWED=NO \
             CURRENT_PROJECT_VERSION=${{ github.run_number }}
+
+      # The deployment target was raised before the build, but MinimumOSVersion
+      # is written by Xcode into the *built* Info.plist, so this is the only
+      # place it can actually be read back. Checking it here turns a rejected
+      # upload (ITMS-90068, reported by email minutes after a green run) into a
+      # failed step naming the value that was shipped.
+      - name: Verify minimum OS version
+        env:
+          MIN_IOS_VERSION: '15.0'
+        run: |
+          APP="$(find "$RUNNER_TEMP/App.xcarchive/Products/Applications" -maxdepth 1 -name '*.app' | head -1)"
+          if [ -z "$APP" ]; then
+            echo "::error title=No app in the archive::xcodebuild reported success but $RUNNER_TEMP/App.xcarchive/Products/Applications holds no .app bundle."
+            exit 1
+          fi
+          MIN="$(/usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' "$APP/Info.plist")"
+          echo "MinimumOSVersion = $MIN ($(basename "$APP"))"
+          if [ "${MIN%%.*}" -lt "${MIN_IOS_VERSION%%.*}" ]; then
+            echo "::error title=MinimumOSVersion too low::The archive declares MinimumOSVersion $MIN, below the required $MIN_IOS_VERSION — App Store Connect would reject it with ITMS-90068. The 'Set minimum iOS version' step ran, so the Capacitor project regained a lower deployment target after it; check scripts/ios-min-os.mjs against the generated project."
+            exit 1
+          fi
 
       - name: Export IPA
         if: steps.signing.outputs.available == 'true'
