@@ -32,7 +32,7 @@ self.addEventListener('activate', function (event) {
 /* --------------------------------------------------------------------------
    push
 
-   The payload is written by api/notifications/triggers.js:
+   The payload is written by lib/notifications/triggers.js:
      { title, body, category, data: { trigger, group, leagueId, season, week, url } }
 
    Chrome and Firefox require every push to produce a visible notification

@@ -33,10 +33,10 @@ index.html                 Setup screen card (markup + block-6 controller).
 
 api/notifications-register.js   device registration / preferences / unsubscribe
 api/notifications-dispatch.js   hourly cron target
-api/notifications/triggers.js   pure cadence engine + deterministic copy
-api/notifications/apns.js       APNs over HTTP/2, token auth, zero deps
-api/notifications/webpush.js    VAPID Web Push (wraps `web-push`)
-api/notifications/selftest.js   37 assertions, no credentials needed
+lib/notifications/triggers.js   pure cadence engine + deterministic copy
+lib/notifications/apns.js       APNs over HTTP/2, token auth, zero deps
+lib/notifications/webpush.js    VAPID Web Push (wraps `web-push`)
+lib/notifications/selftest.js   37 assertions, no credentials needed
 
 supabase/notifications.sql      notification_devices + notification_sends
 ```

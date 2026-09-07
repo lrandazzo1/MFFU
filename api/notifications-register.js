@@ -22,9 +22,9 @@
 
 const crypto = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
-const { PREF_GROUPS, normalizeTimeZone } = require('./notifications/triggers');
-const apns = require('./notifications/apns');
-const webpush = require('./notifications/webpush');
+const { PREF_GROUPS, normalizeTimeZone } = require('../lib/notifications/triggers');
+const apns = require('../lib/notifications/apns');
+const webpush = require('../lib/notifications/webpush');
 
 const MAX_BODY_BYTES = 32 * 1024;
 

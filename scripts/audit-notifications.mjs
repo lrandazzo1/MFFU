@@ -4,7 +4,7 @@
 
    `node scripts/audit-notifications.mjs`
 
-   api/notifications/selftest.js covers the cadence engine, which is pure
+   lib/notifications/selftest.js covers the cadence engine, which is pure
    computation. This covers the thing the engine cannot: the HTTP route that
    fans out real pushes to real devices. Two properties matter enough to be
    asserted mechanically rather than reviewed by eye:
@@ -124,7 +124,7 @@ stub('@supabase/supabase-js', { createClient: () => makeSupabaseDouble() });
    runs against. */
 const transportState = { apns: true, web: true };
 
-stub(join(root, 'api/notifications/apns.js'), {
+stub(join(root, 'lib/notifications/apns.js'), {
   isConfigured: () => transportState.apns,
   openSession: () => { calls.apnsSession++; return { __fake: true }; },
   closeSession: () => {},
@@ -135,7 +135,7 @@ stub(join(root, 'api/notifications/apns.js'), {
   apnsConfig: () => ({}),
 });
 
-stub(join(root, 'api/notifications/webpush.js'), {
+stub(join(root, 'lib/notifications/webpush.js'), {
   isConfigured: () => transportState.web,
   publicKey: () => 'test-key',
   validSubscription: () => true,
@@ -353,7 +353,7 @@ console.log('-- 3. Documentation sync --');
 
   const notificationSources = [
     'api/notifications-dispatch.js', 'api/notifications-register.js',
-    'api/notifications/triggers.js', 'api/notifications/apns.js', 'api/notifications/webpush.js',
+    'lib/notifications/triggers.js', 'lib/notifications/apns.js', 'lib/notifications/webpush.js',
   ].map((rel) => readFileSync(join(root, rel), 'utf8')).join('\n');
 
   const readVars = new Set([...notificationSources.matchAll(/process\.env\.([A-Z0-9_]+)/g)].map((m) => m[1]));
@@ -385,12 +385,15 @@ console.log('-- 3. Documentation sync --');
   checkTrue('the docs document the bearer token for external schedulers',
     /Authorization: Bearer \$CRON_SECRET/.test(doc));
 
-  /* vercel.json must point at a route that exists. */
+  /* vercel.json may declare crons, but the Hobby plan caps cron frequency, so
+     the dispatcher is currently invoked on demand / by an external scheduler and
+     vercel.json carries no `crons` entry. Tolerate zero crons; when one is
+     present it must still resolve to a real function. */
   const vercel = JSON.parse(readFileSync(join(root, 'vercel.json'), 'utf8'));
   const cronPaths = (vercel.crons || []).map((c) => c.path);
-  check('vercel.json declares exactly one cron', cronPaths.length, 1);
-  checkTrue('the cron path resolves to a real function',
-    existsSync(join(root, cronPaths[0].replace(/^\//, '') + '.js')));
+  checkTrue('vercel.json declares at most one cron', cronPaths.length <= 1);
+  cronPaths.forEach((p) => checkTrue('the cron path resolves to a real function',
+    existsSync(join(root, p.replace(/^\//, '') + '.js'))));
 }
 
 /* ------------------------------------------------------------------------- */
