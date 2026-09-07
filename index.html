@@ -17690,6 +17690,44 @@ LeagueData.subscribe((store)=>{
 });
 
 /* ============================================================
+   HYDRATION REPAINT GATE — close the initial-load race.
+
+   Boot paints the visible screen exactly once, immediately, from whatever is
+   in the stores at that instant. On a fresh load or a refresh that instant is
+   empty (or a stale runtime-cache snapshot), so the first paint shows the
+   no-data state or fallback zeroes. The real league payload, the multi-season
+   archive, and the cloud Record Book each land asynchronously afterwards
+   through their own code paths — and not every one of those paths repaints
+   every screen it touches. The old build closed the gap only by accident:
+   sending the tab to the background and returning triggered a repaint through
+   some other seam, so the hydrated data "appeared" only after a tab switch.
+
+   Bind the repaint to the DATA instead of to a tab event. Every setEspnData /
+   setLeagueHistory / setMeta publishes, so subscribing here guarantees the
+   visible screen re-syncs with the store the moment hydration completes, on
+   the initial render cycle, with no tab switch required.
+
+   Publishes arrive in bursts within a single hydration (data, then meta, then
+   history), so the repaint is coalesced into one animation-frame tick to avoid
+   redundant full renders, and a re-entrancy guard keeps a render from
+   scheduling another. It stays inert until boot has painted once (see the flag
+   set at the end of bootApp) so it never races the boot sequence itself. */
+let hydrationRepaintQueued = false;
+let hydrationRepaintReady = false;
+function scheduleHydrationRepaint(){
+  if(!hydrationRepaintReady || hydrationRepaintQueued) return;
+  hydrationRepaintQueued = true;
+  const run = ()=>{
+    hydrationRepaintQueued = false;
+    safeRun('hydrationRepaint', renderAll);
+  };
+  if(typeof requestAnimationFrame === 'function') requestAnimationFrame(run);
+  else if(typeof queueMicrotask === 'function') queueMicrotask(run);
+  else setTimeout(run, 0);
+}
+LeagueData.subscribe(scheduleHydrationRepaint);
+
+/* ============================================================
    TICKER
 ============================================================ */
 function tickerItems(){
@@ -24824,6 +24862,15 @@ function bootApp(){
      rather than a blank one. */
   safeRun('boot:renderAll', renderAll);
   safeRun('boot:screen', ()=> setScreen('home'));
+
+  /* Boot has now painted once. Arm the hydration repaint gate (defined beside
+     the store subscriptions) so every asynchronous payload that lands from here
+     on — the live season, the multi-season archive, the cloud Record Book —
+     re-syncs the visible screen with the store instead of waiting for a tab
+     switch. Everything below only kicks off those async reads, so arming here
+     guarantees the flag is set no matter which provider branch boot returns
+     through. */
+  hydrationRepaintReady = true;
 
   /* Push alerts. Isolated like every other boot step, and deliberately AFTER
      the two that paint: the notification service does a network read for its
