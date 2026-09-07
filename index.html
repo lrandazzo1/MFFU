@@ -950,27 +950,98 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
 .ftu-tab[data-on="true"]{ color:var(--cyan); background:rgba(0,224,255,.12); border-color:rgba(0,224,255,.34); }
 .ftu-slide[data-accent="gold"] .ftu-tab[data-on="true"]{ color:var(--gold); background:rgba(255,196,0,.12); border-color:rgba(255,196,0,.34); }
 
-/* ---------- LEAGUE SWITCH CURTAIN ----------
-   A fast fade that covers the app while an active-league swap resolves, so no
-   stale or half-empty screen flashes before the new league's data lands. Purely
-   presentational overlay; shown by showLeagueCurtain() / hidden on resolve. */
+/* ---------- LEAGUE SWITCH BROADCAST TRANSITION ----------
+   A full-screen FSN broadcast bumper that covers the app while an active-league
+   swap resolves. It is the zero-flash guarantee: the overlay APPEARS INSTANTLY
+   (no fade-in — note transition:none on the open state) so it is fully opaque in
+   the same frame the underlying DOM is wiped and re-rendered for the new league.
+   The reader never sees a micro-flash of the previous league's headlines or an
+   emptied mid-swap screen. Only the REVEAL fades (the base rule's transition),
+   and only after the new league's data has fully resolved. Purely presentational
+   overlay; shown by showLeagueCurtain() / hidden on resolve. */
 #leagueCurtain{
   position:fixed; inset:0; z-index:150;
   display:flex; align-items:center; justify-content:center;
-  background:radial-gradient(120% 90% at 50% 18%,rgba(0,224,255,.09),transparent 55%),var(--ink);
+  background:
+    radial-gradient(130% 100% at 50% 16%,rgba(0,224,255,.10),transparent 58%),
+    radial-gradient(120% 80% at 50% 100%,rgba(255,196,0,.05),transparent 60%),
+    var(--ink);
   opacity:0; visibility:hidden; pointer-events:none;
-  transition:opacity .26s ease, visibility .26s ease;
+  /* Governs the REVEAL only (open -> closed). */
+  transition:opacity .34s ease, visibility .34s ease;
 }
-#leagueCurtain[data-open="true"]{ opacity:1; visibility:visible; pointer-events:auto; }
-.league-curtain-inner{ display:flex; flex-direction:column; align-items:center; gap:14px; }
-.league-curtain-spin{
-  width:34px; height:34px; border-radius:999px;
-  border:3px solid rgba(0,224,255,.18); border-top-color:var(--cyan);
-  animation:ftuSpin .8s linear infinite;
+/* Faint broadcast scanlines over the whole curtain for a "signal" texture. */
+#leagueCurtain::after{
+  content:''; position:absolute; inset:0; pointer-events:none; opacity:.5;
+  background:repeating-linear-gradient(0deg,rgba(255,255,255,.028) 0 1px,transparent 1px 3px);
 }
-@keyframes ftuSpin{ to{ transform:rotate(360deg); } }
-.league-curtain-brand{ font-family:'Anton',sans-serif; font-size:20px; letter-spacing:.22em; color:#eef2f8; }
-.league-curtain-label{ font-family:'JetBrains Mono',monospace; font-size:10.5px; letter-spacing:.13em; text-transform:uppercase; color:var(--dim); text-align:center; max-width:270px; padding:0 16px; }
+/* transition:none makes the mask appear instantly — the zero-flash contract. */
+#leagueCurtain[data-open="true"]{ opacity:1; visibility:visible; pointer-events:auto; transition:none; }
+
+.league-curtain-inner{
+  position:relative; z-index:1;
+  display:flex; flex-direction:column; align-items:center; gap:16px;
+}
+
+/* FSN wordmark lockup with a broadcast shine sweeping across it. */
+.league-curtain-logo{
+  position:relative; overflow:hidden;
+  padding:2px 4px 4px;
+  animation:lclLogoIn .42s cubic-bezier(.2,.8,.25,1) both;
+}
+.league-curtain-mark{
+  display:block;
+  font-family:'Anton',Impact,sans-serif; font-weight:400;
+  font-size:56px; line-height:.9; letter-spacing:.14em; padding-left:.14em;
+  background:linear-gradient(180deg,#ffffff 0%,#d6f5ff 42%,var(--cyan) 100%);
+  -webkit-background-clip:text; background-clip:text;
+  -webkit-text-fill-color:transparent; color:var(--cyan);
+  text-shadow:0 8px 34px rgba(0,224,255,.28);
+}
+/* The moving highlight that reads as a studio light passing over the mark. */
+.league-curtain-logo::after{
+  content:''; position:absolute; top:0; bottom:0; width:38%;
+  left:-45%; transform:skewX(-18deg);
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.55),transparent);
+  animation:lclSweep 1.5s ease-in-out .3s infinite;
+}
+/* ON AIR tag — the broadcast signature, with a pulsing tally light. */
+.league-curtain-onair{
+  display:inline-flex; align-items:center; gap:7px;
+  padding:5px 11px; border-radius:999px;
+  background:rgba(255,45,85,.12); border:1px solid rgba(255,45,85,.34);
+  font-family:'JetBrains Mono',monospace; font-size:9.5px; font-weight:700;
+  letter-spacing:.28em; text-transform:uppercase; color:#ffd3dc;
+  animation:lclLogoIn .42s cubic-bezier(.2,.8,.25,1) .06s both;
+}
+.league-curtain-onair .lcl-dot{
+  width:7px; height:7px; border-radius:50%; background:var(--red);
+  box-shadow:0 0 0 0 rgba(255,45,85,.6); animation:pulseDot 1.4s ease-in-out infinite;
+}
+.league-curtain-label{
+  font-family:'JetBrains Mono',monospace; font-size:10.5px; letter-spacing:.13em;
+  text-transform:uppercase; color:var(--dim); text-align:center;
+  max-width:270px; padding:0 16px;
+}
+/* Signal-strength equalizer bars — the "tuning in" loading indicator. */
+.league-curtain-bars{ display:flex; align-items:flex-end; gap:4px; height:18px; }
+.league-curtain-bars i{
+  width:4px; height:100%; border-radius:2px;
+  background:linear-gradient(180deg,var(--cyan),#0090b3);
+  transform-origin:bottom; animation:lclBars 1s ease-in-out infinite;
+}
+.league-curtain-bars i:nth-child(2){ animation-delay:.12s; }
+.league-curtain-bars i:nth-child(3){ animation-delay:.24s; }
+.league-curtain-bars i:nth-child(4){ animation-delay:.36s; }
+.league-curtain-bars i:nth-child(5){ animation-delay:.48s; }
+@keyframes lclSweep{ 0%{ left:-45%; } 60%,100%{ left:120%; } }
+@keyframes lclBars{ 0%,100%{ transform:scaleY(.35); } 50%{ transform:scaleY(1); } }
+@keyframes lclLogoIn{ from{ opacity:0; transform:translateY(6px) scale(.985); } to{ opacity:1; transform:none; } }
+@media (prefers-reduced-motion:reduce){
+  .league-curtain-logo, .league-curtain-onair{ animation:none; }
+  .league-curtain-logo::after, .league-curtain-bars i{ animation:none; }
+  .league-curtain-bars i{ transform:scaleY(.7); }
+}
 
 .onboard-link{
   flex:none; font-size:10px; font-weight:600; letter-spacing:.04em;
@@ -3376,15 +3447,20 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
 </div>
 
 <!-- ============================================================
-     LEAGUE SWITCH CURTAIN — fast fade shown while an active-league swap
-     resolves, so no stale/half-empty screen flashes before the new
-     league's data lands. Additive, presentational overlay only.
+     LEAGUE SWITCH BROADCAST TRANSITION — an FSN broadcast bumper shown
+     while an active-league swap resolves. It appears INSTANTLY (see the
+     transition:none open state in CSS) so it fully masks the DOM wipe and
+     re-render, guaranteeing no stale/half-empty screen flashes before the
+     new league's data lands. Additive, presentational overlay only.
 ============================================================ -->
-<div id="leagueCurtain" data-open="false" aria-hidden="true">
+<div id="leagueCurtain" data-open="false" aria-hidden="true" role="status" aria-live="polite">
   <div class="league-curtain-inner">
-    <span class="league-curtain-spin" aria-hidden="true"></span>
-    <div class="league-curtain-brand">FSN</div>
+    <div class="league-curtain-logo" aria-hidden="true">
+      <span class="league-curtain-mark">FSN</span>
+    </div>
+    <div class="league-curtain-onair" aria-hidden="true"><span class="lcl-dot"></span>On Air</div>
     <div class="league-curtain-label" id="leagueCurtainLabel">Loading league…</div>
+    <div class="league-curtain-bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
   </div>
 </div>
 
