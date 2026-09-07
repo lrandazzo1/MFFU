@@ -1,11 +1,5 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "",
-  "outputDirectory": ".",
-  "crons": [
-    {
-      "path": "/api/notifications-dispatch",
-      "schedule": "0 * * * *"
-    }
-  ]
+  "outputDirectory": "."
 }
