@@ -7095,22 +7095,47 @@ function winProbability(week, teamA, teamB){
   const table = standingsThrough(week);
   const rowOf = (t)=> table.find(r=> r.team.id === t.id);
   const a = rowOf(teamA), b = rowOf(teamB);
-  if(!a || !b) return 50;
 
-  /* Expected margin in points: scoring average does most of the work, with a
-     small nudge for the teams that keep finding ways to win. */
-  let margin = (a.avg - b.avg) + (a.winPct - b.winPct) * 6;
+  /* All-time series nudge, shared by both the scored and preseason paths. A
+     lopsided head-to-head moves the number a little; it never dominates it. */
+  let seriesNudge = 0;
   try{
-    if(LeagueData.hasHistory() && teamA.ownerId && teamB.ownerId){
+    if(LeagueData.hasHistory() && teamA && teamB && teamA.ownerId && teamB.ownerId){
       const h2h = window.getH2H && window.getH2H(teamA.ownerId, teamB.ownerId);
       if(h2h && h2h.meetingCount >= 3){
-        margin += Math.max(-4, Math.min(4, (h2h.winsFor - h2h.winsAgainst) * 0.6));
+        seriesNudge = Math.max(-4, Math.min(4, (h2h.winsFor - h2h.winsAgainst) * 0.6));
       }
     }
-  }catch(e){}
+  }catch(err){
+    console.warn('[FSNIntel] winProbability head-to-head nudge unavailable', err);
+    seriesNudge = 0;
+  }
 
-  const p = 50 * (1 + erf(margin / (MARGIN_SD * Math.SQRT2)));
-  return Math.max(12, Math.min(88, p));
+  const toProb = (margin)=> Math.max(12, Math.min(88, 50 * (1 + erf(margin / (MARGIN_SD * Math.SQRT2)))));
+
+  /* Scored path — both teams carry real games this season. Expected margin in
+     points: scoring average does most of the work, with a small nudge for the
+     teams that keep finding ways to win. (Original model, unchanged.) */
+  if(a && b && a.games > 0 && b.games > 0){
+    const margin = (a.avg - b.avg) + (a.winPct - b.winPct) * 6 + seriesNudge;
+    return toProb(margin);
+  }
+
+  /* Preseason / sparse path — Week 1, a bye, or a team with no scored games yet.
+     The season sample can't separate anyone, so rather than printing a flat 50%
+     coin flip we lean on deterministic preseason signals: prior-season finish and
+     draft capital (earlyBaselineSignal — a 0–100 power score) plus the all-time
+     series. Only when there is genuinely no signal on either side does the honest
+     answer stay 50/50. */
+  let margin = seriesNudge;
+  const sa = earlyBaselineSignal(teamA);
+  const sb = earlyBaselineSignal(teamB);
+  if(sa != null && sb != null){
+    /* 0–100 power-score gap → points of expected margin, scaled so even a maximal
+       gap lands well inside the model's sane 12–88 bounds. */
+    margin += (sa - sb) * 0.16;
+  }
+  return toProb(margin);
 }
 
 /* ============================================================
@@ -13819,8 +13844,12 @@ function tlPrimer(ctx){
   const swing = projectedSwingPosition(ctx, A, B);
   const recordA = FSNIntel.getRecordAsOfWeek(A.id, ctx.week);
   const recordB = FSNIntel.getRecordAsOfWeek(B.id, ctx.week);
-  const deadWeekOne = Number(ctx.week) === 1 && matchupRecordIsEmpty(recordA) && matchupRecordIsEmpty(recordB) &&
-    Math.round(Number(probA)) === 50 && Math.round(100 - Number(probA)) === 50;
+  /* "Dead" Week 1 = the opener with no current-season sample to read, which is
+     when the archive Tale of the Tape (career PPG, prior finish, draft grades)
+     takes over. Keyed on empty records only — NOT on a 50/50 probability, which
+     the engine now resolves to a real preseason lean from franchise history and
+     draft capital rather than a flat coin flip. */
+  const deadWeekOne = Number(ctx.week) === 1 && matchupRecordIsEmpty(recordA) && matchupRecordIsEmpty(recordB);
   const archive = deadWeekOne ? matchupWeekOneArchive(ctx, A, B) : null;
   if(archive && archive.h2h) recordbook = archive.h2h;
   const draft = deadWeekOne ? matchupDraftSnapshot(A, B, ctx.week) : null;
