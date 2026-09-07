@@ -22620,10 +22620,129 @@ function hideLeagueCurtain(){
   el.setAttribute('aria-hidden', 'true');
 }
 
+/* ---- CURTAIN DISMISSAL GATE ----
+   The curtain must come down when the incoming league is genuinely on screen,
+   never when a stopwatch says it should be. Dropping it the moment the fetch
+   promise resolved — what this used to do — reveals the app one or two frames
+   early, because at that instant the work that actually paints the new league
+   is still outstanding:
+
+     1. fetchLeagueData starts the shared-archive read (ensureSharedArchiveHydrated)
+        WITHOUT awaiting it, so that record — and the store publish it makes —
+        lands after the switch's own await has already resolved;
+     2. the hydration repaint gate coalesces store publishes into an animation
+        frame, so in the tick the fetch resolves the DOM is still the pre-publish
+        one: the outgoing league's cards, or the emptied screen that
+        clearLeagueStateForSwitch left behind;
+     3. even once that repaint has run, the browser has not committed the paint.
+
+   Each of those is waited on through its own signal below — an in-flight
+   hydration promise, a forced repaint, then a committed frame — so the reveal
+   is tied to the league finishing its mount rather than to a duration. The only
+   timer left in the path is a watchdog, because a hydration promise that never
+   settles must not strand the reader behind an opaque overlay forever.
+
+   Deliberately NOT waited on: the background multi-year archive walk the fetch
+   paths kick off after the live season is connected. That is enrichment landing
+   on an already-mounted league (it repaints the Record Book when it arrives, and
+   can take tens of seconds), not part of the initial mount. */
+const LEAGUE_MOUNT_WATCHDOG_MS = 9000;
+/* Rapid switches overlap: an older switch's gate must never pull the curtain
+   off a newer one that is still loading. The newest switch owns the curtain. */
+let leagueSwitchSeq = 0;
+
+/* Await a promise that is allowed to fail or hang without holding the reveal.
+   Always resolves — never rejects — and says loudly which case it took. */
+function withMountWatchdog(promise, label){
+  return new Promise(resolve=>{
+    let settled = false;
+    const finish = ()=>{ if(!settled){ settled = true; resolve(); } };
+    const timer = setTimeout(()=>{
+      if(settled) return;
+      console.warn('[LeagueSwitch] ' + label + ' did not settle within ' + LEAGUE_MOUNT_WATCHDOG_MS +
+        'ms; revealing the app rather than holding the broadcast curtain up indefinitely.');
+      finish();
+    }, LEAGUE_MOUNT_WATCHDOG_MS);
+    Promise.resolve(promise).then(
+      ()=>{ clearTimeout(timer); finish(); },
+      err=>{
+        clearTimeout(timer);
+        console.error('[LeagueSwitch] ' + label + ' failed; continuing with the reveal so the reader is ' +
+          'not left behind the curtain.', err);
+        finish();
+      }
+    );
+  });
+}
+
+/* The shared-archive read for this league, if one is still in the air. It is
+   started but not awaited by the fetch paths, and applying its record publishes
+   to the store — i.e. it is the last piece of the league's data initialisation,
+   and the one whose repaint would otherwise land just after the reveal. */
+function awaitPendingLeagueHydration(leagueId){
+  const id = String(leagueId || '').trim();
+  const pending = ui.cloudHydrateInFlight;
+  if(!id || !pending || !pending.promise) return Promise.resolve();
+  if(String(pending.key || '').indexOf(id + ':') !== 0) return Promise.resolve();
+  return withMountWatchdog(pending.promise, 'Shared-archive hydration for league ' + id);
+}
+
+/* One animation frame. Resolving inside a frame callback means the previous
+   frame's work has been flushed; two of these bracket a committed paint.
+
+   The fallback timer is a failsafe, not the signal: a backgrounded tab fires no
+   animation frames at all, and a switch that completes while the app is hidden
+   must not leave a curtain waiting for a frame that will not come until the
+   reader returns. Nothing is lost by resolving on it — the render above already
+   ran, so the hidden tab composites the new league when it is shown. */
+const LEAGUE_MOUNT_FRAME_FALLBACK_MS = 400;
+function nextAnimationFrame(){
+  return new Promise(resolve=>{
+    if(typeof requestAnimationFrame !== 'function'){ setTimeout(resolve, 16); return; }
+    let done = false;
+    const finish = ()=>{ if(!done){ done = true; resolve(); } };
+    const timer = setTimeout(finish, LEAGUE_MOUNT_FRAME_FALLBACK_MS);
+    requestAnimationFrame(()=>{ clearTimeout(timer); finish(); });
+  });
+}
+
+/* Render the incoming league now and return only once that render has been
+   painted. renderAll() here is not redundant with the repaint the store already
+   queued: it guarantees the visible screen has been rebuilt from the FINAL state
+   of the switch before the first frame is awaited, instead of relying on a
+   queued frame that may still be pending when the curtain lifts. */
+async function awaitLeagueRenderSettled(){
+  safeRun('leagueSwitch:mountRender', renderAll);
+  // Frame 1 runs any repaint a publish queued during the render above.
+  await nextAnimationFrame();
+  // Frame 2 only fires after the frame above has been composited, so by the
+  // time this resolves the new league is on the glass, not merely in the DOM.
+  await nextAnimationFrame();
+}
+
+/* Hold the curtain until the switch identified by `token` has finished mounting,
+   then reveal. Resolves after the curtain is down, or after handing ownership to
+   a newer switch that started while this one was in flight. */
+async function settleLeagueMount(token, leagueId, startedAt){
+  if(token !== leagueSwitchSeq) return;
+  await awaitPendingLeagueHydration(leagueId);
+  if(token !== leagueSwitchSeq) return;
+  await awaitLeagueRenderSettled();
+  if(token !== leagueSwitchSeq) return;
+  /* A minimum visible time so an instant (cached) swap still reads as a
+     deliberate broadcast bumper rather than a flicker. It can only DELAY the
+     reveal — it never causes one, and it is never what decides it. */
+  const floorRemaining = 260 - (Date.now() - startedAt);
+  if(floorRemaining > 0) await new Promise(resolve=> setTimeout(resolve, floorRemaining));
+  if(token !== leagueSwitchSeq) return;
+  hideLeagueCurtain();
+}
+
 async function switchSavedLeague(value){
   const divider = String(value || '').indexOf(':');
   if(divider < 1) return;
   const startedAt = Date.now();
+  const token = ++leagueSwitchSeq;
   snapshotActiveLeague();
   const provider = value.slice(0,divider), id = value.slice(divider+1);
   // Name the destination league on the curtain so the transition reads as a
@@ -22652,11 +22771,17 @@ async function switchSavedLeague(value){
     console.error('[LeagueSwitch] Background refresh failed after switching to league ' + id + '; leaving cached views in place.', err);
   }finally{
     registerSavedLeague(id,provider);
-    // A tiny floor on visible time keeps an instant (cached) swap from flashing
-    // the curtain; the .26s CSS fade does the rest of the smoothing.
-    const remaining = 260 - (Date.now() - startedAt);
-    if(remaining > 0) setTimeout(hideLeagueCurtain, remaining);
-    else hideLeagueCurtain();
+    /* Hand the reveal to the mount gate: the curtain lifts on the new league's
+       data initialisation and render completing, not on this promise settling.
+       The gate cannot reject, but it is wrapped anyway — a defect in the reveal
+       path must degrade to a visible app, never to a permanent curtain. */
+    try{
+      await settleLeagueMount(token, id, startedAt);
+    }catch(settleErr){
+      console.error('[LeagueSwitch] The broadcast-curtain gate failed while waiting for league ' + id +
+        ' to mount; revealing the app immediately.', settleErr);
+      if(token === leagueSwitchSeq) hideLeagueCurtain();
+    }
   }
 }
 if($('leagueSwitcher')) $('leagueSwitcher').addEventListener('change', e=>switchSavedLeague(e.target.value));

@@ -14,7 +14,8 @@
     "test:triggers": "node lib/notifications/selftest.js",
     "check:scope": "node scripts/scope-scan.mjs",
     "check:render": "node scripts/render-check.mjs",
-    "verify": "npm run check:scope && npm run test:triggers && npm run audit:notifications && npm run check:render",
+    "check:switch": "node scripts/switch-curtain-check.mjs",
+    "verify": "npm run check:scope && npm run test:triggers && npm run audit:notifications && npm run check:render && npm run check:switch",
     "audit:notifications": "node scripts/audit-notifications.mjs"
   },
   "dependencies": {
