@@ -23,12 +23,16 @@
 // run (an explicit credential check via workflow_dispatch).
 //
 // Secret material is never logged: only pass/fail and Apple's status code.
-import { createPrivateKey, sign as cryptoSign } from 'node:crypto';
+import { createPrivateKey, randomUUID, sign as cryptoSign } from 'node:crypto';
 import { writeFileSync, appendFileSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
 const API_BASE = 'https://api.appstoreconnect.apple.com/v1';
 const TAG = '[preflight]';
+// The TestFlight upload action takes the private key as a *value*, not a path,
+// so the normalized PEM is handed to that step through the environment under
+// this name. Keep in sync with .github/workflows/ios-build.yml.
+const UPLOAD_KEY_ENV = 'APPSTORE_CONNECT_PRIVATE_KEY_PEM';
 
 const env = (name) => (process.env[name] || '').trim();
 
@@ -169,6 +173,37 @@ if (privateKey.asymmetricKeyType !== 'ec') {
   );
 }
 
+// Hand the *normalized* key to the TestFlight upload step.
+//
+// This exists because normalizePem() above may have repaired the secret --
+// expanded escaped newlines, or re-added stripped PEM armor. xcodebuild reads
+// the repaired key from the file written below, but the upload action takes
+// the key as a value, so it previously received the raw secret instead and
+// would fail on exactly the two shapes this script exists to recover.
+//
+// Masking is not optional here. GitHub redacts the verbatim secret, but a
+// repaired key is text it has never seen and would print in full, so every
+// body line is registered with ::add-mask:: before the value is written.
+function stageKeyForUpload(keyPem) {
+  const envFile = process.env.GITHUB_ENV;
+  if (!envFile) return;
+
+  for (const line of keyPem.split('\n')) {
+    const body = line.trim();
+    // The BEGIN/END armor is not secret, and masking it would redact those
+    // markers everywhere they legitimately appear in the log.
+    if (body && !body.startsWith('-----')) console.log(`::add-mask::${body}`);
+  }
+
+  // GITHUB_ENV is line-oriented, so a multi-line value needs heredoc syntax.
+  // The delimiter is random so key content can never collide with it and let
+  // the remainder of the PEM be parsed as further environment assignments.
+  const delimiter = `PEM_${randomUUID()}`;
+  const body = keyPem.endsWith('\n') ? keyPem : `${keyPem}\n`;
+  appendFileSync(envFile, `${UPLOAD_KEY_ENV}<<${delimiter}\n${body}${delimiter}\n`);
+  console.log(`${TAG} staged the normalized key for the TestFlight upload step.`);
+}
+
 // Only written once the key is known-good, so a half-valid file never reaches
 // xcodebuild.
 if (keyPath) {
@@ -177,6 +212,7 @@ if (keyPath) {
   console.log(`${TAG} wrote validated key to ${keyPath}`);
   const out = process.env.GITHUB_OUTPUT;
   if (out) appendFileSync(out, `key_path=${keyPath}\n`);
+  stageKeyForUpload(pem);
 }
 
 // ---------------------------------------------------------------------------
