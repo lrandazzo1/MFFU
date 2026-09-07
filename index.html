@@ -1487,6 +1487,25 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
 .pb-pair-label{ margin-bottom:6px; font-size:8px; letter-spacing:.13em; text-transform:uppercase; color:var(--red); font-weight:800; }
 @media (max-width:480px){ .pb-grid{ grid-template-columns:1fr; } }
 
+/* ---------- MATCHUP WIN-PROBABILITY BAR ---------- */
+/* Native-style odds readout on every active matchup card: raw percentages up
+   front, split bar in the middle, per-team legend below. Kept visually distinct
+   from live scores so the model lean never reads as a settled result. */
+.mu-winprob{ margin-top:12px; }
+.mu-winprob-top{ display:flex; align-items:baseline; justify-content:space-between; gap:8px; margin-bottom:5px; }
+.mu-winprob-label{ font-family:'Anton',Impact,sans-serif; font-size:9px; letter-spacing:.15em; color:#6b7688; text-transform:uppercase; }
+.mu-winprob-note{ font-size:8.5px; letter-spacing:.03em; color:#4f5b6e; font-style:italic; }
+.mu-winprob-bar{ display:flex; height:7px; border-radius:6px; overflow:hidden; background:#1a2230; }
+.mu-winprob-fill-away{ background:var(--cyan); min-width:2px; transition:width .2s ease; }
+.mu-winprob-fill-home{ background:var(--gold); min-width:2px; transition:width .2s ease; }
+.mu-winprob-legend{ display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:6px; }
+.mu-wp-side{ display:flex; align-items:center; gap:5px; min-width:0; font-size:11px; }
+.mu-wp-side.home{ justify-content:flex-end; text-align:right; }
+.mu-wp-team{ color:var(--off); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; letter-spacing:.02em; }
+.mu-wp-pct{ flex:none; font-family:'JetBrains Mono',ui-monospace,monospace; font-weight:800; font-size:13px; font-variant-numeric:tabular-nums; }
+.mu-wp-pct.away{ color:var(--cyan); }
+.mu-wp-pct.home{ color:var(--gold); }
+
 /* ---------- CHIP ROW (custom story tags) ---------- */
 .chip{
   padding:7px 11px; border-radius:999px;
@@ -18059,6 +18078,40 @@ function renderMatchups(){
   }
 }
 
+/* Win-probability readout for a single matchup card. Universal across every
+   active (pre-game or live) matchup, mirroring the odds ESPN and Sleeper surface
+   natively. Returns '' for FINAL games and for any card missing both teams.
+   Failures degrade to even odds and are logged, never swallowed — a scoring or
+   standings gap must not blank the card. */
+function matchupWinProbBar(g, st, week){
+  if(st === 'final' || !g || !g.awayTeam || !g.homeTeam) return '';
+  let probAway = 50;
+  try{
+    const p = Number(FSNIntel.winProbability(Math.max(0, Number(week) - 1), g.awayTeam, g.homeTeam));
+    if(Number.isFinite(p)) probAway = p;
+  }catch(err){
+    console.warn('[Matchups] win probability unavailable for card; defaulting to even odds.', err);
+  }
+  const awayPct = Math.round(Math.max(0, Math.min(100, probAway)));
+  const homePct = 100 - awayPct;
+  const awayName = esc((g.awayTeam.name || '—').toUpperCase());
+  const homeName = esc((g.homeTeam.name || '—').toUpperCase());
+  return `<div class="mu-winprob" role="group" aria-label="Win probability">
+      <div class="mu-winprob-top">
+        <span class="mu-winprob-label">Win Probability</span>
+        <span class="mu-winprob-note">Model lean · not a prediction</span>
+      </div>
+      <div class="mu-winprob-bar">
+        <div class="mu-winprob-fill-away" style="width:${awayPct}%"></div>
+        <div class="mu-winprob-fill-home" style="width:${homePct}%"></div>
+      </div>
+      <div class="mu-winprob-legend">
+        <span class="mu-wp-side"><b class="mu-wp-pct away">${awayPct}%</b><span class="mu-wp-team">${awayName}</span></span>
+        <span class="mu-wp-side home"><span class="mu-wp-team">${homeName}</span><b class="mu-wp-pct home">${homePct}%</b></span>
+      </div>
+    </div>`;
+}
+
 function matchupCard(g){
   const st = gameStatus(g);
   const hs = parseFloat(displayScore(g.homeScore, g.homeProjected, st)) || 0;
@@ -18093,6 +18146,14 @@ function matchupCard(g){
     ? `<div class="mt-2 text-[11px] text-[var(--dim)] leading-relaxed italic">Scores finalize Tuesday morning following stat corrections.</div>`
     : '';
 
+  // Win probability — the same core metric ESPN and Sleeper put on every
+  // matchup card. Shown as raw, readable percentages on every active (pre-game
+  // and live) card so the odds are never buried in narrative prose. FINAL cards
+  // skip it: the result is settled, so a pregame lean would only mislead. The
+  // model reads standings entering this week (the week before kickoff), matching
+  // the pregame odds the News Desk previews already quote.
+  const winProbBar = matchupWinProbBar(g, st, effectiveWeek());
+
   return `<div class="card card-accent ${accent} ${gameHasActiveTeam(g) ? 'active-team-matchup' : ''}">
     <div class="pl-4 pr-3.5 py-3.5">
       <div class="flex items-center justify-between mb-3">
@@ -18102,6 +18163,7 @@ function matchupCard(g){
       ${matchupSide(g.awayTeam, as, !homeLeads, st, g.awayProjected, effectiveWeek())}
       <div class="h-px bg-[var(--line)] my-2.5"></div>
       ${matchupSide(g.homeTeam, hs, homeLeads, st, g.homeProjected, effectiveWeek())}
+      ${winProbBar}
       ${finalizeNotice}
     </div>
   </div>`;
