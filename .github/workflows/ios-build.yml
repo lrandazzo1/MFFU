@@ -4,6 +4,20 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      require_signing:
+        description: >-
+          Fail the run if App Store Connect credentials are not usable
+          (instead of building and skipping distribution).
+        type: boolean
+        default: false
+
+concurrency:
+  group: ios-build-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
 
 jobs:
   build:
@@ -11,16 +25,18 @@ jobs:
     timeout-minutes: 40
 
     env:
-      # App Store Connect API key — used for both automatic code signing
-      # (xcodebuild -allowProvisioningUpdates) and the TestFlight upload.
+      # App Store Connect API key — used for distribution signing at export
+      # (xcodebuild -allowProvisioningUpdates) and for the TestFlight upload.
+      # The archive step does not need these; see the note on that step.
       APPSTORE_CONNECT_KEY_ID: ${{ secrets.APPSTORE_CONNECT_KEY_ID }}
       APPSTORE_CONNECT_ISSUER_ID: ${{ secrets.APPSTORE_CONNECT_ISSUER_ID }}
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APP_BUNDLE_ID: app.fantasysportsnetwork
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -58,17 +74,25 @@ jobs:
             npx cap sync ios
           fi
 
-      - name: Install App Store Connect API key
+      # Validate the App Store Connect credentials BEFORE spending 30 minutes
+      # on an archive that cannot be exported. This normalizes and installs the
+      # .p8, then asks App Store Connect directly whether it accepts the key,
+      # so a credential problem is reported as a credential problem instead of
+      # surfacing later as xcodebuild's misleading "No profiles for
+      # 'app.fantasysportsnetwork' were found" / "No signing certificate
+      # \"iOS Distribution\" found".
+      #
+      # It never fails the job on a push: an unusable key skips distribution
+      # (see the `if:` guards below) so that a red run on main always means the
+      # app itself broke. Run the workflow manually with require_signing = true
+      # to make a credential problem fail loudly instead.
+      - name: Preflight App Store Connect credentials
+        id: signing
         env:
-          API_PRIVATE_KEY: ${{ secrets.APPSTORE_CONNECT_PRIVATE_KEY }}
-        run: |
-          mkdir -p "$HOME/private_keys"
-          KEY_PATH="$HOME/private_keys/AuthKey_${APPSTORE_CONNECT_KEY_ID}.p8"
-          # Write the secret straight to the key file. %b restores the real
-          # newlines of the multi-line PEM (the secret stores them escaped);
-          # it does not otherwise alter the key.
-          printf '%b' "$API_PRIVATE_KEY" > "$KEY_PATH"
-          echo "API_KEY_PATH=$KEY_PATH" >> "$GITHUB_ENV"
+          APPSTORE_CONNECT_PRIVATE_KEY: ${{ secrets.APPSTORE_CONNECT_PRIVATE_KEY }}
+          APPSTORE_KEY_PATH: ${{ runner.temp }}/private_keys/AuthKey_${{ secrets.APPSTORE_CONNECT_KEY_ID }}.p8
+          REQUIRE_SIGNING: ${{ inputs.require_signing }}
+        run: node scripts/appstore-preflight.mjs
 
       - name: Archive app
         working-directory: ios/App
@@ -80,6 +104,10 @@ jobs:
           # *development* identity and fail on the runner's empty keychain
           # ("Revoke certificate … private key is not installed"); an unsigned
           # archive avoids that entirely and lets export do distribution signing.
+          #
+          # This step runs on every build regardless of credentials — it is the
+          # step that actually compiles the app, so it is the CI signal that a
+          # change to index.html or the Capacitor config broke the iOS binary.
           xcodebuild archive \
             -workspace App.xcworkspace \
             -scheme App \
@@ -90,6 +118,9 @@ jobs:
             CURRENT_PROJECT_VERSION=${{ github.run_number }}
 
       - name: Export IPA
+        if: steps.signing.outputs.available == 'true'
+        env:
+          API_KEY_PATH: ${{ steps.signing.outputs.key_path }}
         run: |
           cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
           <?xml version="1.0" encoding="UTF-8"?>
@@ -97,7 +128,7 @@ jobs:
           <plist version="1.0">
           <dict>
             <key>method</key>
-            <string>app-store</string>
+            <string>app-store-connect</string>
             <key>signingStyle</key>
             <string>automatic</string>
             <key>teamID</key>
@@ -119,15 +150,17 @@ jobs:
 
       - name: Locate exported IPA
         id: ipa
+        if: steps.signing.outputs.available == 'true'
         run: |
           IPA_PATH="$(find "$RUNNER_TEMP/export" -name '*.ipa' | head -1)"
           if [ -z "$IPA_PATH" ]; then
-            echo "No .ipa produced by exportArchive." >&2
+            echo "::error title=Export produced no IPA::exportArchive reported success but no .ipa was written to $RUNNER_TEMP/export."
             exit 1
           fi
           echo "path=$IPA_PATH" >> "$GITHUB_OUTPUT"
 
       - name: Upload to TestFlight
+        if: steps.signing.outputs.available == 'true'
         uses: apple-actions/upload-testflight-build@v5
         with:
           app-path: ${{ steps.ipa.outputs.path }}
@@ -136,7 +169,42 @@ jobs:
           api-private-key: ${{ secrets.APPSTORE_CONNECT_PRIVATE_KEY }}
 
       - name: Upload IPA artifact
+        if: steps.signing.outputs.available == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: FSN.ipa
           path: ${{ steps.ipa.outputs.path }}
+          retention-days: 14
+
+      # Without credentials there is no IPA, but the compiled app is still the
+      # proof that this commit builds. Keep it so a run is never empty-handed.
+      - name: Upload unsigned archive
+        if: steps.signing.outputs.available != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: FSN-unsigned.xcarchive
+          path: ${{ runner.temp }}/App.xcarchive
+          retention-days: 7
+
+      - name: Report distribution status
+        if: success() && steps.signing.outputs.available != 'true'
+        # The headline carries text from App Store Connect's error body, so it
+        # is passed through the environment rather than interpolated into the
+        # script — a `${{ }}` substitution here would be shell-evaluated.
+        env:
+          SIGNING_CODE: ${{ steps.signing.outputs.code }}
+          SIGNING_HEADLINE: ${{ steps.signing.outputs.headline }}
+        run: |
+          {
+            echo "### TestFlight distribution skipped"
+            echo
+            echo "The app compiled and archived successfully, but it was not exported or"
+            echo "uploaded because App Store Connect credentials are not usable"
+            echo "(\`${SIGNING_CODE}\`)."
+            echo
+            echo "> ${SIGNING_HEADLINE}"
+            echo
+            echo "See the **Preflight App Store Connect credentials** step above for the"
+            echo "specific remedy. Once the secrets are corrected, re-run this workflow with"
+            echo "**Run workflow → require_signing = true** to verify them end to end."
+          } >> "$GITHUB_STEP_SUMMARY"
