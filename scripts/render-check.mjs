@@ -386,7 +386,7 @@ try {
     pass('client registered with platform=' + payload.platform + ', tz=' + payload.timezone);
 
     const register = await import('../api/notifications-register.js');
-    const engine = await import('../api/notifications/triggers.js');
+    const engine = await import('../lib/notifications/triggers.js');
 
     if (payload.platform !== 'web') fail('expected platform "web" in this runtime, got ' + payload.platform);
     else pass('payload declares the right platform');
@@ -395,7 +395,7 @@ try {
       fail('the server would reject the timezone the client sent: ' + payload.timezone);
     } else pass('server accepts the client timezone');
 
-    const webpush = await import('../api/notifications/webpush.js');
+    const webpush = await import('../lib/notifications/webpush.js');
     if (!webpush.default.validSubscription(payload.subscription)) {
       fail('the server would reject the subscription shape the client sent');
     } else pass('server accepts the subscription shape');

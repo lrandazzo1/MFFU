@@ -13,7 +13,7 @@
    The three engagement windows expand to five alerts, each of which has to land
    at a sensible hour in the READER's timezone. One cron per alert would fire at
    one fixed UTC instant for the whole world. Instead this runs every hour and
-   api/notifications/triggers.js decides, per device, whether that device's local
+   lib/notifications/triggers.js decides, per device, whether that device's local
    window has just opened. Four timezones in one league get four correct send
    times from one schedule. It also means a missed run is self-healing: the
    engine's grace window re-offers a recent alert on the next pass.
@@ -38,9 +38,9 @@
 'use strict';
 
 const { createClient } = require('@supabase/supabase-js');
-const engine = require('./notifications/triggers');
-const apns = require('./notifications/apns');
-const webpush = require('./notifications/webpush');
+const engine = require('../lib/notifications/triggers');
+const apns = require('../lib/notifications/apns');
+const webpush = require('../lib/notifications/webpush');
 
 /* Ceiling per invocation, so one run cannot exceed the function timeout. With
    an hourly cron and a grace window measured in hours, a backlog beyond this

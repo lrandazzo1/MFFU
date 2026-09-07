@@ -57,7 +57,7 @@
   var OPTIN_KEY = 'fsn.notify.optin.v1';
 
   /* The three engagement windows. Must stay in step with PREF_GROUPS in
-     api/notifications/triggers.js — the server drops any key it does not
+     lib/notifications/triggers.js — the server drops any key it does not
      recognise, so a mismatch shows up as a switch that silently never fires. */
   var GROUPS = ['tuesday', 'thursday', 'sunday'];
 
