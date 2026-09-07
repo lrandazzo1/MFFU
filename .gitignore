@@ -1,5 +1,8 @@
 node_modules/
-.vercel/
+# Ignore Vercel's local cache but keep the project link committed so every
+# clone/CLI deploy targets the `mffu` app project (not `fsn-landing`).
+.vercel/*
+!.vercel/project.json
 *.log
 .DS_Store
 

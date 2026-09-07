@@ -7,10 +7,16 @@ landing page and the core app get split across subdomains cleanly.
 | Project (Vercel)     | Root Directory | Domains                                                        | What it serves                                   |
 | -------------------- | -------------- | ------------------------------------------------------------- | ------------------------------------------------ |
 | `fsn-landing`        | `landing/`     | `fantasysportsnetwork.app` (apex) + `www.fantasysportsnetwork.app` | Self-contained marketing landing page            |
-| `fsn-app`            | `.` (repo root)| `app.fantasysportsnetwork.app`                                | Full MFFU app (`index.html`, `api/*`, Supabase)  |
+| `mffu`               | `.` (repo root)| `app.fantasysportsnetwork.app`                                | Full MFFU app (`index.html`, `api/*`, Supabase)  |
 
 Both projects deploy from the **same Git branch**. A push updates both; each build
 only sees files under its own Root Directory, so the two never step on each other.
+
+> **CLI / manual deploys → `mffu`.** The repo commits `.vercel/project.json` pinned
+> to the `mffu` app project (`prj_FkDMDUvEuLmiaLjf0itXlt6DovbH`, org
+> `team_w7XqlLVEOovfydsrYOHIZ050`). This guarantees `vercel deploy` and MCP/CLI-driven
+> deploys land on the app project instead of `fsn-landing`. `.gitignore` keeps the rest
+> of `.vercel/` (local cache) out of git while tracking only this link file.
 
 ---
 
@@ -55,7 +61,7 @@ values per domain in each project's **Settings → Domains**):
 
 > Always use the exact values Vercel displays for your account — the apex IP and CNAME
 > target can differ. Assign `fantasysportsnetwork.app` + `www` to `fsn-landing` and
-> `app.` to `fsn-app`; a domain can only belong to one Vercel project at a time.
+> `app.` to `mffu`; a domain can only belong to one Vercel project at a time.
 
 ---
 
