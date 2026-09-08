@@ -1,0 +1,35 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["TEAMID.app.fantasysportsnetwork"],
+        "components": [
+          {
+            "/": "/api/*",
+            "exclude": true,
+            "comment": "The serverless relay routes. They answer JSON to fetch(), never to a reader, and must never be claimed by the app."
+          },
+          {
+            "/": "/.well-known/*",
+            "exclude": true,
+            "comment": "This file and its neighbours stay on the web, or the association can never be re-verified."
+          },
+          {
+            "/": "/terms*",
+            "exclude": true,
+            "comment": "Terms of Service. Setup opens it in an in-app Safari view on purpose (see FSNLinks); the app has no screen for it."
+          },
+          {
+            "/": "/privacy*",
+            "exclude": true,
+            "comment": "Privacy Policy — same reason as /terms."
+          },
+          {
+            "/": "/*",
+            "comment": "Everything else opens the app: share-card article links, franchise dossier links, league invite links and the landing page's connect CTAs."
+          }
+        ]
+      }
+    ]
+  }
+}

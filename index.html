@@ -1475,6 +1475,10 @@ html[data-fsn-boot="loading"] #tickerBar{ visibility:hidden; }
   display:inline-flex; align-items:center; gap:6px;
 }
 .dossier-shot-btn svg{ width:14px; height:14px; stroke:currentColor; fill:none; stroke-width:1.8; flex:none; }
+/* Icon-only sibling of the Share Card button. It copies a universal link to
+   the open dossier; a second labelled button does not fit the bar on a phone,
+   so this one carries its name in aria-label and title instead. */
+.dossier-link-btn{ padding:9px; }
 /* Horizontal padding lives on .dossier-shell (px-4 sm:px-6) so the dossier
    column and the bar above it line up on any screen. */
 #franchiseModalBody{ flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:18px 0 calc(34px + env(safe-area-inset-bottom)); }
@@ -3259,6 +3263,10 @@ html[data-fsn-boot="loading"] #tickerBar{ visibility:hidden; }
         <div class="kicker text-[var(--cyan)]">The Record Book · Franchise Dossier</div>
         <div id="franchiseModalTitle" class="text-[11px] text-[var(--dim)] truncate mt-0.5">Stop it step burrow · Daniel Johnson</div>
       </div>
+      <button class="dossier-shot-btn dossier-link-btn" id="franchiseLinkBtn" type="button"
+              aria-label="Copy a link to this franchise dossier" title="Copy a link to this dossier">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 13.5a4.5 4.5 0 0 0 6.36 0l2.4-2.4a4.5 4.5 0 0 0-6.36-6.36l-1.2 1.2"></path><path d="M13.5 10.5a4.5 4.5 0 0 0-6.36 0l-2.4 2.4a4.5 4.5 0 0 0 6.36 6.36l1.2-1.2"></path></svg>
+      </button>
       <button class="dossier-shot-btn" id="franchiseScreenshotBtn">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11"></path><path d="M8 10l4 4 4-4"></path><path d="M5 20h14"></path></svg>
         <span id="franchiseScreenshotLabel">Share Card</span>
@@ -4255,6 +4263,243 @@ window.FSNLinks = (function(){
 })();
 
 /* ============================================================
+   GLOBAL SCOPE — UNIVERSAL LINK ROUTES (FSNDeepLink)
+
+   One grammar for every link that points back into this app, and the only
+   place that knows what such a link may say.
+
+   A share card's brief, a franchise dossier link and the landing page's
+   connect CTA all arrive the same way: as a URL on one of three hosts, with
+   the destination in the query string. On the web that URL is the address bar.
+   Inside the native binary it is a Universal Link — iOS matched the host
+   against /.well-known/apple-app-site-association, decided this app owns it,
+   and handed the whole URL to the app instead of opening Safari. The packaged
+   app is loaded from capacitor://localhost and never has a query string of its
+   own, so that hand-off is the ONLY way a route reaches a native launch.
+
+   Both halves have to agree about what a link means, or a link that works in
+   Safari opens the app on Home. So parsing lives here, at global scope in the
+   first block, and the router that acts on a route lives in block 6 next to
+   the screens it drives (CLAUDE.md rule 1: a helper called across blocks is
+   global, a function that needs block 6's closure stays there).
+
+   The grammar, all optional, all additive:
+
+     id | league_id | leagueId   the league the link is about
+     token | share_token        the invite token (handled by applyDeepLink)
+     season                     the season year to switch to first
+     week                       the week to select first
+     story | article            an article id -> opens the reader
+     owner | manager | franchise an ownerId -> opens the franchise dossier
+     goto                       a screen name
+     platform                   espn | sleeper | yahoo
+     ref                        acquisition tag, carried through untouched
+
+   Everything is validated here rather than at the call site, because every one
+   of these values comes off a URL a stranger can write and is handed to a
+   renderer. A value that does not look like the thing it names is dropped and
+   named in the console; it never reaches openReader() or openFranchiseModal().
+
+   Nothing here touches the News Desk, its seeds or its generators. A link
+   carries the coordinates of a story that already exists; the story itself is
+   still built deterministically from the league data on the reader's device.
+============================================================ */
+window.FSNDeepLink = (function(){
+  /* Every host iOS is told to claim in ios/App.entitlements, and therefore
+     every host that must serve /.well-known/apple-app-site-association with no
+     redirect. scripts/check-applinks.mjs pins this list against both files —
+     a host in one and not the others is a link that silently opens Safari. */
+  const HOSTS = [
+    'fantasysportsnetwork.app',
+    'www.fantasysportsnetwork.app',
+    'app.fantasysportsnetwork.app',
+  ];
+
+  /* The six tabs, matching the .screen[data-screen] sections in the markup. */
+  const SCREENS = ['home', 'matchups', 'news', 'analytics', 'recordbook', 'setup'];
+
+  /* Deliberately narrow. Article ids are built by the Desk out of a kind, a
+     week and team ids ('tl-rivalry-3-1-2'); owner ids are ESPN GUIDs, braces
+     included. Anything else is not one of ours. */
+  const STORY_RE  = /^[A-Za-z0-9._:-]{1,120}$/;
+  const OWNER_RE  = /^[A-Za-z0-9._:{}-]{1,80}$/;
+  const LEAGUE_RE = /^\d{1,20}$/;
+
+  function currentHost(){
+    try{ return String((window.location && window.location.hostname) || '').toLowerCase(); }
+    catch(err){
+      console.warn('[FSNDeepLink] window.location.hostname was unreadable; treating this page as ' +
+        'hostless and accepting only the associated domains.', err);
+      return '';
+    }
+  }
+
+  /* True for a host this app is entitled to open links for. */
+  function isLinkHost(host){
+    return HOSTS.indexOf(String(host || '').toLowerCase()) !== -1;
+  }
+
+  /* Where a link this app MINTS is addressed. Identical in shape to
+     buildLeagueInviteUrl()'s base — which now calls this — and for the same
+     reason: FSNApi.isNativeShell(), not a protocol test, because Capacitor's
+     Android scheme serves the bundle over https://localhost, so an origin can
+     be http(s) and still be one device's private app sandbox. A link minted
+     inside the binary must point at the deployment, not at localhost. */
+  function base(){
+    let origin = FSNApi.origin() + '/';
+    try{
+      if(!FSNApi.isNativeShell()){
+        origin = window.location.origin + ((window.location && window.location.pathname) || '/');
+      }
+    }catch(err){
+      console.warn('[FSNDeepLink] window.location was unreadable; addressing links at ' + origin +
+        ' instead of this page’s own origin.', err);
+    }
+    return origin;
+  }
+
+  /* A URL -> the route it names, or null when the URL is not ours to route.
+     Never throws: a link that cannot be read is a link that does nothing,
+     which is the same outcome as no link at all. */
+  function parse(raw){
+    const value = String(raw == null ? '' : raw).trim();
+    if(!value) return null;
+
+    let url;
+    try{
+      url = new URL(value, window.location.href);
+    }catch(err){
+      console.error('[FSNDeepLink] "' + value + '" is not a parseable URL, so no route was taken ' +
+        'from it and the app stays where it is.', err);
+      return null;
+    }
+
+    /* capacitor://localhost and a *.vercel.app preview are both legitimate
+       arrivals — the first is the packaged bundle's own origin, the second is
+       where the web app actually runs before production. Anything else is a
+       link for some other site that reached this parser by mistake. */
+    const host = String(url.hostname || '').toLowerCase();
+    if(host && !isLinkHost(host) && host !== currentHost()){
+      console.warn('[FSNDeepLink] Ignoring a link on "' + host + '": it is neither this page’s own ' +
+        'host nor one of the associated domains (' + HOSTS.join(', ') + ').');
+      return null;
+    }
+
+    let params;
+    try{
+      params = url.searchParams;
+    }catch(err){
+      console.error('[FSNDeepLink] The query string of "' + value + '" could not be read; the link ' +
+        'opens the app but names no destination.', err);
+      return null;
+    }
+
+    const read = function(){
+      for(let i = 0; i < arguments.length; i++){
+        const found = params.get(arguments[i]);
+        if(found) return String(found).trim();
+      }
+      return '';
+    };
+
+    /* Each field is validated, and a value that fails is reported rather than
+       dropped in silence: a truncated paste and a link to content this reader
+       cannot see look identical from the outside otherwise. */
+    const keep = function(label, value, pattern){
+      if(!value) return '';
+      if(pattern.test(value)) return value;
+      console.warn('[FSNDeepLink] Ignoring the ' + label + ' "' + value + '" from a link: it is not a ' +
+        'well-formed ' + label + ', so nothing was opened for it.');
+      return '';
+    };
+
+    const seasonRaw = read('season', 'year');
+    const weekRaw = read('week');
+    const season = /^\d{4}$/.test(seasonRaw) && Number(seasonRaw) >= 1900 && Number(seasonRaw) <= 2999
+      ? Number(seasonRaw) : 0;
+    if(seasonRaw && !season){
+      console.warn('[FSNDeepLink] Ignoring the season "' + seasonRaw + '" from a link; it is not a ' +
+        'four-digit year, so the link opens on the season already loaded.');
+    }
+    const week = /^\d{1,2}$/.test(weekRaw) && Number(weekRaw) >= 1 && Number(weekRaw) <= 30
+      ? Number(weekRaw) : 0;
+    if(weekRaw && !week){
+      console.warn('[FSNDeepLink] Ignoring the week "' + weekRaw + '" from a link; it is outside 1-30, ' +
+        'so the link opens on the week already selected.');
+    }
+
+    const screenRaw = read('goto', 'screen').toLowerCase();
+    const platformRaw = read('platform').toLowerCase();
+
+    return {
+      league:   keep('League ID', read('id', 'league_id', 'leagueId'), LEAGUE_RE),
+      story:    keep('article id', read('story', 'article'), STORY_RE),
+      owner:    keep('owner id', read('owner', 'manager', 'franchise'), OWNER_RE),
+      season:   season,
+      week:     week,
+      screen:   SCREENS.indexOf(screenRaw) !== -1 ? screenRaw : '',
+      platform: (platformRaw === 'espn' || platformRaw === 'sleeper' || platformRaw === 'yahoo') ? platformRaw : '',
+      ref:      read('ref').slice(0, 40),
+      /* Present so a native launch URL carries the invite as faithfully as the
+         address bar does. The token itself is never validated or stored here —
+         setLeagueShareToken() owns that, and the router hands it over. */
+      token:    read('token', 'share_token'),
+      href:     url.href,
+    };
+  }
+
+  /* True when the route names something to OPEN, as opposed to a link that
+     only carries a league or a tab. The distinction is what tells boot whether
+     there is anything to hold a pending route for. */
+  function hasContent(route){
+    return !!(route && (route.story || route.owner));
+  }
+
+  /* The other direction: a route -> the https link that reproduces it. Values
+     go through the same validation as parse(), so this can never mint a link
+     its own parser would refuse — a share card whose link silently drops its
+     story id is worse than one with no link at all. */
+  function build(route){
+    const r = route || {};
+    const parts = [];
+    const add = function(key, value){
+      if(value === '' || value == null) return;
+      parts.push(encodeURIComponent(key) + '=' + encodeURIComponent(String(value)));
+    };
+    const checked = function(label, key, value, pattern){
+      const str = String(value == null ? '' : value).trim();
+      if(!str) return '';
+      if(pattern.test(str)) return str;
+      console.error('[FSNDeepLink] Refusing to put the ' + label + ' "' + str + '" into a share link: ' +
+        'it would not survive this app’s own parser, so the link would open on the wrong screen.');
+      return '';
+    };
+
+    add('id', checked('League ID', 'id', r.league, LEAGUE_RE));
+    add('story', checked('article id', 'story', r.story, STORY_RE));
+    add('owner', checked('owner id', 'owner', r.owner, OWNER_RE));
+    if(Number(r.season) > 0) add('season', Math.trunc(Number(r.season)));
+    if(Number(r.week) > 0) add('week', Math.trunc(Number(r.week)));
+    if(r.screen && SCREENS.indexOf(String(r.screen)) !== -1) add('goto', r.screen);
+    if(r.platform) add('platform', r.platform);
+    if(r.ref) add('ref', String(r.ref).slice(0, 40));
+
+    if(!parts.length) return '';
+    return base() + '?' + parts.join('&');
+  }
+
+  return {
+    HOSTS: HOSTS,
+    SCREENS: SCREENS,
+    isLinkHost: isLinkHost,
+    base: base,
+    parse: parse,
+    hasContent: hasContent,
+    build: build,
+  };
+})();
+
+/* ============================================================
    GLOBAL SCOPE — BOUNDED NETWORK READS (FSNNet)
 
    `fetch()` has no timeout. On desktop that is survivable: the connection
@@ -5011,21 +5256,14 @@ function buildLeagueInviteUrl(leagueId, token){
   const id = String(leagueId == null ? '' : leagueId).trim();
   const secret = normalizeLeagueShareToken(token);
   if(!/^\d{1,20}$/.test(id) || !secret) return '';
-  /* FSNApi.isNativeShell(), not a protocol test: Capacitor's Android scheme
-     serves the bundle over https://localhost, so an origin can be http(s) and
-     still be one device's private app sandbox. This is the same question
-     FSNApi asks before rewriting an /api path, and it has to get the same
-     answer or the two disagree about what "this deployment" means. */
-  let base = FSNApi.origin() + '/';
-  try{
-    if(!FSNApi.isNativeShell()){
-      base = window.location.origin + (window.location.pathname || '/');
-    }
-  }catch(e){
-    console.warn('[League Share] window.location was unreadable; addressing the invite link at ' +
-      base + ' instead of this page\u2019s own origin.', e);
-  }
-  return base + '?id=' + encodeURIComponent(id) + '&token=' + encodeURIComponent(secret) + '&goto=setup';
+  /* FSNDeepLink.base() — the one answer to "where does a link this app mints
+     point?", shared with the share-card content links so an invite and an
+     article link can never disagree about which deployment they address. It
+     asks FSNApi.isNativeShell() rather than testing the protocol, because
+     Capacitor's Android scheme serves the bundle over https://localhost: an
+     origin can be http(s) and still be one device's private app sandbox. */
+  return FSNDeepLink.base() +
+    '?id=' + encodeURIComponent(id) + '&token=' + encodeURIComponent(secret) + '&goto=setup';
 }
 
 /* ---- THE OTHER HALF OF THE INVITE ----
@@ -20404,6 +20642,70 @@ function setDossierShareLabel(text){
   if(btn) btn.textContent = text;
 }
 
+/* The profile half of the share story: a universal link to the open dossier.
+   Same grammar as an article link and the same two outcomes — the app on a
+   phone that has it, the web app anywhere else. All-time by construction, so
+   it names no season and no week, only the league and the owner.
+
+   Copy, not the native share sheet: the button is an icon in a title bar that
+   says "copy a link to this dossier", and a share sheet appearing instead of a
+   confirmation is not what it promises. The clipboard fallback is the one from
+   shareArticle() for the same reason — the async clipboard API is unavailable
+   on plenty of embedded and older mobile browsers, and a silent no-op there
+   looks exactly like a successful copy. */
+async function copyFranchiseDossierLink(){
+  const ownerId = ui.franchiseModalId;
+  if(!ownerId){
+    console.warn('[FSNDeepLink] The dossier link button was pressed with no dossier open; nothing to link to.');
+    toast('Open a franchise dossier first');
+    return;
+  }
+
+  let league = '';
+  try{
+    league = String(LeagueData.leagueId() || '').trim();
+  }catch(err){
+    console.error('[FSNDeepLink] Could not read the League ID for a dossier link; the link will not ' +
+      'name which league the franchise belongs to.', err);
+  }
+
+  const url = FSNDeepLink.build({
+    league: /^\d{1,20}$/.test(league) ? league : '',
+    owner: ownerId,
+    ref: 'dossier',
+  });
+  if(!url){
+    /* build() has already said which value it refused and why. */
+    console.error('[FSNDeepLink] Could not build a link for the dossier of owner ' + ownerId + '.');
+    toast('This dossier could not be turned into a link');
+    return;
+  }
+
+  try{
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      await navigator.clipboard.writeText(url);
+      toast('Dossier link copied');
+      return;
+    }
+  }catch(err){
+    console.warn('[FSNDeepLink] The clipboard API refused the dossier link copy; falling back to a ' +
+      'hidden selection.', err);
+  }
+
+  const ta = document.createElement('textarea');
+  ta.value = url;
+  ta.style.cssText = 'position:fixed;opacity:0;';
+  document.body.appendChild(ta);
+  ta.select();
+  try{ document.execCommand('copy'); toast('Dossier link copied'); }
+  catch(err){
+    console.error('[FSNDeepLink] Neither the clipboard API nor execCommand could copy the dossier ' +
+      'link for owner ' + ownerId + '.', err);
+    toast('Copy unavailable on this browser');
+  }
+  document.body.removeChild(ta);
+}
+
 function toggleFranchiseScreenshot(){
   const modal = $('franchiseModal');
   const active = modal.dataset.screenshot !== 'true';
@@ -23532,6 +23834,12 @@ async function settleBootCurtain(route){
       'state it reached.', err);
   }finally{
     finishBootCurtain();
+    /* After the reveal, deliberately: a link that opens the reader should hand
+       the reader a finished screen with the article on it, not an article
+       sliding up behind a bumper. The route has already waited for the league
+       rehydration awaited above; if its target still is not there, the watch
+       armed with it retries on every publish. */
+    safeRun('boot:deepLinkRoute', ()=> applyPendingDeepLinkRoute('cold boot'));
   }
 }
 
@@ -25204,9 +25512,56 @@ function openArticleModal(idx){
    two different hooks, and the copy is identical on every device.
 ============================================================ */
 
-/* The apex marketing host, not the app subdomain: a recipient outside the
-   league has no data to land in, and this is an acquisition surface first. */
+/* The fallback link, for a share that cannot name what it is about — no
+   article id, or a story with no resolvable week or season. The apex marketing
+   host, not the app subdomain: a recipient with nothing to land in gets the
+   acquisition surface, which is the only honest destination for a link that
+   points at no particular thing.
+
+   Everything that CAN name itself gets a universal link instead (below). That
+   link is addressed at this deployment rather than the apex because it has
+   somewhere specific to go — the recipient is a league-mate, the story is on
+   their wire too, and iOS opens it in the app rather than in Safari. */
 const SHARE_INVITE_URL = 'https://fantasysportsnetwork.app/?ref=share-card';
+
+/* The link a share card actually carries: the coordinates of this exact story,
+   in this league, in this week of this season.
+
+   It is a universal link. Tapped on an iPhone with the app installed, iOS
+   matches the host against the app's apple-app-site-association, opens the app
+   and hands it the URL, and the router above opens the reader on this article.
+   Tapped anywhere else it is an ordinary https link to the same app on the
+   web, which reads the same query string at boot. One link, both outcomes, no
+   interstitial asking anybody to "open in app".
+
+   It carries no share token. An invite link deliberately does (that is what
+   authorises a new device to read the league's archive); a story link is
+   pasted into group chats and screenshotted, so it names only public
+   coordinates. A recipient who is not already in the league lands on Setup,
+   which is exactly where somebody without access belongs.
+
+   The league is included only when it is numeric — ESPN and Sleeper ids are,
+   Yahoo league keys ('423.l.12345') are not. A link without one still opens
+   the story against whichever league the recipient has loaded, which for a
+   league-mate is the right one; what it cannot do is warn them when it is not.
+*/
+function shareLinkForArticle(a, season, week){
+  if(!a || !a.id) return '';
+  let league = '';
+  try{
+    league = String(LeagueData.leagueId() || '').trim();
+  }catch(err){
+    console.error('[Share] Could not read the League ID for a share link; the link will not name ' +
+      'which league the story belongs to.', err);
+  }
+  return FSNDeepLink.build({
+    league: /^\d{1,20}$/.test(league) ? league : '',
+    season: season,
+    week: week,
+    story: a.id,
+    ref: 'share-card',
+  });
+}
 
 /* FNV-1a, mirrored from the News Desk's editorial matrix. The engine layers
    are separate <script> blocks that cannot see each other's declarations, so
@@ -25431,12 +25786,18 @@ function shareCopyFor(a){
      arrive with the same call to action. */
   const cta = SHARE_CTAS[(shareHash(seed + '::cta') >>> 3) % SHARE_CTAS.length];
 
+  /* A story that can be addressed gets a link back to itself; one that cannot
+     falls back to the acquisition link. Either way the tease above is
+     untouched — the copy pools say that a filing exists, and the link is the
+     only part that says which one. */
+  const link = shareLinkForArticle(a, season, week) || SHARE_INVITE_URL;
+
   return {
     bucket,
     tease,
     cta,
-    link: SHARE_INVITE_URL,
-    text: tease + '\n\n' + cta + ' ' + SHARE_INVITE_URL,
+    link,
+    text: tease + '\n\n' + cta + ' ' + link,
   };
 }
 
@@ -26452,6 +26813,7 @@ document.addEventListener('keydown', (e)=>{
 $('franchiseModalBody').addEventListener('scroll', ()=>{ if(dossierInfoAnchor) closeDossierInfo(); }, {passive:true});
 window.addEventListener('resize', ()=>{ if(dossierInfoAnchor) positionDossierInfo(); });
 $('franchiseScreenshotBtn').addEventListener('click', toggleFranchiseScreenshot);
+$('franchiseLinkBtn').addEventListener('click', copyFranchiseDossierLink);
 $('readerBody').addEventListener('click', (e)=>{
   if(e.target.closest('[data-reader-export]')) exportArticleCard();
   if(e.target.closest('[data-reader-copy]'))  shareArticle('copy');
@@ -26593,6 +26955,13 @@ function applyDeepLink(){
   try{ params = new URLSearchParams(window.location.search); }
   catch(e){ return {}; }
 
+  /* Read the content route off the FULL href first. Everything below either
+     consumes a parameter or, at the end, wipes the whole query string with
+     replaceState, and a route parsed after that wipe is a route parsed from an
+     empty URL. FSNDeepLink.parse() never throws; a link it cannot read comes
+     back as null and boot behaves exactly as it did before this existed. */
+  const contentRoute = FSNDeepLink.parse(window.location.href);
+
   const platform = (params.get('platform') || '').toLowerCase();
   if(platform === 'espn' || platform === 'sleeper' || platform === 'yahoo'){
     try{ setProvider(platform); savePrefs(); }catch(e){}
@@ -26674,7 +27043,372 @@ function applyDeepLink(){
        reads it so its own "no league, so open Setup" routing can never
        overrule a destination the reader was actually sent to. */
     screen:dest,
+    /* What the link asked to OPEN — a story, a franchise dossier — as opposed
+       to which tab to land on. Boot queues it rather than acting on it here:
+       the target is built out of league data that has not been fetched yet
+       when this runs. See the universal link router above. */
+    route:contentRoute,
   };
+}
+
+/* ============================================================
+   UNIVERSAL LINK ROUTER
+
+   FSNDeepLink (block 1) says what a link MEANS. This says what the app DOES
+   about it, and it lives here because doing it needs this block's closure —
+   setScreen, switchSeasonYear, selectWeek, openReader, openFranchiseModal are
+   all private to the UI layer.
+
+   Two arrivals, one router:
+
+     - The web, and the packaged app's first paint: the URL is in the address
+       bar, applyDeepLink() reads it during boot, and the route is queued until
+       the league it names is actually loaded.
+     - The native binary: iOS matched the host against the app's
+       apple-app-site-association, opened the app instead of Safari, and hands
+       the URL over through @capacitor/app — as a launch URL on a cold start,
+       and as an `appUrlOpen` event when the app was already running. A link
+       tapped while the app is in the background never touches the address bar,
+       so without that listener the app just comes to the front on whatever
+       screen it was left on.
+
+   The hard part is not the navigation, it is the WAIT. A story link names a
+   week's article by an id the News Desk derives from that league's own box
+   scores, so the target does not exist until the league is hydrated — which on
+   a cold boot is a network read that finishes well after the link is read. So
+   a route that cannot be opened yet is held, retried on every league-data
+   publish, and finally given up on out loud rather than quietly doing nothing.
+============================================================ */
+
+/* The route this launch was given and has not opened yet, or null. Only routes
+   that name CONTENT are ever held: a link that just asks for a tab is honoured
+   immediately and there is nothing to wait for. */
+let pendingDeepLinkRoute = null;
+let pendingDeepLinkSince = 0;
+let deepLinkWatchArmed = false;
+/* Whether the held route has already done its navigating (season, week, tab).
+   A route is retried on every league-data publish, and re-running the
+   navigation each time would drag a reader who has walked away from the link
+   back to its screen for the whole 45 seconds. The retries only try to OPEN
+   the thing; the journey to it happens once. */
+let deepLinkNavigated = false;
+/* Re-entrancy guard. The retry runs off LeagueData's publish, and the router
+   itself can publish (switchSeasonYear replaces the season payload), so
+   without this a season-switching link would route itself twice. */
+let deepLinkRouting = false;
+
+/* Long enough for a cold boot plus a slow league fetch and an archive
+   hydration behind it; short enough that the console says so while the reader
+   is still looking at the screen that did not open. */
+const DEEP_LINK_PENDING_MS = 45000;
+
+/* Where a route lands when it does not name a screen itself. */
+function deepLinkDestination(route){
+  if(!route) return '';
+  if(route.screen) return route.screen;
+  if(route.story) return 'news';
+  if(route.owner) return 'recordbook';
+  return '';
+}
+
+/* One line describing what a route asked for, for the console. */
+function deepLinkLabel(route){
+  if(!route) return 'nothing';
+  if(route.story) return 'article "' + route.story + '"';
+  if(route.owner) return 'the franchise dossier for owner ' + route.owner;
+  if(route.screen) return 'the ' + route.screen + ' screen';
+  return 'no destination';
+}
+
+/* Open what a route names. Resolves true when the route is finished with —
+   either because it opened, or because it never can — and false when the
+   target is simply not on this device yet and another attempt is worth making.
+
+   Never throws: a link is an instruction from outside the app, and the worst
+   it may do is leave the reader where they already were. */
+async function openDeepLinkRoute(route, reason, navigate){
+  if(!route) return true;
+  const why = reason || 'link';
+  const shouldNavigate = navigate !== false;
+
+  /* A story id and an owner id only mean anything inside the league they were
+     minted in — 'tl-rivalry-3-1-2' names two team ids, not two teams. Opening
+     one against a different league would either miss (a dead tap) or, worse,
+     hit a same-named story about somebody else. */
+  let openLeague = '';
+  try{ openLeague = String(($('leagueIdInput').value || '').trim()); }
+  catch(err){
+    console.error('[FSNDeepLink] Could not read the open League ID while routing a ' + why +
+      '; the link is treated as belonging to another league.', err);
+  }
+  if(route.league && openLeague && route.league !== openLeague){
+    console.warn('[FSNDeepLink] The ' + why + ' points at ' + deepLinkLabel(route) + ' in league ' +
+      route.league + ', but league ' + openLeague + ' is open, so nothing was opened. Switch leagues ' +
+      'from Setup — a full invite link (?id=…&token=…) does it in one tap.');
+    const fallback = deepLinkDestination(route);
+    if(fallback) setScreen(fallback);
+    return true;
+  }
+
+  /* Season first: it replaces the whole league payload the week and the story
+     are read out of, so doing it after either would undo them. */
+  if(shouldNavigate && route.season){
+    let viewed = 0;
+    try{ viewed = parseInt(($('seasonYear').value || '').trim(), 10) || uiActiveSeasonYear(); }
+    catch(err){
+      console.warn('[FSNDeepLink] Could not read the viewed season while routing a ' + why +
+        '; the season named by the link is applied unconditionally.', err);
+    }
+    if(viewed !== route.season){
+      try{
+        await switchSeasonYear(route.season);
+      }catch(err){
+        console.error('[FSNDeepLink] Could not switch to the ' + route.season + ' season for a ' + why +
+          '; the link opens against the season already loaded instead.', err);
+      }
+    }
+  }
+
+  if(shouldNavigate && route.week){
+    try{
+      selectWeek(route.week);
+    }catch(err){
+      console.error('[FSNDeepLink] Could not select week ' + route.week + ' for a ' + why +
+        '; the link opens against the week already selected instead.', err);
+    }
+  }
+
+  const dest = deepLinkDestination(route);
+  if(shouldNavigate && dest) setScreen(dest);
+
+  if(route.story){
+    /* openReader rebuilds the timeline itself on a cache miss, so a miss here
+       means the story genuinely is not on this league's wire for this week —
+       usually because the league has not hydrated yet. A THROW is a different
+       thing entirely and is named as one: the link was understood and the
+       renderer broke, and retrying it would only break again. */
+    try{
+      openReader(route.story);
+    }catch(err){
+      console.error('[FSNDeepLink] Opening article "' + route.story + '" from a ' + why +
+        ' threw; the reader stays closed and the link is abandoned.', err);
+      return true;
+    }
+    if(ui.readerId === route.story) return true;
+    console.warn('[FSNDeepLink] Article "' + route.story + '" is not on the wire yet (' + why +
+      '); holding the link until this league’s data lands.');
+    return false;
+  }
+
+  if(route.owner){
+    /* The dossier is built from the multi-season archive, which arrives after
+       the live season on a cold boot and not at all for a league whose history
+       has never been synced. */
+    try{
+      openFranchiseModal(route.owner);
+    }catch(err){
+      console.error('[FSNDeepLink] Opening the franchise dossier for owner ' + route.owner + ' from a ' +
+        why + ' threw; the dossier stays closed and the link is abandoned.', err);
+      return true;
+    }
+    if(ui.franchiseModalId === route.owner) return true;
+    console.warn('[FSNDeepLink] No franchise dossier for owner ' + route.owner + ' yet (' + why +
+      '); holding the link until this league’s history lands.');
+    return false;
+  }
+
+  return true;
+}
+
+/* Hold a content route until its target exists. A route with no content is
+   applied by openDeepLinkRoute() and never queued. */
+function queueDeepLinkRoute(route){
+  if(!FSNDeepLink.hasContent(route)) return;
+  pendingDeepLinkRoute = route;
+  pendingDeepLinkSince = Date.now();
+  deepLinkNavigated = false;
+  armDeepLinkWatch();
+}
+
+/* Retry the held route whenever new league data lands. LeagueData has no
+   unsubscribe, so the callback is armed once and returns immediately when
+   there is nothing waiting. */
+function armDeepLinkWatch(){
+  if(deepLinkWatchArmed) return;
+  deepLinkWatchArmed = true;
+  try{
+    LeagueData.subscribe(()=>{
+      if(!pendingDeepLinkRoute) return;
+      applyPendingDeepLinkRoute('league data landed');
+    });
+  }catch(err){
+    console.error('[FSNDeepLink] Could not watch for league data on behalf of a held link; it will only ' +
+      'be retried at the points boot calls the router directly.', err);
+  }
+}
+
+/* Try the held route once. Clears it when it opens, when it never can, or when
+   it has been waiting longer than a cold boot could possibly justify. */
+function applyPendingDeepLinkRoute(reason){
+  const route = pendingDeepLinkRoute;
+  if(!route || deepLinkRouting) return;
+  deepLinkRouting = true;
+  const navigate = !deepLinkNavigated;
+  deepLinkNavigated = true;
+  openDeepLinkRoute(route, reason, navigate).then(resolved=>{
+    if(resolved){
+      pendingDeepLinkRoute = null;
+      return;
+    }
+    if(Date.now() - pendingDeepLinkSince > DEEP_LINK_PENDING_MS){
+      pendingDeepLinkRoute = null;
+      console.error('[FSNDeepLink] Gave up opening ' + deepLinkLabel(route) + ' after ' +
+        DEEP_LINK_PENDING_MS + 'ms. The link was understood; its target never appeared in this ' +
+        'league’s data, so the reader is left on ' + (deepLinkDestination(route) || 'Home') + '.',
+        new Error('FSN_DEEP_LINK_UNRESOLVED'));
+    }
+  }).catch(err=>{
+    pendingDeepLinkRoute = null;
+    console.error('[FSNDeepLink] The router failed on ' + deepLinkLabel(route) +
+      '; the reader stays where they are.', err);
+  }).then(()=>{ deepLinkRouting = false; });
+}
+
+/* ---- THE NATIVE HALF ----------------------------------------------------
+   @capacitor/app, when the binary was built with it. Looked up defensively for
+   the same reason FSNLinks looks up the Browser plugin: on the web
+   window.Capacitor does not exist at all, and a binary synced before the
+   plugin was added to package.json has a bridge but no App proxy on it. */
+function capacitorAppPlugin(){
+  try{
+    const cap = window.Capacitor;
+    const plugins = (cap && cap.Plugins) || null;
+    const app = plugins && plugins.App;
+    return (app && typeof app.addListener === 'function') ? app : null;
+  }catch(err){
+    console.warn('[FSNDeepLink] Capacitor plugin lookup threw; treating universal links as unavailable ' +
+      'in this shell.', err);
+    return null;
+  }
+}
+
+/* A URL handed over by iOS. Applies the parts of the link that are about the
+   app's state (the invite token, the provider, the league) and then routes. */
+function handleNativeLinkUrl(rawUrl, reason){
+  const why = reason || 'universal link';
+  const route = FSNDeepLink.parse(rawUrl);
+  if(!route){
+    console.warn('[FSNDeepLink] iOS handed over "' + rawUrl + '" (' + why + ') but it names no route ' +
+      'this app understands; the app was brought to the front and left where it was.');
+    return;
+  }
+
+  if(route.platform){
+    try{ setProvider(route.platform); savePrefs(); }
+    catch(err){
+      console.error('[FSNDeepLink] Could not preselect the ' + route.platform + ' provider from a ' +
+        why + '; Setup keeps the provider it had.', err);
+    }
+  }
+
+  /* The invite half, exactly as applyDeepLink() accepts it from a query
+     string. A packaged app never has one of those, so this is the only way a
+     token reaches a fresh install. */
+  if(route.league && route.token){
+    const secret = normalizeLeagueShareToken(route.token);
+    if(secret && setLeagueShareToken(route.league, secret)){
+      console.info('[League Share] Accepted an invite link for league ' + route.league +
+        ' handed over by iOS (' + why + ').');
+    } else if(!secret){
+      console.warn('[League Share] The ' + why + ' for league ' + route.league + ' carried a share ' +
+        'token this app cannot use; the league will only open if this device has its own access.');
+    }
+  }
+
+  /* A link about a league this device has never opened is the fresh-install
+     case the native half exists for, so adopt it. A link about a DIFFERENT
+     league while one is already open is not: swapping the reader's league out
+     from under them because they tapped a link is a surprise, not a feature.
+     openDeepLinkRoute() says so and stands down. */
+  let openLeague = '';
+  try{ openLeague = String(($('leagueIdInput').value || '').trim()); }
+  catch(err){
+    console.error('[FSNDeepLink] Could not read the open League ID while handling a ' + why + '.', err);
+  }
+  if(route.league && !openLeague){
+    try{
+      $('leagueIdInput').value = route.league;
+      FSNStore.set(SAVED_LEAGUE_ID_KEY, route.league);
+      savePrefs();
+      updateShareInviteUI();
+    }catch(err){
+      console.error('[FSNDeepLink] Could not adopt league ' + route.league + ' from a ' + why +
+        '; enter the League ID in Setup to open it.', err);
+    }
+    fetchLeagueData({ leagueId:route.league, silent:true, navigate:false })
+      .catch(err=> console.error('[FSNDeepLink] The league fetch started by a ' + why + ' for league ' +
+        route.league + ' failed; the link’s destination will not open.', err));
+  }
+
+  if(FSNDeepLink.hasContent(route)){
+    /* Held and retried: the story or the dossier this names is built out of
+       league data that may still be a network read away — always so on the
+       cold start above, which has only just asked for the league. */
+    queueDeepLinkRoute(route);
+    applyPendingDeepLinkRoute(why);
+  } else {
+    /* A link that only names a tab has nothing to wait for. */
+    openDeepLinkRoute(route, why).catch(err=>
+      console.error('[FSNDeepLink] Could not apply a ' + why + ' that named only a screen.', err));
+  }
+}
+
+/* Wire the two native arrivals. Inert on the web, where the address bar is the
+   only route in and applyDeepLink() has already read it. */
+function bindNativeDeepLinks(){
+  const app = capacitorAppPlugin();
+  if(!app){
+    if(FSNApi.isNativeShell()){
+      /* The same failure shape as a binary synced before @capacitor/browser:
+         everything works except the one thing the plugin provides, and nothing
+         on screen says so. */
+      console.warn('[FSNDeepLink] No Capacitor App plugin in this build, so a universal link brings the ' +
+        'app to the front on whatever screen it was left on instead of opening what the link named. ' +
+        'Rebuild with `npm install && npx cap sync ios` to link @capacitor/app.');
+    }
+    return;
+  }
+
+  try{
+    app.addListener('appUrlOpen', (event)=>{
+      const url = event && event.url;
+      if(!url){
+        console.warn('[FSNDeepLink] An appUrlOpen event arrived with no URL on it; nothing to route.');
+        return;
+      }
+      handleNativeLinkUrl(url, 'appUrlOpen');
+    });
+  }catch(err){
+    console.error('[FSNDeepLink] Could not subscribe to appUrlOpen; links tapped while the app is ' +
+      'running will bring it to the front without opening what they named.', err);
+  }
+
+  /* The cold-start half. A link tapped while the app was not running launches
+     it, and the URL is available here rather than as an event. */
+  if(typeof app.getLaunchUrl !== 'function') return;
+  try{
+    const launch = app.getLaunchUrl();
+    if(launch && typeof launch.then === 'function'){
+      launch.then(result=>{
+        const url = result && result.url;
+        if(url) handleNativeLinkUrl(url, 'launch URL');
+      }).catch(err=> console.error('[FSNDeepLink] Could not read this launch’s URL; a link that ' +
+        'started the app opens it on Home instead of its destination.', err));
+    }
+  }catch(err){
+    console.error('[FSNDeepLink] getLaunchUrl() threw; a link that started the app opens it on Home ' +
+      'instead of its destination.', err);
+  }
 }
 
 /* ============================================================
@@ -26746,6 +27480,22 @@ function bootApp(){
   // additive: with no params the app boots to Home exactly as before.
   let deepLink = null;
   safeRun('boot:deepLink', ()=>{ deepLink = applyDeepLink(); });
+
+  /* A link that named a story or a franchise dossier. Held rather than opened:
+     the article ids the News Desk mints are derived from this league's own box
+     scores, which are still a network read away at this point in boot. The
+     reveal below tries it, and every league-data publish after that retries it
+     until it opens or the router gives up out loud. */
+  if(deepLink && deepLink.route){
+    safeRun('boot:deepLinkQueue', ()=> queueDeepLinkRoute(deepLink.route));
+  }
+
+  /* The native half of the same feature. On the web this is inert — the
+     address bar is the only way in and applyDeepLink() has already read it.
+     Inside the binary it is the ONLY way in: the packaged app is loaded from
+     capacitor://localhost with no query string, so a universal link reaches it
+     as a launch URL or an appUrlOpen event or not at all. */
+  safeRun('boot:deepLinkNative', bindNativeDeepLinks);
 
   // An invite link names the league to open; otherwise fall back to the last
   // league this browser used.

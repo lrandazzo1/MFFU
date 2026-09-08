@@ -220,3 +220,88 @@ running app with no way back**. `server.allowNavigation` cannot prevent that sec
 
 Only `http(s)` URLs are ever handed to an opener. `npm run check:links` exercises all four
 shells.
+
+---
+
+## 8. Universal Links (share cards → the app)
+
+A share card's brief carries a link back to the exact story it is about:
+
+```
+https://app.fantasysportsnetwork.app/?id=<league>&season=<year>&week=<n>&story=<article id>&ref=share-card
+```
+
+Tapped on an iPhone with the app installed, iOS opens the **app** on that article.
+Tapped anywhere else it is an ordinary https link to the same app on the web, which
+reads the same query string at boot. One link, both outcomes, no interstitial. The
+franchise dossier's copy-link button mints the same shape with `&owner=<ownerId>`.
+
+Deliberately **no share token** rides in these links. An invite link (`?id=…&token=…`,
+§4 of `SUPABASE_SETUP.md`) authorises a new device to read a league's archive; a story
+link gets pasted into group chats and screenshotted, so it names only public coordinates.
+A recipient who is not in the league lands on Setup.
+
+### What has to be true on the hosting side
+
+iOS verifies ownership by fetching, **over https, with no redirect**, from each claimed
+host:
+
+```
+https://<host>/.well-known/apple-app-site-association
+```
+
+Both Vercel projects therefore ship a copy, and the two must stay byte-identical:
+
+| File | Project | Serves |
+| --- | --- | --- |
+| `.well-known/apple-app-site-association` | `mffu` | `app.fantasysportsnetwork.app` |
+| `landing/.well-known/apple-app-site-association` | `fsn-landing` | apex + `www` |
+
+Three things that each silently break the association:
+
+1. **Content type.** The file has no extension, so Vercel would serve it as
+   `application/octet-stream`. Both `vercel.json` files carry a `headers` rule pinning it
+   to `application/json`. This is a `headers` block, *not* `routes` — the warning in §2
+   about routing config is specifically about the legacy `routes` key, which disables
+   filesystem handling and the zero-config `api/` functions with it.
+2. **The apex redirect.** §1 sets the apex to redirect to `www`. iOS does not follow
+   redirects when fetching an AASA, so `applinks:fantasysportsnetwork.app` in the
+   entitlement only works if the apex answers that path with a `200` directly. If the
+   redirect is host-wide, either exclude `/.well-known/*` from it in the Vercel domain
+   settings, or drop the apex from `ios/App.entitlements` and share only `www`/`app` links.
+   Check it with `curl -sI https://fantasysportsnetwork.app/.well-known/apple-app-site-association`.
+3. **The Apple Team ID.** The AASA's `appIDs` are `<TeamID>.app.fantasysportsnetwork`, and
+   the repo ships `TEAMID` as a placeholder because the value is not derivable from the
+   source. Replace it in **both** files before the first App Store submission.
+
+### Verifying
+
+```bash
+npm run check:applinks    # entitlement ⇄ both AASA files ⇄ FSNDeepLink.HOSTS ⇄ vercel.json
+npm run check:deeplinks   # the app really opens the story / dossier a link names
+```
+
+`check:applinks` fails on any disagreement between the four places this is configured and
+warns while the Team ID is a placeholder; `FSN_REQUIRE_APPLINKS=1` turns that warning into
+a failure for a release run. Both run in `npm run verify`, and CI runs `check:applinks`
+alongside `scripts/ios-associated-domains.mjs`.
+
+After deploying, Apple's CDN caches the association: `https://app-site-association.cdn-apple.com/a/v1/app.fantasysportsnetwork.app`
+shows what devices will actually see, and a fresh install (or a device with developer mode
+and `AASA` diagnostics on) is the only way to confirm the final hop.
+
+### The app side
+
+- `window.FSNDeepLink` (first script block in `index.html`) is the grammar: it parses a
+  URL into a route and builds a link from one, and it refuses any host outside the three
+  associated domains.
+- The **universal link router** (block 6, next to `applyDeepLink`) acts on a route. On the
+  web the URL is in the address bar. Inside the binary the page is loaded from
+  `capacitor://localhost` and has no query string at all, so `@capacitor/app` is the only
+  way a link reaches it — `getLaunchUrl()` on a cold start, `appUrlOpen` while running. A
+  binary synced before that dependency existed logs an `[FSNDeepLink]` warning and brings
+  the app to the front without routing; re-running the build loop in `ios/HANDOFF.md` is
+  the fix.
+- A story link names an article by an id derived from the league's own box scores, so its
+  target does not exist until the league is hydrated. The router holds the route, retries
+  on every league-data publish, and gives up out loud after 45s rather than doing nothing.
