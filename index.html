@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-fsn-release="web">
 <head>
 <meta charset="UTF-8">
 
@@ -2658,12 +2658,12 @@ html[data-fsn-boot="loading"] #tickerBar{ visibility:hidden; }
       <div class="flex items-start justify-between gap-3">
         <div class="min-w-0">
           <div class="kicker text-[var(--cyan)]">Fantasy Sports Network</div>
-          <h1 class="font-display text-[27px] leading-none mt-1.5 truncate" id="homeLeagueName">MERGE</h1>
+          <h1 class="font-display text-[27px] leading-none mt-1.5 truncate" id="homeLeagueName">THE DESK</h1>
           <div class="text-[10.5px] text-[var(--dim)] mt-1.5 font-mono tabular truncate" id="homeLeagueMeta"></div>
         </div>
         <div class="text-right">
-          <div id="homeWeekPill" class="pill pill-cyan">WEEK 1</div>
-          <div class="text-[10px] text-[var(--dim)] mt-1.5 font-mono tabular" id="homeSeasonLabel">2025 SEASON</div>
+          <div id="homeWeekPill" class="pill pill-cyan">CONNECT LEAGUE</div>
+          <div class="text-[10px] text-[var(--dim)] mt-1.5 font-mono tabular" id="homeSeasonLabel"></div>
         </div>
       </div>
       <p class="view-blurb">Your league's front page — the week's lead story, the pulse numbers, and every result at a glance.</p>
@@ -2676,7 +2676,7 @@ html[data-fsn-boot="loading"] #tickerBar{ visibility:hidden; }
       <div class="card p-6 text-center">
         <div class="glyph font-display text-[30px] text-[#232c3b]">NO SIGNAL</div>
         <p class="text-[13px] text-[var(--dim)] mt-2 leading-relaxed">
-          Connect your ESPN league to bring the broadcast online.
+          Connect your league to bring the broadcast online.
         </p>
         <button class="btn-primary mt-4" data-goto="setup">OPEN SETUP</button>
       </div>
@@ -2915,10 +2915,13 @@ html[data-fsn-boot="loading"] #tickerBar{ visibility:hidden; }
             <div class="provider-toggle" role="tablist" aria-label="Fantasy platform">
               <button type="button" id="providerEspn" class="provider-tab is-active" role="tab" aria-selected="true" data-provider="espn">ESPN</button>
               <button type="button" id="providerSleeper" class="provider-tab" role="tab" aria-selected="false" data-provider="sleeper">Sleeper</button>
-              <button type="button" id="providerYahoo" class="provider-tab" role="tab" aria-selected="false" data-provider="yahoo">Yahoo</button>
+              <!-- FSN_WEB_ONLY_START -->
+              <button type="button" id="providerYahoo" class="provider-tab" role="tab" aria-selected="false" data-provider="yahoo" data-web-only>Yahoo</button>
+              <!-- FSN_WEB_ONLY_END -->
             </div>
           </div>
-          <div id="yahooAuthPanel" class="card p-3 hidden" style="background:#0b0f16">
+          <!-- FSN_WEB_ONLY_START -->
+          <div id="yahooAuthPanel" class="card p-3 hidden" style="background:#0b0f16" data-web-only>
             <div class="flex items-center justify-between gap-3">
               <div class="min-w-0 flex-1">
                 <div class="label" style="margin-bottom:3px">Yahoo Account</div>
@@ -2932,6 +2935,7 @@ html[data-fsn-boot="loading"] #tickerBar{ visibility:hidden; }
               <select id="yahooLeagueSelect" class="field" aria-label="Choose a Yahoo fantasy football league"></select>
             </div>
           </div>
+          <!-- FSN_WEB_ONLY_END -->
           <div>
             <div class="flex items-center justify-between gap-2">
               <label id="leagueIdLabel" class="label" for="leagueIdInput" style="margin-bottom:0">League ID</label>
@@ -3113,7 +3117,7 @@ html[data-fsn-boot="loading"] #tickerBar{ visibility:hidden; }
       <div class="card p-4" id="notifyCard">
         <div class="section-head"><span class="bar" style="background:var(--gold)"></span><h2>Push Alerts</h2></div>
         <p class="text-[11.5px] text-[var(--dim)] leading-relaxed mb-3">
-          Three moments a week, at a sensible hour on your clock: waivers and the power index on Tuesday, the lineup lock before the week's opening kickoff, and Sunday's lineup check. One alert a day at most — no score-by-score spam.
+          When alerts are available for this device, choose weekly waiver, matchup and lineup reminders. Alerts are optional; your league desk works with them turned off.
         </p>
 
         <label class="notify-row" for="notifyMaster" id="notifyMasterRow">
@@ -3171,6 +3175,7 @@ html[data-fsn-boot="loading"] #tickerBar{ visibility:hidden; }
         </div>
 
         <p class="notify-status" id="notifyStatus" role="status" aria-live="polite"></p>
+        <button id="notifyRetryOff" type="button" class="btn-ghost mt-2" hidden>RETRY TURNING OFF ALERTS</button>
       </div>
 
       <!-- PRIVACY & DATA — hosted-policy links + local storage erasure.
@@ -3180,7 +3185,7 @@ html[data-fsn-boot="loading"] #tickerBar{ visibility:hidden; }
       <div class="card p-4">
         <div class="section-head"><span class="bar" style="background:var(--red)"></span><h2>Privacy &amp; Data</h2></div>
         <p class="text-[11.5px] text-[var(--dim)] leading-relaxed mb-3">
-          Review how Fantasy Sports Network handles your League ID, ESPN cookies, and historical archive, and wipe every local trace from this device with one tap.
+          Review how Fantasy Sports Network handles your data, contact support, or remove your saved leagues and preferences from this device.
         </p>
         <div class="privacy-links">
           <a class="privacy-link" href="https://www.fantasysportsnetwork.app/privacy" target="_blank" rel="noopener noreferrer">
@@ -3191,10 +3196,16 @@ html[data-fsn-boot="loading"] #tickerBar{ visibility:hidden; }
             <span class="privacy-link-label">Terms of Service</span>
             <span class="privacy-link-arrow" aria-hidden="true">↗</span>
           </a>
+          <a class="privacy-link" id="supportLink" href="https://fantasysportsnetwork.app/support" target="_blank" rel="noopener noreferrer">
+            <span class="privacy-link-label">Support</span>
+            <span class="privacy-link-arrow" aria-hidden="true">↗</span>
+          </a>
         </div>
+        <p id="externalLinkStatus" class="text-[11px] text-[var(--dim)] mt-2" role="status" aria-live="polite"></p>
         <button id="eraseLocalDataBtn" type="button" class="btn-ghost btn-danger mt-3">ERASE STORED DATA &amp; DISCONNECT</button>
+        <p id="eraseLocalDataStatus" class="text-[11px] text-[var(--dim)] mt-2" role="status" aria-live="polite"></p>
         <p class="text-[10px] text-[var(--dim)] leading-relaxed mt-2">
-          Clears every saved League ID, ESPN cookie, historical archive cache, and preference stored on this device (all <span class="onboard-code">fsn.</span>, <span class="onboard-code">fsn_</span>, and <span class="onboard-code">mffu.</span> keys). Shared cloud records are not affected — sign out of the League Cloud on a member browser if you want those removed too.
+          Removes saved leagues, ESPN cookies, history caches, local stories and preferences, including the walkthrough. Disconnects this device's alerts and, on the web, its Yahoo session before erasing. An internet connection may be needed. Shared cloud records and server-held Yahoo authorization records require a separate deletion request at privacy@fantasysportsnetwork.app; other devices are not erased.
         </p>
       </div>
 
@@ -3543,7 +3554,7 @@ html[data-fsn-boot="loading"] #tickerBar{ visibility:hidden; }
             <svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 1 0 10 10"></path><path d="M22 2 12 12"></path><path d="M16 2h6v6"></path></svg>
           </div>
           <h2 class="ftu-headline">The Season Awaits.</h2>
-          <p class="ftu-body">Paste your <strong>ESPN, Sleeper, or Yahoo</strong> ID and the five tabs above fill with your league in seconds.</p>
+          <p class="ftu-body">Connect your <strong id="ftuProviders">ESPN or Sleeper</strong> league to explore its scores, matchup previews, analytics and records.</p>
           <button type="button" class="ftu-cta" id="ftuFinish">Connect Your League &amp; Write Your First Story Now!</button>
           <button type="button" class="ftu-preview-btn" data-ftu-preview aria-controls="ftuDemo"><span aria-hidden="true">▶</span> See a Sample First</button>
         </div>
@@ -3803,6 +3814,7 @@ window.FSNStore = (function(){
      mobile session with a full or blocked store still behaves correctly until
      the tab is closed — that is the "safe fallback to in-memory state". */
   const memory = new Map();
+  let erasing = false;
   /* Keys already reported. A render loop must not print the same quota error
      sixty times, but the FIRST occurrence is always loud. */
   const reported = new Set();
@@ -3953,6 +3965,8 @@ window.FSNStore = (function(){
        opts.evictable — this key is itself a regenerable cache, so a quota
                         failure on it is expected housekeeping, not an error. */
     set(key, value, options){
+      // A late request must not repopulate storage while erasure reloads the app.
+      if(erasing) return { ok:false, persisted:false, reason:'erasing', bytes:0 };
       const opts = options || {};
       const text = String(value == null ? '' : value);
       const size = byteLength(text);
@@ -4033,6 +4047,40 @@ window.FSNStore = (function(){
         console.warn('[FSNStore] Could not remove "' + key + '" from localStorage.', err);
         return false;
       }
+    },
+
+    /* Includes the legacy unprefixed walkthrough flag and the memory mirror.
+       Read storage properties inside try: even their getters can be denied. */
+    eraseOwnedData(){
+      erasing = true;
+      memory.clear();
+      const owned = key=> key === 'hasCompletedOnboarding' || /^(fsn\.|fsn_|mffu\.)/.test(key || '');
+      const failures = [];
+      let removed = 0;
+      ['localStorage', 'sessionStorage'].forEach(name=>{
+        try{
+          const storage = window[name];
+          const keys = [];
+          for(let i = 0; i < storage.length; i++){
+            const key = storage.key(i);
+            if(owned(key)) keys.push(key);
+          }
+          keys.forEach(key=>{
+            try{
+              storage.removeItem(key);
+              if(storage.getItem(key) !== null) throw new Error('STORAGE_REMOVE_REFUSED');
+              removed++;
+            }catch(err){
+              failures.push(name);
+              console.error('[Privacy] Could not erase an FSN entry from ' + name, err);
+            }
+          });
+        }catch(err){
+          failures.push(name);
+          console.warn('[Privacy] Cannot verify erasure of ' + name, err);
+        }
+      });
+      return { removed, failures:[...new Set(failures)] };
     },
   };
   return api;
@@ -4142,43 +4190,30 @@ window.FSNApi = (function(){
   return { DEFAULT_ORIGIN, isNativeShell, origin: configuredOrigin, resolve };
 })();
 
+/* Release availability is shared by UI, restored preferences and link routing.
+   The build marker also makes the staged iOS payload testable over HTTP. */
+window.FSNRelease = (function(){
+  function isIOS(){
+    return document.documentElement.getAttribute('data-fsn-release') === 'ios' || FSNApi.isNativeShell();
+  }
+  function supportsProvider(provider){ return provider !== 'yahoo' || !isIOS(); }
+  if(isIOS()){
+    document.querySelectorAll('[data-web-only]').forEach(el=> el.remove());
+  } else if($('ftuProviders')){
+    $('ftuProviders').textContent = 'ESPN, Sleeper or Yahoo';
+  }
+  return { isIOS, supportsProvider };
+})();
+
 /* ============================================================
    GLOBAL SCOPE — EXTERNAL LINK OPENER (FSNLinks)
-
-   The Privacy & Data card in Setup links out to the hosted Privacy Policy
-   and Terms of Service. A bare `target="_blank"` anchor is enough on the
-   web and does the wrong thing inside the native binary.
-
-   `npm run build:ios` stages index.html into www/ and Capacitor packages it
-   into the app bundle, where WKWebView loads it over capacitor://localhost.
-   There is no browser chrome around that webview and no popup surface behind
-   `_blank`: the tap either does nothing at all, or the policy page is loaded
-   into the same webview and replaces the running app with no back button.
-   Nothing in the Capacitor config prevents that second outcome — the
-   deployment's own host has to stay on `server.allowNavigation` for the
-   Yahoo OAuth start (see capacitor.config.ts), and that allowance covers the
-   policy hosts too.
-
-   openExternal() hands the URL to whichever real external opener the current
-   shell actually has:
-
-     - Capacitor's Browser plugin, in the native binary → an in-app Safari
-       view controller with its own Done button, which returns the reader to
-       the app instead of stranding them. This is the Capacitor equivalent of
-       React Native's Linking.openURL.
-     - window.open(url, '_blank') on the web → a new tab.
-
-   The return value is the contract: true means a real opener took the URL,
-   false means it did not and the caller should let the anchor's own
-   navigation stand. Nothing here is ever worse than the plain anchor.
-
-   It lives at global scope in the first script block rather than beside its
-   click handler in block 6 because the handler is wired from block 6 while
-   the rule about what may be opened belongs next to FSNApi here — and a
-   helper called across blocks must be global (CLAUDE.md rule 1).
+   Web links use normal anchors. Native links open a Safari sheet with Done
+   returning to the app. Native failures stay in FSN with visible guidance.
+   A true result consumes the anchor; false leaves web navigation to it.
+   Shared across script blocks, so this helper must remain global.
 ============================================================ */
 window.FSNLinks = (function(){
-  /* Only ever hand an http(s) URL to an opener. Both call sites pass a
+  /* Only ever hand an http(s) URL to an opener. The current call sites pass a
      hard-coded https link today, but a javascript:/data:/file: URL reaching
      window.open out of a click handler is a script-injection seam, and this
      is the one place to close it rather than trusting every future caller. */
@@ -4216,47 +4251,49 @@ window.FSNLinks = (function(){
     }
   }
 
+  function linkStatus(message){
+    const el = $('externalLinkStatus');
+    if(el) el.textContent = message || '';
+  }
+
   function openExternal(raw){
     const url = externalUrl(raw);
     if(!url) return false;
+    // Real anchors own web navigation, including keyboard and modified clicks.
+    if(!FSNRelease.isIOS()) return false;
 
     const browser = capacitorBrowser();
-    if(browser){
-      try{
-        const opening = browser.open({ url: url, presentationStyle: 'popover' });
-        /* open() resolves once the sheet is presented. A rejection is the
-           only signal that the reader is looking at nothing, so it has to be
-           reported rather than left as an unhandled rejection. */
-        if(opening && typeof opening.catch === 'function'){
-          opening.catch(function(err){
-            console.error('[FSNLinks] the in-app browser failed to present ' + url, err);
-          });
-        }
-        return true;
-      }catch(err){
-        console.error('[FSNLinks] the in-app browser threw opening ' + url + '; falling back to window.open.', err);
-      }
-    }else if(FSNApi.isNativeShell()){
-      /* An older binary, built before the Browser plugin was linked. Say so
-         and stand down: the anchor's own behaviour is what shipped, and
-         window.open here is what would navigate the app away in place. */
-      console.warn('[FSNLinks] no Capacitor Browser plugin in this build, so ' + url + ' cannot be opened ' +
-        'outside the app. Rebuild with `npm install && npx cap sync ios` to link @capacitor/browser.');
-      return false;
+    if(!browser){
+      const err = new Error('NATIVE_BROWSER_UNAVAILABLE');
+      console.error('[FSNLinks] Cannot open the external browser', err);
+      linkStatus('Could not open the browser. Please try again, or visit ' + url + ' in Safari.');
+      return true; // Never navigate the native app's only webview away.
     }
-
-    try{
-      const opened = window.open(url, '_blank', 'noopener,noreferrer');
-      if(opened) return true;
-      /* Null means the popup was blocked. Letting the anchor navigate is the
-         better failure: the reader still reaches the policy. */
-      console.warn('[FSNLinks] window.open returned no window for ' + url + ' (popup blocked); ' +
-        'letting the link navigate normally instead.');
-      return false;
-    }catch(err){
-      console.error('[FSNLinks] window.open threw for ' + url + '; letting the link navigate normally.', err);
-      return false;
+    const focused = document.activeElement;
+    let listener = null;
+    let didFinish = false;
+    function removeListener(){
+      if(!listener) return;
+      const handle = listener;
+      listener = null;
+      Promise.resolve().then(()=> handle.remove()).catch(err=> console.warn('[FSNLinks] Browser listener cleanup failed', err));
     }
+    function finished(){
+      didFinish = true;
+      removeListener();
+      linkStatus('Returned to FSN.');
+      if(focused && focused.isConnected && typeof focused.focus === 'function') focused.focus();
+    }
+    linkStatus('Opening browser…');
+    Promise.resolve().then(()=> browser.addListener('browserFinished', finished)).then(handle=>{
+      listener = handle;
+      return browser.open({ url, presentationStyle:'fullscreen' });
+    }).then(()=> { if(!didFinish) linkStatus('Tap Done in the browser to return to FSN.'); }).catch(err=>{
+      removeListener();
+      console.error('[FSNLinks] The external browser could not open ' + url, err);
+      linkStatus('Could not open the browser. Please try again, or visit ' + url + ' in Safari.');
+    });
+    return true;
   }
 
   return { externalUrl: externalUrl, openExternal: openExternal };
@@ -19247,7 +19284,13 @@ function renderHome(){
   const live = LeagueData.hasLive();
   $('homeNoData').classList.toggle('hidden', live);
   $('homeContent').classList.toggle('hidden', !live);
-  if(!live) return;
+  if(!live){
+    $('homeLeagueName').textContent = 'THE DESK';
+    $('homeLeagueMeta').textContent = 'Connect a league to get started';
+    $('homeWeekPill').textContent = 'CONNECT LEAGUE';
+    $('homeSeasonLabel').textContent = '';
+    return;
+  }
 
   const d = LeagueData.espnData;
   const week = effectiveWeek();
@@ -22582,6 +22625,10 @@ function populateYahooLeaguePicker(leagues, selectedKey){
 }
 
 async function fetchYahooLeagueData(opts){
+  if(!FSNRelease.supportsProvider('yahoo')){
+    showUnavailableProvider();
+    return false;
+  }
   const options = opts || {};
   const silent = !!options.silent;
   const navigate = options.navigate !== false;
@@ -23059,8 +23106,20 @@ async function fetchLeagueData(options){
    The provider decides which adapter fetchLeagueData routes through and which
    setup affordances are relevant (cookies are ESPN-only; OAuth is Yahoo-only).
 ============================================================ */
+function showUnavailableProvider(){
+  setScreen('setup');
+  const status = $('fetchStatus');
+  if(status){
+    status.style.color = 'var(--dim)';
+    status.textContent = 'This provider is available on the FSN website. Connect an ESPN or Sleeper league in this app.';
+  }
+}
 function setProvider(provider){
   const next = normalizedLeagueProvider(provider);
+  if(!FSNRelease.supportsProvider(next)){
+    showUnavailableProvider();
+    return false;
+  }
   ui.provider = next;
   /* The derived caches namespace themselves by provider + league id, and this
      is the one funnel every provider change runs through. `ui` is private to
@@ -23111,6 +23170,7 @@ function setProvider(provider){
 if($('providerEspn')) $('providerEspn').addEventListener('click', ()=>{ setProvider('espn'); savePrefs(); });
 if($('providerSleeper')) $('providerSleeper').addEventListener('click', ()=>{ setProvider('sleeper'); savePrefs(); });
 if($('providerYahoo')) $('providerYahoo').addEventListener('click', async ()=>{
+  if(!FSNRelease.supportsProvider('yahoo')) return showUnavailableProvider();
   setProvider('yahoo');
   savePrefs();
   const connected = await refreshYahooAuthStatus();
@@ -23121,17 +23181,14 @@ function yahooReturnPath(){
   return window.location.pathname + '?goto=setup&platform=yahoo';
 }
 function startYahooLogin(){
+  if(!FSNRelease.supportsProvider('yahoo')) return showUnavailableProvider();
   const returnTo = yahooReturnPath();
-  /* Resolved through FSNApi like every other /api read. On the web this is the
-     same relative navigation it has always been; in the native shell it at
-     least aims at the real OAuth route rather than a nonexistent path inside
-     the app bundle. Yahoo login is still web-only — /api/auth/yahoo is
-     cookie-scoped and sends no CORS headers — so the native path ends at a
-     Yahoo consent screen the app cannot complete a session from. */
+  // Web-only OAuth stays on this deployment so its session cookie is available.
   window.location.assign(FSNApi.resolve('/api/auth/yahoo?action=start&return_to=' +
     encodeURIComponent(returnTo)));
 }
 async function refreshYahooAuthStatus(){
+  if(!FSNRelease.supportsProvider('yahoo')) return false;
   const status = $('yahooAuthStatus');
   const login = $('yahooLoginBtn');
   const logout = $('yahooDisconnectBtn');
@@ -23397,7 +23454,7 @@ function registerSavedLeague(id, provider){
 function renderLeagueSwitcher(){
   const select = $('leagueSwitcher'), status = $('leagueSwitcherStatus'), forget = $('forgetLeagueBtn');
   if(!select) return;
-  const list = savedLeagues();
+  const list = savedLeagues().filter(x=> FSNRelease.supportsProvider(x.provider));
   const active = leagueCacheKey(ui.provider, $('leagueIdInput').value.trim());
   select.innerHTML = list.length
     ? list.map(x=>`<option value="${esc(leagueCacheKey(x.provider,x.id))}" ${leagueCacheKey(x.provider,x.id)===active?'selected':''}>${esc(x.name)} · ${esc(x.provider.toUpperCase())}</option>`).join('')
@@ -23846,6 +23903,7 @@ async function settleBootCurtain(route){
 async function switchSavedLeague(value){
   const divider = String(value || '').indexOf(':');
   if(divider < 1) return;
+  if(!FSNRelease.supportsProvider(value.slice(0,divider))) return showUnavailableProvider();
   const startedAt = Date.now();
   const token = ++leagueSwitchSeq;
   snapshotActiveLeague();
@@ -23920,6 +23978,13 @@ function loadPrefs(){
   try{
     saved = FSNStore.getJSON(STORE_KEY, null);
     savedLeagueId = String(FSNStore.get(SAVED_LEAGUE_ID_KEY) || '').trim();
+    // An older native build may have saved Yahoo. Never reinterpret its ID as ESPN.
+    if(FSNRelease.isIOS() && ((saved && saved.provider === 'yahoo') || /^\d+\.l\.\d+$/.test(savedLeagueId) || /^\d+\.l\.\d+$/.test(String(saved && saved.leagueId || '')))){
+      saved = Object.assign({}, saved || {}, { provider:'espn', leagueId:'', week:'' });
+      savedLeagueId = '';
+      FSNStore.remove(SAVED_LEAGUE_ID_KEY);
+      FSNStore.setJSON(STORE_KEY, saved);
+    }
     // One-time migration for users whose prior build only stored the League ID
     // inside fsn.setup.v1. Future launches use fsn_saved_league_id directly.
     if(!savedLeagueId && saved && saved.leagueId){
@@ -24272,70 +24337,53 @@ if($('shareInviteBtn')) $('shareInviteBtn').addEventListener('click', ()=> handl
 if($('shareInviteCopy')) $('shareInviteCopy').addEventListener('click', ()=> copyInviteLink());
 if($('shareInviteUrl')) $('shareInviteUrl').addEventListener('focus', function(){ this.select(); });
 
-/* PRIVACY & DATA — App Store 5.1.1 local-erasure control.
-   Wipes every localStorage/sessionStorage key whose name begins with one of
-   the app's three prefix families (fsn., fsn_, mffu.) — the exhaustive set
-   of storage keys this build owns — then reloads without the current query
-   string so in-memory ui/LeagueData state and any invite token cannot
-   rehydrate what was just erased. */
-function eraseLocalDataAndDisconnect(){
+/* Disconnect remote services before discarding their local removal receipts.
+   Cloud archives and Yahoo token records are retained under the Privacy Policy;
+   this control ends the current browser session and erases this device only. */
+async function eraseLocalDataAndDisconnect(){
   const btn = $('eraseLocalDataBtn');
-  const ok = window.confirm(
-    'Erase every League ID, ESPN cookie, saved history, and preference stored on this device? ' +
-    'Shared cloud records are not affected. This cannot be undone.'
-  );
-  if(!ok) return;
-  const PREFIXES = ['fsn.', 'fsn_', 'mffu.'];
-  const matches = (key)=> !!key && PREFIXES.some(function(p){ return key.indexOf(p) === 0; });
-  function purge(store, label){
-    if(!store) return 0;
-    let n = 0;
-    try{
-      // Snapshot keys first — removeItem during iteration shifts indices
-      // and would silently leave half the matching keys behind.
-      const keys = [];
-      for(let i = 0; i < store.length; i++){
-        const k = store.key(i);
-        if(matches(k)) keys.push(k);
-      }
-      keys.forEach(function(k){
-        try{ store.removeItem(k); n++; }
-        catch(err){ console.warn('[Privacy] ' + label + ' remove failed for ' + k, err); }
-      });
-    }catch(err){
-      // localStorage/sessionStorage can throw wholesale in private mode or
-      // when site data is disabled; nothing to erase in that case.
-      console.warn('[Privacy] ' + label + ' unavailable during erasure', err);
+  const status = $('eraseLocalDataStatus');
+  if(btn && btn.disabled) return;
+  if(!window.confirm('Disconnect this device and erase its saved leagues, ESPN cookies, history, local stories and preferences? ' +
+    'Shared cloud records and server-held Yahoo authorization records are not deleted. This cannot be undone.')) return;
+  if(btn){ btn.disabled = true; btn.textContent = 'DISCONNECTING…'; }
+  if(status) status.textContent = 'Disconnecting this device before erasing its data…';
+  try{
+    const service = notifyService();
+    if(!service) throw new Error('Notification service unavailable; reload and retry.');
+    await service.disable();
+    if(!FSNRelease.isIOS()){
+      const response = await FSNNet.fetch('/api/auth/yahoo?action=disconnect', {
+        method:'POST', headers:{ Accept:'application/json' }, credentials:'same-origin', cache:'no-store',
+      }, { label:'Disconnect current browser session', timeoutMs:15000 });
+      if(!response.ok) throw new Error('The browser session could not be disconnected.');
     }
-    return n;
+  }catch(err){
+    console.error('[Privacy] Disconnect did not complete; keeping removal receipts for retry', err);
+    if(status) status.textContent = 'Disconnect could not finish. Your device data has not been erased. Check your connection and try again.';
+    if(btn){ btn.disabled = false; btn.textContent = 'RETRY ERASE & DISCONNECT'; }
+    return;
   }
-  const removed =
-    purge(typeof localStorage !== 'undefined' ? localStorage : null, 'localStorage') +
-    purge(typeof sessionStorage !== 'undefined' ? sessionStorage : null, 'sessionStorage');
-  console.warn('[Privacy] Erased ' + removed + ' local key(s) at user request.');
-  if(btn){ btn.disabled = true; btn.textContent = 'ERASED · RELOADING'; }
-  try{ toast('Local data erased · reloading'); }catch(err){ console.warn('[Privacy] toast failed', err); }
-  // Reload from a bare pathname so any share/invite token in the URL is
-  // dropped alongside the wiped storage — otherwise the invite handler
-  // would immediately re-save the League ID we just cleared.
-  setTimeout(function(){
-    try{ location.replace(location.pathname); }
-    catch(err){
-      console.error('[Privacy] reload via location.replace failed', err);
-      try{ location.reload(); }catch(e){ console.error('[Privacy] reload fallback failed', e); }
-    }
-  }, 350);
+  const result = FSNStore.eraseOwnedData();
+  LEAGUE_RUNTIME_CACHE.clear();
+  if(result.failures.length){
+    if(status) status.textContent = 'Some device storage could not be cleared. Retry, or clear FSN site data in your browser settings. Other devices and shared cloud records are unchanged.';
+    if(btn){ btn.disabled = false; btn.textContent = 'RETRY LOCAL ERASURE'; }
+    return;
+  }
+  if(btn) btn.textContent = 'ERASED · RELOADING';
+  if(status) status.textContent = 'Device data erased. Reloading FSN…';
+  // Immediate navigation drops in-memory engines and query/hash invite tokens.
+  try{ location.replace(location.pathname); }
+  catch(err){
+    console.error('[Privacy] Clean reload failed after erasure', err);
+    if(status) status.textContent = 'Stored data was erased. Close and reopen FSN to discard the current in-memory view.';
+  }
 }
 if($('eraseLocalDataBtn')) $('eraseLocalDataBtn').addEventListener('click', eraseLocalDataAndDisconnect);
 
-/* PRIVACY & DATA — hosted policy links (Privacy Policy, Terms of Service).
-
-   The anchors keep their real href and target, so the web build, keyboard
-   navigation, middle-click and "copy link address" all behave exactly as
-   before. This handler only takes the tap over when FSNLinks has a genuine
-   external opener to hand the URL to — the native binary's in-app browser,
-   or a new tab on the web. When it does not, the anchor's own navigation is
-   left to stand, which is what shipped. */
+/* Hosted Privacy, Terms and Support links retain normal web anchor behavior.
+   Native taps use the Safari sheet or show a recoverable opening error. */
 function openPolicyLink(ev){
   const link = ev.currentTarget;
   const href = link && link.getAttribute('href');
@@ -24442,7 +24490,9 @@ function renderNotifySettings(snap){
   const masterSub = $('notifyMasterSub');
   const rationale = $('notifyRationale');
   const groups = $('notifyGroups');
+  const retryOff = $('notifyRetryOff');
   if(!master || !rationale || !groups) return;
+  if(retryOff) retryOff.hidden = true;
 
   const service = notifyService();
   if(!service){
@@ -24458,7 +24508,7 @@ function renderNotifySettings(snap){
   }
 
   const busy = !!snap.busy;
-  master.disabled = busy || !snap.supported || snap.configured === false;
+  master.disabled = busy || !snap.supported || snap.configured !== true;
   if(masterRow) masterRow.setAttribute('data-disabled', String(master.disabled));
 
   NOTIFY_GROUP_INPUTS.forEach(id=>{
@@ -24471,14 +24521,23 @@ function renderNotifySettings(snap){
     if(row) row.setAttribute('data-disabled', String(busy));
   });
 
+  if(snap.registered && !snap.optedIn){
+    master.checked = false;
+    rationale.classList.add('hidden');
+    groups.hidden = true;
+    if(masterSub) masterSub.textContent = 'Disconnect needs a retry.';
+    if(retryOff){ retryOff.hidden = false; retryOff.disabled = busy; }
+    setNotifyStatus('Alerts may still arrive until this device is fully disconnected. Retry below, or turn off FSN notifications in device settings.', 'error');
+    return;
+  }
+
   /* ---- device cannot receive push at all ---- */
   if(!snap.supported){
     master.checked = false;
     rationale.classList.add('hidden');
     groups.hidden = true;
     if(masterSub) masterSub.textContent = 'Not supported on this device.';
-    setNotifyStatus('This browser cannot receive push notifications. Install the FSN app, ' +
-      'or add this site to your home screen, to switch alerts on.', 'warn');
+    setNotifyStatus('Alerts are unavailable on this device. You can still use your league desk, matchups and records.', 'warn');
     return;
   }
 
@@ -24487,8 +24546,8 @@ function renderNotifySettings(snap){
     master.checked = false;
     rationale.classList.add('hidden');
     groups.hidden = true;
-    if(masterSub) masterSub.textContent = 'Not yet available.';
-    setNotifyStatus('Push alerts are not configured on this deployment yet.', 'warn');
+    if(masterSub) masterSub.textContent = 'Unavailable for this device.';
+    setNotifyStatus('Weekly alerts are unavailable right now. Your league desk works with alerts turned off.', 'warn');
     return;
   }
 
@@ -24546,6 +24605,10 @@ function bindNotifySettings(){
   }
 
   const master = $('notifyMaster');
+  const retryOff = $('notifyRetryOff');
+  if(retryOff) retryOff.addEventListener('click', ()=>{
+    service.disable().catch(err=> console.error('[FSNPush] Retrying alert disconnection failed', err));
+  });
   if(master){
     master.addEventListener('change', ()=>{
       if(master.checked){
@@ -26963,6 +27026,12 @@ function applyDeepLink(){
   const contentRoute = FSNDeepLink.parse(window.location.href);
 
   const platform = (params.get('platform') || '').toLowerCase();
+  if(!FSNRelease.supportsProvider(platform)){
+    showUnavailableProvider();
+    try{ window.history.replaceState({}, document.title, window.location.pathname); }
+    catch(err){ console.warn('[Setup] Could not clear an unavailable-provider link', err); }
+    return { screen:'setup' };
+  }
   if(platform === 'espn' || platform === 'sleeper' || platform === 'yahoo'){
     try{ setProvider(platform); savePrefs(); }catch(e){}
   }
@@ -27303,6 +27372,10 @@ function handleNativeLinkUrl(rawUrl, reason){
     return;
   }
 
+  if(!FSNRelease.supportsProvider(route.platform)){
+    showUnavailableProvider();
+    return;
+  }
   if(route.platform){
     try{ setProvider(route.platform); savePrefs(); }
     catch(err){

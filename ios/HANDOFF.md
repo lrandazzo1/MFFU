@@ -1,223 +1,89 @@
 # FSN iOS — Capacitor handoff
 
-Everything below the "Manual steps in Xcode" heading requires a Mac with
-Xcode 26+, an Apple Developer account, and App Store Connect access.
-Xcode 26 is not a preference: since 28 April 2026 App Store Connect rejects
-any upload not built with the iOS 26 SDK (`ITMS-90725`).
-Everything above it is scriptable and reproducible on any machine with
-Node 18+ and CocoaPods.
+Native archiving, distribution signing and device checks require a Mac with
+Xcode 26+, the Apple Developer team and App Store Connect access.
 
----
+## 1. Native project and assets
 
-## 1. One-time setup (per fresh clone on a Mac)
+The generated `ios/App/` project is not source-controlled. CI creates it on
+macOS, restores the templates in `ios/`, stages the iOS-only HTML and syncs
+Capacitor. On a fresh local checkout, use the same preparation sequence as
+`.github/workflows/ios-build.yml` (the existing `ios/` directory must be moved
+aside before `cap add ios`, then its templates restored).
 
-```bash
-# From the repo root.
-npm install
+The app icon is already supplied: `assets/icon.svg` is the outlined FSN master.
+`npm run ios:assets` regenerates PNG sources and the Xcode asset catalogs and
+checks that every icon is branded. Do not skip this after native generation.
 
-# Adds the native iOS project at ./ios/. Only run this once per repo —
-# after the first run, `ios/` is committed and every subsequent clone
-# skips straight to `npm run ios:sync`.
-npx cap add ios
-
-# Raise the generated project to the App Store's minimum OS version
-# (Capacitor scaffolds it at iOS 13.0, which Apple rejects with ITMS-90068).
-node scripts/ios-min-os.mjs
-
-# Give the generated project its Associated Domains entitlement, which is what
-# makes iOS open a shared fantasysportsnetwork.app link in the app instead of
-# in Safari. Like the line above, it has to be re-applied after every sync.
-node scripts/ios-associated-domains.mjs
-
-# Install CocoaPods deps for the generated Xcode project.
-cd ios/App && pod install && cd ../..
-```
-
-## 2. Generate app icons and launch images
-
-Drop your source PNGs into `assets/` (see `assets/README.md` for the exact
-sizes), then:
+For an existing generated project:
 
 ```bash
-npm run ios:assets
-```
-
-This overwrites `ios/App/App/Assets.xcassets/AppIcon.appiconset/` and
-`Splash.imageset/` in place.
-
-## 3. Build + sync + open Xcode
-
-Copy-paste-runnable script — this is the loop you'll run for every code
-change to `index.html` or `editorialScheduleEngine.js`:
-
-```bash
-# Stage the web app into www/ (the Capacitor webDir).
-npm run build:ios
-
-# Copy www/ into ios/App/App/public/ and re-link native plugins.
-# This is also what links @capacitor/browser, which the Privacy Policy and
-# Terms of Service links in Setup use to open the hosted policy pages in an
-# in-app Safari view instead of navigating the app away. A binary synced
-# before that dependency existed logs a [FSNLinks] warning and falls back to
-# the plain anchor; re-running this loop is the fix.
-npx cap sync ios
-
-# Re-apply the minimum OS version and the Associated Domains entitlement.
-# `cap sync` regenerates the project from Capacitor's template, so both have to
-# run after every sync — and the pods have to be resolved again against the
-# raised platform line.
-node scripts/ios-min-os.mjs && node scripts/ios-associated-domains.mjs && (cd ios/App && pod install)
-
-# Open the Xcode workspace.
-npx cap open ios
-```
-
-Or, condensed:
-
-```bash
-npm run ios:sync && npm run ios:open
-```
-
----
-
-## Manual steps in Xcode
-
-Once `npx cap open ios` opens `App.xcworkspace`:
-
-1. **Select the `App` target** in the left sidebar → **Signing & Capabilities**.
-2. **Verify Bundle Identifier** reads exactly `app.fantasysportsnetwork`.
-   If it differs, either change it here or re-run `npx cap sync` after
-   correcting `capacitor.config.ts`.
-3. **Team Signing** — set **Team** to the Apple Developer team that owns
-   the `app.fantasysportsnetwork` App ID. Leave **Automatically manage
-   signing** checked unless the team uses manual provisioning profiles.
-4. **Associated Domains** — confirm the capability is listed with the three
-   `applinks:` entries from `ios/App.entitlements`. `npm run ios:applinks`
-   writes that file into the generated project and points the target's
-   `CODE_SIGN_ENTITLEMENTS` at it, but the **App ID in the developer portal**
-   also has to carry the Associated Domains capability. With automatic signing
-   Xcode adds it on the first archive; if signing fails with *"Provisioning
-   profile doesn't include the com.apple.developer.associated-domains
-   entitlement"*, enable it by hand at Certificates, Identifiers & Profiles →
-   Identifiers → `app.fantasysportsnetwork`, then let Xcode regenerate the
-   profile.
-5. **Verify the association is live** — `npm run check:applinks` pins the
-   entitlement, both `apple-app-site-association` files and the app's own host
-   list to each other, and warns while the AASA's Apple Team ID is still the
-   `TEAMID` placeholder. Replace it with the real Team ID (Membership → Team
-   ID) in **both** `.well-known/apple-app-site-association` and
-   `landing/.well-known/apple-app-site-association` and deploy before the first
-   submission: until then iOS never verifies the association and every shared
-   link opens Safari.
-6. **General → Deployment Info** — confirm minimum iOS version reads
-   **15.0**. Capacitor 6 defaults to iOS 13.0, which App Store Connect
-   rejects (`ITMS-90068`); `scripts/ios-min-os.mjs` raises it, and CI applies
-   the same bump on every run.
-7. **Version + Build** — bump `CFBundleShortVersionString` (marketing
-   version) and `CFBundleVersion` (build number) on every archive.
-8. **Product → Destination → Any iOS Device (arm64)**. Archiving against a
-   simulator is rejected by App Store Connect.
-9. **Product → Archive**. Wait for the archive to appear in the Organizer.
-10. In **Organizer**, select the new archive → **Distribute App** →
-   **App Store Connect** → **Upload**. Follow the signing prompts.
-11. In **App Store Connect** (browser), the build appears under
-   TestFlight → Builds within ~15 minutes. Add it to a test group or
-   submit for review from there.
-
----
-
-## Info.plist snippets
-
-`npx cap add ios` scaffolds a minimal `Info.plist`. The keys below are
-NOT added by default and must be inserted manually into
-`ios/App/App/Info.plist` before the first App Store submission, otherwise
-the review team will reject the binary or the WKWebView will silently
-block resources.
-
-### Required — network access to ESPN, Supabase, Vercel
-
-Modern WKWebView allows arbitrary HTTPS by default, but the review team
-still checks these keys when they see network calls. Add explicitly:
-
-```xml
-<key>NSAppTransportSecurity</key>
-<dict>
-    <key>NSAllowsArbitraryLoads</key>
-    <false/>
-    <key>NSExceptionDomains</key>
-    <dict>
-        <key>espn.com</key>
-        <dict>
-            <key>NSIncludesSubdomains</key>
-            <true/>
-            <key>NSExceptionAllowsInsecureHTTPLoads</key>
-            <false/>
-        </dict>
-        <key>supabase.co</key>
-        <dict>
-            <key>NSIncludesSubdomains</key>
-            <true/>
-        </dict>
-        <key>vercel.app</key>
-        <dict>
-            <key>NSIncludesSubdomains</key>
-            <true/>
-        </dict>
-    </dict>
-</dict>
-```
-
-### Required — UI orientation (portrait-only, matching the web app)
-
-```xml
-<key>UISupportedInterfaceOrientations</key>
-<array>
-    <string>UIInterfaceOrientationPortrait</string>
-</array>
-<key>UISupportedInterfaceOrientations~ipad</key>
-<array>
-    <string>UIInterfaceOrientationPortrait</string>
-    <string>UIInterfaceOrientationPortraitUpsideDown</string>
-</array>
-```
-
-### Required — status bar style (light content on the dark theme)
-
-```xml
-<key>UIStatusBarStyle</key>
-<string>UIStatusBarStyleLightContent</string>
-<key>UIViewControllerBasedStatusBarAppearance</key>
-<false/>
-```
-
-### Optional — add only if the corresponding feature is actually wired up
-
-The current web app does NOT use camera, mic, photo library, location,
-push notifications, or contacts. Do NOT paste these until the feature
-ships — Apple rejects binaries that declare unused permissions.
-
-```xml
-<!-- Only if a "share screenshot" feature is added -->
-<key>NSPhotoLibraryAddUsageDescription</key>
-<string>FSN saves league graphics to your Photos.</string>
-
-<!-- Only if push notifications are added -->
-<key>UIBackgroundModes</key>
-<array>
-    <string>remote-notification</string>
-</array>
-```
-
----
-
-## Updating the app after the first release
-
-For every subsequent release:
-
-```bash
-git pull
+npm ci
 npm run ios:sync
-npx cap open ios
+npm run ios:open
 ```
 
-Then in Xcode: bump build number → Product → Archive → Distribute.
+`ios:sync` stages the iOS release, syncs plugins, generates/checks assets,
+applies the minimum OS target, wires entitlements and APNs callbacks, and
+resolves CocoaPods. Yahoo remains available on the web; its controls, restore
+paths and incoming provider links are disabled in the initial iOS release.
+
+## 2. Distribution gates
+
+The workflow archives without a development identity, embeds requested
+capabilities in a temporary ad-hoc signature, then exports with Apple
+distribution signing. Only the final distribution-signed IPA can pass the
+upload gate. The gate inspects the exported icon and HTML, the app identifier,
+production `aps-environment`, Associated Domains and provisioning-profile
+compatibility. It rejects a temporary ad-hoc identity or missing capabilities.
+
+The verified application identifier is `QTK6CZ6ZVU.app.fantasysportsnetwork`.
+Both deployed AASA files must match it, and must exclude Privacy, Terms and
+Support paths before the catch-all app route. Deploy both projects on merge.
+
+APNs service credentials are separate from binary entitlements. Until production
+APNs is configured, the app accurately disables alerts; configuring Web Push
+alone must not enable the iOS control. No permission prompt occurs on cold boot.
+
+## 3. Required device checks after rebuilding
+
+- Install the newly processed TestFlight build; confirm the cyan FSN icon.
+- Connect ESPN and Sleeper; open all six screens with a working review league.
+- Confirm Yahoo is absent from iOS, including an old saved Yahoo selection and
+  an incoming Yahoo link. Verify web Yahoo remains available separately.
+- Open Setup → Privacy & Data → Support, Privacy and Terms. Tap Done and confirm
+  the same app state and focused link return. Test phone and iPad.
+- Erase with a registered test device: check removal, fresh onboarding and no
+  automatic restoration. Test offline failure/retry before clearing data.
+- Test a Universal Link on-device after both AASA deployments are live.
+- If enabling APNs, verify delivery and opt-out using a dedicated test device.
+- Verify the App Store Connect metadata against `ios/APP_STORE_METADATA.md`.
+  That file is reviewable copy, not proof that fields were changed in Connect.
+
+The automated browser return test uses a Capacitor bridge fixture. It does not
+replace native Safari-sheet or Apple association verification on a real device.
+
+---
+
+## Manual Xcode preparation
+
+Open `ios/App/App.xcworkspace`, select the App target and confirm:
+
+- Bundle identifier: `app.fantasysportsnetwork`; team: `QTK6CZ6ZVU`.
+- Automatic signing uses a distribution profile authorizing Push Notifications
+  and Associated Domains. Enable both capabilities on this App ID in the Apple
+  Developer portal if profile generation reports a mismatch.
+- `CODE_SIGN_ENTITLEMENTS` points to the generated `App/App.entitlements`.
+- The deployment target matches the repository's iOS 15 minimum. Use a physical
+  device archive destination and an unused build number.
+- Review the generated Info.plist and orientation behavior on iPhone and iPad.
+  Ordinary HTTPS requests need no insecure App Transport Security exceptions.
+  Visible push alerts do not require silent-push background execution.
+
+Archive and export for App Store Connect. Before uploading a manual export, run
+`python3 scripts/verify-ios-release.py /absolute/path/to/App.ipa` from the same
+checkout and staged payload used to create the archive. CI runs this gate before
+its upload step. The new export path must pass a real macOS run before sign-off.
+
+Rebuild after merging these changes; do not submit the previously audited build
+45. A successful build does not replace the device checks or App Review.

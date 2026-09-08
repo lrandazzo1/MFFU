@@ -6,8 +6,9 @@ node_modules/
 *.log
 .DS_Store
 
-# Capacitor iOS wrapper — the native project (ios/) is committed, but its
-# staged web payload and CocoaPods artifacts are regenerated per build.
+# Capacitor generates the native project and staged payload on each build.
+# Only ios/ templates and handoff docs are source-controlled.
+ios/App/
 www/
 ios/App/App/public/
 ios/App/Pods/

@@ -16,27 +16,16 @@ const config: CapacitorConfig = {
     scheme: 'FSN',
     backgroundColor: '#0b0d10'
   },
+  plugins: {
+    PushNotifications: { presentationOptions: ['badge', 'sound', 'alert'] }
+  },
   server: {
     // Local file:// serving inside WKWebView. No live-reload URL.
     iosScheme: 'capacitor',
     androidScheme: 'https',
-    // ESPN + Supabase + Vercel proxies are already CORS-cleared by the
-    // web build; nothing to allowlist here beyond the app's own scheme.
-    //
-    // The app project lives on app.fantasysportsnetwork.app (see
-    // DEPLOYMENT.md), which the bare apex entry does not match, so the
-    // wildcard is what actually covers the deployment FSNApi resolves /api
-    // reads onto. This governs webview NAVIGATION only — fetch() to the
-    // relay routes is not gated by it — but the Yahoo OAuth start is a real
-    // navigation, and a preview deploy on *.vercel.app already relied on the
-    // same allowance.
-    allowNavigation: [
-      '*.espn.com',
-      '*.supabase.co',
-      '*.vercel.app',
-      'fantasysportsnetwork.app',
-      '*.fantasysportsnetwork.app'
-    ]
+    // Provider APIs use fetch; navigation must stay inside the bundled app.
+    // Policies and Support open through the Capacitor Browser plugin.
+    allowNavigation: []
   }
 };
 

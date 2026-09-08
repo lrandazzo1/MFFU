@@ -182,9 +182,9 @@ footer{ border-top:1px solid var(--line); margin-top:48px; padding:28px 0 44px; 
 
   <p class="lede">
     Fantasy Sports Network (&ldquo;FSN&rdquo;, &ldquo;we&rdquo;) turns your existing fantasy football league into a
-    broadcast desk. There is no FSN account, no password and no user profile. Almost everything the app
-    knows about you lives in your own browser or on your own phone, and you can erase all of it from
-    inside the app in one tap.
+    broadcast desk. You do not create a separate FSN login. League data and preferences are cached on
+    your device; optional cloud, web Yahoo authorization and notification services also store data on
+    our servers. Device erasure and server-data deletion are separate, as explained below.
   </p>
 
   <main>
@@ -193,7 +193,8 @@ footer{ border-top:1px solid var(--line); margin-top:48px; padding:28px 0 44px; 
       <h2>1. The short version</h2>
       <ul>
         <li><strong>No account.</strong> You never create an FSN login. We do not ask for your name, your address or your date of birth.</li>
-        <li><strong>Your League ID and provider cookies stay on your device</strong> unless you deliberately turn on League Cloud sync.</li>
+        <li><strong>League reads transmit your League ID</strong> and, for private ESPN access, the cookies you provide to our relay. Saved ESPN cookies remain on your device unless you use League Cloud.</li>
+        <li><strong>Yahoo is web only.</strong> The initial iOS release offers ESPN and Sleeper. A Yahoo connection on our website stores encrypted authorization tokens on our servers.</li>
         <li><strong>No advertising, no ad identifiers, no third-party analytics or tracking SDKs.</strong> The app ships none.</li>
         <li><strong>We do not sell or share personal information</strong> for advertising or cross-app tracking.</li>
         <li><strong>You can erase everything local</strong> from <em>Setup → Privacy &amp; Data → Erase Stored Data &amp; Disconnect</em>.</li>
@@ -201,21 +202,26 @@ footer{ border-top:1px solid var(--line); margin-top:48px; padding:28px 0 44px; 
     </section>
 
     <section>
-      <h2>2. What stays on your device only</h2>
+      <h2>2. What is stored on your device</h2>
       <p>
-        The app is a single page that runs in your browser, or inside a native shell on iOS. It keeps its
-        working state in that device's own storage and nowhere else. That includes:
+        The app is a single page that runs in your browser, or inside a native shell on iOS. It keeps
+        a local working copy of your league and preferences. That includes:
       </p>
       <ul>
-        <li>Your <strong>League ID</strong> and chosen provider (ESPN, Sleeper or Yahoo).</li>
+        <li>Your <strong>League ID</strong> and chosen provider (ESPN or Sleeper; Yahoo on the web).</li>
         <li>For private ESPN leagues, the <strong><code>espn_s2</code> and <code>SWID</code> cookies</strong> you paste in during setup.</li>
         <li>The <strong>historical archive cache</strong> — past seasons already fetched, so the record book does not refetch them on every launch.</li>
         <li>Your <strong>preferences</strong>: selected team profile, viewed season and week, notification toggles, and dismissed walkthrough state.</li>
+        <li><strong>Local community stories and narrative caches</strong> saved in this browser or app installation.</li>
       </ul>
       <p>
-        Every one of these is written under a key beginning <code>fsn.</code>, <code>fsn_</code> or <code>mffu.</code>.
-        The <strong>Erase Stored Data &amp; Disconnect</strong> button in Setup removes all of them from both
-        <code>localStorage</code> and <code>sessionStorage</code>, then reloads the app clean. Nothing survives it locally.
+        These entries use keys beginning <code>fsn.</code>, <code>fsn_</code> or <code>mffu.</code>, plus the
+        legacy <code>hasCompletedOnboarding</code> flag. <strong>Erase Stored Data &amp; Disconnect</strong>
+        removes these entries from local and session storage, clears the app's memory-backed storage,
+        and reloads without league or invite parameters. It first disconnects this device's alerts and,
+        on the web, its current Yahoo session. If a network or storage operation fails, the app reports
+        the failure and offers a retry; it does not claim erasure succeeded. This affects the current
+        app installation or browser origin, not other browsers, devices, provider accounts or shared cloud records.
       </p>
     </section>
 
@@ -224,14 +230,43 @@ footer{ border-top:1px solid var(--line); margin-top:48px; padding:28px 0 44px; 
 
       <h3>3.1 League data reads</h3>
       <p>
-        To show your league, the app has to read it from your provider. Browsers cannot call ESPN, Sleeper
-        or Yahoo directly for these endpoints, so the requests pass through relay functions on our own
-        deployment at <code>app.fantasysportsnetwork.app/api/*</code>. Those requests carry your League ID and,
-        for a private ESPN league, your ESPN cookies — sent in request headers rather than stored on the
-        relay. The relay forwards the call, hands the response back to your device, and keeps no copy.
+        League reads use our relay functions at <code>app.fantasysportsnetwork.app/api/*</code> and,
+        where supported, public provider endpoints. Requests carry your League ID and, for private
+        ESPN access, your ESPN cookies in request headers. Reading through the ESPN relay does not
+        persist those cookies in our database; saving League Cloud is a separate operation. Yahoo
+        reads on the web use the server-held authorization described below. Our hosting provider
+        processes request metadata, such as IP address and browser information, to operate the service.
+      </p>
+      <p>
+        If a public ESPN read cannot reach the normal relay, the app can try AllOrigins, Corsproxy.io
+        or ThingProxy as public relay fallbacks. They receive the public request URL, including its
+        League ID, and request metadata. Credentialed private-league requests do not use these fallbacks.
       </p>
 
-      <h3>3.2 League Cloud sync (optional)</h3>
+      <h3>3.2 Yahoo authorization (website only)</h3>
+      <p>
+        When you connect Yahoo on the FSN website, Yahoo sends us an account identifier, access token,
+        refresh token and token-expiry information. We store the tokens encrypted in Supabase, with
+        the Yahoo identifier and update time, so we can request your fantasy data and renew expired
+        access. We do not receive your Yahoo password.
+      </p>
+      <p>
+        Your browser receives an HttpOnly session cookie. Our database stores a hash of that session
+        secret, the linked Yahoo identifier and a 30-day expiry. The OAuth state and return-path
+        cookies used while connecting expire after ten minutes. Expired session rows are removed
+        when encountered; expiry alone is not a scheduled deletion of every retained record.
+      </p>
+      <p>
+        <strong>Yahoo Log Out</strong> and successful web <strong>Erase Stored Data &amp; Disconnect</strong>
+        clear the current session cookie and request removal of its server session. Log Out alone
+        does not erase locally cached league data. Neither control deletes the server's encrypted
+        Yahoo token record or sessions on other devices. Tokens remain until you request deletion at
+        <a href="mailto:privacy@fantasysportsnetwork.app">privacy@fantasysportsnetwork.app</a>.
+        You can also revoke FSN's authorization in your Yahoo account settings; revocation prevents
+        further authorized use but does not itself delete the records held by FSN.
+      </p>
+
+      <h3>3.3 League Cloud sync (optional)</h3>
       <p>
         League Cloud lets everyone in a league share one reconstructed history instead of each member
         rebuilding it. When you save to it, the following is written to our database (hosted by Supabase):
@@ -253,9 +288,9 @@ footer{ border-top:1px solid var(--line); margin-top:48px; padding:28px 0 44px; 
         no anonymous or authenticated access policies at all: browsers never query it directly.
       </p>
 
-      <h3>3.3 Push notifications (optional, off by default)</h3>
+      <h3>3.4 Push notifications (optional, off by default)</h3>
       <p>
-        Notifications are off until you switch them on, and the permission prompt is only ever raised after
+        Alerts are offered only when the service supports your device. Notifications are off until you switch them on, and the permission prompt is only ever raised after
         you explicitly opt in. If you do turn them on, we register the device so we know where to send the
         alert:
       </p>
@@ -268,17 +303,18 @@ footer{ border-top:1px solid var(--line); margin-top:48px; padding:28px 0 44px; 
       </ul>
       <p>
         We also keep a small ledger of which alert was sent to which device in which week, so you are never
-        sent the same alert twice. Turning notifications off in Setup, or revoking the permission in your
-        operating system's settings, stops all of it.
+        sent the same alert twice. Successfully turning notifications off in Setup removes the device's
+        server registration and unsubscribes its push transport. A failed removal is reported and keeps
+        the identifier needed to retry. Revoking permission in your operating system stops display of
+        alerts but does not, by itself, delete server records or the delivery ledger.
       </p>
 
-      <h3>3.4 Waitlist (marketing site only)</h3>
+      <h3>3.5 Website signup records</h3>
       <p>
-        If you join the pre-launch waitlist on this website, we store your <strong>email address</strong>, the
+        For website release-update and previously submitted waitlist signups, we store your <strong>email address</strong>, the
         platform you chose, where the signup came from, and your browser's user-agent string. Commissioners
-        may optionally pre-supply a League ID and ESPN SWID so their desk is ready on day one; those fields
-        are blank unless you fill them in. A single welcome email is sent on first signup, and nothing else
-        until launch.
+        may optionally supply a League ID and ESPN SWID; those fields are blank unless you fill them in.
+        A welcome email is sent on first signup. Signup alone does not connect or load a league in the app.
       </p>
     </section>
 
@@ -290,10 +326,12 @@ footer{ border-top:1px solid var(--line); margin-top:48px; padding:28px 0 44px; 
           <thead><tr><th>Provider</th><th>What it does for us</th></tr></thead>
           <tbody>
             <tr><td>Vercel</td><td>Hosts this site, the app, and the relay functions.</td></tr>
-            <tr><td>Supabase</td><td>Hosts the database behind League Cloud, notification registrations and the waitlist.</td></tr>
+            <tr><td>Supabase</td><td>Hosts League Cloud, Yahoo authorization/session records, notification registrations/delivery records and website signups.</td></tr>
             <tr><td>Apple (APNs) and Web Push services</td><td>Deliver the push notifications you opted into.</td></tr>
             <tr><td>Resend</td><td>Sends the single waitlist welcome email.</td></tr>
             <tr><td>ESPN, Sleeper, Yahoo</td><td>The source of your league data. Your use of their services is governed by their own terms and privacy policies.</td></tr>
+            <tr><td>Google Fonts, Tailwind CDN and jsDelivr</td><td>Deliver fonts or app code and receive the associated network request metadata.</td></tr>
+            <tr><td>AllOrigins, Corsproxy.io and ThingProxy</td><td>Fallback relays for public ESPN data reads, as described above.</td></tr>
           </tbody>
         </table>
       </div>
@@ -308,8 +346,10 @@ footer{ border-top:1px solid var(--line); margin-top:48px; padding:28px 0 44px; 
       <ul>
         <li><strong>On your device:</strong> until you erase it, clear your browser storage, or delete the app.</li>
         <li><strong>League Cloud records:</strong> until the league is removed at a member's request.</li>
-        <li><strong>Notification registrations:</strong> until you turn notifications off, or the push provider reports the address as permanently invalid, at which point it is dropped.</li>
-        <li><strong>Waitlist emails:</strong> until launch, or until you ask to be removed.</li>
+        <li><strong>Yahoo authorization:</strong> encrypted tokens remain until a deletion request. Browser sessions expire after 30 days or end on logout; other session rows can remain until cleanup or a deletion request.</li>
+        <li><strong>Notification registrations:</strong> removed after a successful in-app opt-out or deletion request. A permanently invalid address is disabled, and its row may be retained.</li>
+        <li><strong>Notification delivery ledger:</strong> retained separately for deduplication and operational troubleshooting; request deletion by email.</li>
+        <li><strong>Website signup records:</strong> retained until you request removal. They are not automatically deleted at launch.</li>
       </ul>
     </section>
 
@@ -317,9 +357,9 @@ footer{ border-top:1px solid var(--line); margin-top:48px; padding:28px 0 44px; 
       <h2>6. Your choices</h2>
       <ul>
         <li><strong>Erase everything local:</strong> <em>Setup → Privacy &amp; Data → Erase Stored Data &amp; Disconnect</em>.</li>
-        <li><strong>Stop notifications:</strong> switch them off in Setup, or revoke the permission in your OS settings.</li>
+        <li><strong>Stop notifications:</strong> switch them off in Setup and retry any reported failure. Revoke permission in device settings to prevent display while offline.</li>
         <li><strong>Never use League Cloud:</strong> it is opt-in; the app works fully without it.</li>
-        <li><strong>Have cloud records or a waitlist entry deleted:</strong> email us and we will remove them.</li>
+        <li><strong>Delete server-held data:</strong> email us to request removal of League Cloud records, Yahoo authorization/session records, notification records or website signup records. We may need to verify your access to the affected league or account.</li>
       </ul>
       <p>
         Depending on where you live you may have additional rights over your personal information —
@@ -369,6 +409,7 @@ footer{ border-top:1px solid var(--line); margin-top:48px; padding:28px 0 44px; 
       <a href="/">Home</a>
       <a href="/terms">Terms of Service</a>
       <a href="/privacy">Privacy Policy</a>
+      <a href="/support">Support</a>
     </nav>
   </div>
 </footer>

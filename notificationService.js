@@ -90,6 +90,9 @@
      failed APNs handshake leaves enable() pending forever and the Setup toggle
      spins with no explanation. */
   var TOKEN_TIMEOUT_MS = 15000;
+  var registrationInFlight = null;
+  var disableInFlight = null;
+  var lifecycleRevision = 0;
 
   /* ==========================================================================
      STORAGE — same defensive posture as the app's FSNStore
@@ -402,13 +405,17 @@
   ========================================================================== */
 
   function loadServerConfig() {
-    return fetch(registerEndpoint(), { method: 'GET', headers: { Accept: 'application/json' } })
+    var controller = new AbortController();
+    var timer = setTimeout(function () { controller.abort(); }, TOKEN_TIMEOUT_MS);
+    return fetch(registerEndpoint(), { method: 'GET', headers: { Accept: 'application/json' }, signal: controller.signal })
       .then(function (response) {
         if (!response.ok) throw new Error('HTTP_' + response.status);
         return response.json();
       })
       .then(function (config) {
-        state.configured = !!(config && config.configured);
+        // A web-only deployment must never prompt an iOS reader for APNs.
+        state.configured = !!(config && config.configured &&
+          (state.platform === 'ios' ? config.apns : config.web && config.vapidPublicKey));
         state.vapidPublicKey = String((config && config.vapidPublicKey) || '');
         return config;
       })
@@ -420,27 +427,35 @@
           REGISTER_ENDPOINT + '; the Setup screen will show push as unavailable.', err);
         state.configured = false;
         return null;
-      });
+      }).finally(function () { clearTimeout(timer); });
   }
 
   function postRegistration(payload) {
+    var controller = new AbortController();
+    var timer = setTimeout(function () { controller.abort(); }, TOKEN_TIMEOUT_MS);
     return fetch(registerEndpoint(), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify(payload),
+      signal: controller.signal,
     }).then(function (response) {
-      return response.json().catch(function () { return {}; }).then(function (data) {
+      return response.json().then(function (data) {
         if (!response.ok) {
           throw new Error('REGISTER_' + response.status + ':' + String(data && data.error || ''));
         }
+        if (!data || data.ok !== true || (payload.unsubscribe && data.removed !== true) || (!payload.unsubscribe && !data.deviceId)) {
+          throw new Error('REGISTER_INVALID_RECEIPT');
+        }
         return data;
       });
-    });
+    }).finally(function () { clearTimeout(timer); });
   }
 
   /* Capture the address for whichever transport this runtime uses, then send it
      with the reader's preferences and league context. */
   function registerDevice() {
+    if (disableInFlight) return Promise.reject(new Error('PUSH_OPERATION_CANCELLED'));
+    if (registrationInFlight) return registrationInFlight;
     var platform = state.platform;
     if (!platform) return Promise.reject(new Error('PUSH_UNSUPPORTED'));
 
@@ -451,7 +466,7 @@
       ? iosToken().then(function (token) { return { token: token }; })
       : webSubscription(state.vapidPublicKey).then(function (sub) { return { subscription: sub }; });
 
-    return addressPromise.then(function (address) {
+    registrationInFlight = addressPromise.then(function (address) {
       var payload = {
         platform: platform,
         timezone: tz,
@@ -469,7 +484,8 @@
       state.deviceId = String((result && result.deviceId) || '');
       writeKey(DEVICE_KEY, state.deviceId);
       return result;
-    });
+    }).finally(function () { registrationInFlight = null; });
+    return registrationInFlight;
   }
 
   /* ==========================================================================
@@ -528,6 +544,8 @@
      iOS and every browser require one, and Safari silently refuses otherwise.
   -------------------------------------------------------------------------- */
   function enable(prefs) {
+    if (disableInFlight) return Promise.reject(new Error('PUSH_DISCONNECT_IN_PROGRESS'));
+    var revision = ++lifecycleRevision;
     if (prefs) state.prefs = normalizePrefs(prefs);
 
     if (!state.platform) state.platform = detectPlatform();
@@ -545,6 +563,7 @@
       : Promise.resolve(null);
 
     return configReady.then(function () {
+      if (revision !== lifecycleRevision) throw new Error('PUSH_OPERATION_CANCELLED');
       if (!state.configured) throw new Error('PUSH_NOT_CONFIGURED');
 
       if (state.platform === 'ios') {
@@ -557,6 +576,7 @@
         return String(result) === 'default' ? 'prompt' : String(result);
       });
     }).then(function (permission) {
+      if (revision !== lifecycleRevision) throw new Error('PUSH_OPERATION_CANCELLED');
       state.permission = permission;
       if (permission !== 'granted') {
         /* Not an error condition — a reader is allowed to say no. Record it and
@@ -567,6 +587,7 @@
         return snapshot();
       }
       return registerDevice().then(function () {
+        if (revision !== lifecycleRevision) return snapshot();
         state.optedIn = true;
         writeKey(OPTIN_KEY, '1');
         writeKey(PREFS_KEY, JSON.stringify(normalizePrefs(state.prefs)));
@@ -574,6 +595,7 @@
         return snapshot();
       });
     }).catch(function (err) {
+      if (err.message === 'PUSH_OPERATION_CANCELLED') return snapshot();
       state.optedIn = false;
       writeKey(OPTIN_KEY, '0');
       setBusy(false);
@@ -590,30 +612,47 @@
      re-prompt.
   -------------------------------------------------------------------------- */
   function disable() {
-    var deviceId = state.deviceId;
+    if (disableInFlight) return disableInFlight;
+    lifecycleRevision++;
     state.optedIn = false;
     writeKey(OPTIN_KEY, '0');
     setBusy(true);
 
-    var done = function () {
-      state.deviceId = '';
-      dropKey(DEVICE_KEY);
-      setBusy(false);
-      return snapshot();
-    };
-
-    if (!deviceId) return Promise.resolve(done());
-
-    return postRegistration({ unsubscribe: true, deviceId: deviceId })
-      .then(done)
-      .catch(function (err) {
-        /* The local switch is already off, so the reader sees what they asked
-           for; the row may linger until the next successful call. Say so
-           rather than pretending the unsubscribe landed. */
-        fail('the device was switched off locally but the server row could not ' +
-          'be removed; it will be retried on the next change', err);
-        return done();
+    // Join an already-started registration before deleting its receipt. An
+    // erase during the permission/registration handshake must not orphan a row.
+    disableInFlight = Promise.resolve(registrationInFlight).catch(function (err) {
+      console.warn('[FSNPush] A registration failed while disconnecting', err);
+    }).then(function () {
+      if (!state.deviceId) return;
+      return postRegistration({ unsubscribe: true, deviceId: state.deviceId });
+    }).then(function () {
+      var PN = capacitorPush();
+      if (PN) return PN.unregister();
+      if (!('serviceWorker' in navigator)) return;
+      return navigator.serviceWorker.getRegistration(SERVICE_WORKER_PATH).then(function (registration) {
+        if (!registration) return;
+        return registration.pushManager.getSubscription().then(function (subscription) {
+          if (subscription) return subscription.unsubscribe().then(function () {
+            return registration.pushManager.getSubscription().then(function (remaining) {
+              if (remaining) throw new Error('WEB_PUSH_UNSUBSCRIBE_INCOMPLETE');
+            });
+          });
+        });
       });
+    }).then(function () {
+      state.deviceId = '';
+      state.lastError = '';
+      dropKey(DEVICE_KEY);
+      return snapshot();
+    }).catch(function (err) {
+      // Keep DEVICE_KEY until confirmed removal so the next attempt can retry.
+      fail('alerts could not be fully disconnected; retry before erasing device data', err);
+      throw err;
+    }).finally(function () {
+      disableInFlight = null;
+      setBusy(false);
+    });
+    return disableInFlight;
   }
 
   /* --------------------------------------------------------------------------

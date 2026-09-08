@@ -8,8 +8,8 @@
   "scripts": {
     "build": "npm run build:ios",
     "build:ios": "node scripts/build-ios.mjs",
-    "ios:assets": "npx @capacitor/assets generate --ios --assetPath assets",
-    "ios:sync": "npm run build:ios && npx cap sync ios && npm run ios:minos && npm run ios:applinks && cd ios/App && pod install",
+    "ios:assets": "npm run assets:source && capacitor-assets generate --ios --assetPath assets && node scripts/check-ios-assets.mjs",
+    "ios:sync": "npm run build:ios && npx cap sync ios && npm run ios:assets && npm run ios:minos && npm run ios:applinks && cd ios/App && pod install",
     "ios:minos": "node scripts/ios-min-os.mjs",
     "ios:applinks": "node scripts/ios-associated-domains.mjs",
     "ios:open": "npx cap open ios",
@@ -25,7 +25,9 @@
     "check:applinks": "node scripts/check-applinks.mjs",
     "check:deeplinks": "node scripts/deeplink-check.mjs",
     "verify": "npm run check:scope && npm run test:triggers && npm run audit:notifications && npm run check:render && npm run check:switch && npm run check:boot && npm run check:apibase && npm run check:links && npm run check:claims && npm run check:news && npm run check:applinks && npm run check:deeplinks",
-    "audit:notifications": "node scripts/audit-notifications.mjs"
+    "audit:notifications": "node scripts/audit-notifications.mjs",
+    "assets:source": "node scripts/build-brand-assets.mjs",
+    "check:release": "npm run build:ios && node scripts/release-cleanup-check.mjs && node scripts/release-browser-check.mjs"
   },
   "dependencies": {
     "@capacitor/app": "^6.0.3",
@@ -42,6 +44,7 @@
     "acorn": "^8.18.0",
     "acorn-walk": "^8.3.5",
     "playwright": "^1.63.0",
+    "sharp": "0.32.6",
     "typescript": "^5.9.3"
   }
 }

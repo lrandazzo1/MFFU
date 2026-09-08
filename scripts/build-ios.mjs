@@ -2,7 +2,7 @@
 // Stage the static web app into `www/` for Capacitor to package.
 // This is the iOS-only build step. Vercel (web) still serves index.html
 // straight from the repo root and does not run this script.
-import { mkdirSync, rmSync, copyFileSync, existsSync } from 'node:fs';
+import { mkdirSync, rmSync, copyFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -40,7 +40,19 @@ for (const rel of files) {
   }
   const dst = join(out, rel);
   mkdirSync(dirname(dst), { recursive: true });
-  copyFileSync(src, dst);
+  if(rel === 'index.html'){
+    let html = readFileSync(src, 'utf8');
+    if(!html.includes('data-fsn-release="web"')) throw new Error('Missing FSN release marker');
+    const starts = html.match(/<!-- FSN_WEB_ONLY_START -->/g) || [];
+    const ends = html.match(/<!-- FSN_WEB_ONLY_END -->/g) || [];
+    if(starts.length !== 2 || starts.length !== ends.length) throw new Error('Unbalanced web-only UI markers');
+    html = html.replace('data-fsn-release="web"', 'data-fsn-release="ios"')
+      .replace(/<!-- FSN_WEB_ONLY_START -->[\s\S]*?<!-- FSN_WEB_ONLY_END -->/g, '');
+    if(/id="(?:providerYahoo|yahooAuthPanel)"/.test(html)) throw new Error('Web-only provider UI leaked into iOS');
+    writeFileSync(dst, html);
+  } else {
+    copyFileSync(src, dst);
+  }
   console.log(`[build:ios] staged ${rel}`);
 }
 

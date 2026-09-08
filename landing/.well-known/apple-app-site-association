@@ -2,7 +2,9 @@
   "applinks": {
     "details": [
       {
-        "appIDs": ["TEAMID.app.fantasysportsnetwork"],
+        "appIDs": [
+          "QTK6CZ6ZVU.app.fantasysportsnetwork"
+        ],
         "components": [
           {
             "/": "/api/*",
@@ -22,7 +24,12 @@
           {
             "/": "/privacy*",
             "exclude": true,
-            "comment": "Privacy Policy — same reason as /terms."
+            "comment": "Privacy Policy \u2014 same reason as /terms."
+          },
+          {
+            "/": "/support*",
+            "exclude": true,
+            "comment": "Support stays in the external browser so Done returns to FSN."
           },
           {
             "/": "/*",

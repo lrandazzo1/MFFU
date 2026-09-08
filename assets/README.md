@@ -1,20 +1,15 @@
-# FSN — iOS source assets
+# FSN iOS source assets
 
-`@capacitor/assets` reads a single source logo + splash from this folder and
-generates every icon / launch image size Xcode needs. Drop the two files
-below in, then run `npm run ios:assets`.
+`icon.svg` is the source of truth: an outlined FSN wordmark using the app's cyan
+(`#00e0ff`) and ink (`#080a0e`). It uses no external fonts or image downloads.
 
-| File | Size | Notes |
-|---|---|---|
-| `assets/icon.png` | 1024 × 1024 PNG, opaque | App icon master. No transparency, no rounded corners (iOS masks them). |
-| `assets/icon-foreground.png` | 1024 × 1024 PNG, transparent | Optional. Foreground layer for adaptive icons. |
-| `assets/icon-background.png` | 1024 × 1024 PNG, opaque | Optional. Background layer for adaptive icons. |
-| `assets/splash.png` | 2732 × 2732 PNG | Launch screen master. Center-safe (edges get cropped on smaller devices). |
-| `assets/splash-dark.png` | 2732 × 2732 PNG | Optional. Used when the device is in dark mode. |
+`npm run assets:source` generates the committed opaque 1024 × 1024 `icon.png`
+and center-safe 2732 × 2732 `splash.png`. iOS supplies the icon corner mask.
 
-After running the generator, Capacitor writes into:
+After generating the native project, run `npm run ios:assets`. This regenerates
+the masters, writes the Xcode icon/launch catalogs, and verifies every generated
+icon against the FSN master. The iOS workflow runs it after Capacitor sync.
 
-- `ios/App/App/Assets.xcassets/AppIcon.appiconset/`
-- `ios/App/App/Assets.xcassets/Splash.imageset/`
-
-Both are picked up automatically by Xcode — no manual drag-and-drop.
+Before TestFlight upload, `verify-ios-release.py` checks the actual exported
+icons, native identity, signed entitlements and packaged HTML. An icon/config
+failure stops upload. Review the icon in the next installed build as well.
