@@ -16,8 +16,9 @@
     "check:scope": "node scripts/scope-scan.mjs",
     "check:render": "node scripts/render-check.mjs",
     "check:switch": "node scripts/switch-curtain-check.mjs",
+    "check:boot": "node scripts/boot-curtain-check.mjs",
     "check:apibase": "node scripts/api-base-check.mjs",
-    "verify": "npm run check:scope && npm run test:triggers && npm run audit:notifications && npm run check:render && npm run check:switch && npm run check:apibase",
+    "verify": "npm run check:scope && npm run test:triggers && npm run audit:notifications && npm run check:render && npm run check:switch && npm run check:boot && npm run check:apibase",
     "audit:notifications": "node scripts/audit-notifications.mjs"
   },
   "dependencies": {
