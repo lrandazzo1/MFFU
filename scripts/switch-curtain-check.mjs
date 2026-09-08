@@ -321,13 +321,22 @@ try {
   if (booted) pass('booted into league ' + LEAGUE_B);
   else fail('league ' + LEAGUE_B + ' never painted at boot; the check cannot measure a switch away from it');
 
+  /* The cold launch uses this same curtain as its loading screen, so the first
+     drop of the session belongs to the boot, not to a switch. Baseline it out
+     — and assert it, because a boot that dropped a different number of curtains
+     would silently shift every index below and quietly stop testing switches.
+     What that drop itself has to satisfy is scripts/boot-curtain-check.mjs. */
+  const bootDrops = (await drops()).length;
+  if (bootDrops === 1) pass('the cold-boot loading screen came down exactly once before any switch');
+  else fail('expected exactly 1 cold-boot curtain drop before switching, saw ' + bootDrops);
+
   /* ---- 1. A single switch ------------------------------------------------ */
   await switchTo(LEAGUE_A);
   await page.waitForFunction(() => window.__curtainDrops.length >= 1, null, { timeout: 25000 })
     .catch(() => fail('the curtain never came down after switching to league ' + LEAGUE_A));
   await page.waitForTimeout(POST_DROP_SAMPLE_MS + 800);
 
-  const afterFirst = await drops();
+  const afterFirst = (await drops()).slice(bootDrops);
   if (afterFirst.length === 1) pass('the curtain came down exactly once for one switch');
   else fail('expected 1 curtain drop, saw ' + afterFirst.length);
 
@@ -355,7 +364,7 @@ try {
   await switchTo(LEAGUE_C);
   await page.waitForTimeout(6000 + POST_DROP_SAMPLE_MS);
 
-  const afterRace = (await drops()).slice(afterFirst.length);
+  const afterRace = (await drops()).slice(bootDrops + afterFirst.length);
   if (!afterRace.length) {
     fail('the curtain never came down after two overlapping switches');
   } else {

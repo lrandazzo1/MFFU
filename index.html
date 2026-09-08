@@ -20,6 +20,122 @@
 <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns=&#39;http://www.w3.org/2000/svg&#39; viewBox=&#39;0 0 180 180&#39;%3E%3Crect width=&#39;180&#39; height=&#39;180&#39; fill=&#39;%23080a0e&#39;/%3E%3Ctext x=&#39;90&#39; y=&#39;118&#39; font-family=&#39;Helvetica,Arial&#39; font-size=&#39;78&#39; font-weight=&#39;bold&#39; fill=&#39;%2300e0ff&#39; text-anchor=&#39;middle&#39;%3EFSN%3C/text%3E%3C/svg%3E">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=&#39;http://www.w3.org/2000/svg&#39; viewBox=&#39;0 0 64 64&#39;%3E%3Crect width=&#39;64&#39; height=&#39;64&#39; fill=&#39;%23080a0e&#39;/%3E%3Ctext x=&#39;32&#39; y=&#39;43&#39; font-family=&#39;Helvetica,Arial&#39; font-size=&#39;27&#39; font-weight=&#39;bold&#39; fill=&#39;%2300e0ff&#39; text-anchor=&#39;middle&#39;%3EFSN%3C/text%3E%3C/svg%3E">
 
+<!-- ============================================================
+     COLD-BOOT LOADING SCREEN — the first thing that runs on the page.
+
+     The static markup below paints Home's "NO SIGNAL / OPEN SETUP" card,
+     because that is the honest state of an app with no league data in it. On a
+     cold launch it is also WRONG for a fraction of a second: bootApp() reads
+     the saved League ID out of device storage and refetches it, so a reader who
+     has used the app before watches the setup prompt flash past before their
+     dashboard arrives — the app looks like it forgot them.
+
+     Nothing in the inline script blocks further down can fix that. They sit at
+     the END of the body, so by the time any of them runs the browser has
+     already parsed and painted the screens above them. The fix has to be here,
+     before the body exists at all: this stamps data-fsn-boot="loading" on
+     <html>, and the stylesheet turns that into the FSN broadcast bumper
+     (#leagueCurtain, the same loading animation a league switch uses) over a
+     held-back app shell. So the first frame is the loading screen, and the
+     reader never sees the app in its unpopulated state.
+
+     Global scope, ahead of every IIFE, per CLAUDE.md rule 1 — the mobile UI
+     block (block 6) adopts this curtain in bootApp() via window.FSNBoot rather
+     than opening one of its own.
+
+     The failsafe is the reason this is a script rather than a hardcoded
+     attribute in the markup: an overlay that only JavaScript can lift must not
+     survive JavaScript failing. If the attribute were static, a page whose
+     scripts never ran would be an opaque black screen forever. Because it is
+     set here, that page never gets the overlay at all — and if this block runs
+     but block 6 never reaches bootApp(), the watchdog below lifts it and says
+     why.
+============================================================ -->
+<script>
+window.FSNBoot = (function(){
+  /* Must match SAVED_LEAGUE_ID_KEY in block 6. That block asserts the two agree
+     on every boot and logs loudly if they ever drift, because a drift is
+     invisible: the loading screen would simply stop knowing that a league is
+     about to be restored. */
+  var LEAGUE_KEY = 'fsn_saved_league_id';
+
+  /* The app has ~15s to take ownership of the curtain. Reaching this means
+     block 6 never ran bootApp() — a parse error in one of the script blocks,
+     or a file served half-truncated. Either way the reader gets the app back. */
+  var ADOPT_WATCHDOG_MS = 15000;
+
+  var watchdog = null;
+  var open = false;
+
+  /* What this launch expects to restore, read straight from the device rather
+     than through FSNStore (which does not exist yet). An invite link names its
+     own league and outranks whatever this browser used last, exactly as
+     bootApp() resolves it. Purely diagnostic: the loading screen goes up either
+     way, because "is there a league?" must not be answered by a flash of the
+     wrong screen. */
+  function storedLeagueId(){
+    try{
+      var value = window.localStorage.getItem(LEAGUE_KEY);
+      return value ? String(value).trim() : '';
+    }catch(err){
+      /* Private mode, or an embedded webview with site data blocked. The
+         CLAUDE.md rule 3 carve-out: an optional browser API that throws by
+         design, probed before any subsystem exists to report it against.
+         FSNStore reports the same condition per key once the app is up, and the
+         launch degrades to Setup — which is where a reader whose saved league
+         cannot be read actually belongs. */
+      return '';
+    }
+  }
+  function invitedLeagueId(){
+    try{
+      var params = new URLSearchParams(window.location.search);
+      var id = String(params.get('id') || params.get('league_id') || params.get('leagueId') || '').trim();
+      return /^\d{1,20}$/.test(id) ? id : '';
+    }catch(err){ return ''; }
+  }
+  var expected = invitedLeagueId() || storedLeagueId();
+
+  function release(){
+    open = false;
+    if(watchdog){ clearTimeout(watchdog); watchdog = null; }
+    try{ document.documentElement.removeAttribute('data-fsn-boot'); }
+    catch(err){
+      console.error('[FSNBoot] Could not clear the cold-boot loading state from <html>; the app may stay ' +
+        'hidden behind the loading screen.', err);
+    }
+  }
+
+  try{
+    document.documentElement.setAttribute('data-fsn-boot', 'loading');
+    open = true;
+  }catch(err){
+    console.error('[FSNBoot] Could not raise the cold-boot loading screen; this launch will show the ' +
+      'unpopulated app while the saved league is restored.', err);
+  }
+
+  if(open){
+    watchdog = setTimeout(function(){
+      console.error('[FSNBoot] The cold-boot loading screen was still up after ' + ADOPT_WATCHDOG_MS +
+        'ms and the app never adopted it, which means block 6 never reached bootApp(). Revealing the app ' +
+        'rather than leaving the reader behind an overlay nothing will lift.',
+        new Error('FSN_BOOT_CURTAIN_UNADOPTED'));
+      release();
+    }, ADOPT_WATCHDOG_MS);
+  }
+
+  return {
+    LEAGUE_KEY: LEAGUE_KEY,
+    /* True until the app adopts the curtain or the watchdog lifts it. */
+    isOpen: function(){ return open; },
+    /* The League ID this launch expects to restore, or '' for none. */
+    expectedLeagueId: function(){ return expected; },
+    /* Hand the curtain over (bootApp) or drop it (watchdog). Idempotent. */
+    release: release,
+  };
+})();
+</script>
+
 <script src="https://cdn.tailwindcss.com"></script>
 <!--
   Dynamic weekly publishing schedule engine. Loads at global scope so the
@@ -960,7 +1076,7 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
    and only after the new league's data has fully resolved. Purely presentational
    overlay; shown by showLeagueCurtain() / hidden on resolve. */
 #leagueCurtain{
-  position:fixed; inset:0; z-index:150;
+  position:fixed; inset:0; z-index:155;
   display:flex; align-items:center; justify-content:center;
   background:
     radial-gradient(130% 100% at 50% 16%,rgba(0,224,255,.10),transparent 58%),
@@ -977,6 +1093,27 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
 }
 /* transition:none makes the mask appear instantly — the zero-flash contract. */
 #leagueCurtain[data-open="true"]{ opacity:1; visibility:visible; pointer-events:auto; transition:none; }
+
+/* ---- COLD-BOOT OPEN STATE ----
+   The same overlay, raised from <head> before the body is parsed (see FSNBoot
+   there) so a cold launch opens on the FSN bumper instead of flashing Home's
+   "NO SIGNAL / OPEN SETUP" card while the saved league is read back and
+   refetched. Driven off <html> rather than the element's own data-open because
+   #leagueCurtain lives near the END of the body — the attribute has to be
+   settable before that element exists.
+
+   The shell is held back for exactly that window: the browser paints the
+   screens above the curtain as it parses them, so without this the reader gets
+   one frame of the unpopulated app before the overlay it is supposed to be
+   behind has even been created. Hiding it costs nothing visually — the curtain
+   and the page share --ink, so the gap reads as the loading screen's own
+   background — and it is over the moment bootApp() adopts the curtain into the
+   normal data-open state above and clears this attribute. */
+html[data-fsn-boot="loading"] #leagueCurtain{
+  opacity:1; visibility:visible; pointer-events:auto; transition:none;
+}
+html[data-fsn-boot="loading"] #appShell,
+html[data-fsn-boot="loading"] #tickerBar{ visibility:hidden; }
 
 .league-curtain-inner{
   position:relative; z-index:1;
@@ -2495,6 +2632,33 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
 <body>
 
 <!-- ============================================================
+     BROADCAST BUMPER — the FSN loading screen, shown while an active-league
+     swap resolves AND on every cold launch. It appears INSTANTLY (see the
+     transition:none open states in CSS) so it fully masks the DOM wipe and
+     re-render, guaranteeing no stale/half-empty screen flashes before the
+     league's data lands. Additive, presentational overlay only.
+
+     FIRST IN THE BODY on purpose. The browser paints as it parses, so an
+     overlay declared after the screens cannot cover the frames drawn before
+     the parser reaches it — which on a cold launch is exactly the window where
+     the unpopulated "NO SIGNAL / OPEN SETUP" card would otherwise flash. Its
+     z-index carries the stacking that DOM order used to: 155 keeps it above
+     the franchise dossier (150), which followed it here, and still below the
+     profile picker (160), the dossier share sheet (170) and the story composer
+     (180), which preceded it. See FSNBoot in <head> for the cold-boot half.
+============================================================ -->
+<div id="leagueCurtain" data-open="false" aria-hidden="true" role="status" aria-live="polite">
+  <div class="league-curtain-inner">
+    <div class="league-curtain-logo" aria-hidden="true">
+      <span class="league-curtain-mark">FSN</span>
+    </div>
+    <div class="league-curtain-onair" aria-hidden="true"><span class="lcl-dot"></span>On Air</div>
+    <div class="league-curtain-label" id="leagueCurtainLabel">Loading league…</div>
+    <div class="league-curtain-bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+  </div>
+</div>
+
+<!-- ============================================================
      TICKER — continuous scores crawl, always on screen
 ============================================================ -->
 <div id="tickerBar">
@@ -3448,24 +3612,6 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
         <button type="button" class="ftu-next" id="ftuNext">Next →</button>
       </div>
     </div>
-  </div>
-</div>
-
-<!-- ============================================================
-     LEAGUE SWITCH BROADCAST TRANSITION — an FSN broadcast bumper shown
-     while an active-league swap resolves. It appears INSTANTLY (see the
-     transition:none open state in CSS) so it fully masks the DOM wipe and
-     re-render, guaranteeing no stale/half-empty screen flashes before the
-     new league's data lands. Additive, presentational overlay only.
-============================================================ -->
-<div id="leagueCurtain" data-open="false" aria-hidden="true" role="status" aria-live="polite">
-  <div class="league-curtain-inner">
-    <div class="league-curtain-logo" aria-hidden="true">
-      <span class="league-curtain-mark">FSN</span>
-    </div>
-    <div class="league-curtain-onair" aria-hidden="true"><span class="lcl-dot"></span>On Air</div>
-    <div class="league-curtain-label" id="leagueCurtainLabel">Loading league…</div>
-    <div class="league-curtain-bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
   </div>
 </div>
 
@@ -23114,6 +23260,146 @@ async function settleLeagueMount(token, provider, leagueId, label, startedAt){
   hideLeagueCurtain();
 }
 
+/* ============================================================
+   COLD-BOOT LOADING SCREEN — the app half of it.
+
+   The <head> script (window.FSNBoot) raises the broadcast bumper before the
+   body is parsed, which is the only place early enough to stop the "NO SIGNAL /
+   OPEN SETUP" flash. Everything from here on is this block's: bootApp() adopts
+   that curtain into the normal data-open state, holds it while the saved league
+   is restored, then reveals — onto the dashboard if a league came back, or onto
+   Setup if this browser has none.
+
+   It reuses the league-switch gate above (awaitLeagueRenderSettled, and the
+   watchdog wrapper) with one deliberate difference: it does NOT wait on the
+   multi-year archive walk. Mid-session that wait is right — the reader is
+   looking at a bumper that replaced a working app, and revealing before the
+   archive lands rewrites the Desk under them. On a cold boot there is nothing
+   behind the bumper yet, so the same wait is just a launch that takes twelve
+   sequential season reads to open. The live season is what turns "NO SIGNAL"
+   into the dashboard, so that is what the reveal is tied to; the archive
+   repaints through the hydration gate exactly as it does on any other launch.
+============================================================ */
+
+/* A minimum visible time, so a warm launch (storage read, cached DNS, a fast
+   league) reads as a deliberate broadcast open rather than a black flicker. It
+   can only ever DELAY the reveal — it never causes one. */
+const BOOT_CURTAIN_FLOOR_MS = 420;
+/* How long the reveal waits on the league restore itself. Shorter than the
+   live fetch's own 20s deadline on purpose: past this point the honest thing is
+   to show the reader the app and whatever state it is in — with the failure
+   named on the Setup screen — rather than hold a loading screen that has
+   stopped meaning "nearly there". */
+const BOOT_CURTAIN_REHYDRATE_MS = 12000;
+/* The failsafe under all of it. Nothing below may leave the curtain up. */
+const BOOT_CURTAIN_WATCHDOG_MS = 15000;
+
+let bootCurtainOwned = false;
+let bootCurtainDone = false;
+let bootCurtainStartedAt = 0;
+let bootCurtainWatchdog = null;
+
+/* Take ownership of the curtain the <head> script raised. Returns whether this
+   launch actually has one — false means the app boots exactly as it did before
+   this existed, visible from the first frame. */
+function adoptBootCurtain(){
+  const boot = window.FSNBoot;
+  if(!boot){
+    /* Not a "maybe it is there" guard: FSNBoot ships in this same file, above
+       this block. Missing means index.html was edited or served with that block
+       stripped, and the symptom — the setup card flashing on every cold launch
+       — is exactly the bug it exists to prevent, so it is named rather than
+       silently tolerated. */
+    console.error('[FSNBoot] The cold-boot script in <head> did not run, so this launch had no loading ' +
+      'screen and the reader saw the unpopulated app while the saved league was restored.',
+      new Error('FSN_BOOT_MISSING'));
+    return false;
+  }
+  if(boot.LEAGUE_KEY !== SAVED_LEAGUE_ID_KEY){
+    console.error('[FSNBoot] The cold-boot script reads the saved league from "' + boot.LEAGUE_KEY +
+      '" but this block stores it under "' + SAVED_LEAGUE_ID_KEY + '". The loading screen still works, ' +
+      'but it can no longer tell whether a league is about to be restored.',
+      new Error('FSN_BOOT_LEAGUE_KEY_MISMATCH'));
+  }
+  // Already lifted by its own watchdog, or bootApp ran twice. Either way there
+  // is no curtain to hold and the app must not be re-covered.
+  if(!boot.isOpen()) return false;
+
+  bootCurtainStartedAt = Date.now();
+  bootCurtainOwned = true;
+  /* data-open FIRST, then release the <html> attribute: the two states are
+     visually identical, so handing over in this order keeps the overlay opaque
+     across the swap instead of blinking the app through between them. */
+  showLeagueCurtain(boot.expectedLeagueId() ? 'Restoring your league…' : 'Tuning in…');
+  try{ boot.release(); }
+  catch(err){
+    console.error('[FSNBoot] Could not release the pre-paint loading state; the app shell may stay ' +
+      'hidden after the curtain lifts.', err);
+  }
+  /* The <head> watchdog covered "block 6 never ran". This one covers everything
+     after: a reveal path that throws somewhere it is not caught, or a boot that
+     returns down a branch that forgets to settle. */
+  bootCurtainWatchdog = setTimeout(()=>{
+    console.error('[FSNBoot] The cold-boot loading screen was still up ' + BOOT_CURTAIN_WATCHDOG_MS +
+      'ms after boot adopted it; revealing the app rather than stranding the reader behind it. The ' +
+      'league restore either never settled or the reveal path did not run.',
+      new Error('FSN_BOOT_CURTAIN_STUCK'));
+    finishBootCurtain();
+  }, BOOT_CURTAIN_WATCHDOG_MS);
+  return true;
+}
+
+/* Lift the curtain, once. Every path out of boot ends here. */
+function finishBootCurtain(){
+  if(bootCurtainDone) return;
+  bootCurtainDone = true;
+  if(bootCurtainWatchdog){ clearTimeout(bootCurtainWatchdog); bootCurtainWatchdog = null; }
+  if(!bootCurtainOwned) return;
+  hideLeagueCurtain();
+  /* The first-run walkthrough was held back by bootApp: #ftuModal is z-index
+     140 and the curtain 155, so opening it during the hold would have played
+     the intro to nobody and then snapped it in at the reveal. */
+  safeRun('boot:ftu', maybeShowFtu);
+}
+
+/* Hold the loading screen until this launch has resolved, then land the reader
+   on the right screen and reveal.
+
+   `route` is the live state of the boot sequence rather than a snapshot,
+   because the Yahoo branch does not know whether it has a league to restore
+   until its auth check answers — which is after this has already started
+   waiting. */
+async function settleBootCurtain(route){
+  try{
+    if(route && route.rehydration){
+      await withMountWatchdog(route.rehydration, 'Cold-boot league rehydration', BOOT_CURTAIN_REHYDRATE_MS);
+    }
+    /* THE ROUTE. A launch with nothing to restore is the one case where Home is
+       the wrong landing screen: its "NO SIGNAL" card exists to tell a reader
+       with no league to open Setup, so open Setup. A launch that DID have a
+       league to restore stays on Home even when the restore failed — the reader
+       has a league, the connection is what broke, and the fetch banner says so.
+       A deep link that named its own destination always wins; it is an explicit
+       instruction from outside the app. */
+    if(route && !route.attempted && !route.screenFromLink && !LeagueData.hasLive()){
+      safeRun('boot:routeSetup', ()=> setScreen('setup'));
+    }
+    /* Same contract as the league-switch reveal: render from the final state,
+       let two frames commit it, give the crests a moment, then uncover a screen
+       that is already finished rather than one that assembles itself in view. */
+    await awaitLeagueRenderSettled();
+    const floorRemaining = BOOT_CURTAIN_FLOOR_MS - (Date.now() - bootCurtainStartedAt);
+    if(bootCurtainOwned && floorRemaining > 0){
+      await new Promise(resolve=> setTimeout(resolve, floorRemaining));
+    }
+  }catch(err){
+    console.error('[FSNBoot] The cold-boot reveal path failed; showing the app immediately in whatever ' +
+      'state it reached.', err);
+  }finally{
+    finishBootCurtain();
+  }
+}
+
 async function switchSavedLeague(value){
   const divider = String(value || '').indexOf(':');
   if(divider < 1) return;
@@ -26213,6 +26499,10 @@ function applyDeepLink(){
     yahooError,
     leagueId:invited,
     hasInviteToken:!!(invited && invitedToken),
+    /* The screen this link explicitly asked for, or ''. The cold-boot reveal
+       reads it so its own "no league, so open Setup" routing can never
+       overrule a destination the reader was actually sent to. */
+    screen:dest,
   };
 }
 
@@ -26220,6 +26510,13 @@ function applyDeepLink(){
    BOOT — render immediately, then silently rehydrate a saved league.
 ============================================================ */
 function bootApp(){
+  /* FIRST, before anything that can fail: take ownership of the loading screen
+     the <head> script raised, so the reader is looking at the FSN bumper rather
+     than at Home's "NO SIGNAL / OPEN SETUP" card for the whole of the sequence
+     below. Everything from here to the reveal happens behind it. */
+  let bootCurtain = false;
+  safeRun('boot:curtain', ()=>{ bootCurtain = adoptBootCurtain(); });
+
   /* Every step is isolated. Boot used to be a straight sequence, so a throw in
      any one of them — and the first three all read device storage, which is
      exactly what behaves differently on a phone — skipped renderAll() and
@@ -26266,7 +26563,10 @@ function bootApp(){
   // First-time visitor intro (Hook → Value → CTA). Isolated and after the
   // paint: it only reads one storage flag and, for a brand-new browser,
   // presents the dismissible walkthrough over the already-rendered app.
-  safeRun('boot:ftu', maybeShowFtu);
+  // While the cold-boot loading screen is up it is deferred to the reveal
+  // (finishBootCurtain runs it): #ftuModal is z-index 140 and the curtain 155,
+  // so opening it now would play the intro behind the bumper.
+  if(!bootCurtain) safeRun('boot:ftu', maybeShowFtu);
 
   // Deep-link entry from the marketing landing page (or any external link).
   // The apex/www landing site sends visitors here with ?goto=setup and an
@@ -26292,6 +26592,19 @@ function bootApp(){
       ', so no league is rehydrated. Connect a league from Setup.');
   }
   safeRun('boot:shareInviteUI', updateShareInviteUI);
+
+  /* Name the league on the loading screen now that boot knows which one it is.
+     A hold that says which league is coming reads as a broadcast opening; the
+     same hold with a generic label reads as a stall. updateLeagueCurtainLabel
+     never raises a curtain that is down, so this is inert on a launch that has
+     already revealed. */
+  if(bootCurtain && savedLeagueId){
+    safeRun('boot:curtainLabel', ()=>{
+      const savedRow = savedLeagues().find(x=> x.id === savedLeagueId);
+      updateLeagueCurtainLabel('Loading ' + ((savedRow && savedRow.name) ||
+        (ui.provider.toUpperCase() + ' · ' + savedLeagueId)) + '…');
+    });
+  }
 
   /* ---- INVITE LINK: hydrate the shared archive, unconditionally ----
      A reader who arrived on ?id=…&token=… has exactly one source for this
@@ -26336,25 +26649,58 @@ function bootApp(){
       deepLink.leagueId + ' failed after boot.', err));
   }
 
+  /* ---- THE LAUNCH ROUTE ----
+     What this cold boot is restoring, and therefore what the loading screen is
+     held on. `attempted` is what separates "this browser has no league" — which
+     lands on Setup — from "this browser has a league and the network refused
+     it", which stays on Home with the failure named in the fetch banner. It is
+     a mutable field rather than an argument because the Yahoo branch only finds
+     out after its auth check, by which time the reveal is already waiting. */
+  const bootRoute = {
+    rehydration:null,
+    attempted:false,
+    screenFromLink:String((deepLink && deepLink.screen) || ''),
+  };
+
   if(ui.provider === 'yahoo'){
     if(deepLink && deepLink.yahooError){
       $('fetchStatus').style.color = 'var(--red)';
       $('fetchStatus').textContent = 'Yahoo login was not completed (' + deepLink.yahooError + '). Tap Log In to try again.';
       refreshYahooAuthStatus();
+      // Nothing to restore: reveal onto Setup, where that message is.
+      settleBootCurtain(bootRoute);
       return;
     }
-    refreshYahooAuthStatus().then(connected=>{
-      if(!connected) return;
+    bootRoute.rehydration = refreshYahooAuthStatus().then(connected=>{
+      if(!connected) return false;
+      bootRoute.attempted = true;
       const yahooLeague = window.YahooAdapter.normalizeYahooLeagueKey($('leagueIdInput').value);
-      fetchYahooLeagueData({ leagueId:yahooLeague, silent:true, navigate:false })
-        .catch(err=> console.warn('[YahooAdapter] silent league rehydration failed', err));
-    }).catch(err=> console.error('[Yahoo OAuth UI] boot status check failed', err));
+      return fetchYahooLeagueData({ leagueId:yahooLeague, silent:true, navigate:false })
+        .catch(err=>{
+          console.warn('[YahooAdapter] silent league rehydration failed', err);
+          return false;
+        });
+    }).catch(err=>{
+      console.error('[Yahoo OAuth UI] boot status check failed', err);
+      return false;
+    });
   } else if(savedLeagueId){
-    // Fire-and-forget inside this page lifecycle: fetchLeagueData itself awaits
-    // both concurrent network operations and repaints when hydration completes.
-    fetchLeagueData({ leagueId:savedLeagueId, silent:true, navigate:false })
-      .catch(err=> console.warn('[FSN] Silent league rehydration failed', err));
+    bootRoute.attempted = true;
+    /* Still fire-and-forget for the app — fetchLeagueData awaits both concurrent
+       network operations and repaints when hydration completes, and nothing
+       below depends on it. The loading screen is the one thing that does, and it
+       holds on this handle rather than on a timer. */
+    bootRoute.rehydration = fetchLeagueData({ leagueId:savedLeagueId, silent:true, navigate:false })
+      .catch(err=>{
+        console.warn('[FSN] Silent league rehydration failed', err);
+        return false;
+      });
   }
+
+  /* The reveal. Deliberately last and deliberately not awaited: bootApp stays
+     synchronous, and the gate owns the curtain from here — including lifting it
+     if its own path fails. */
+  settleBootCurtain(bootRoute);
 }
 
 if(document.readyState === 'loading'){
