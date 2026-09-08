@@ -230,7 +230,7 @@ jobs:
           MIN="$(/usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' "$APP/Info.plist")"
           echo "MinimumOSVersion = $MIN ($(basename "$APP"))"
           if [ "${MIN%%.*}" -lt "${MIN_IOS_VERSION%%.*}" ]; then
-            echo "::error title=MinimumOSVersion too low::The archive declares MinimumOSVersion $MIN, below the required $MIN_IOS_VERSION — App Store Connect would reject it with ITMS-90068. The 'Set minimum iOS version' step ran, so the Capacitor project regained a lower deployment target after it; check scripts/ios-min-os.mjs against the generated project."
+            echo "::error title=MinimumOSVersion too low::The archive declares MinimumOSVersion $MIN, below the required $MIN_IOS_VERSION — App Store Connect would reject it with ITMS-90068. The 'Set minimum iOS version' step ran, so the Capacitor project regained a lower value. Check that ios/App was regenerated after the step ran."
             exit 1
           fi
 
@@ -245,13 +245,15 @@ jobs:
           <plist version="1.0">
           <dict>
             <key>method</key>
-            <string>app-store-connect</string>
+            <string>app-store</string>
             <key>signingStyle</key>
             <string>automatic</string>
             <key>teamID</key>
             <string>${APPLE_TEAM_ID}</string>
             <key>destination</key>
             <string>export</string>
+            <key>stripSwiftSymbols</key>
+            <true/>
           </dict>
           </plist>
           EOF
