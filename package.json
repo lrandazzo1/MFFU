@@ -18,10 +18,12 @@
     "check:switch": "node scripts/switch-curtain-check.mjs",
     "check:boot": "node scripts/boot-curtain-check.mjs",
     "check:apibase": "node scripts/api-base-check.mjs",
-    "verify": "npm run check:scope && npm run test:triggers && npm run audit:notifications && npm run check:render && npm run check:switch && npm run check:boot && npm run check:apibase",
+    "check:links": "node scripts/legal-links-check.mjs",
+    "verify": "npm run check:scope && npm run test:triggers && npm run audit:notifications && npm run check:render && npm run check:switch && npm run check:boot && npm run check:apibase && npm run check:links",
     "audit:notifications": "node scripts/audit-notifications.mjs"
   },
   "dependencies": {
+    "@capacitor/browser": "^6.0.6",
     "@capacitor/core": "^6.1.2",
     "@capacitor/ios": "^6.1.2",
     "@capacitor/push-notifications": "^6.0.5",

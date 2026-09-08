@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Privacy Policy · Fantasy Sports Network</title>
+
+<meta name="description" content="How Fantasy Sports Network handles your League ID, league provider cookies, historical archive and push notification settings.">
+<meta name="theme-color" content="#080a0e">
+<meta name="robots" content="index,follow">
+<link rel="canonical" href="https://www.fantasysportsnetwork.app/privacy">
+
+<!-- ============================================================
+     PRIVACY POLICY — served at /privacy by the `fsn-landing` Vercel
+     project (landing/vercel.json sets cleanUrls:true, so this file is
+     reachable without the .html extension). The Privacy & Data card in
+     the app's Setup screen links here; App Store Guideline 5.1.1 requires
+     that link to resolve.
+
+     Every claim below was written against what the code actually does:
+     the localStorage prefixes erased by eraseLocalDataAndDisconnect() in
+     index.html, the columns in supabase/schema.sql and
+     supabase/notifications.sql, and the request bodies in api/league.js,
+     api/notifications-register.js and api/waitlist.js. If any of those
+     change, this page changes with them.
+
+     REVIEW BEFORE LAUNCH: this is an accurate engineering description of
+     the app's data handling, not legal advice. Have counsel review the
+     wording, and confirm privacy@fantasysportsnetwork.app is a mailbox
+     someone actually reads before submitting to the App Store.
+============================================================ -->
+
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns=&#39;http://www.w3.org/2000/svg&#39; viewBox=&#39;0 0 180 180&#39;%3E%3Crect width=&#39;180&#39; height=&#39;180&#39; fill=&#39;%23080a0e&#39;/%3E%3Ctext x=&#39;90&#39; y=&#39;118&#39; font-family=&#39;Helvetica,Arial&#39; font-size=&#39;78&#39; font-weight=&#39;bold&#39; fill=&#39;%2300e0ff&#39; text-anchor=&#39;middle&#39;%3EFSN%3C/text%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=&#39;http://www.w3.org/2000/svg&#39; viewBox=&#39;0 0 64 64&#39;%3E%3Crect width=&#39;64&#39; height=&#39;64&#39; fill=&#39;%23080a0e&#39;/%3E%3Ctext x=&#39;32&#39; y=&#39;43&#39; font-family=&#39;Helvetica,Arial&#39; font-size=&#39;27&#39; font-weight=&#39;bold&#39; fill=&#39;%2300e0ff&#39; text-anchor=&#39;middle&#39;%3EFSN%3C/text%3E%3C/svg%3E">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Oswald:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700;800&display=swap" rel="stylesheet">
+
+<style>
+/* Tokens mirror landing/index.html and the core app so all three read as
+   one product. Kept inline: the landing project has no build step. */
+:root{
+  --ink:#080a0e;
+  --panel:#12161f;
+  --panel-2:#181e2a;
+  --line:rgba(255,255,255,.08);
+  --line-2:rgba(255,255,255,.14);
+  --cyan:#00e0ff;
+  --gold:#ffc400;
+  --red:#ff2d55;
+  --green:#39ff8c;
+  --off:#c7cdd8;
+  --dim:#7c8698;
+}
+
+*{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; margin:0; padding:0; }
+
+body{
+  background:var(--ink);
+  color:#fff;
+  font-family:'Oswald',system-ui,-apple-system,sans-serif;
+  line-height:1.62;
+  overflow-x:hidden;
+  -webkit-font-smoothing:antialiased;
+}
+
+a{ color:var(--cyan); text-decoration:none; }
+a:hover{ text-decoration:underline; }
+a:focus-visible{ outline:2px solid var(--cyan); outline-offset:3px; border-radius:3px; }
+
+.wrap{ width:100%; max-width:760px; margin:0 auto; padding:0 22px; }
+
+.topbar{
+  position:sticky; top:0; z-index:40;
+  background:rgba(8,10,14,.82);
+  backdrop-filter:saturate(140%) blur(10px);
+  border-bottom:1px solid var(--line);
+}
+.topbar-inner{ display:flex; align-items:center; gap:12px; height:60px; }
+.brand{ display:flex; align-items:center; gap:10px; color:#fff; }
+.brand:hover{ text-decoration:none; }
+.brand-badge{
+  font-family:'Anton',sans-serif; font-size:20px; color:var(--ink);
+  background:var(--cyan); padding:3px 9px; border-radius:6px; line-height:1;
+}
+.brand-name{ font-family:'Anton',sans-serif; font-size:19px; letter-spacing:.02em; }
+.brand-name span{ color:var(--cyan); }
+.topbar .back{
+  margin-left:auto; font-family:'JetBrains Mono',ui-monospace,monospace;
+  font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--dim);
+}
+.topbar .back:hover{ color:var(--cyan); }
+
+header.doc{ padding:44px 0 8px; }
+.kicker{
+  font-family:'JetBrains Mono',ui-monospace,monospace;
+  font-size:11px; font-weight:700; letter-spacing:.18em; text-transform:uppercase;
+  color:var(--cyan); margin-bottom:10px;
+}
+h1{ font-family:'Anton',Impact,sans-serif; font-size:clamp(30px,7vw,46px); line-height:1.06; letter-spacing:.01em; }
+.effective{
+  margin-top:12px; font-family:'JetBrains Mono',ui-monospace,monospace;
+  font-size:11.5px; letter-spacing:.05em; color:var(--dim);
+}
+
+.lede{
+  margin:22px 0 6px; padding:16px 18px;
+  background:var(--panel); border:1px solid var(--line); border-left:3px solid var(--cyan);
+  border-radius:10px; color:var(--off); font-size:15px;
+}
+
+main{ padding-bottom:20px; }
+section{ margin-top:38px; }
+h2{
+  font-family:'Anton',Impact,sans-serif; font-size:20px; letter-spacing:.02em;
+  padding-bottom:9px; margin-bottom:14px; border-bottom:1px solid var(--line);
+}
+h3{ font-family:'Oswald',sans-serif; font-weight:600; font-size:15.5px; color:#fff; margin:20px 0 7px; }
+p{ color:var(--off); font-size:14.6px; margin-bottom:12px; }
+ul{ margin:0 0 12px 20px; }
+li{ color:var(--off); font-size:14.6px; margin-bottom:8px; }
+strong{ color:#fff; font-weight:600; }
+code{
+  font-family:'JetBrains Mono',ui-monospace,monospace; font-size:12.5px;
+  background:var(--panel-2); border:1px solid var(--line); border-radius:4px;
+  padding:1px 5px; color:var(--gold);
+}
+
+.table-scroll{ overflow-x:auto; margin-bottom:14px; border:1px solid var(--line); border-radius:10px; }
+table{ border-collapse:collapse; width:100%; min-width:520px; }
+th,td{ text-align:left; padding:10px 13px; font-size:13.4px; border-bottom:1px solid var(--line); vertical-align:top; }
+th{
+  font-family:'JetBrains Mono',ui-monospace,monospace; font-size:10.5px;
+  letter-spacing:.11em; text-transform:uppercase; color:var(--dim);
+  background:var(--panel); font-weight:700;
+}
+td{ color:var(--off); }
+tr:last-child td{ border-bottom:none; }
+
+.callout{
+  margin:18px 0; padding:15px 17px;
+  background:var(--panel); border:1px solid var(--line); border-left:3px solid var(--gold);
+  border-radius:10px;
+}
+.callout p:last-child{ margin-bottom:0; }
+
+footer{ border-top:1px solid var(--line); margin-top:48px; padding:28px 0 44px; }
+.foot-inner{ display:flex; flex-wrap:wrap; align-items:center; gap:12px 18px; }
+.foot-note{
+  font-family:'JetBrains Mono',ui-monospace,monospace; font-size:11px;
+  letter-spacing:.05em; color:var(--dim);
+}
+.foot-links{ display:flex; flex-wrap:wrap; gap:16px; margin-left:auto; }
+.foot-links a{ font-size:13px; color:var(--dim); }
+.foot-links a:hover{ color:var(--cyan); }
+
+@media (max-width:520px){
+  .foot-links{ margin-left:0; }
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="wrap topbar-inner">
+    <a class="brand" href="/">
+      <span class="brand-badge">FSN</span>
+      <span class="brand-name">FANTASY <span>SPORTS NETWORK</span></span>
+    </a>
+    <a class="back" href="/">← Home</a>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <header class="doc">
+    <div class="kicker">Legal</div>
+    <h1>Privacy Policy</h1>
+    <div class="effective">Effective 8 September 2026 · Last updated 8 September 2026</div>
+  </header>
+
+  <p class="lede">
+    Fantasy Sports Network (&ldquo;FSN&rdquo;, &ldquo;we&rdquo;) turns your existing fantasy football league into a
+    broadcast desk. There is no FSN account, no password and no user profile. Almost everything the app
+    knows about you lives in your own browser or on your own phone, and you can erase all of it from
+    inside the app in one tap.
+  </p>
+
+  <main>
+
+    <section>
+      <h2>1. The short version</h2>
+      <ul>
+        <li><strong>No account.</strong> You never create an FSN login. We do not ask for your name, your address or your date of birth.</li>
+        <li><strong>Your League ID and provider cookies stay on your device</strong> unless you deliberately turn on League Cloud sync.</li>
+        <li><strong>No advertising, no ad identifiers, no third-party analytics or tracking SDKs.</strong> The app ships none.</li>
+        <li><strong>We do not sell or share personal information</strong> for advertising or cross-app tracking.</li>
+        <li><strong>You can erase everything local</strong> from <em>Setup → Privacy &amp; Data → Erase Stored Data &amp; Disconnect</em>.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>2. What stays on your device only</h2>
+      <p>
+        The app is a single page that runs in your browser, or inside a native shell on iOS. It keeps its
+        working state in that device's own storage and nowhere else. That includes:
+      </p>
+      <ul>
+        <li>Your <strong>League ID</strong> and chosen provider (ESPN, Sleeper or Yahoo).</li>
+        <li>For private ESPN leagues, the <strong><code>espn_s2</code> and <code>SWID</code> cookies</strong> you paste in during setup.</li>
+        <li>The <strong>historical archive cache</strong> — past seasons already fetched, so the record book does not refetch them on every launch.</li>
+        <li>Your <strong>preferences</strong>: selected team profile, viewed season and week, notification toggles, and dismissed walkthrough state.</li>
+      </ul>
+      <p>
+        Every one of these is written under a key beginning <code>fsn.</code>, <code>fsn_</code> or <code>mffu.</code>.
+        The <strong>Erase Stored Data &amp; Disconnect</strong> button in Setup removes all of them from both
+        <code>localStorage</code> and <code>sessionStorage</code>, then reloads the app clean. Nothing survives it locally.
+      </p>
+    </section>
+
+    <section>
+      <h2>3. What leaves your device</h2>
+
+      <h3>3.1 League data reads</h3>
+      <p>
+        To show your league, the app has to read it from your provider. Browsers cannot call ESPN, Sleeper
+        or Yahoo directly for these endpoints, so the requests pass through relay functions on our own
+        deployment at <code>app.fantasysportsnetwork.app/api/*</code>. Those requests carry your League ID and,
+        for a private ESPN league, your ESPN cookies — sent in request headers rather than stored on the
+        relay. The relay forwards the call, hands the response back to your device, and keeps no copy.
+      </p>
+
+      <h3>3.2 League Cloud sync (optional)</h3>
+      <p>
+        League Cloud lets everyone in a league share one reconstructed history instead of each member
+        rebuilding it. When you save to it, the following is written to our database (hosted by Supabase):
+      </p>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>Stored</th><th>What it is</th></tr></thead>
+          <tbody>
+            <tr><td>League ID and season year</td><td>The numeric identifier from your league's URL. It is not a secret — it appears in every league link.</td></tr>
+            <tr><td>League history</td><td>The reconstructed season archive: teams, managers, weekly scores, records.</td></tr>
+            <tr><td>Provider cookies</td><td>Stored only as an <strong>AES-256-GCM encrypted envelope</strong>, never as plaintext credentials.</td></tr>
+            <tr><td>Share token</td><td>32 random bytes minted per league. This, not the public League ID, is what authorises a read.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        Writes happen only through our own server-side route, after it has verified with ESPN that the
+        caller genuinely has access to that league. The database table has row-level security enabled with
+        no anonymous or authenticated access policies at all: browsers never query it directly.
+      </p>
+
+      <h3>3.3 Push notifications (optional, off by default)</h3>
+      <p>
+        Notifications are off until you switch them on, and the permission prompt is only ever raised after
+        you explicitly opt in. If you do turn them on, we register the device so we know where to send the
+        alert:
+      </p>
+      <ul>
+        <li>A <strong>device identifier</strong> that is the SHA-256 hash of the push address, not the address itself.</li>
+        <li>The <strong>push address</strong> — an Apple APNs device token on iOS, or a Web Push subscription in a browser.</li>
+        <li>The <strong>League ID</strong> and, if you have picked a profile, your <strong>team ID</strong> — used only to skip alerts for someone with no rooting interest.</li>
+        <li>Your <strong>IANA time zone</strong> (for example <code>America/New_York</code>), so alerts land on your clock rather than ours.</li>
+        <li>Which of the three weekly windows you enabled (Tuesday, Thursday, Sunday), plus the season and week the client reported.</li>
+      </ul>
+      <p>
+        We also keep a small ledger of which alert was sent to which device in which week, so you are never
+        sent the same alert twice. Turning notifications off in Setup, or revoking the permission in your
+        operating system's settings, stops all of it.
+      </p>
+
+      <h3>3.4 Waitlist (marketing site only)</h3>
+      <p>
+        If you join the pre-launch waitlist on this website, we store your <strong>email address</strong>, the
+        platform you chose, where the signup came from, and your browser's user-agent string. Commissioners
+        may optionally pre-supply a League ID and ESPN SWID so their desk is ready on day one; those fields
+        are blank unless you fill them in. A single welcome email is sent on first signup, and nothing else
+        until launch.
+      </p>
+    </section>
+
+    <section>
+      <h2>4. Who else touches this data</h2>
+      <p>We use a small number of service providers, each for one job:</p>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>Provider</th><th>What it does for us</th></tr></thead>
+          <tbody>
+            <tr><td>Vercel</td><td>Hosts this site, the app, and the relay functions.</td></tr>
+            <tr><td>Supabase</td><td>Hosts the database behind League Cloud, notification registrations and the waitlist.</td></tr>
+            <tr><td>Apple (APNs) and Web Push services</td><td>Deliver the push notifications you opted into.</td></tr>
+            <tr><td>Resend</td><td>Sends the single waitlist welcome email.</td></tr>
+            <tr><td>ESPN, Sleeper, Yahoo</td><td>The source of your league data. Your use of their services is governed by their own terms and privacy policies.</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        These providers process data on our behalf to run the service. We do not sell personal information,
+        we do not share it for advertising, and we do not track you across other apps or websites.
+      </p>
+    </section>
+
+    <section>
+      <h2>5. How long we keep things</h2>
+      <ul>
+        <li><strong>On your device:</strong> until you erase it, clear your browser storage, or delete the app.</li>
+        <li><strong>League Cloud records:</strong> until the league is removed at a member's request.</li>
+        <li><strong>Notification registrations:</strong> until you turn notifications off, or the push provider reports the address as permanently invalid, at which point it is dropped.</li>
+        <li><strong>Waitlist emails:</strong> until launch, or until you ask to be removed.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>6. Your choices</h2>
+      <ul>
+        <li><strong>Erase everything local:</strong> <em>Setup → Privacy &amp; Data → Erase Stored Data &amp; Disconnect</em>.</li>
+        <li><strong>Stop notifications:</strong> switch them off in Setup, or revoke the permission in your OS settings.</li>
+        <li><strong>Never use League Cloud:</strong> it is opt-in; the app works fully without it.</li>
+        <li><strong>Have cloud records or a waitlist entry deleted:</strong> email us and we will remove them.</li>
+      </ul>
+      <p>
+        Depending on where you live you may have additional rights over your personal information —
+        to access it, correct it, delete it, or object to its processing. Write to us and we will honour
+        them.
+      </p>
+    </section>
+
+    <section>
+      <h2>7. Children</h2>
+      <p>
+        FSN is not directed to children under 13, and we do not knowingly collect personal information
+        from them. If you believe a child has provided us with information, contact us and we will delete it.
+      </p>
+    </section>
+
+    <section>
+      <h2>8. Changes to this policy</h2>
+      <p>
+        If we change what the app collects, we update this page and move the &ldquo;last updated&rdquo; date at the
+        top. Material changes will be surfaced in the app itself rather than only here.
+      </p>
+    </section>
+
+    <section>
+      <h2>9. Contact</h2>
+      <div class="callout">
+        <p>
+          Questions about this policy, or a request to delete something we hold:
+          <a href="mailto:privacy@fantasysportsnetwork.app">privacy@fantasysportsnetwork.app</a>
+        </p>
+      </div>
+      <p>
+        FSN is an independent product. It is not affiliated with, endorsed by, or sponsored by ESPN,
+        Sleeper, Yahoo, the NFL or the NFLPA.
+      </p>
+    </section>
+
+  </main>
+</div>
+
+<footer>
+  <div class="wrap foot-inner">
+    <span class="brand-badge" style="font-size:16px;">FSN</span>
+    <span class="foot-note">FANTASY SPORTS NETWORK</span>
+    <nav class="foot-links">
+      <a href="/">Home</a>
+      <a href="/terms">Terms of Service</a>
+      <a href="/privacy">Privacy Policy</a>
+    </nav>
+  </div>
+</footer>
+
+</body>
+</html>
