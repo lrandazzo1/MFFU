@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Terms of Service · Fantasy Sports Network</title>
+
+<meta name="description" content="The terms you agree to when you use Fantasy Sports Network to turn your ESPN, Sleeper or Yahoo league into a broadcast desk.">
+<meta name="theme-color" content="#080a0e">
+<meta name="robots" content="index,follow">
+<link rel="canonical" href="https://www.fantasysportsnetwork.app/terms">
+
+<!-- ============================================================
+     TERMS OF SERVICE — served at /terms by the `fsn-landing` Vercel
+     project (landing/vercel.json sets cleanUrls:true, so this file is
+     reachable without the .html extension). The Privacy & Data card in
+     the app's Setup screen links here; App Store Guideline 5.1.1 requires
+     that link to resolve.
+
+     Styling, chrome and tokens are identical to privacy.html on purpose,
+     so the two legal pages read as one document set.
+
+     REVIEW BEFORE LAUNCH: this describes the product accurately, but it is
+     not legal advice and it has not been reviewed by counsel. Two things
+     need a decision before submission — the governing-law clause in §12,
+     which is deliberately generic here, and whether
+     legal@fantasysportsnetwork.app is a mailbox someone actually reads.
+============================================================ -->
+
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns=&#39;http://www.w3.org/2000/svg&#39; viewBox=&#39;0 0 180 180&#39;%3E%3Crect width=&#39;180&#39; height=&#39;180&#39; fill=&#39;%23080a0e&#39;/%3E%3Ctext x=&#39;90&#39; y=&#39;118&#39; font-family=&#39;Helvetica,Arial&#39; font-size=&#39;78&#39; font-weight=&#39;bold&#39; fill=&#39;%2300e0ff&#39; text-anchor=&#39;middle&#39;%3EFSN%3C/text%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=&#39;http://www.w3.org/2000/svg&#39; viewBox=&#39;0 0 64 64&#39;%3E%3Crect width=&#39;64&#39; height=&#39;64&#39; fill=&#39;%23080a0e&#39;/%3E%3Ctext x=&#39;32&#39; y=&#39;43&#39; font-family=&#39;Helvetica,Arial&#39; font-size=&#39;27&#39; font-weight=&#39;bold&#39; fill=&#39;%2300e0ff&#39; text-anchor=&#39;middle&#39;%3EFSN%3C/text%3E%3C/svg%3E">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Oswald:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700;800&display=swap" rel="stylesheet">
+
+<style>
+/* Tokens mirror landing/index.html and the core app so all three read as
+   one product. Kept inline: the landing project has no build step. */
+:root{
+  --ink:#080a0e;
+  --panel:#12161f;
+  --panel-2:#181e2a;
+  --line:rgba(255,255,255,.08);
+  --line-2:rgba(255,255,255,.14);
+  --cyan:#00e0ff;
+  --gold:#ffc400;
+  --red:#ff2d55;
+  --green:#39ff8c;
+  --off:#c7cdd8;
+  --dim:#7c8698;
+}
+
+*{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; margin:0; padding:0; }
+
+body{
+  background:var(--ink);
+  color:#fff;
+  font-family:'Oswald',system-ui,-apple-system,sans-serif;
+  line-height:1.62;
+  overflow-x:hidden;
+  -webkit-font-smoothing:antialiased;
+}
+
+a{ color:var(--cyan); text-decoration:none; }
+a:hover{ text-decoration:underline; }
+a:focus-visible{ outline:2px solid var(--cyan); outline-offset:3px; border-radius:3px; }
+
+.wrap{ width:100%; max-width:760px; margin:0 auto; padding:0 22px; }
+
+.topbar{
+  position:sticky; top:0; z-index:40;
+  background:rgba(8,10,14,.82);
+  backdrop-filter:saturate(140%) blur(10px);
+  border-bottom:1px solid var(--line);
+}
+.topbar-inner{ display:flex; align-items:center; gap:12px; height:60px; }
+.brand{ display:flex; align-items:center; gap:10px; color:#fff; }
+.brand:hover{ text-decoration:none; }
+.brand-badge{
+  font-family:'Anton',sans-serif; font-size:20px; color:var(--ink);
+  background:var(--cyan); padding:3px 9px; border-radius:6px; line-height:1;
+}
+.brand-name{ font-family:'Anton',sans-serif; font-size:19px; letter-spacing:.02em; }
+.brand-name span{ color:var(--cyan); }
+.topbar .back{
+  margin-left:auto; font-family:'JetBrains Mono',ui-monospace,monospace;
+  font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--dim);
+}
+.topbar .back:hover{ color:var(--cyan); }
+
+header.doc{ padding:44px 0 8px; }
+.kicker{
+  font-family:'JetBrains Mono',ui-monospace,monospace;
+  font-size:11px; font-weight:700; letter-spacing:.18em; text-transform:uppercase;
+  color:var(--cyan); margin-bottom:10px;
+}
+h1{ font-family:'Anton',Impact,sans-serif; font-size:clamp(30px,7vw,46px); line-height:1.06; letter-spacing:.01em; }
+.effective{
+  margin-top:12px; font-family:'JetBrains Mono',ui-monospace,monospace;
+  font-size:11.5px; letter-spacing:.05em; color:var(--dim);
+}
+
+.lede{
+  margin:22px 0 6px; padding:16px 18px;
+  background:var(--panel); border:1px solid var(--line); border-left:3px solid var(--cyan);
+  border-radius:10px; color:var(--off); font-size:15px;
+}
+
+main{ padding-bottom:20px; }
+section{ margin-top:38px; }
+h2{
+  font-family:'Anton',Impact,sans-serif; font-size:20px; letter-spacing:.02em;
+  padding-bottom:9px; margin-bottom:14px; border-bottom:1px solid var(--line);
+}
+h3{ font-family:'Oswald',sans-serif; font-weight:600; font-size:15.5px; color:#fff; margin:20px 0 7px; }
+p{ color:var(--off); font-size:14.6px; margin-bottom:12px; }
+ul{ margin:0 0 12px 20px; }
+li{ color:var(--off); font-size:14.6px; margin-bottom:8px; }
+strong{ color:#fff; font-weight:600; }
+code{
+  font-family:'JetBrains Mono',ui-monospace,monospace; font-size:12.5px;
+  background:var(--panel-2); border:1px solid var(--line); border-radius:4px;
+  padding:1px 5px; color:var(--gold);
+}
+
+.table-scroll{ overflow-x:auto; margin-bottom:14px; border:1px solid var(--line); border-radius:10px; }
+table{ border-collapse:collapse; width:100%; min-width:520px; }
+th,td{ text-align:left; padding:10px 13px; font-size:13.4px; border-bottom:1px solid var(--line); vertical-align:top; }
+th{
+  font-family:'JetBrains Mono',ui-monospace,monospace; font-size:10.5px;
+  letter-spacing:.11em; text-transform:uppercase; color:var(--dim);
+  background:var(--panel); font-weight:700;
+}
+td{ color:var(--off); }
+tr:last-child td{ border-bottom:none; }
+
+.callout{
+  margin:18px 0; padding:15px 17px;
+  background:var(--panel); border:1px solid var(--line); border-left:3px solid var(--gold);
+  border-radius:10px;
+}
+.callout p:last-child{ margin-bottom:0; }
+
+footer{ border-top:1px solid var(--line); margin-top:48px; padding:28px 0 44px; }
+.foot-inner{ display:flex; flex-wrap:wrap; align-items:center; gap:12px 18px; }
+.foot-note{
+  font-family:'JetBrains Mono',ui-monospace,monospace; font-size:11px;
+  letter-spacing:.05em; color:var(--dim);
+}
+.foot-links{ display:flex; flex-wrap:wrap; gap:16px; margin-left:auto; }
+.foot-links a{ font-size:13px; color:var(--dim); }
+.foot-links a:hover{ color:var(--cyan); }
+
+@media (max-width:520px){
+  .foot-links{ margin-left:0; }
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="wrap topbar-inner">
+    <a class="brand" href="/">
+      <span class="brand-badge">FSN</span>
+      <span class="brand-name">FANTASY <span>SPORTS NETWORK</span></span>
+    </a>
+    <a class="back" href="/">← Home</a>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <header class="doc">
+    <div class="kicker">Legal</div>
+    <h1>Terms of Service</h1>
+    <div class="effective">Effective 8 September 2026 · Last updated 8 September 2026</div>
+  </header>
+
+  <p class="lede">
+    These terms cover your use of Fantasy Sports Network (&ldquo;FSN&rdquo;) — this website, the web app at
+    <code>app.fantasysportsnetwork.app</code>, and the FSN iOS app. Using FSN means you accept them. If you
+    do not, please do not use the service.
+  </p>
+
+  <main>
+
+    <section>
+      <h2>1. What FSN is</h2>
+      <p>
+        FSN is an <strong>unofficial companion</strong> for fantasy football leagues. It reads a league you
+        already have on ESPN, Sleeper or Yahoo and presents it as a broadcast desk: scores, matchups,
+        standings, power ratings, an all-time record book, and automatically written commentary about
+        what happened in your league.
+      </p>
+      <div class="callout">
+        <p>
+          FSN is independent. It is <strong>not affiliated with, endorsed by, or sponsored by</strong> ESPN,
+          Sleeper, Yahoo, the National Football League, the NFLPA, or any of their affiliates. All team
+          names, league names and marks belong to their respective owners.
+        </p>
+      </div>
+    </section>
+
+    <section>
+      <h2>2. Eligibility</h2>
+      <p>
+        You must be at least 13 years old to use FSN. If you are under the age of majority where you live,
+        you may use FSN only with the involvement of a parent or guardian who agrees to these terms.
+      </p>
+    </section>
+
+    <section>
+      <h2>3. No FSN account</h2>
+      <p>
+        FSN does not issue accounts, passwords or profiles. You identify a league by its League ID, and —
+        for a private ESPN league — by provider cookies that you supply. Everything the app knows is tied
+        to that league and to your own device, not to an FSN identity.
+      </p>
+    </section>
+
+    <section>
+      <h2>4. Your league and your credentials</h2>
+      <ul>
+        <li>You may connect <strong>only leagues you are genuinely a member of</strong>, or have permission to access.</li>
+        <li>You are responsible for the League ID and any provider cookies you enter, and for keeping them to yourself. Anyone holding them can read that league.</li>
+        <li>Provider cookies you paste in stay on your device unless you deliberately enable League Cloud sync, where they are stored only as an encrypted envelope. See the <a href="/privacy">Privacy Policy</a>.</li>
+        <li>Your use of ESPN, Sleeper and Yahoo remains governed by <strong>their</strong> terms of service. FSN does not change or override them, and nothing here grants you rights to their data beyond what they already give you.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>5. Acceptable use</h2>
+      <p>You agree not to:</p>
+      <ul>
+        <li>Access a league you have no right to access, or use someone else's credentials.</li>
+        <li>Attempt to breach, probe or circumvent the security of FSN, its relay functions, or its database.</li>
+        <li>Use FSN to harass, defame or target any person.</li>
+        <li>Scrape, overload or automate against the service in a way that degrades it for others.</li>
+        <li>Resell or commercially redistribute FSN's output as if it were your own product.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>6. Automatically generated commentary</h2>
+      <p>
+        A large part of FSN is written by the app itself: recaps, previews, power-ranking columns and
+        record-book notes, generated deterministically from your league's own numbers. This copy is
+        <strong>entertainment about a fantasy league</strong>. It is styled as sports journalism, but it is
+        not reporting, it is not fact-checked commentary about real people, and it should not be read as a
+        statement of fact about anyone.
+      </p>
+      <p>
+        Projections, power ratings and similar model output are estimates from past scoring. They are not
+        predictions, not advice, and not a basis for wagering.
+      </p>
+    </section>
+
+    <section>
+      <h2>7. Content in your league</h2>
+      <p>
+        Team names, logos and manager names come from your league on your provider's platform. FSN
+        displays them as they are. If your league contains content you do not want displayed, change it at
+        the provider and refetch. We may decline to display content that is unlawful.
+      </p>
+    </section>
+
+    <section>
+      <h2>8. Availability, price and changes</h2>
+      <p>
+        FSN is in active development and is <strong>free for the 2026 season</strong>. We may add, change or
+        remove features, and we may suspend or discontinue the service, at any time. There is no uptime
+        guarantee. Because FSN depends on third-party providers, an outage or an API change on their side
+        can break parts of the app through no fault of ours.
+      </p>
+      <p>
+        If we introduce paid features in a later season, existing behaviour will not be paywalled retroactively
+        without notice.
+      </p>
+    </section>
+
+    <section>
+      <h2>9. Disclaimer of warranties</h2>
+      <p>
+        FSN is provided <strong>&ldquo;as is&rdquo; and &ldquo;as available&rdquo;</strong>, without warranties of
+        any kind, whether express, implied or statutory, including any implied warranties of
+        merchantability, fitness for a particular purpose, title, or non-infringement. We do not warrant
+        that the service will be uninterrupted, secure or error-free, or that any data it reconstructs —
+        including historical records — is accurate or complete.
+      </p>
+    </section>
+
+    <section>
+      <h2>10. Limitation of liability</h2>
+      <p>
+        To the fullest extent permitted by law, FSN and its operator will not be liable for any indirect,
+        incidental, special, consequential or punitive damages, or for any loss of data, profits, or
+        goodwill, arising out of your use of or inability to use the service — even if we have been advised
+        that such damages are possible.
+      </p>
+      <p>
+        To the fullest extent permitted by law, our total liability for any claim relating to the service is
+        limited to the greater of the amount you paid us for it in the twelve months before the claim, or
+        US&nbsp;$50.
+      </p>
+    </section>
+
+    <section>
+      <h2>11. Termination</h2>
+      <p>
+        You may stop using FSN at any time; erasing your local data from
+        <em>Setup → Privacy &amp; Data</em> and deleting the app removes it from your device. We may suspend or
+        terminate access for anyone who breaches these terms or uses the service unlawfully.
+      </p>
+    </section>
+
+    <section>
+      <h2>12. Governing law</h2>
+      <p>
+        These terms are governed by the laws of the United States and of the state in which the operator of
+        Fantasy Sports Network resides, without regard to conflict-of-law principles. Any dispute that
+        cannot be resolved informally will be brought in the courts of that jurisdiction.
+      </p>
+    </section>
+
+    <section>
+      <h2>13. Changes to these terms</h2>
+      <p>
+        We may update these terms. The &ldquo;last updated&rdquo; date at the top changes when we do, and material
+        changes will be surfaced in the app rather than only here. Continuing to use FSN after a change
+        means you accept the updated terms.
+      </p>
+    </section>
+
+    <section>
+      <h2>14. Contact</h2>
+      <div class="callout">
+        <p>
+          Questions about these terms:
+          <a href="mailto:legal@fantasysportsnetwork.app">legal@fantasysportsnetwork.app</a>
+        </p>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<footer>
+  <div class="wrap foot-inner">
+    <span class="brand-badge" style="font-size:16px;">FSN</span>
+    <span class="foot-note">FANTASY SPORTS NETWORK</span>
+    <nav class="foot-links">
+      <a href="/">Home</a>
+      <a href="/terms">Terms of Service</a>
+      <a href="/privacy">Privacy Policy</a>
+    </nav>
+  </div>
+</footer>
+
+</body>
+</html>

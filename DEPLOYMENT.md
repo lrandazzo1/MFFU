@@ -31,7 +31,21 @@ only sees files under its own Root Directory, so the two never step on each othe
   pick one canonical host; `www` is configured as canonical here).
 
 Because Root Directory is `landing/`, this project **cannot see** `api/`, the Supabase
-schema, or the 800 KB app bundle. It ships nothing but the marketing page.
+schema, or the 800 KB app bundle. It ships nothing but the marketing page and the two
+legal pages below.
+
+### Legal pages (`/terms`, `/privacy`)
+
+`landing/terms.html` and `landing/privacy.html` are served at `/terms` and `/privacy`
+because `landing/vercel.json` sets `cleanUrls: true`. **These two paths are load-bearing:**
+the Privacy & Data card in the app's Setup screen links straight at
+`https://www.fantasysportsnetwork.app/{terms,privacy}`, and App Store Guideline 5.1.1
+requires those links to resolve. They live on the **landing** project, not the app project
+— the app links across to `www`, it does not serve the policies itself.
+
+`npm run check:links` pins the whole path: that the anchors exist in `index.html`, that
+they point at these URLs, that a file backs each URL, and that each page renders. A
+renamed or deleted file fails the check rather than shipping a dead legal link.
 
 ## 2. App project (`app.fantasysportsnetwork.app`)
 
@@ -181,3 +195,28 @@ enabling Yahoo in the native app needs those two handlers to send
 separate change to `api/`.
 
 `npm run check:apibase` (in the `npm run verify` chain) pins all of the above.
+
+---
+
+## 7. Opening external links from the native app
+
+The same one-file-two-shells problem applies to links that leave the app. On the web a
+`target="_blank"` anchor opens a tab. Inside the iOS binary the page is loaded by WKWebView
+over `capacitor://localhost`, where there is no tab to open and no browser chrome: the tap
+either does nothing, or the destination is loaded into the same webview and **replaces the
+running app with no way back**. `server.allowNavigation` cannot prevent that second outcome
+— `*.fantasysportsnetwork.app` has to stay on the list for the Yahoo OAuth start.
+
+`window.FSNLinks.openExternal(url)` (first script block in `index.html`) is the seam:
+
+- **Native** → Capacitor's `Browser` plugin, an in-app Safari view controller with a Done
+  button that returns the reader to the app. This is why `@capacitor/browser` is a
+  dependency; `npx cap sync ios` links it, so it needs no extra step beyond the normal
+  build loop in `ios/HANDOFF.md`.
+- **Web** → `window.open(url, '_blank', 'noopener,noreferrer')`.
+- **Neither available** (a binary built before the plugin was added, or a blocked popup) →
+  returns `false` and the caller lets the anchor's own navigation stand, so the behaviour
+  is never worse than the plain link.
+
+Only `http(s)` URLs are ever handed to an opener. `npm run check:links` exercises all four
+shells.

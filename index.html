@@ -4135,6 +4135,126 @@ window.FSNApi = (function(){
 })();
 
 /* ============================================================
+   GLOBAL SCOPE — EXTERNAL LINK OPENER (FSNLinks)
+
+   The Privacy & Data card in Setup links out to the hosted Privacy Policy
+   and Terms of Service. A bare `target="_blank"` anchor is enough on the
+   web and does the wrong thing inside the native binary.
+
+   `npm run build:ios` stages index.html into www/ and Capacitor packages it
+   into the app bundle, where WKWebView loads it over capacitor://localhost.
+   There is no browser chrome around that webview and no popup surface behind
+   `_blank`: the tap either does nothing at all, or the policy page is loaded
+   into the same webview and replaces the running app with no back button.
+   Nothing in the Capacitor config prevents that second outcome — the
+   deployment's own host has to stay on `server.allowNavigation` for the
+   Yahoo OAuth start (see capacitor.config.ts), and that allowance covers the
+   policy hosts too.
+
+   openExternal() hands the URL to whichever real external opener the current
+   shell actually has:
+
+     - Capacitor's Browser plugin, in the native binary → an in-app Safari
+       view controller with its own Done button, which returns the reader to
+       the app instead of stranding them. This is the Capacitor equivalent of
+       React Native's Linking.openURL.
+     - window.open(url, '_blank') on the web → a new tab.
+
+   The return value is the contract: true means a real opener took the URL,
+   false means it did not and the caller should let the anchor's own
+   navigation stand. Nothing here is ever worse than the plain anchor.
+
+   It lives at global scope in the first script block rather than beside its
+   click handler in block 6 because the handler is wired from block 6 while
+   the rule about what may be opened belongs next to FSNApi here — and a
+   helper called across blocks must be global (CLAUDE.md rule 1).
+============================================================ */
+window.FSNLinks = (function(){
+  /* Only ever hand an http(s) URL to an opener. Both call sites pass a
+     hard-coded https link today, but a javascript:/data:/file: URL reaching
+     window.open out of a click handler is a script-injection seam, and this
+     is the one place to close it rather than trusting every future caller. */
+  function externalUrl(raw){
+    const value = String(raw == null ? '' : raw).trim();
+    if(!value) return '';
+    let parsed = null;
+    try{
+      parsed = new URL(value, window.location.href);
+    }catch(err){
+      console.error('[FSNLinks] "' + value + '" is not a parseable URL; refusing to open it.', err);
+      return '';
+    }
+    if(parsed.protocol !== 'https:' && parsed.protocol !== 'http:'){
+      console.error('[FSNLinks] refusing to open "' + value + '": only http(s) URLs are opened externally, ' +
+        'and this one is ' + parsed.protocol);
+      return '';
+    }
+    return parsed.href;
+  }
+
+  /* Capacitor's Browser plugin, when the binary was built with it. The lookup
+     is defensive on purpose: on the web `window.Capacitor` does not exist at
+     all, and a binary built before @capacitor/browser was added to
+     package.json has a bridge but no Browser proxy on it. */
+  function capacitorBrowser(){
+    try{
+      const cap = window.Capacitor;
+      const plugins = (cap && cap.Plugins) || null;
+      const browser = plugins && plugins.Browser;
+      return (browser && typeof browser.open === 'function') ? browser : null;
+    }catch(err){
+      console.warn('[FSNLinks] Capacitor plugin lookup threw; treating the in-app browser as unavailable.', err);
+      return null;
+    }
+  }
+
+  function openExternal(raw){
+    const url = externalUrl(raw);
+    if(!url) return false;
+
+    const browser = capacitorBrowser();
+    if(browser){
+      try{
+        const opening = browser.open({ url: url, presentationStyle: 'popover' });
+        /* open() resolves once the sheet is presented. A rejection is the
+           only signal that the reader is looking at nothing, so it has to be
+           reported rather than left as an unhandled rejection. */
+        if(opening && typeof opening.catch === 'function'){
+          opening.catch(function(err){
+            console.error('[FSNLinks] the in-app browser failed to present ' + url, err);
+          });
+        }
+        return true;
+      }catch(err){
+        console.error('[FSNLinks] the in-app browser threw opening ' + url + '; falling back to window.open.', err);
+      }
+    }else if(FSNApi.isNativeShell()){
+      /* An older binary, built before the Browser plugin was linked. Say so
+         and stand down: the anchor's own behaviour is what shipped, and
+         window.open here is what would navigate the app away in place. */
+      console.warn('[FSNLinks] no Capacitor Browser plugin in this build, so ' + url + ' cannot be opened ' +
+        'outside the app. Rebuild with `npm install && npx cap sync ios` to link @capacitor/browser.');
+      return false;
+    }
+
+    try{
+      const opened = window.open(url, '_blank', 'noopener,noreferrer');
+      if(opened) return true;
+      /* Null means the popup was blocked. Letting the anchor navigate is the
+         better failure: the reader still reaches the policy. */
+      console.warn('[FSNLinks] window.open returned no window for ' + url + ' (popup blocked); ' +
+        'letting the link navigate normally instead.');
+      return false;
+    }catch(err){
+      console.error('[FSNLinks] window.open threw for ' + url + '; letting the link navigate normally.', err);
+      return false;
+    }
+  }
+
+  return { externalUrl: externalUrl, openExternal: openExternal };
+})();
+
+/* ============================================================
    GLOBAL SCOPE — BOUNDED NETWORK READS (FSNNet)
 
    `fetch()` has no timeout. On desktop that is survivable: the connection
@@ -23815,6 +23935,42 @@ function eraseLocalDataAndDisconnect(){
   }, 350);
 }
 if($('eraseLocalDataBtn')) $('eraseLocalDataBtn').addEventListener('click', eraseLocalDataAndDisconnect);
+
+/* PRIVACY & DATA — hosted policy links (Privacy Policy, Terms of Service).
+
+   The anchors keep their real href and target, so the web build, keyboard
+   navigation, middle-click and "copy link address" all behave exactly as
+   before. This handler only takes the tap over when FSNLinks has a genuine
+   external opener to hand the URL to — the native binary's in-app browser,
+   or a new tab on the web. When it does not, the anchor's own navigation is
+   left to stand, which is what shipped. */
+function openPolicyLink(ev){
+  const link = ev.currentTarget;
+  const href = link && link.getAttribute('href');
+  if(!href) return;
+  let handled = false;
+  try{
+    handled = FSNLinks.openExternal(href);
+  }catch(err){
+    console.error('[Privacy] the policy link handler failed for ' + href +
+      '; leaving the anchor to navigate on its own.', err);
+    return;
+  }
+  if(handled) ev.preventDefault();
+}
+try{
+  const policyLinks = document.querySelectorAll('.privacy-link');
+  if(!policyLinks.length){
+    console.warn('[Privacy] no .privacy-link anchors found to wire; the policy links will fall back ' +
+      'to plain anchor navigation.');
+  }
+  Array.prototype.forEach.call(policyLinks, function(link){
+    link.addEventListener('click', openPolicyLink);
+  });
+}catch(err){
+  console.error('[Privacy] could not wire the hosted policy links; they fall back to plain anchor ' +
+    'navigation.', err);
+}
 
 /* ============================================================
    PUSH ALERTS — Setup card controller

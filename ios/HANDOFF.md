@@ -50,6 +50,11 @@ change to `index.html` or `editorialScheduleEngine.js`:
 npm run build:ios
 
 # Copy www/ into ios/App/App/public/ and re-link native plugins.
+# This is also what links @capacitor/browser, which the Privacy Policy and
+# Terms of Service links in Setup use to open the hosted policy pages in an
+# in-app Safari view instead of navigating the app away. A binary synced
+# before that dependency existed logs a [FSNLinks] warning and falls back to
+# the plain anchor; re-running this loop is the fix.
 npx cap sync ios
 
 # Re-apply the minimum OS version. `cap sync` regenerates the project from
