@@ -1,31 +1,53 @@
 /* ============================================================================
    FSN NOTIFICATIONS — /api/notifications-dispatch
 
-   The cron target. Runs hourly (see vercel.json), asks the trigger engine which
-   of the five weekly alerts each registered device is now due, and delivers
-   them over APNs or Web Push.
+   The cron target. Runs ONCE A DAY (see vercel.json), pulls the week's NFL
+   schedule from the external feed at most once per day, asks the trigger
+   engine which weekly alert each registered device is now due, and delivers it
+   over APNs or Web Push.
 
    GET  /api/notifications-dispatch            deliver
-   GET  /api/notifications-dispatch?dry=1      evaluate and report, send nothing
+   GET  /api/notifications-dispatch?dry=1      evaluate and report, send nothing,
+                                               write nothing, fetch nothing
 
-   ---- WHY HOURLY ----
+   ---- WHY ONCE A DAY ----
 
-   The three engagement windows expand to five alerts, each of which has to land
-   at a sensible hour in the READER's timezone. One cron per alert would fire at
-   one fixed UTC instant for the whole world. Instead this runs every hour and
-   lib/notifications/triggers.js decides, per device, whether that device's local
-   window has just opened. Four timezones in one league get four correct send
-   times from one schedule. It also means a missed run is self-healing: the
-   engine's grace window re-offers a recent alert on the next pass.
+   Two limits meet at the same number. Vercel's Hobby plan caps cron frequency
+   at one invocation per day, and the external schedule source has to be
+   treated as rate-limited rather than free. So the schedule is the budget: one
+   run, one outbound pull, shared by every league and every device.
+
+   Since no push transport accepts a "deliver at" time, one run per day means
+   one delivery instant per day. lib/notifications/triggers.js turns that into
+   a cadence by giving each alert a local-hour BAND on its weekday: the run
+   lands at 06:00 in Honolulu, 09:00 in Los Angeles, 12:00 in New York and
+   17:00 in London, and each of those hours selects the alert that belongs at
+   that hour. A device gets at most one alert per run.
+
+   ---- THE DAILY PULL ----
+
+   Season, week and the week's opening kickoff come from
+   lib/notifications/schedule-feed.js, which pulls the public NFL scoreboard
+   once per day for the WHOLE install base — not once per league — and caches
+   it in Supabase. The device's own last-reported week is only a fallback now.
+   That is a correctness fix as much as a scheduling one: a device that stopped
+   reporting kept pinning the ledger key to an old week and went silent for the
+   rest of the season.
+
+   The pull is rate-limited on its last ATTEMPT, not its last success, so an
+   upstream outage cannot turn repeated invocations into a retry storm. It runs
+   entirely inside this serverless function: it writes one Supabase row and
+   touches nothing else — no repository, no webhook, no deployment.
 
    ---- AT-MOST-ONCE ----
 
    The ledger row is inserted BEFORE the provider call. A duplicate insert
    violates the composite primary key and that device/trigger/week is skipped,
-   so two overlapping cron runs cannot both deliver. The explicit trade: a
-   provider call that fails after the insert drops that alert rather than
-   risking a double-send. For a weekly nudge that is the right side to fail on,
-   and the dropped send is recorded with status='failed' rather than lost.
+   so a manual invocation overlapping the cron cannot double-deliver. The
+   explicit trade: a provider call that fails after the insert drops that alert
+   rather than risking a double-send. For a weekly nudge that is the right side
+   to fail on, and the dropped send is recorded with status='failed' rather
+   than lost.
 
    ---- AUTH ----
 
@@ -41,10 +63,12 @@ const { createClient } = require('@supabase/supabase-js');
 const engine = require('../lib/notifications/triggers');
 const apns = require('../lib/notifications/apns');
 const webpush = require('../lib/notifications/webpush');
+const scheduleFeed = require('../lib/notifications/schedule-feed');
 
 /* Ceiling per invocation, so one run cannot exceed the function timeout. With
-   an hourly cron and a grace window measured in hours, a backlog beyond this
-   drains on the following passes rather than being lost. */
+   one run a day this is a real cap rather than a soft one — anything beyond it
+   waits until tomorrow — so it is set well above the install base and is worth
+   raising (or paging) before it is ever approached. */
 const MAX_DEVICES = 2000;
 
 /* How far back to read the send ledger when building the per-device suppression
@@ -84,7 +108,10 @@ function authorized(req) {
   return secretMatches(bearer, expected) || secretMatches(direct, expected);
 }
 
-/* Map a stored row into the shape the trigger engine expects. */
+/* Map a stored row into the shape the trigger engine expects. The season,
+   week and kickoff on the row are what the DEVICE last reported; the daily
+   feed is layered over them by scheduleFeed.applyTo() before evaluation, so
+   these are the fallback for a run whose pull has never succeeded. */
 function toEngineDevice(row) {
   return {
     deviceId: row.device_id,
@@ -255,7 +282,52 @@ async function handler(req, res) {
     return;
   }
 
-  /* ---- 2. Ledger, one read for the whole batch -------------------------- */
+  /* ---- 2. The day's schedule pull --------------------------------------- */
+
+  /* Deliberately after the device read and its zero-device early return: with
+     nobody registered there is nothing to place, so the external source is not
+     touched at all.
+
+     A dry run reads the cached row and stops. It must not spend the day's one
+     request, and — more importantly — it must not stamp `attempted_at`, which
+     would rate-limit the real run that follows it out of its own pull. */
+  let schedule;
+  try {
+    schedule = dryRun
+      ? await scheduleFeed.readCached(supabase)
+      : await scheduleFeed.refresh(supabase, now);
+  } catch (err) {
+    /* refresh() and readCached() both contain their own failures, so reaching
+       here means something unforeseen. The run continues on whatever each
+       device last reported rather than sending nothing at all. */
+    console.error('[FSNPush] the schedule feed threw; falling back to the week each ' +
+      'device last reported for this run.', err);
+    schedule = null;
+  }
+
+  const scheduleReport = {
+    seasonYear: (schedule && schedule.seasonYear) || null,
+    week: (schedule && schedule.week) || null,
+    firstKickoffAt: (schedule && Number.isFinite(schedule.firstKickoffMs) && schedule.firstKickoffMs > 0)
+      ? new Date(schedule.firstKickoffMs).toISOString()
+      : null,
+    fetchedAt: (schedule && schedule.fetchedAt) || null,
+    /* How old the cached numbers are. Anything much past a day means the pull
+       has been failing and the alerts are being placed on a stale week. */
+    ageHours: (schedule && schedule.fetchedAt && Number.isFinite(Date.parse(schedule.fetchedAt)))
+      ? Math.round((now - Date.parse(schedule.fetchedAt)) / 3600000)
+      : null,
+    pulledThisRun: !!(schedule && schedule.refreshed),
+    reason: (schedule && schedule.reason) || 'FEED_UNAVAILABLE',
+    lastError: (schedule && schedule.lastError) || null,
+  };
+
+  if (!scheduleReport.week) {
+    console.warn('[FSNPush] no live week from the schedule feed (' + scheduleReport.reason +
+      '); every device will be placed on the week it last reported itself.');
+  }
+
+  /* ---- 3. Ledger, one read for the whole batch -------------------------- */
   const since = new Date(now - LEDGER_LOOKBACK_DAYS * 24 * 3600 * 1000).toISOString();
   const { data: ledger, error: ledgerError } = await supabase
     .from('notification_sends')
@@ -280,10 +352,13 @@ async function handler(req, res) {
     );
   }
 
-  /* ---- 3. Resolve what is due ------------------------------------------ */
+  /* ---- 4. Resolve what is due ------------------------------------------ */
   const work = [];
   for (const row of devices) {
-    const device = toEngineDevice(row);
+    /* The feed's live week wins over the week this device last reported. Every
+       downstream key — the ledger row, the dedupe set, the notification copy —
+       is built from the merged values, so they cannot disagree. */
+    const device = scheduleFeed.applyTo(toEngineDevice(row), schedule);
     let due;
     try {
       due = engine.dueTriggers(device, now, sentByDevice.get(row.device_id) || new Set());
@@ -295,7 +370,8 @@ async function handler(req, res) {
     for (const item of due) {
       work.push({
         row,
-        due: Object.assign({}, item, { deviceSeason: row.season_year, deviceWeek: row.week }),
+        device,
+        due: Object.assign({}, item, { deviceSeason: device.seasonYear, deviceWeek: device.week }),
       });
     }
   }
@@ -309,11 +385,27 @@ async function handler(req, res) {
        operator to guess from an empty plan. */
     let missingTimezone = 0;
     let noGroupsEnabled = 0;
+    let outsideDailyWindow = 0;
     let ios = 0;
     let web = 0;
     for (const row of devices) {
       if (row.platform === 'ios') ios++; else web++;
-      if (!engine.normalizeTimeZone(row.timezone)) missingTimezone++;
+      const tz = engine.normalizeTimeZone(row.timezone);
+      if (!tz) { missingTimezone++; }
+      else {
+        /* The third way a device goes quiet, and the one that is specific to a
+           once-a-day schedule: its timezone is far enough from the cron's UTC
+           hour that the run lands in the middle of its night. Counting it is
+           what stops that from reading as a bug. */
+        try {
+          if (!engine.withinDeliverableHours(engine.tzParts(tz, new Date(now)).hour)) {
+            outsideDailyWindow++;
+          }
+        } catch (err) {
+          console.warn('[FSNPush] could not read the local hour for device ' +
+            row.device_id + ' in timezone ' + tz + ' while building the dry-run report.', err);
+        }
+      }
       const prefs = (row.prefs && typeof row.prefs === 'object') ? row.prefs : {};
       if (!engine.PREF_GROUPS.some((g) => prefs[g] === true)) noGroupsEnabled++;
     }
@@ -327,12 +419,16 @@ async function handler(req, res) {
       transports: { apns: apnsReady, web: webReady },
       deliverable: apnsReady || webReady,
 
+      /* Cache-only in a dry run: `pulledThisRun` is always false here, by
+         design. See the feed read above. */
+      schedule: scheduleReport,
+
       evaluated: devices.length,
       due: work.length,
       ledgerRowsScanned: (ledger || []).length,
       ledgerLookbackDays: LEDGER_LOOKBACK_DAYS,
 
-      devices: { total: devices.length, ios, web, missingTimezone, noGroupsEnabled },
+      devices: { total: devices.length, ios, web, missingTimezone, noGroupsEnabled, outsideDailyWindow },
 
       /* Truncation is stated rather than silent: `due` is the real total. */
       planTruncated: work.length > PLAN_LIMIT,
@@ -342,15 +438,22 @@ async function handler(req, res) {
         timezone: w.row.timezone,
         trigger: w.due.trigger.id,
         group: w.due.trigger.group,
-        targetAt: new Date(w.due.target).toISOString(),
-        lateByMinutes: Math.round(w.due.age / 60000),
+        season: w.due.deviceSeason,
+        week: w.due.deviceWeek,
+        /* The local hour this run landed on for this device, and the hour the
+           alert would ideally have landed at. A once-a-day schedule cannot
+           make those equal, so both are reported rather than one implied. */
+        localHour: w.due.localHour,
+        idealHour: w.due.trigger.hour,
+        idealAt: w.due.target == null ? null : new Date(w.due.target).toISOString(),
+        offsetFromIdealMinutes: w.due.offsetMs == null ? null : Math.round(w.due.offsetMs / 60000),
         wouldDeliver: w.row.platform === 'ios' ? apnsReady : webReady,
       })),
     });
     return;
   }
 
-  /* ---- 4. Deliver ------------------------------------------------------- */
+  /* ---- 5. Deliver ------------------------------------------------------- */
   let sent = 0;
   let failed = 0;
   let skipped = 0;
@@ -384,8 +487,8 @@ async function handler(req, res) {
 
       const notification = engine.buildNotification(due.trigger.id, {
         leagueId: row.league_id,
-        seasonYear: row.season_year,
-        week: row.week,
+        seasonYear: due.deviceSeason,
+        week: due.deviceWeek,
       });
       if (!notification) { skipped++; continue; }
 
@@ -422,12 +525,12 @@ async function handler(req, res) {
     apns.closeSession(session);
   }
 
-  /* ---- 5. Retire dead addresses ---------------------------------------- */
+  /* ---- 6. Retire dead addresses ---------------------------------------- */
   for (const [deviceId, reason] of retiring) {
     await retire(supabase, deviceId, reason);
   }
 
-  /* ---- 6. Touch last_sent_at for everything delivered ------------------- */
+  /* ---- 7. Touch last_sent_at for everything delivered ------------------- */
   if (delivered.size > 0) {
     const { error } = await supabase
       .from('notification_devices')
@@ -439,6 +542,7 @@ async function handler(req, res) {
   res.status(200).json({
     ok: true,
     now: new Date(now).toISOString(),
+    schedule: scheduleReport,
     evaluated: devices.length,
     due: work.length,
     sent,
