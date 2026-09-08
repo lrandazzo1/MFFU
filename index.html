@@ -2792,6 +2792,11 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
               <button type="button" class="onboard-link" data-onboard-step="league">Where do I find this?</button>
             </div>
             <input id="leagueIdInput" class="field mt-1.5" inputmode="numeric" autocomplete="off" placeholder="e.g. 123456789">
+            <!-- The app store build never receives a query string, so pasting the
+                 whole invite link here is the only way a fresh install can pick
+                 up the share token that unlocks the league's past seasons.
+                 See absorbPastedLeagueInvite(). -->
+            <p class="text-[10.5px] text-[var(--dim)] leading-relaxed mt-1.5">Got an invite link from a league-mate? Paste the whole link here — the League ID and its share token are read straight out of it.</p>
           </div>
           <span id="seasonYear" hidden aria-hidden="true"></span>
           <span id="weekNum" hidden aria-hidden="true"></span>
@@ -4439,11 +4444,32 @@ const CORS_PROXIES = [
   (u)=> u,
 ];
 
+/* "There is no serverless relay behind this document's origin, so an ESPN read
+   has to go through a public CORS proxy instead." That is a statement about
+   local development — `python -m http.server`, a LAN preview on another
+   device — and it is what the host tests below detect.
+
+   The packaged app is NOT that, even though it looks exactly like it from
+   window.location: WKWebView serves the iOS bundle from `capacitor://localhost`,
+   whose hostname is literally "localhost", and a page opened straight off disk
+   reports `file:`. Both used to answer true here, which put the shipped binary
+   on the developer fallback path: any /api/espn read that failed for a
+   transport reason — and on a phone, a multi-megabyte archive read over a
+   cellular link fails that way — was retried through public CORS proxies.
+   Those proxies cannot carry credentials, so a private league answers them with
+   an unauthenticated shell. The shell parses, so archive hydration "succeeded"
+   with zero seasons: the Record Book rendered empty and the real relay error
+   was buried behind a generic proxy failure.
+
+   FSNApi rewrites '/api/…' onto the deployed app project in exactly these
+   shells, so there the relay is both reachable AND the only transport that can
+   carry the league's ESPN session. Its failure is the answer, not the cue to
+   go looking for a worse one. */
 function isStaticLocalPreview(){
   if(typeof window === 'undefined' || !window.location) return false;
+  if(FSNApi.isNativeShell()) return false;
   const loc = window.location;
   const host = String(loc.hostname || '').toLowerCase();
-  if(loc.protocol === 'file:') return true;
   if(host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0' || host.endsWith('.local')) return true;
   if(/^10\./.test(host) || /^192\.168\./.test(host) || /^172\.(1[6-9]|2\d|3[01])\./.test(host)) return true;
   return false;
@@ -4730,19 +4756,83 @@ function forgetLeagueShareToken(leagueId){
   FSNStore.remove(key);
 }
 
-/* The copyable invite link. Deliberately built from this page's own origin and
-   path rather than a hard-coded host, so a preview deploy links to itself. */
+/* The copyable invite link. Built from this page's own origin and path when the
+   page is web-hosted, so a preview deploy links to itself.
+
+   In the packaged app it CANNOT be: window.location there is
+   `capacitor://localhost/index.html`, an origin that exists only inside this
+   one device's app sandbox. Pressing Share on a phone used to hand a
+   league-mate `capacitor://localhost/index.html?id=…&token=…` — a link that
+   opens nothing anywhere — and since the invite link is the whole no-cookies
+   route into a league's shared multi-season archive, the archive simply never
+   reached anyone invited from mobile. Off the web, address the deployment,
+   the same way cleanShareReportUrl() already does for a shared article. */
 function buildLeagueInviteUrl(leagueId, token){
   const id = String(leagueId == null ? '' : leagueId).trim();
   const secret = normalizeLeagueShareToken(token);
   if(!/^\d{1,20}$/.test(id) || !secret) return '';
-  let base = '/';
+  /* FSNApi.isNativeShell(), not a protocol test: Capacitor's Android scheme
+     serves the bundle over https://localhost, so an origin can be http(s) and
+     still be one device's private app sandbox. This is the same question
+     FSNApi asks before rewriting an /api path, and it has to get the same
+     answer or the two disagree about what "this deployment" means. */
+  let base = FSNApi.origin() + '/';
   try{
-    base = window.location.origin + (window.location.pathname || '/');
+    if(!FSNApi.isNativeShell()){
+      base = window.location.origin + (window.location.pathname || '/');
+    }
   }catch(e){
-    console.warn('[League Share] window.location was unreadable; building a relative invite link.', e);
+    console.warn('[League Share] window.location was unreadable; addressing the invite link at ' +
+      base + ' instead of this page\u2019s own origin.', e);
   }
   return base + '?id=' + encodeURIComponent(id) + '&token=' + encodeURIComponent(secret) + '&goto=setup';
+}
+
+/* ---- THE OTHER HALF OF THE INVITE ----
+   applyDeepLink() reads the id and token off window.location.search, which is
+   the only way this app has ever accepted one. A browser gets a query string
+   because the reader tapped a link; the packaged app never does — it always
+   boots the same bundled `index.html` with no query at all. So a fresh install
+   had no route to a token whatsoever: device storage is empty, there is no URL
+   to read, and a league-mate's link opens Safari rather than handing the app
+   anything. Entering the League ID on its own gets a 401 from /api/league and
+   an empty Record Book, correctly and permanently.
+
+   This parses an invite link out of arbitrary pasted text so the League ID
+   field can accept the whole thing. Global, beside the other token helpers,
+   because block 2's cloud-sync path is the obvious next caller and a copy
+   nested in one IIFE is invisible to the other five.
+
+   Returns { leagueId, token }, either of which may be ''. Deliberately lenient
+   about the wrapper (a bare id, a full https link, a link with chat cruft
+   around it) and strict about the values: the id must be numeric and the token
+   must satisfy normalizeLeagueShareToken, so nothing malformed is ever stored. */
+function parseLeagueInviteInput(value){
+  const raw = String(value == null ? '' : value).trim();
+  if(!raw) return { leagueId:'', token:'' };
+
+  /* A bare League ID is by far the common case and must stay exactly as fast
+     and as forgiving as it was before this function existed. */
+  if(/^\d{1,20}$/.test(raw)) return { leagueId:raw, token:'' };
+
+  const readParam = (name)=>{
+    const match = new RegExp('[?&#]' + name + '=([^&#\\s]+)').exec(raw);
+    if(!match) return '';
+    try{ return decodeURIComponent(match[1]); }
+    catch(err){
+      /* A truncated paste can leave a dangling '%', which decodeURIComponent
+         throws on. The raw value is still worth trying — the validators below
+         are what decide whether it is usable. */
+      console.warn('[League Share] The "' + name + '" value in the pasted invite link is not valid ' +
+        'percent-encoding; using it verbatim.', err);
+      return match[1];
+    }
+  };
+
+  const idParam = readParam('id') || readParam('league_id') || readParam('leagueId');
+  const token = normalizeLeagueShareToken(readParam('token') || readParam('share_token'));
+  const leagueId = /^\d{1,20}$/.test(String(idParam).trim()) ? String(idParam).trim() : '';
+  return { leagueId, token };
 }
 
 /* The league id an ESPN read is aimed at, so a request can carry the token for
@@ -4904,7 +4994,24 @@ async function fetchLeagueDataViaProxies(espnUrl){
      is the only legitimate transport and its failure is the answer. */
   const credState = espnCredDiagnostics();
 
-  if(typeof window !== 'undefined' && window.location && window.location.protocol !== 'file:'){
+  /* Is there a deployment behind '/api/espn' from this document? On an http(s)
+     page, yes: the root-relative path hits that origin's own functions, which
+     is what keeps a preview deploy talking to itself. In a native shell —
+     the packaged iOS binary's `capacitor://localhost`, or a page opened off
+     disk over file:// — there is no server behind the origin at all, but
+     FSNApi rewrites the path onto the deployed app project, so the relay is
+     reachable there too and FSNNet.fetch issues the absolute URL.
+
+     The test this replaces was `protocol !== 'file:'`, which predates FSNApi.
+     It skipped the relay entirely on a non-http document, so the ONLY transport
+     an off-deployment shell had for the whole multi-season archive was the
+     public CORS proxy chain below — the chain that cannot authenticate a
+     private league. */
+  const relayReachable = FSNApi.isNativeShell() ||
+    (typeof window !== 'undefined' && !!window.location &&
+     /^https?:$/.test(String(window.location.protocol || '')));
+
+  if(relayReachable){
     const apiUrl = serverlessEspnUrl(espnUrl);
     try{
       /* Archive-length deadline: this same helper carries both the small
@@ -23175,6 +23282,10 @@ function isPreseasonWeek1(week, viewedYear){
 
 
 $('leagueIdInput').addEventListener('input', ()=>{
+  /* Runs BEFORE savePrefs() so what gets persisted is the bare League ID, and
+     before the cloud read below so the token is already on the device when
+     /api/league is asked for the shared archive. */
+  absorbPastedLeagueInvite();
   savePrefs();
   refreshHistoryUrlLink();
   updateShareInviteUI();
@@ -23221,6 +23332,58 @@ function rememberShareTokenFromRecord(leagueId, record){
 function shareInviteLeagueId(){
   const input = $('leagueIdInput');
   return String((input && input.value) || '').trim();
+}
+
+/* ---- ACCEPT AN INVITE LINK PASTED INTO THE LEAGUE ID FIELD ----
+   On the web an invite arrives as a URL the reader taps, and applyDeepLink()
+   lifts the id and token off window.location.search. The packaged app never
+   has a query string — it boots the bundled index.html every time — so that
+   path is unreachable there and a fresh install had no way at all to receive
+   the token that unlocks a league's shared multi-season archive. The reader
+   would enter the League ID, /api/league would answer 401 exactly as designed,
+   and the Record Book would stay empty with no in-app way out.
+
+   Pasting the link a league-mate sent is now that way out. Nothing else about
+   the field changes: a typed or pasted bare League ID does not match the URL
+   shapes parseLeagueInviteInput() looks for and travels through here untouched.
+
+   Returns true when a token was taken off a pasted link. */
+function absorbPastedLeagueInvite(){
+  const input = $('leagueIdInput');
+  if(!input) return false;
+  const raw = String(input.value || '').trim();
+  /* The overwhelmingly common case, and the one that must not pay for this. */
+  if(!raw || /^\d{1,20}$/.test(raw)) return false;
+
+  let parsed;
+  try{
+    parsed = parseLeagueInviteInput(raw);
+  }catch(err){
+    console.error('[League Share] Could not read the text pasted into the League ID field as an ' +
+      'invite link; it has been left as typed.', err);
+    return false;
+  }
+  if(!parsed.leagueId) return false;
+
+  input.value = parsed.leagueId;
+  if(!parsed.token){
+    /* An invite link whose token did not survive the paste. The id alone opens
+       nothing since H-1, so say which half is missing rather than letting the
+       reader watch a 401 they cannot explain. */
+    console.warn('[League Share] The link pasted into the League ID field carried League ID ' +
+      parsed.leagueId + ' but no usable share token. Ask a league-mate to re-send the FULL invite link.');
+    /* Through toast() rather than the Share panel's status line: that line
+       lives inside #shareInviteResult, which stays hidden while there is no
+       invite link to show — which is exactly this case. */
+    toast('That link carried the League ID but no share token \u2014 ask for the full invite link');
+    return false;
+  }
+  if(setLeagueShareToken(parsed.leagueId, parsed.token)){
+    console.info('[League Share] Accepted an invite link pasted into the League ID field for league ' +
+      parsed.leagueId + '.');
+  }
+  setShareInviteStatus('Invite link accepted \u2014 loading league ' + parsed.leagueId + '\u2019s shared archive\u2026', 'ok');
+  return true;
 }
 
 /* One place that decides what the Share panel says, so the hint, the button and

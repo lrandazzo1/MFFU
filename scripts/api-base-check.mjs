@@ -23,6 +23,18 @@
      - FSNNet.fetch, which every call site goes through, issues the resolved
        URL rather than the one it was handed.
 
+   It then pins the historical-archive seams that depend on the same question
+   but answer it for themselves, because `capacitor://localhost` reads as a
+   developer's loopback preview to anything looking at window.location:
+
+     - isStaticLocalPreview(), which decides whether a failed /api/espn archive
+       read may retry through public, credential-stripping CORS proxies;
+     - buildLeagueInviteUrl(), which must not hand a league-mate a link on an
+       origin that exists only inside one device's app sandbox;
+     - parseLeagueInviteInput() and the League ID field, which are the only way
+       an install with no query string and empty storage can receive the share
+       token that opens a league's past seasons.
+
    Fully offline: a local static server serves the page and every external
    request is aborted at the route seam.
 ============================================================================ */
@@ -192,6 +204,124 @@ const probe = () => ({
   console.log('\n[native] malformed window.FSN_API_ORIGIN');
   check('falls back to the deployment', got, DEPLOYMENT + '/api/league?league_id=1');
   check('and reports the rejection instead of failing silently', errors.length > 0, true);
+  await page.close();
+}
+
+/* ---- the archive transport's own view of where it is running -------------
+   FSNApi.resolve() is only half the story for historical data. Two block-1
+   helpers decide, independently of it, whether the ESPN archive reads even
+   TRY the relay and where a shared-archive invite link points — and both of
+   them used to read `capacitor://localhost` as a developer's local preview,
+   because that origin's hostname is literally "localhost".
+
+   The failing half again only reproduces inside a native container, so it is
+   pinned here alongside the resolver it depends on. */
+const TOKEN = 'a'.repeat(48);
+const archiveProbe = () => ({
+  localPreview: window.isStaticLocalPreview(),
+  invite: window.buildLeagueInviteUrl('123456789', 'a'.repeat(48)),
+});
+
+{
+  const page = await newPage();
+  await page.goto(base + '/', { waitUntil: 'load' });
+  const r = await page.evaluate(archiveProbe);
+  console.log('\n[web] archive transport on a loopback http origin');
+  /* A real local preview: no /api behind this origin, so the public CORS
+     fallback chain is still correct here. */
+  check('a loopback http page IS a static local preview', r.localPreview, true);
+  check('the invite link is built from the page itself', r.invite,
+    base + '/?id=123456789&token=' + TOKEN + '&goto=setup');
+  await page.close();
+}
+
+{
+  const page = await newPage(() => { window.Capacitor = { isNativePlatform: () => true }; });
+  await page.goto(base + '/', { waitUntil: 'load' });
+  const r = await page.evaluate(archiveProbe);
+  console.log('\n[native] archive transport, Capacitor bridge on a loopback origin');
+  /* The bundled app is not a preview: FSNApi points /api/espn at the
+     deployment, and that relay is the only transport that can carry the
+     league's ESPN session. Falling back to credential-stripping public CORS
+     proxies answers a private league with an empty archive. */
+  check('the packaged app is NOT a static local preview', r.localPreview, false);
+  check('the invite link addresses the deployment, not capacitor://localhost',
+    r.invite, DEPLOYMENT + '/?id=123456789&token=' + TOKEN + '&goto=setup');
+  await page.close();
+}
+
+{
+  const page = await newPage();
+  await page.goto('file://' + join(root, 'index.html'), { waitUntil: 'load' });
+  const r = await page.evaluate(archiveProbe);
+  console.log('\n[native] archive transport, non-http protocol');
+  check('a non-http document is NOT a static local preview', r.localPreview, false);
+  check('the invite link addresses the deployment', r.invite,
+    DEPLOYMENT + '/?id=123456789&token=' + TOKEN + '&goto=setup');
+  await page.close();
+}
+
+/* ---- the invite link a fresh install has to receive by hand --------------
+   The packaged app never gets a query string, so applyDeepLink() can never see
+   an invite token there. Pasting the link into the League ID field is the only
+   route to one, which makes this parser the seam between a reader with a
+   Record Book and a reader stuck on a 401. */
+{
+  const page = await newPage();
+  await page.goto(base + '/', { waitUntil: 'load' });
+  const r = await page.evaluate((token) => {
+    const p = window.parseLeagueInviteInput;
+    return {
+      bare: p('123456789'),
+      full: p('https://app.fantasysportsnetwork.app/?id=123456789&token=' + token + '&goto=setup'),
+      chatty: p('here you go ' + 'https://app.fantasysportsnetwork.app/?id=123456789&token=' + token + ' '),
+      legacyKeys: p('https://x.test/?league_id=123456789&share_token=' + token),
+      noToken: p('https://app.fantasysportsnetwork.app/?id=123456789'),
+      badToken: p('https://app.fantasysportsnetwork.app/?id=123456789&token=short'),
+      badId: p('https://app.fantasysportsnetwork.app/?id=not-a-league&token=' + token),
+      junk: p('good morning'),
+    };
+  }, TOKEN);
+  console.log('\n[invite] a link pasted into the League ID field');
+  check('a bare League ID is passed straight through',
+    JSON.stringify(r.bare), JSON.stringify({ leagueId: '123456789', token: '' }));
+  check('a full invite link yields both halves',
+    JSON.stringify(r.full), JSON.stringify({ leagueId: '123456789', token: TOKEN }));
+  check('surrounding chat text does not defeat it',
+    JSON.stringify(r.chatty), JSON.stringify({ leagueId: '123456789', token: TOKEN }));
+  check('league_id / share_token spellings are accepted too',
+    JSON.stringify(r.legacyKeys), JSON.stringify({ leagueId: '123456789', token: TOKEN }));
+  check('a link with no token keeps the id and reports no token',
+    JSON.stringify(r.noToken), JSON.stringify({ leagueId: '123456789', token: '' }));
+  check('a malformed token is refused rather than stored',
+    JSON.stringify(r.badToken), JSON.stringify({ leagueId: '123456789', token: '' }));
+  check('a non-numeric league id is refused',
+    JSON.stringify(r.badId), JSON.stringify({ leagueId: '', token: TOKEN }));
+  check('ordinary text yields nothing',
+    JSON.stringify(r.junk), JSON.stringify({ leagueId: '', token: '' }));
+  await page.close();
+}
+
+/* And the field itself: paste the link, and the token must be on the device
+   under the key the /api/league read looks for. */
+{
+  const page = await newPage();
+  await page.goto(base + '/', { waitUntil: 'load' });
+  const r = await page.evaluate(async (token) => {
+    const input = document.getElementById('leagueIdInput');
+    input.value = 'https://app.fantasysportsnetwork.app/?id=123456789&token=' + token + '&goto=setup';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    return {
+      field: input.value,
+      stored: window.getLeagueShareToken('123456789'),
+      link: document.getElementById('shareInviteUrl').value,
+    };
+  }, TOKEN);
+  console.log('\n[invite] pasted into #leagueIdInput');
+  check('the field is reduced to the bare League ID', r.field, '123456789');
+  check('the share token is stored for that league', r.stored, TOKEN);
+  check('and the Share panel now offers a link back out', r.link,
+    base + '/?id=123456789&token=' + TOKEN + '&goto=setup');
   await page.close();
 }
 
