@@ -3109,7 +3109,7 @@ html[data-fsn-boot="loading"] #tickerBar{ visibility:hidden; }
       <div class="card p-4" id="notifyCard">
         <div class="section-head"><span class="bar" style="background:var(--gold)"></span><h2>Push Alerts</h2></div>
         <p class="text-[11.5px] text-[var(--dim)] leading-relaxed mb-3">
-          Three moments a week, on your clock: waivers and the power index on Tuesday, the Thursday night lineup lock, and Sunday's lineup check. Nothing else — no score-by-score spam.
+          Three moments a week, at a sensible hour on your clock: waivers and the power index on Tuesday, the lineup lock before the week's opening kickoff, and Sunday's lineup check. One alert a day at most — no score-by-score spam.
         </p>
 
         <label class="notify-row" for="notifyMaster" id="notifyMasterRow">
@@ -3127,7 +3127,7 @@ html[data-fsn-boot="loading"] #tickerBar{ visibility:hidden; }
           <div class="notify-rationale-title">Before your phone asks</div>
           <ul class="notify-rationale-list">
             <li><b>Tuesday</b> — waivers cleared, plus the recap and re-cut power index.</li>
-            <li><b>Thursday</b> — two hours before kickoff, so nobody starts a locked player.</li>
+            <li><b>Thursday</b> — ahead of the week's opening kickoff, so nobody starts a locked player.</li>
             <li><b>Sunday</b> — a morning lineup check and a nudge when the slate goes live.</li>
           </ul>
           <button id="notifyEnableBtn" type="button" class="btn-primary" style="padding:12px;font-size:13px">
@@ -3143,7 +3143,7 @@ html[data-fsn-boot="loading"] #tickerBar{ visibility:hidden; }
           <label class="notify-row" for="notifyTuesday">
             <span class="notify-row-text">
               <span class="notify-row-title">Tuesday · Waivers &amp; Recap</span>
-              <span class="notify-row-sub">Waiver results at 9am, the post-mortem and power index at 6pm.</span>
+              <span class="notify-row-sub">Waiver results in the morning, or the post-mortem and power index later in the day.</span>
             </span>
             <input type="checkbox" id="notifyTuesday" data-notify-group="tuesday">
             <span class="notify-switch" aria-hidden="true"></span>
@@ -3151,7 +3151,7 @@ html[data-fsn-boot="loading"] #tickerBar{ visibility:hidden; }
           <label class="notify-row" for="notifyThursday">
             <span class="notify-row-text">
               <span class="notify-row-title">Thursday · Lineup Lock</span>
-              <span class="notify-row-sub">Two hours before the week's opening kickoff.</span>
+              <span class="notify-row-sub">Ahead of the week's opening kickoff, whichever day it falls on.</span>
             </span>
             <input type="checkbox" id="notifyThursday" data-notify-group="thursday">
             <span class="notify-switch" aria-hidden="true"></span>
@@ -3159,7 +3159,7 @@ html[data-fsn-boot="loading"] #tickerBar{ visibility:hidden; }
           <label class="notify-row" for="notifySunday">
             <span class="notify-row-text">
               <span class="notify-row-title">Sunday · Lineup &amp; Game Day</span>
-              <span class="notify-row-sub">A 9am lineup check and a game day pulse at kickoff.</span>
+              <span class="notify-row-sub">A morning lineup check, or a game day pulse once the slate is live.</span>
             </span>
             <input type="checkbox" id="notifySunday" data-notify-group="sunday">
             <span class="notify-switch" aria-hidden="true"></span>

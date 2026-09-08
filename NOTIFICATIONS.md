@@ -1,27 +1,106 @@
 # FSN — Push Notifications
 
-Weekly engagement alerts for the three moments that matter in a fantasy week.
+Weekly engagement alerts for the moments that matter in a fantasy week,
+delivered by a single serverless job that runs **once a day** and pulls from the
+external schedule source **once a day**.
+
 Everything below is implemented; what is left is provisioning (keys, a SQL run,
 and the Xcode capability), which needs accounts this repo cannot reach.
+
+## The schedule, in one line
+
+```
+0 16 * * *   ->  /api/notifications-dispatch   (vercel.json)
+```
+
+One cron. One invocation per calendar day. At most one outbound request to the
+external data source per day, for the entire install base. At most one push per
+device per run.
 
 ## What gets sent
 
 Five alerts across three reader-facing switches. Each fires at most once per
-device per fantasy week.
+device per fantasy week, and a device receives **at most one per day**, because
+there is one delivery instant per day.
 
-| Switch | Alert | When |
-|---|---|---|
-| **Tuesday** | Waiver wire results | Tue 09:00 *reader's local time* |
-| **Tuesday** | Recap + power index drop | Tue 18:00 local |
-| **Thursday** | TNF lineup lock warning | 2h before the week's **actual opening kickoff** |
-| **Sunday** | Morning lineup check | Sun 09:00 local |
-| **Sunday** | Game day pulse | Sun 13:00 local |
+Neither APNs nor Web Push accepts a "deliver at" time, so an alert lands when
+the run sends it. The cadence is therefore expressed as a **local-hour band**:
+each alert owns a stretch of its weekday, and the daily run delivers whichever
+alert belongs at the hour the run lands on in *that device's* timezone.
 
-The Thursday alert is anchored to the real kickoff, read through the existing
-`EditorialScheduleEngine.firstGameTimestamp()`, so a Saturday or international
-opener moves it correctly instead of firing at a hardcoded 20:15 ET. If the
-client has not reported a kickoff for the week, it falls back to 16:00 local
-Thursday.
+| Switch | Alert | Local band on the device's clock | Who that is, at 16:00 UTC |
+|---|---|---|---|
+| **Tuesday** | Waiver wire results | Tue 06:00 – 13:59 | Honolulu 06:00 · LA 09:00 · Chicago 11:00 · NY 12:00 |
+| **Tuesday** | Recap + power index drop | Tue 14:00 – 22:59 | London 17:00 · Berlin 18:00 |
+| **Thursday** | Lineup lock warning | the last daily run before the week's real opening kickoff | whole league, same run |
+| **Sunday** | Morning lineup check | Sun 06:00 – 11:59 | Honolulu 06:00 · LA 09:00 · Chicago 11:00 |
+| **Sunday** | Game day pulse | Sun 12:00 – 22:59 | NY 12:00 · London 17:00 |
+
+So one UTC instant produces a *different, correct* alert per timezone rather
+than the same alert at five wrong local times.
+
+The Thursday alert is anchored to the real opening kickoff — read from the
+daily schedule pull — and fires on the last daily run that still precedes it. A
+week whose opener is Saturday warns on Saturday's run; a week with **no** game
+inside the next day stays silent rather than crying lock three days early.
+
+### What a once-a-day schedule costs, stated plainly
+
+- **A device outside UTC-10 … UTC+6 receives nothing.** At 16:00 UTC the run
+  lands in the middle of its night, and no alert is placed before 06:00 or after
+  22:00 local. Tokyo sees 01:00 and is skipped. The dispatcher counts these as
+  `outsideDailyWindow` in its dry run so the silence is diagnosable rather than
+  mysterious.
+- **The lock warning is hours of notice, not two hours.** It is the last run
+  before kickoff, which for a Thursday-night game and a 16:00 UTC cron is about
+  eight hours.
+- **A missed run is not re-offered the same day.** The next chance is the next
+  run, and by then the alert's band has usually passed. The ledger makes that
+  safe rather than duplicated.
+
+Moving the cron's UTC hour moves which timezones are served. The bands are hours
+wide on purpose: Hobby-plan crons are only guaranteed to fire *within the hour*
+of their schedule, and an alert must not vanish because the platform drifted
+forty minutes.
+
+## The daily data pull
+
+`lib/notifications/schedule-feed.js` reads the season year, the week number and
+the week's opening kickoff from ESPN's **public, credential-free** NFL
+scoreboard. None of those facts are per-league, so they are pulled **once for
+the whole install base** — not per league, not per device — and cached in
+`public.notification_schedule`. A thousand registered devices still cost one GET.
+
+**The rate limit is enforced on the last attempt, not the last success.**
+`attempted_at` is stamped whether the pull succeeded or failed, so a throttled
+or broken upstream costs at most one request per 20 hours no matter how often
+the route is invoked — by the cron, by a manual `curl`, or by ten of them in a
+row. Gating on success would turn an upstream outage into a retry storm against
+the source that is already struggling. A failed pull keeps the cached row,
+records the error, and the dispatcher reports the row's age instead of going
+silent.
+
+This also fixes a real defect rather than only saving requests. Season and week
+used to come from whatever the client last reported at registration: a reader
+who opted in during Week 2 and never reopened the app kept reporting week 2, so
+every later send collided with a Week-2 ledger row and that device went quiet
+for the rest of the season. The feed is now authoritative; the device's own
+report is the fallback for a run whose pull has never succeeded.
+
+### It cannot trigger a Vercel redeploy
+
+The pull runs **inside the serverless function**, invoked by Vercel Cron. In
+full:
+
+- Vercel Cron is an internal scheduled HTTP invocation of an already-deployed
+  function. It is not a Git event, so it creates no deployment.
+- The job writes one Supabase row and sends pushes. It does not write to the
+  repository, call the Vercel API, hit a Deploy Hook, or touch a webhook.
+- No GitHub Actions workflow is scheduled and none invokes the dispatcher — a
+  workflow curling this route on a schedule would put the pull back on the
+  repository's side of the fence, with the deploy-triggering surface that comes
+  with it. `npm run audit:notifications` asserts both, mechanically, so a later
+  change cannot quietly reintroduce it.
 
 ## Architecture
 
@@ -31,14 +110,16 @@ notificationService.js     global-scope client. Owns permission, token capture,
 sw.js                      service worker — Web Push receipt only, no caching.
 index.html                 Setup screen card (markup + block-6 controller).
 
-api/notifications-register.js   device registration / preferences / unsubscribe
-api/notifications-dispatch.js   hourly cron target
-lib/notifications/triggers.js   pure cadence engine + deterministic copy
-lib/notifications/apns.js       APNs over HTTP/2, token auth, zero deps
-lib/notifications/webpush.js    VAPID Web Push (wraps `web-push`)
-lib/notifications/selftest.js   37 assertions, no credentials needed
+api/notifications-register.js       device registration / preferences / unsubscribe
+api/notifications-dispatch.js       the once-a-day cron target
+lib/notifications/triggers.js       pure cadence engine + deterministic copy
+lib/notifications/schedule-feed.js  the once-a-day external pull + its rate limiter
+lib/notifications/apns.js           APNs over HTTP/2, token auth, zero deps
+lib/notifications/webpush.js        VAPID Web Push (wraps `web-push`)
+lib/notifications/selftest.js       133 assertions, no credentials needed
 
-supabase/notifications.sql      notification_devices + notification_sends
+supabase/notifications.sql          notification_devices + notification_sends
+                                    + notification_schedule (the pull's cache)
 ```
 
 `notificationService.js` loads at global scope alongside
@@ -46,27 +127,14 @@ supabase/notifications.sql      notification_devices + notification_sends
 driven from block 6 and fed league context from block 1, so it cannot live
 inside either IIFE.
 
-### Why hourly cron rather than five weekly ones
-
-Each alert must land at a sensible hour in the *reader's* timezone. A
-`vercel.json` cron fires at one fixed UTC instant, so five weekly crons would
-wake a Honolulu reader at 04:00 to say waivers cleared. Instead one cron runs
-hourly and `triggers.js` decides, per device, whether that device's local
-window just opened. It also makes a missed run self-healing — the engine's
-3-hour grace window re-offers a recent alert on the next pass.
-
-> **Plan note:** Vercel's Hobby tier limits cron jobs to **once per day**, which
-> is not enough for this design. Hourly requires **Pro**. On Hobby the route
-> still works — trigger it from any external scheduler (GitHub Actions,
-> cron-job.org) with `Authorization: Bearer $CRON_SECRET`.
-
 ### At-most-once delivery
 
 The ledger row in `notification_sends` is inserted **before** the provider call.
-Its composite primary key means two overlapping cron runs cannot both deliver.
-The deliberate trade: a provider call that fails after the insert drops that one
-alert rather than risking a duplicate. For a weekly nudge that is the right side
-to fail on, and the drop is recorded as `status='failed'` rather than lost.
+Its composite primary key means a manual invocation overlapping the cron cannot
+double-deliver. The deliberate trade: a provider call that fails after the
+insert drops that one alert rather than risking a duplicate. For a weekly nudge
+that is the right side to fail on, and the drop is recorded as `status='failed'`
+rather than lost.
 
 ## Privacy
 
@@ -76,6 +144,9 @@ the SHA-256 of the push address, so the id is safe to log and to return to the
 client while the address itself sits in one column only the dispatcher reads.
 RLS is on with **no** anon or authenticated policies — service-role routes only,
 the same boundary `public.leagues` already uses.
+
+The daily pull carries no credentials and no reader data. It is an anonymous GET
+for a public NFL scoreboard.
 
 ## The opt-in flow
 
@@ -99,7 +170,9 @@ or the master switch reaches it.
 ### 1. Database
 
 Run `supabase/notifications.sql` in the Supabase SQL Editor (after `schema.sql`,
-which defines the shared touch trigger it reuses).
+which defines the shared touch trigger it reuses). It is additive and safe to
+re-run: existing installs get the new `notification_schedule` cache table and
+nothing else changes.
 
 ### 2. Environment variables
 
@@ -110,6 +183,12 @@ Required by both transports:
 | `SUPABASE_URL` | already set for `/api/league` |
 | `SUPABASE_SERVICE_ROLE_KEY` | already set |
 | `CRON_SECRET` | any long random string. **Without it the dispatcher refuses to run** rather than defaulting open. Vercel attaches it to scheduled invocations automatically. |
+
+Optional:
+
+| Variable | Notes |
+|---|---|
+| `NOTIFICATIONS_SCHEDULE_URL` | override the daily pull's URL (a mirror, a fixture). Must be `https:` on `site.api.espn.com` or `fantasy.espn.com`; anything else is refused loudly and the default is used. |
 
 iOS (APNs):
 
@@ -145,19 +224,19 @@ Requires a Mac — see `ios/HANDOFF.md`. After `npm install && npx cap sync ios`
 Capacitor's `@capacitor/push-notifications` handles `AppDelegate` registration;
 no Swift changes are needed.
 
-## Triggering the dispatcher externally
+## Triggering the dispatcher by hand
 
-The route authenticates every caller against `CRON_SECRET` and **fails closed**:
-if the variable is unset, the route returns 401 to everyone rather than
-defaulting open. Two header forms are accepted, because not every scheduler can
-set an `Authorization` header:
+The cron is the schedule; this is for verification. The route authenticates
+every caller against `CRON_SECRET` and **fails closed**: if the variable is
+unset, the route returns 401 to everyone rather than defaulting open. Two header
+forms are accepted, because not every caller can set an `Authorization` header:
 
 ```bash
 # What Vercel Cron sends automatically.
 curl -H "Authorization: Bearer $CRON_SECRET" \
   "https://<deployment>/api/notifications-dispatch"
 
-# Equivalent, for schedulers that only allow custom headers.
+# Equivalent, for tools that only allow custom headers.
 curl -H "x-cron-secret: $CRON_SECRET" \
   "https://<deployment>/api/notifications-dispatch"
 ```
@@ -165,15 +244,18 @@ curl -H "x-cron-secret: $CRON_SECRET" \
 `GET` and `POST` both work; anything else returns 405. The secret is compared in
 constant time.
 
-This is the path to use on Vercel Hobby, where cron is limited to once per day —
-point GitHub Actions, cron-job.org, or any hourly scheduler at the URL above.
+Running this by hand is safe with respect to the upstream: the feed's rate
+limiter means a second invocation on the same day makes **no** outbound request
+and serves the cached week.
 
 ## Health check (`?dry=1`)
 
 `?dry=1` runs the **entire** evaluation lifecycle — reads every live device,
-scans the send ledger, normalises each timezone, and applies every cadence rule
-— then returns what it *would* have done and stops. It opens no APNs session,
-sends no Web Push, and writes no database row.
+reads the cached schedule, scans the send ledger, normalises each timezone, and
+applies every band rule — then returns what it *would* have done and stops. It
+opens no APNs session, sends no Web Push, writes no database row, and **makes no
+outbound request**: a rehearsal must not spend the day's one pull, and must not
+stamp `attempted_at` and thereby rate-limit the real run out of its own.
 
 ```bash
 curl -H "Authorization: Bearer $CRON_SECRET" \
@@ -184,9 +266,19 @@ curl -H "Authorization: Bearer $CRON_SECRET" \
 {
   "ok": true,
   "dryRun": true,
-  "now": "2026-09-08T13:05:00.000Z",
+  "now": "2026-09-08T16:00:00.000Z",
   "transports": { "apns": false, "web": true },  // which providers are provisioned
   "deliverable": true,                           // could a live run send anything at all
+  "schedule": {
+    "seasonYear": 2026,
+    "week": 1,
+    "firstKickoffAt": "2026-09-11T00:15:00.000Z",
+    "fetchedAt": "2026-09-08T16:00:03.000Z",
+    "ageHours": 0,                               // >24 means the pull has been failing
+    "pulledThisRun": false,                      // always false in a dry run, by design
+    "reason": "CACHE_ONLY",
+    "lastError": null
+  },
   "evaluated": 4,                                // live devices considered
   "due": 1,                                      // alerts a live run would send now
   "ledgerRowsScanned": 0,                        // dedupe rows inside the lookback
@@ -194,22 +286,26 @@ curl -H "Authorization: Bearer $CRON_SECRET" \
   "devices": {
     "total": 4, "ios": 1, "web": 3,
     "missingTimezone": 1,                        // rows whose zone Intl rejects
-    "noGroupsEnabled": 1                         // registered but every switch off
+    "noGroupsEnabled": 1,                        // registered but every switch off
+    "outsideDailyWindow": 1                      // zone too far from the cron's UTC hour
   },
   "planTruncated": false,                        // `due` is always the real total
   "plan": [{
     "deviceId": "…", "platform": "web", "timezone": "America/New_York",
     "trigger": "waiver_wire", "group": "tuesday",
-    "targetAt": "2026-09-08T13:00:00.000Z",
-    "lateByMinutes": 5,
+    "season": 2026, "week": 1,
+    "localHour": 12,                             // where the run landed on their clock
+    "idealHour": 9,                              // where the alert would rather be
+    "idealAt": "2026-09-08T13:00:00.000Z",
+    "offsetFromIdealMinutes": 180,
     "wouldDeliver": true                         // false when that transport is unconfigured
   }]
 }
 ```
 
-`missingTimezone` and `noGroupsEnabled` exist so an empty `plan` is diagnosable
-rather than mysterious — they are the two conditions that silence a device
-outright.
+`missingTimezone`, `noGroupsEnabled` and `outsideDailyWindow` exist so an empty
+`plan` is diagnosable rather than mysterious — they are the three conditions
+that silence a device outright.
 
 A dry run still **requires** the secret, and it deliberately still answers `200`
 when no transport is provisioned: the first health check anyone runs is against
@@ -221,16 +317,18 @@ needs verifying. A *live* run with no transport configured returns `503`.
 ```bash
 npm run verify              # everything below, in order
 npm run check:scope         # CLAUDE.md rule 1 — every identifier resolves
-npm run test:triggers       # 37 assertions: DST, grace window, opt-in gate, determinism
-npm run audit:notifications # 42 assertions: cron auth + dry-run safety + doc sync
+npm run test:triggers       # 133 assertions: DST, local bands, kickoff anchoring,
+                            # the opt-in gate, determinism, and the pull's rate limiter
+npm run audit:notifications # 73 assertions: cron auth, dry-run safety, the daily
+                            # pull's request count, cron shape, doc sync
 npm run check:render        # Chromium: all six screens, zero errors, opt-in contract
 ```
 
-`audit:notifications` replaces the Supabase client and both transports with
-instrumented doubles, drives the real route handler, and asserts the recordings
-are empty for `?dry=1`. It does not read the source or trust a flag — it proves
-no provider was called and no row was written, with a live-run control in the
-same file to show the doubles are actually wired.
+`audit:notifications` replaces the Supabase client, both transports **and global
+`fetch`** with instrumented doubles, drives the real route handler, and asserts
+the recordings. It does not read the source or trust a flag: the "once a day"
+claim is a count of intercepted outbound requests, and the "once a day" cron is
+a parsed cron expression, not a phrase in a comment.
 
 ## Determinism
 

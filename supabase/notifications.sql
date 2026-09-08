@@ -150,3 +150,54 @@ begin
   return removed;
 end;
 $$;
+
+-- ----------------------------------------------------------------------------
+-- Daily schedule cache — the rate limiter for the one external data pull.
+--
+-- Written only by /api/notifications-dispatch through
+-- lib/notifications/schedule-feed.js. One row, id = 'nfl'.
+--
+-- The dispatcher needs the season, the week number and the week's opening
+-- kickoff to place its alerts. None of those are per-league, so they are pulled
+-- once for the whole install base and parked here instead of being re-fetched
+-- per league, per device, or per invocation.
+--
+-- attempted_at is the rate limiter, and it is deliberately NOT fetched_at:
+--   * attempted_at moves on every attempt, success or failure. A failing or
+--     throttled upstream therefore costs at most one request per interval no
+--     matter how often the route is invoked.
+--   * fetched_at and the data columns move only on success, so a failed pull
+--     can never overwrite a good week with nulls. The dispatcher serves the
+--     stale row and reports its age rather than going silent.
+--
+-- Additive: nothing above this line is altered by adding it.
+-- ----------------------------------------------------------------------------
+create table if not exists public.notification_schedule (
+  id text primary key check (char_length(id) <= 32),
+
+  season_year integer check (season_year is null or season_year between 1990 and 2100),
+  week integer check (week is null or week between 0 and 30),
+  -- ESPN season type: 1 pre, 2 regular, 3 post. Recorded so an operator can
+  -- tell "week 1 of the preseason" from "week 1 of the season" at a glance.
+  season_type integer,
+  -- Epoch ms of the week's earliest kickoff; anchors the Thursday alert.
+  first_kickoff_ms bigint,
+  -- The URL the row was pulled from, so a mirror or an override is visible.
+  source text,
+
+  fetched_at timestamptz,     -- last SUCCESSFUL pull
+  attempted_at timestamptz,   -- last attempt of any outcome -> the rate limiter
+  last_error text,
+  last_error_at timestamptz,
+
+  updated_at timestamptz not null default now()
+);
+
+alter table public.notification_schedule enable row level security;
+-- Intentionally no policies: service-role routes only, same boundary as the
+-- two tables above.
+
+drop trigger if exists mffu_touch_notification_schedule on public.notification_schedule;
+create trigger mffu_touch_notification_schedule
+before update on public.notification_schedule
+for each row execute function public.mffu_touch_league_updated_at();
