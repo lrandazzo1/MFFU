@@ -13944,6 +13944,57 @@ function releaseAnchorFor(week){
   return { season, week: wk, live: wk === liveWeek };
 }
 
+/* The moment the anchored week opened — the Tuesday roll that starts it. The
+   release gate below uses it as the floor when it publishes advance coverage
+   ahead of its slot: a preview released early is the desk's opening-week file,
+   not a story from the future, so it is stamped somewhere inside the window
+   that has already elapsed since its own week began. */
+function weekOpenAt(week, seasonYear){
+  const wk = parseInt(week, 10);
+  const start = seasonWeekOneStart(seasonYear);
+  if(!start || !(wk > 0)) return null;
+  return new Date(start.getFullYear(), start.getMonth(),
+                  start.getDate() + (wk - 1) * 7, 0, 0, 0, 0).getTime();
+}
+
+/* ---- ADVANCE COVERAGE — the desks that publish BEFORE the games ----
+   The release gate holds a story until its slot goes to air, which is exactly
+   right for anything reporting a result: Sunday's finals are not readable on
+   Wednesday. Preview copy is the opposite case. The pre-season board, the draft
+   report cards, the Tale of the Tape previews and the availability wire are all
+   about games that have not been played, and in the season-opening window there
+   is no prior week of results underneath them to carry the wire — so gating them
+   left the desk showing the State of the League lead and nothing else.
+
+   Slot is the discriminator rather than kind, because the same generator files
+   to a different slot once a week has scores: an unplayed rivalry piece is a
+   primer, the same rivalry piece after the whistle is a recap and stays held. */
+const ADVANCE_SLOTS = { primer:true, injury:true };
+function isAdvanceCoverage(e){
+  if(!e) return false;
+  /* Draft coverage reports on an event that has already happened, so it is
+     never a result the gate should be holding back. */
+  if(e.topic === 'draft') return true;
+  return !!ADVANCE_SLOTS[e.slot];
+}
+
+/* Re-stamp advance copy the gate released ahead of its slot into the window
+   that has already elapsed since its week opened, preserving the order the slot
+   calendar gave it. Without this the cards keep a timestamp in the future and
+   read "THURSDAY · PREVIEW" on a story the reader is holding on Tuesday. */
+function restampAdvanceCoverage(list, anchor, now){
+  if(!Array.isArray(list) || !list.length) return;
+  const ceiling = now - MIN;
+  const opened = weekOpenAt(anchor && anchor.week, anchor && anchor.season);
+  const floor = Math.min(ceiling, opened == null ? ceiling : opened);
+  let lo = Infinity, hi = -Infinity;
+  list.forEach(e=>{ if(e.at < lo) lo = e.at; if(e.at > hi) hi = e.at; });
+  const span = hi - lo;
+  list.forEach(e=>{
+    e.at = span > 0 ? Math.round(floor + (ceiling - floor) * ((e.at - lo) / span)) : ceiling;
+  });
+}
+
 /* A token that changes every time the wire crosses a slot boundary, so the
    stream cache expires exactly when new copy becomes due and never in between.
    Constant off the live calendar, where nothing is being held back. */
@@ -16778,10 +16829,23 @@ function getTimelineStream(week){
   }
 
   /* Draft season pulls its coverage to the front — in August nobody wants a
-     Week 1 preview above the report cards. */
+     Week 1 preview above the report cards.
+
+     tlDraft() stamps the desk off slotTime('injury'), and under a live release
+     anchor that resolves to a slot LATER THIS WEEK rather than to the most
+     recent past Saturday. Against a stamp in the future the old Math.max() was
+     a no-op in both directions: the report cards stayed behind the previews,
+     and — because the gate below holds anything still ahead — the entire draft
+     desk fell off the wire in the one window it exists for. So a future stamp
+     is pulled back to the recent past outright; a stamp already in the past
+     keeps the original behaviour byte for byte. */
   if(phase === 'draft' || phase === 'preseason'){
     const now = Date.now();
-    events.forEach(e=>{ if(e.topic === 'draft') e.at = Math.max(e.at, now - (hash(e.id) % 600) * MIN); });
+    events.forEach(e=>{
+      if(e.topic !== 'draft') return;
+      const pulled = now - (hash(e.id) % 600) * MIN;
+      e.at = e.at > now ? pulled : Math.max(e.at, pulled);
+    });
   }
 
   /* ---- SCHEDULED RELEASE GATE ----
@@ -16790,21 +16854,41 @@ function getTimelineStream(week){
      on Wednesday and the Tuesday long-form recap is not readable on Sunday
      night; they arrive on their own days, exactly as a real desk publishes.
 
-     Three things are never held: community copy (the one desk the app does not
+     Four things are never held: community copy (the one desk the app does not
      overrule), anything already stamped live rather than to a slot — the State
-     of the League lead, the bracket card — and, as a floor, the next story due
-     when the gate would otherwise leave the wire blank. Past weeks are entirely
-     released by definition and archive seasons never reach this branch at all,
-     so the time machine keeps every story it has always shown. */
+     of the League lead, the bracket card — advance coverage inside the season-
+     opening window, and, as a floor, the next story due when the gate would
+     otherwise leave the wire blank. Past weeks are entirely released by
+     definition and archive seasons never reach this branch at all, so the time
+     machine keeps every story it has always shown.
+
+     The advance carve-out is what keeps the pre-season desk populated. In the
+     transition window every one of the six slots for the live week is still
+     ahead — Week 1 opens on a Tuesday and its earliest slot is Wednesday's
+     waiver run — so the gate held every slot-stamped story, the floor rule never
+     fired because the live-stamped State of the League lead already counted as
+     released, and the reader was left with exactly one card where the pre-season
+     board, the draft report cards and the matchup previews belonged. Advance
+     copy is not a result to hold: it is written about games that have not been
+     played, and the desk publishes it when its week opens. Mid-season release
+     cadence is untouched — outside the transition window a Thursday primer still
+     arrives on Thursday. */
   if(anchor && anchor.live){
     const now = Date.now();
     const held = [];
+    const early = [];
     const released = events.filter(e=>{
       if(!e) return false;
       if(e.custom || !(e.at > now)) return true;
+      if(transitionWindow && isAdvanceCoverage(e)){ early.push(e); return true; }
       held.push(e);
       return false;
     });
+    try{ restampAdvanceCoverage(early, anchor, now); }
+    catch(err){
+      console.error('[Timeline] advance re-stamp failed for Week ' + week +
+        '; released ' + early.length + ' story/stories on their slot timestamps', err);
+    }
     if(!released.some(e=> !e.custom) && held.length){
       // Nothing has gone to air yet this week: promote only the next one due.
       held.sort((a,b)=> a.at - b.at);

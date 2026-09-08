@@ -20,7 +20,8 @@
     "check:apibase": "node scripts/api-base-check.mjs",
     "check:links": "node scripts/legal-links-check.mjs",
     "check:claims": "node scripts/landing-claims-check.mjs",
-    "verify": "npm run check:scope && npm run test:triggers && npm run audit:notifications && npm run check:render && npm run check:switch && npm run check:boot && npm run check:apibase && npm run check:links && npm run check:claims",
+    "check:news": "node scripts/news-library-check.mjs",
+    "verify": "npm run check:scope && npm run test:triggers && npm run audit:notifications && npm run check:render && npm run check:switch && npm run check:boot && npm run check:apibase && npm run check:links && npm run check:claims && npm run check:news",
     "audit:notifications": "node scripts/audit-notifications.mjs"
   },
   "dependencies": {
