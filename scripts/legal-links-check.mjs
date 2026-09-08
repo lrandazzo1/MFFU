@@ -125,7 +125,11 @@ function instrument(config) {
       plugins.Browser = {
         open(o) {
           window.__legal.browserOpen.push(String(o && o.url));
-          return Promise.resolve();
+          return config.openFails ? Promise.reject(new Error('TEST_PRESENTATION_FAILED')) : Promise.resolve();
+        },
+        addListener(name, callback) {
+          window.__legal.finish = callback;
+          return Promise.resolve({ remove() { window.__legal.listenerRemoved = true; return Promise.resolve(); } });
         },
       };
     }
@@ -169,12 +173,13 @@ try {
     rel: e.getAttribute('rel'),
   })));
 
-  if (links.length !== 2) fail('expected 2 .privacy-link anchors in Setup, found ' + links.length);
-  else pass('found both policy links: ' + links.map((l) => l.label).join(' | '));
+  if (links.length !== 3) fail('expected 3 policy/support anchors in Setup, found ' + links.length);
+  else pass('found policy and support links: ' + links.map((l) => l.label).join(' | '));
 
   const expected = [
     'https://www.fantasysportsnetwork.app/privacy',
     'https://www.fantasysportsnetwork.app/terms',
+    'https://fantasysportsnetwork.app/support',
   ];
   for (const href of expected) {
     if (links.some((l) => l.href === href)) pass('link present: ' + href);
@@ -205,14 +210,14 @@ try {
     else fail('GET ' + path + ' → ' + status);
 
     const title = await doc.title();
-    if (/Fantasy Sports Network/.test(title) && /Privacy Policy|Terms of Service/.test(title)) {
+    if (/Fantasy Sports Network/.test(title) && /Privacy Policy|Terms of Service|Support/.test(title)) {
       pass(path + ' titled: ' + title);
     } else {
       fail(path + ' has an unexpected title: ' + title);
     }
 
     const headings = await doc.$$eval('h2', (els) => els.length);
-    if (headings >= 5) pass(path + ' renders ' + headings + ' sections');
+    if (headings >= (path === '/support' ? 1 : 5)) pass(path + ' renders ' + headings + ' sections');
     else fail(path + ' rendered only ' + headings + ' sections');
 
     const crossLink = await doc.$$eval('a[href="/terms"], a[href="/privacy"]', (els) => els.length);
@@ -224,38 +229,22 @@ try {
     await doc.close();
   }
 
-  /* ---- 3. Web shell: the tap opens a new tab ----------------------------- */
+  /* ---- 3. Web: preserve native anchor navigation without duplicate popups. */
   await page.click('.privacy-link');
-  await page.waitForTimeout(200);
   const web = await page.evaluate(() => window.__legal);
-  if (web.windowOpen.length === 1 && web.windowOpen[0].url === expected[0] && web.windowOpen[0].target === '_blank') {
-    pass('web: tap called window.open(' + web.windowOpen[0].url + ', _blank)');
-  } else {
-    fail('web: expected one window.open for the privacy URL, got ' + JSON.stringify(web.windowOpen));
-  }
-  if (!web.notPrevented.length) pass('web: the handler took the tap over (default prevented)');
-  else fail('web: the anchor navigated instead of being handled: ' + web.notPrevented.join(', '));
+  if (web.windowOpen.length === 0 && web.notPrevented.length === 1) {
+    pass('web: one target=_blank anchor navigation; no scripted duplicate popup');
+  } else fail('web: expected ordinary anchor navigation, got ' + JSON.stringify(web));
   if (pageErrors.length) fail('web: page errors during the tap: ' + pageErrors.join(' | '));
   else pass('web: zero uncaught page errors');
   await page.close();
 
-  /* ---- 4. Web shell, popup blocked: fall back to the anchor -------------- */
-  const blocked = await openApp({ popupBlocked: true });
-  await blocked.page.click('.privacy-link');
-  await blocked.page.waitForTimeout(200);
-  const bl = await blocked.page.evaluate(() => window.__legal);
-  if (bl.notPrevented.length === 1) pass('popup blocked: the anchor is left to navigate rather than dead-ending');
-  else fail('popup blocked: expected the handler to stand down, got ' + JSON.stringify(bl.notPrevented));
-  if (bl.warned.some((w) => /\[FSNLinks\].*popup blocked/.test(w))) pass('popup blocked: reported, not swallowed');
-  else fail('popup blocked: nothing logged — the failure would be invisible');
-  await blocked.page.close();
-
   /* ---- 5. Native binary with the Browser plugin -------------------------- */
   const native = await openApp({ native: true, browserPlugin: true });
-  await native.page.click('.privacy-link');
+  await native.page.click('#supportLink');
   await native.page.waitForTimeout(200);
   const nat = await native.page.evaluate(() => window.__legal);
-  if (nat.browserOpen.length === 1 && nat.browserOpen[0] === expected[0]) {
+  if (nat.browserOpen.length === 1 && nat.browserOpen[0] === expected[2]) {
     pass('native: tap opened the in-app browser at ' + nat.browserOpen[0]);
   } else {
     fail('native: expected Capacitor Browser.open for the privacy URL, got ' + JSON.stringify(nat.browserOpen));
@@ -264,7 +253,18 @@ try {
   else fail('native: fell through to window.open ' + JSON.stringify(nat.windowOpen));
   if (!nat.notPrevented.length) pass('native: the handler took the tap over (default prevented)');
   else fail('native: the anchor navigated in place: ' + nat.notPrevented.join(', '));
+  await native.page.evaluate(() => window.__legal.finish());
+  const returned = await native.page.evaluate(() => ({
+    focus: document.activeElement.id,
+    screen: document.querySelector('.screen[data-active="true"]').dataset.screen,
+    message: document.getElementById('externalLinkStatus').textContent,
+    removed: window.__legal.listenerRemoved,
+  }));
+  if(returned.focus === 'supportLink' && returned.screen === 'setup' && returned.removed && /Returned to FSN/.test(returned.message)) {
+    pass('native browserFinished: returned to Setup, restored Support focus and removed listener');
+  } else fail('native return changed app state: ' + JSON.stringify(returned));
   await native.page.close();
+
 
   /* ---- 6. Native binary WITHOUT the plugin: stand down, loudly ----------- */
   const legacy = await openApp({ native: true, browserPlugin: false });
@@ -277,12 +277,25 @@ try {
     fail('legacy native build: something opened anyway: ' +
       JSON.stringify({ windowOpen: leg.windowOpen, browserOpen: leg.browserOpen }));
   }
-  if (leg.warned.some((w) => /\[FSNLinks\].*Capacitor Browser plugin/.test(w))) {
+  if (leg.errored.some((w) => /\[FSNLinks\].*Cannot open the external browser/.test(w))) {
     pass('legacy native build: says exactly what is missing and how to fix it');
   } else {
     fail('legacy native build: the missing plugin was not reported');
   }
+  if(leg.notPrevented.length === 0) pass('missing plugin: native webview navigation is blocked');
+  else fail('missing plugin: anchor would navigate the app away');
+  if(/Could not open the browser/.test(await legacy.page.textContent('#externalLinkStatus'))) pass('missing plugin: visible recovery message');
+  else fail('missing plugin: no recovery message');
   await legacy.page.close();
+
+  const rejected = await openApp({ native:true, browserPlugin:true, openFails:true });
+  await rejected.page.click('#supportLink');
+  await rejected.page.waitForTimeout(200);
+  if(/Could not open the browser/.test(await rejected.page.textContent('#externalLinkStatus'))) pass('presentation rejection: visible retry/Safari guidance');
+  else fail('presentation rejection: no visible error');
+  if(rejected.pageErrors.length) fail('presentation rejection: uncaught error');
+  await rejected.page.close();
+
 
   /* ---- 7. Only http(s) is ever handed to an opener ----------------------- */
   const guard = await openApp({});

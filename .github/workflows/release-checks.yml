@@ -1,0 +1,36 @@
+name: Release Checks
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Install test browser
+        run: |
+          npx playwright install --with-deps chromium
+          node --input-type=module -e "import { chromium } from 'playwright'; import { appendFileSync } from 'node:fs'; appendFileSync(process.env.GITHUB_ENV, 'FSN_CHROMIUM_PATH=' + chromium.executablePath() + '\n');"
+      - name: Verify native asset generation and capability wiring
+        run: |
+          npm run build:ios
+          tar --no-same-owner -xzf node_modules/@capacitor/cli/assets/ios-pods-template.tar.gz -C ios App
+          npm run ios:assets
+          npm run ios:applinks
+          npm run ios:applinks
+      - name: Verify release cleanup and provider restrictions
+        run: npm run check:release
+      - name: Verify all existing app flows
+        run: npm run verify

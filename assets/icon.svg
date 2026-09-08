@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <title>FSN — Fantasy Sports Network</title>
+  <!-- FSN's existing cyan wordmark on ink. Outlined letters need no installed font. -->
+  <rect width="1024" height="1024" fill="#080a0e"/>
+  <g fill="#00e0ff">
+    <path d="M154 348H358V414H230V479H340V545H230V676H154Z"/>
+    <path d="M400 348H610V414H474V479H610V676H400V610H536V545H400Z"/>
+    <path d="M654 676V348H726L794 522V348H870V676H798L730 502V676Z"/>
+  </g>
+</svg>

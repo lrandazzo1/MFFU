@@ -30,8 +30,8 @@
 	  portal must also carry the Associated Domains capability, which Xcode
 	  enables for you on an archive built with -allowProvisioningUpdates.
 
-	  This is also where `aps-environment` belongs if the push build ever needs
-	  an explicit entitlement; nothing else in the repo writes this file.
+	  APNs uses the production environment in App Store/TestFlight exports.
+	  The exported signature is checked before upload; a profile alone is not enough.
 	-->
 	<key>com.apple.developer.associated-domains</key>
 	<array>
@@ -39,5 +39,7 @@
 		<string>applinks:www.fantasysportsnetwork.app</string>
 		<string>applinks:app.fantasysportsnetwork.app</string>
 	</array>
+	<key>aps-environment</key>
+	<string>production</string>
 </dict>
 </plist>

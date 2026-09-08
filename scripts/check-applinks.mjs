@@ -18,14 +18,8 @@
    about any of it shows up in a build, a deploy, or the simulator — only on a
    real device, after a real submission.
 
-   So this pins the four to each other, and reports the one value that cannot
-   be derived from the repo — the Apple Team ID in the AASA's appIDs — as a
-   warning until somebody with access to the developer portal fills it in.
-   A placeholder is a warning by default so that a red CI run always means the
-   app itself broke; set FSN_REQUIRE_APPLINKS=1 to make it a hard failure,
-   which is what a release run should do. A team ID that is present but does
-   NOT match APPLE_TEAM_ID always fails — that is a mismatch, not an unfinished
-   step, and it ships an app that claims links it cannot open.
+   Pins both associations to the native configuration. Placeholder identities
+   always fail; APPLE_TEAM_ID also checks the selected distribution team.
 ============================================================================ */
 import { readFileSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
@@ -43,7 +37,7 @@ const PACKAGE = join(root, 'package.json');
 const VERCEL = join(root, 'vercel.json');
 const LANDING_VERCEL = join(root, 'landing', 'vercel.json');
 
-// The placeholder shipped until somebody fills in the real Apple Team ID.
+// Reject the legacy placeholder as well as malformed team IDs.
 const TEAM_ID_PLACEHOLDER = 'TEAMID';
 
 let failed = false;
@@ -53,12 +47,6 @@ const fail = (title, detail) => {
     console.log(`::error title=${title}::${detail.replace(/\s+/g, ' ').trim()}`);
   }
   console.error(`  FAIL  ${title} — ${detail}`);
-};
-const warn = (title, detail) => {
-  if (process.env.GITHUB_ACTIONS) {
-    console.log(`::warning title=${title}::${detail.replace(/\s+/g, ' ').trim()}`);
-  }
-  console.warn(`  warn  ${title} — ${detail}`);
 };
 const pass = (message) => console.log(`  ok    ${message}`);
 
@@ -131,6 +119,16 @@ for (const [label, raw, path] of [
     fail(`The ${label} AASA names no appIDs`, `${path} declares details with no appIDs, so no app can match it.`);
     continue;
   }
+  for(const entry of details){
+    const components = entry.components || [];
+    const include = components.findIndex(c=> c['/'] === '/*' && !c.exclude);
+    for(const path of ['/privacy*', '/terms*', '/support*']){
+      const excluded = components.findIndex(c=> c['/'] === path && c.exclude === true);
+      if(excluded < 0 || (include >= 0 && excluded > include)){
+        fail(`${label} must keep ${path} on the web`, 'Exclude support/legal pages before the catch-all app route.');
+      }
+    }
+  }
   pass(`${label} AASA parses and names ${appIDs.join(', ')}`);
   if (label === 'app project') appAasa = { parsed, appIDs };
 }
@@ -147,8 +145,7 @@ if (appAasaRaw && landingAasaRaw && appAasaRaw !== landingAasaRaw) {
 }
 
 // ---------------------------------------------------------------------------
-// 3. The bundle identifier, and the Apple Team ID that cannot live in the repo
-//    until somebody reads it off the developer portal.
+// 3. The bundle identifier and verified Apple Team ID.
 
 console.log('\n[3] App identity');
 const capacitor = read(CAPACITOR, 'capacitor.config.ts');
@@ -176,7 +173,7 @@ if (appAasa && bundleId) {
   }
 
   const teamIds = appAasa.appIDs.map((id) => id.split('.')[0]);
-  const placeholders = teamIds.filter((id) => id === TEAM_ID_PLACEHOLDER);
+  const placeholders = teamIds.filter((id) => id === TEAM_ID_PLACEHOLDER || !/^[A-Z0-9]{10}$/.test(id));
   const expectedTeam = String(process.env.APPLE_TEAM_ID || '').trim();
 
   if (placeholders.length) {
@@ -187,11 +184,7 @@ if (appAasa && bundleId) {
       ' in BOTH .well-known/apple-app-site-association and ' +
       'landing/.well-known/apple-app-site-association before the first App Store submission, or iOS ' +
       'will never verify the association and every shared link will open Safari instead of the app.';
-    /* A warning, not a failure, unless a release run asks for the gate: the
-       value is not in the repo to be got right, and a red run on main has to
-       keep meaning that the app broke. */
-    if (process.env.FSN_REQUIRE_APPLINKS === '1') fail('The Apple Team ID is still a placeholder', detail);
-    else warn('The Apple Team ID is still a placeholder', detail);
+    fail('The Apple Team ID is still a placeholder', detail);
   } else if (expectedTeam && !teamIds.includes(expectedTeam)) {
     fail(
       'The AASA names the wrong Apple Team ID',

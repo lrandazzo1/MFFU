@@ -151,3 +151,28 @@ if (conflicting.length) {
 }
 
 console.log(`${TAG} associated domains are wired into the Xcode project`);
+
+// Capacitor's push plugin needs both AppDelegate callbacks. The native project
+// is regenerated in CI, so wire them after sync rather than patching generated files.
+const delegatePath = join(TARGET_DIR, 'AppDelegate.swift');
+const delegate = readFileSync(delegatePath, 'utf8');
+const callbacks = [
+  ['didRegisterForRemoteNotificationsWithDeviceToken', 'capacitorDidRegisterForRemoteNotifications',
+    '    func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {\n' +
+    '        NotificationCenter.default.post(name: .capacitorDidRegisterForRemoteNotifications, object: deviceToken)\n    }'],
+  ['didFailToRegisterForRemoteNotificationsWithError', 'capacitorDidFailToRegisterForRemoteNotifications',
+    '    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {\n' +
+    '        NotificationCenter.default.post(name: .capacitorDidFailToRegisterForRemoteNotifications, object: error)\n    }'],
+];
+let updatedDelegate = delegate;
+for(const [method, event, implementation] of callbacks){
+  if(updatedDelegate.includes(method)){
+    if(!updatedDelegate.includes(event)) fail('Conflicting push callback', `${method} exists without forwarding ${event}.`);
+    continue;
+  }
+  const classEnd = updatedDelegate.lastIndexOf('}');
+  if(classEnd < 0) fail('Invalid AppDelegate', 'Could not locate the AppDelegate closing brace.');
+  updatedDelegate = updatedDelegate.slice(0, classEnd) + '\n' + implementation + '\n' + updatedDelegate.slice(classEnd);
+}
+if(updatedDelegate !== delegate) writeFileSync(delegatePath, updatedDelegate);
+console.log(`${TAG} APNs success/error callbacks are wired into AppDelegate`);
