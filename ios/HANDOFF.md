@@ -24,6 +24,11 @@ npx cap add ios
 # (Capacitor scaffolds it at iOS 13.0, which Apple rejects with ITMS-90068).
 node scripts/ios-min-os.mjs
 
+# Give the generated project its Associated Domains entitlement, which is what
+# makes iOS open a shared fantasysportsnetwork.app link in the app instead of
+# in Safari. Like the line above, it has to be re-applied after every sync.
+node scripts/ios-associated-domains.mjs
+
 # Install CocoaPods deps for the generated Xcode project.
 cd ios/App && pod install && cd ../..
 ```
@@ -57,10 +62,11 @@ npm run build:ios
 # the plain anchor; re-running this loop is the fix.
 npx cap sync ios
 
-# Re-apply the minimum OS version. `cap sync` regenerates the project from
-# Capacitor's template, so this has to run after every sync — and the pods
-# have to be resolved again against the raised platform line.
-node scripts/ios-min-os.mjs && (cd ios/App && pod install)
+# Re-apply the minimum OS version and the Associated Domains entitlement.
+# `cap sync` regenerates the project from Capacitor's template, so both have to
+# run after every sync — and the pods have to be resolved again against the
+# raised platform line.
+node scripts/ios-min-os.mjs && node scripts/ios-associated-domains.mjs && (cd ios/App && pod install)
 
 # Open the Xcode workspace.
 npx cap open ios
@@ -85,18 +91,36 @@ Once `npx cap open ios` opens `App.xcworkspace`:
 3. **Team Signing** — set **Team** to the Apple Developer team that owns
    the `app.fantasysportsnetwork` App ID. Leave **Automatically manage
    signing** checked unless the team uses manual provisioning profiles.
-4. **General → Deployment Info** — confirm minimum iOS version reads
+4. **Associated Domains** — confirm the capability is listed with the three
+   `applinks:` entries from `ios/App.entitlements`. `npm run ios:applinks`
+   writes that file into the generated project and points the target's
+   `CODE_SIGN_ENTITLEMENTS` at it, but the **App ID in the developer portal**
+   also has to carry the Associated Domains capability. With automatic signing
+   Xcode adds it on the first archive; if signing fails with *"Provisioning
+   profile doesn't include the com.apple.developer.associated-domains
+   entitlement"*, enable it by hand at Certificates, Identifiers & Profiles →
+   Identifiers → `app.fantasysportsnetwork`, then let Xcode regenerate the
+   profile.
+5. **Verify the association is live** — `npm run check:applinks` pins the
+   entitlement, both `apple-app-site-association` files and the app's own host
+   list to each other, and warns while the AASA's Apple Team ID is still the
+   `TEAMID` placeholder. Replace it with the real Team ID (Membership → Team
+   ID) in **both** `.well-known/apple-app-site-association` and
+   `landing/.well-known/apple-app-site-association` and deploy before the first
+   submission: until then iOS never verifies the association and every shared
+   link opens Safari.
+6. **General → Deployment Info** — confirm minimum iOS version reads
    **15.0**. Capacitor 6 defaults to iOS 13.0, which App Store Connect
    rejects (`ITMS-90068`); `scripts/ios-min-os.mjs` raises it, and CI applies
    the same bump on every run.
-5. **Version + Build** — bump `CFBundleShortVersionString` (marketing
+7. **Version + Build** — bump `CFBundleShortVersionString` (marketing
    version) and `CFBundleVersion` (build number) on every archive.
-6. **Product → Destination → Any iOS Device (arm64)**. Archiving against a
+8. **Product → Destination → Any iOS Device (arm64)**. Archiving against a
    simulator is rejected by App Store Connect.
-7. **Product → Archive**. Wait for the archive to appear in the Organizer.
-8. In **Organizer**, select the new archive → **Distribute App** →
+9. **Product → Archive**. Wait for the archive to appear in the Organizer.
+10. In **Organizer**, select the new archive → **Distribute App** →
    **App Store Connect** → **Upload**. Follow the signing prompts.
-9. In **App Store Connect** (browser), the build appears under
+11. In **App Store Connect** (browser), the build appears under
    TestFlight → Builds within ~15 minutes. Add it to a test group or
    submit for review from there.
 

@@ -22,8 +22,12 @@ const files = [
 // Web-only files. sw.js exists purely so a browser will accept a Web Push
 // subscription; the iOS binary goes through APNs via the Capacitor plugin and
 // never registers a service worker, so shipping it inside the app bundle would
-// be dead weight.
-const webOnly = ['sw.js'];
+// be dead weight. The apple-app-site-association is the same shape of thing in
+// the other direction: it is what the DEPLOYMENT serves so iOS can verify the
+// app owns fantasysportsnetwork.app links, and it is meaningless inside the
+// bundle — the app's own half of that handshake is the entitlement written by
+// scripts/ios-associated-domains.mjs.
+const webOnly = ['sw.js', '.well-known/apple-app-site-association'];
 
 rmSync(out, { recursive: true, force: true });
 mkdirSync(out, { recursive: true });
