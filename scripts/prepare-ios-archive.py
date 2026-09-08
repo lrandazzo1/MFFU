@@ -30,4 +30,8 @@ subprocess.run(['codesign', '--force', '--sign', '-', '--generate-entitlement-de
 signed = subprocess.check_output(['codesign', '-d', '--entitlements', ':-', str(app)], stderr=subprocess.DEVNULL)
 if plistlib.loads(signed) != requested:
     raise SystemExit('Archive signature did not preserve the requested capabilities')
+
+# Remove the ad-hoc signature so export can apply the distribution signature cleanly.
+# Export refuses to replace an ad-hoc signature with a distribution one.
+subprocess.run(['codesign', '--remove-signature', str(app)], check=True)
 print('[ios-archive] Requested capabilities are embedded; distribution export is still required.')
