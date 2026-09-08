@@ -203,8 +203,15 @@ h1.hero-title .accent{ color:var(--cyan); }
 footer{ border-top:1px solid var(--line); padding:34px 0 46px; color:var(--dim); }
 .foot-inner{ display:flex; flex-wrap:wrap; align-items:center; gap:14px; }
 .foot-inner .mono{ font-size:12.5px; letter-spacing:.04em; }
-.foot-links{ margin-left:auto; display:flex; gap:20px; font-size:13px; }
+.foot-links{ margin-left:auto; display:flex; flex-wrap:wrap; align-items:center; gap:4px 20px; font-size:13px; }
+.foot-links a{ display:inline-flex; align-items:center; min-height:44px; }
+.foot-links .support-link{ color:var(--cyan); font-weight:600; }
 .foot-links a:hover{ color:var(--cyan); }
+.foot-links a:focus-visible{ outline:2px solid var(--cyan); outline-offset:4px; border-radius:3px; }
+.foot-copyright{ flex-basis:100%; color:var(--off); }
+@media (max-width:600px){
+  .foot-links{ width:100%; margin-left:0; }
+}
 
 /* ---------- waitlist modal ---------- */
 .modal-overlay{
@@ -632,7 +639,8 @@ footer{ border-top:1px solid var(--line); padding:34px 0 46px; color:var(--dim);
   <div class="wrap foot-inner">
     <span class="brand-badge" style="font-size:16px;">FSN</span>
     <span class="mono">FANTASY SPORTS NETWORK · Free for the 2026 season</span>
-    <nav class="foot-links">
+    <nav class="foot-links" aria-label="Footer">
+      <a class="support-link" href="/support">Support</a>
       <a href="#" data-waitlist>Join waitlist</a>
       <a href="#" data-waitlist data-platform="espn">Connect ESPN</a>
       <a href="#" data-waitlist data-platform="sleeper">Connect Sleeper</a>
@@ -640,6 +648,7 @@ footer{ border-top:1px solid var(--line); padding:34px 0 46px; color:var(--dim);
       <a href="/terms">Terms</a>
       <a href="/privacy">Privacy</a>
     </nav>
+    <span class="mono foot-copyright">© 2026 Leo Randazzo</span>
   </div>
 </footer>
 
