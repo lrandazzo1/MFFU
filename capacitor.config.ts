@@ -22,11 +22,20 @@ const config: CapacitorConfig = {
     androidScheme: 'https',
     // ESPN + Supabase + Vercel proxies are already CORS-cleared by the
     // web build; nothing to allowlist here beyond the app's own scheme.
+    //
+    // The app project lives on app.fantasysportsnetwork.app (see
+    // DEPLOYMENT.md), which the bare apex entry does not match, so the
+    // wildcard is what actually covers the deployment FSNApi resolves /api
+    // reads onto. This governs webview NAVIGATION only — fetch() to the
+    // relay routes is not gated by it — but the Yahoo OAuth start is a real
+    // navigation, and a preview deploy on *.vercel.app already relied on the
+    // same allowance.
     allowNavigation: [
       '*.espn.com',
       '*.supabase.co',
       '*.vercel.app',
-      'fantasysportsnetwork.app'
+      'fantasysportsnetwork.app',
+      '*.fantasysportsnetwork.app'
     ]
   }
 };
