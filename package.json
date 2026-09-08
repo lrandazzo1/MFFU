@@ -19,7 +19,8 @@
     "check:boot": "node scripts/boot-curtain-check.mjs",
     "check:apibase": "node scripts/api-base-check.mjs",
     "check:links": "node scripts/legal-links-check.mjs",
-    "verify": "npm run check:scope && npm run test:triggers && npm run audit:notifications && npm run check:render && npm run check:switch && npm run check:boot && npm run check:apibase && npm run check:links",
+    "check:claims": "node scripts/landing-claims-check.mjs",
+    "verify": "npm run check:scope && npm run test:triggers && npm run audit:notifications && npm run check:render && npm run check:switch && npm run check:boot && npm run check:apibase && npm run check:links && npm run check:claims",
     "audit:notifications": "node scripts/audit-notifications.mjs"
   },
   "dependencies": {
