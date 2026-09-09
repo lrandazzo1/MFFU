@@ -23,7 +23,7 @@ module.exports = async function handler(req,res) {
         const reader = {headers:target.headers || {}};
         await authorize(s,reader);
         const result = await sync(db,s,reader);
-        results.push({scope:s.key,ok:true,count:result.articles.length,warnings:result.warnings});
+        results.push({scope:s.key,ok:result.storage === 'available' && result.mode !== 'stale',count:result.articles.length,warnings:result.warnings,mode:result.mode,storage:result.storage});
       } catch (err) {
         console.error('[TransactionWire] scheduled target failed '+(s ? s.key : 'invalid scope'),err);
         results.push({scope:s ? s.key : 'invalid',ok:false});
