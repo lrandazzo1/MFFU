@@ -191,8 +191,9 @@ jobs:
           # The archive must be signed. Entitlements are part of the code
           # signature, so CODE_SIGNING_ALLOWED=NO followed by ad-hoc signing
           # cannot produce a valid App Store archive. Xcode authenticates with
-          # the App Store Connect API key and dynamically manages the Apple
-          # Distribution certificate and App Store provisioning profile.
+          # the App Store Connect API key and automatically manages archive
+          # signing and provisioning. Export then cloud-signs that archive with
+          # the managed Apple Distribution certificate and App Store profile.
           xcodebuild archive \
             -workspace App.xcworkspace \
             -scheme App \
@@ -205,7 +206,6 @@ jobs:
             -authenticationKeyIssuerID "$APPSTORE_CONNECT_ISSUER_ID" \
             DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
             CODE_SIGN_STYLE=Automatic \
-            CODE_SIGN_IDENTITY="Apple Distribution" \
             CURRENT_PROJECT_VERSION=${{ github.run_number }}
 
       # Preserve the compile-only CI signal when credentials are absent, but do
