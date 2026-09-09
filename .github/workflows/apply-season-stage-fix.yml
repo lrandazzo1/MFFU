@@ -1,0 +1,282 @@
+name: apply-season-stage-fix
+
+on:
+  push:
+    branches:
+      - fix/automatic-season-stage-bylines
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/automatic-season-stage-bylines
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Apply minimal Block 6 fixes
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('index.html')
+          text = path.read_text(encoding='utf-8')
+
+          def replace_once(source, old, new, label):
+              count = source.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected exactly one match, found {count}')
+              return source.replace(old, new, 1)
+
+          old_derive = '''function deriveCurrentWeek(d){
+            if(!d) return null;
+            const status = d.status || {};
+            const vals = [status.currentMatchupPeriod, status.currentScoringPeriod, d.currentMatchupPeriod, d.scoringPeriodId];
+            for(const v of vals){
+              const n = parseInt(v, 10);
+              if(n > 0) return n;
+            }
+            return null;
+          }
+          '''
+          new_derive = '''function deriveCurrentWeek(d, now){
+            if(!d) return null;
+            const status = d.status || {};
+            const vals = [status.currentMatchupPeriod, status.currentScoringPeriod, d.currentMatchupPeriod, d.scoringPeriodId];
+            let providerWeek = 0;
+            for(const v of vals){
+              const n = parseInt(v, 10);
+              if(n > 0){ providerWeek = n; break; }
+            }
+
+            // Provider status is primary, but live APIs can lag the real weekly rollover.
+            // Only the calendar-current season may use date/schedule fallbacks; historical
+            // payloads stay pinned to their own reported scoring period.
+            const ref = now instanceof Date ? now : new Date();
+            const seasonYear = parseInt(d.seasonId || d.season, 10);
+            const currentSeasonYear = ref.getMonth() < 2 ? ref.getFullYear() - 1 : ref.getFullYear();
+            if(!seasonYear || seasonYear !== currentSeasonYear || status.isActive === false){
+              return providerWeek || null;
+            }
+
+            const calendarWeek = nflRegularSeasonWeek(seasonYear, ref);
+            const scheduleWeek = scheduleWeekFromPayload(d, seasonYear, ref);
+            const completedWeek = completedSlateNextWeek(d, providerWeek);
+            return Math.max(providerWeek, calendarWeek, scheduleWeek, completedWeek) || null;
+          }
+          '''
+          text = replace_once(text, old_derive, new_derive, 'deriveCurrentWeek')
+
+          old_nfl = '''function nflRegularSeasonWeek(seasonYear, now){
+            const year = parseInt(seasonYear, 10);
+            if(!year) return 0;
+            const ref = now instanceof Date ? now : new Date();
+            const sept1 = new Date(year, 8, 1);
+            // First Monday of September = Labor Day.
+            const laborDay = new Date(year, 8, 1 + ((8 - sept1.getDay()) % 7));
+            // Week 1 Thursday kickoff = Labor Day + 3 days; the slate locks the Tuesday
+            // two days before it.
+            const firstRoll = new Date(laborDay.getFullYear(), laborDay.getMonth(), laborDay.getDate() + 1);
+            const days = Math.floor((ref - firstRoll) / 86400000);
+            if(days < 0) return 0; // preseason — the season has not opened yet
+            return Math.min(18, Math.floor(days / 7) + 1);
+          }
+          '''
+          new_nfl = old_nfl + '''
+          /* Schedule timestamps are a second live authority. They cover provider lag and
+             unusual kickoff calendars without letting a future matchup activate early:
+             each slate becomes selectable on its Tuesday rollover, matching the existing
+             app calendar contract above. */
+          function scheduleWeekFromPayload(d, seasonYear, now){
+            const engine = window.EditorialScheduleEngine;
+            if(!d || !engine || typeof engine.firstGameTimestamp !== 'function') return 0;
+            const ref = now instanceof Date ? now : new Date();
+            const nowMs = ref.getTime();
+            if(!Number.isFinite(nowMs)) return 0;
+            let latest = 0;
+            for(let week=1; week<=18; week+=1){
+              const kickoff = Number(engine.firstGameTimestamp(seasonYear, week, d));
+              if(!Number.isFinite(kickoff) || kickoff <= 0) continue;
+              const rollover = new Date(kickoff);
+              const daysSinceTuesday = (rollover.getDay() + 5) % 7;
+              rollover.setDate(rollover.getDate() - daysSinceTuesday);
+              rollover.setHours(0, 0, 0, 0);
+              if(nowMs >= rollover.getTime()) latest = week;
+            }
+            return latest;
+          }
+
+          /* If the provider has finalized every matchup in the reported slate and already
+             exposes a timestamp for the following slate, advance immediately rather than
+             waiting for a stale currentMatchupPeriod field to catch up. */
+          function completedSlateNextWeek(d, providerWeek){
+            const week = parseInt(providerWeek, 10);
+            if(!d || !Number.isFinite(week) || week < 1 || week >= 18 || !Array.isArray(d.schedule)) return week || 0;
+            let games = d.schedule.filter(g=> parseInt(g && g.matchupPeriodId, 10) === week);
+            if(!games.length && parseInt(d.scoringPeriodId, 10) === week) games = d.schedule;
+            if(!games.length) return week;
+
+            const allFinal = games.every(g=>{
+              const raw = g && (g.raw || g);
+              const status = raw && raw.status;
+              const type = status && status.type;
+              const statusName = String((type && (type.name || type.state)) || (raw && raw.state) || '').toUpperCase();
+              if(type && type.completed === true) return true;
+              if(statusName.includes('FINAL') || statusName === 'POST') return true;
+              const winner = String((raw && raw.winner) || (g && g.winner) || '').toUpperCase();
+              return !!winner && winner !== 'UNDECIDED';
+            });
+            if(!allFinal) return week;
+
+            const engine = window.EditorialScheduleEngine;
+            const seasonYear = parseInt(d.seasonId || d.season, 10);
+            const nextKickoff = engine && typeof engine.firstGameTimestamp === 'function'
+              ? Number(engine.firstGameTimestamp(seasonYear, week + 1, d))
+              : NaN;
+            return Number.isFinite(nextKickoff) && nextKickoff > 0 ? week + 1 : week;
+          }
+          '''
+          text = replace_once(text, old_nfl, new_nfl, 'nflRegularSeasonWeek helpers')
+
+          old_current = '  let wk = ui.currentWeek || deriveCurrentWeek(LeagueData.espnData) || effectiveWeek();'
+          new_current = '''  const derived = deriveCurrentWeek(LeagueData.espnData);
+            let wk = Math.max(
+              parseInt(ui.currentWeek, 10) || 0,
+              parseInt(derived, 10) || 0,
+              parseInt(effectiveWeek(), 10) || 0
+            ) || 1;'''
+          text = replace_once(text, old_current, new_current, 'currentLeagueWeek live head')
+
+          old_preseason = '''  const active = uiActiveSeasonYear();
+            if(viewedYear < active) return false;
+            const phase = typeof FSNIntel !== 'undefined' && FSNIntel.seasonPhase ? FSNIntel.seasonPhase(1) : null;'''
+          new_preseason = '''  const active = uiActiveSeasonYear();
+            if(viewedYear < active) return false;
+            // Once the live calendar or provider schedule has opened Week 1, the UI must
+            // stop branding the slate as PRESEASON even before the first score is posted.
+            if(Number(viewedYear) === active &&
+               (nflRegularSeasonWeek(active) > 0 || scheduleWeekFromPayload(LeagueData.espnData, active) > 0)) return false;
+            const phase = typeof FSNIntel !== 'undefined' && FSNIntel.seasonPhase ? FSNIntel.seasonPhase(1) : null;'''
+          text = replace_once(text, old_preseason, new_preseason, 'preseason label guard')
+
+          old_select = '''function selectWeek(next, opts){
+            const max = maxLeagueWeek();
+            const viewed = parseInt(($('seasonYear').value || '').trim(), 10) || uiActiveSeasonYear();
+            const current = currentLeagueWeek();
+            const live2026 = viewed === 2026 && uiActiveSeasonYear() === 2026;
+            const ceiling = live2026 && current ? Math.min(max, current) : max;
+            const week = Math.min(ceiling, Math.max(1, parseInt(next, 10) || 1));
+            ui.week = week;
+            $('weekNum').value = String(week);
+            savePrefs();
+            renderAll();
+            if(!opts || opts.sync !== false) syncWeekPayload(week);
+          }
+          '''
+          new_select = old_select + '''
+          let automaticSeasonStageTimer = null;
+          function syncAutomaticSeasonStage(storeData){
+            if(ui.sourceMode !== 'live' || !LeagueData.hasLive()) return false;
+            const active = uiActiveSeasonYear();
+            const viewed = parseInt(($('seasonYear').value || '').trim(), 10) || active;
+            if(viewed !== active) return false;
+
+            const resolved = parseInt(deriveCurrentWeek(storeData || LeagueData.espnData), 10) || 0;
+            const previous = parseInt(ui.currentWeek, 10) || 0;
+            if(!resolved) return false;
+            if(!previous){
+              ui.currentWeek = resolved;
+              if(ui.week == null) selectWeek(resolved, {sync: ui.provider === 'espn'});
+              else renderWeekScrubbers();
+              return true;
+            }
+            if(resolved <= previous) return false;
+
+            // Preserve intentional historical navigation. Only move the selected week if
+            // the reader was already sitting on the old live head.
+            const followsLiveHead = ui.week == null || parseInt(ui.week, 10) === previous;
+            ui.currentWeek = resolved;
+            if(followsLiveHead) selectWeek(resolved, {sync: ui.provider === 'espn'});
+            else renderWeekScrubbers();
+            return true;
+          }
+
+          function armAutomaticSeasonStageSync(){
+            if(automaticSeasonStageTimer !== null) return;
+            automaticSeasonStageTimer = window.setInterval(()=>{
+              try{ syncAutomaticSeasonStage(); }
+              catch(err){ console.error('[MFFU] automatic season-stage timer failed:', err); }
+            }, 60000);
+            document.addEventListener('visibilitychange', ()=>{
+              if(document.visibilityState !== 'visible') return;
+              try{ syncAutomaticSeasonStage(); }
+              catch(err){ console.error('[MFFU] automatic season-stage visibility refresh failed:', err); }
+            });
+          }
+          armAutomaticSeasonStageSync();
+          '''
+          text = replace_once(text, old_select, new_select, 'automatic season-stage sync')
+
+          old_subscribe = '''LeagueData.subscribe((store)=>{
+            if(store.espnData && !ui.currentWeek) ui.currentWeek = deriveCurrentWeek(store.espnData);
+            if(store.espnData) maybePromptTeamProfile();
+            else closeProfilePicker();
+          });'''
+          new_subscribe = '''LeagueData.subscribe((store)=>{
+            if(store.espnData && !ui.currentWeek) ui.currentWeek = deriveCurrentWeek(store.espnData);
+            if(store.espnData){
+              syncAutomaticSeasonStage(store.espnData);
+              maybePromptTeamProfile();
+            } else closeProfilePicker();
+          });'''
+          text = replace_once(text, old_subscribe, new_subscribe, 'LeagueData live-stage subscriber')
+
+          old_mono = "window.__fsnMono = (name, px)=> monoBadge(name, px);"
+          new_mono = old_mono + '''
+
+          /* Network-authored coverage uses a network identity, not the subject team's
+             crest. Community/user-authored stories keep their team avatar. */
+          function articleBylineAvatar(a, size){
+            const px = size || 30;
+            if(a && a.custom && a.crest) return crest(a.crest.name, a.crest.logo, px);
+            return `<img class="logo fsn-byline-logo" style="width:${px}px;height:${px}px;" src="assets/icon.svg" alt="FSN"
+                    onerror="this.outerHTML=window.__fsnMono('FSN',${px})">`;
+          }'''
+          text = replace_once(text, old_mono, new_mono, 'FSN byline avatar helper')
+
+          text = replace_once(text,
+              "        ${a.crest ? crest(a.crest.name, a.crest.logo, 26) : ''}",
+              "        ${articleBylineAvatar(a, 26)}",
+              'rail byline avatar')
+          text = replace_once(text,
+              "        ${a.crest ? crest(a.crest.name, a.crest.logo, 30) : ''}",
+              "        ${articleBylineAvatar(a, 30)}",
+              'lead byline avatar')
+          text = replace_once(text,
+              "        ${a.crest ? crest(a.crest.name, a.crest.logo, 34) : ''}",
+              "        ${articleBylineAvatar(a, 34)}",
+              'reader byline avatar')
+
+          path.write_text(text, encoding='utf-8')
+          PY
+      - name: Install dependencies
+        run: npm ci
+      - name: Verify scope, fixtures, determinism, and render
+        run: npm run check:release
+      - name: Commit verified implementation and remove staging workflow
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/apply-season-stage-fix.yml
+          git add index.html
+          git diff --cached --check
+          git commit -m "fix: automate season transitions and FSN bylines"
+          git push origin HEAD:fix/automatic-season-stage-bylines
