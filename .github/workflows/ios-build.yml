@@ -248,6 +248,8 @@ jobs:
             <string>app-store</string>
             <key>signingStyle</key>
             <string>automatic</string>
+            <key>signingCertificate</key>
+            <string>Apple Distribution</string>
             <key>teamID</key>
             <string>${APPLE_TEAM_ID}</string>
             <key>destination</key>
@@ -257,6 +259,17 @@ jobs:
           </dict>
           </plist>
           EOF
+
+          # Guard the two release-signing invariants before Xcode touches the
+          # archive. Automatic profile management remains enabled, but the
+          # certificate class must never fall back to Apple Development.
+          plutil -lint "$RUNNER_TEMP/ExportOptions.plist"
+          EXPORT_METHOD="$(/usr/libexec/PlistBuddy -c 'Print :method' "$RUNNER_TEMP/ExportOptions.plist")"
+          SIGNING_CERTIFICATE="$(/usr/libexec/PlistBuddy -c 'Print :signingCertificate' "$RUNNER_TEMP/ExportOptions.plist")"
+          if [ "$EXPORT_METHOD" != "app-store" ] || [ "$SIGNING_CERTIFICATE" != "Apple Distribution" ]; then
+            echo "::error title=Invalid iOS export signing::Expected method=app-store and signingCertificate=Apple Distribution; got method=$EXPORT_METHOD and signingCertificate=$SIGNING_CERTIFICATE."
+            exit 1
+          fi
 
           xcodebuild -exportArchive \
             -archivePath "$RUNNER_TEMP/App.xcarchive" \
