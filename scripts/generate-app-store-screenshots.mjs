@@ -14,12 +14,12 @@ const DEFAULTS = {
 };
 
 const PHONE = {
-  x: 122,
-  y: 625,
-  width: 1040,
-  height: 2145,
-  inset: 32,
-  radius: 104,
+  x: 82,
+  width: 1120,
+  height: 2325,
+  inset: 34,
+  radius: 112,
+  gapAfterSupporting: 42,
 };
 
 const HEADLINE = {
@@ -161,12 +161,19 @@ async function validateHeadlineFit(slide, slideNumber) {
   }
 }
 
-function backgroundSvg(slide, slideNumber, slideCount, width, height) {
+function verticalLayout(slide) {
+  const lastHeadlineBaseline = HEADLINE.y + ((slide.headline.length - 1) * HEADLINE.lineHeight);
+  const supportingY = lastHeadlineBaseline + SUPPORTING.gapAfterHeadline;
+  return {
+    supportingY,
+    phoneY: supportingY + PHONE.gapAfterSupporting,
+  };
+}
+
+function backgroundSvg(slide, slideNumber, slideCount, width, height, layout) {
   const headline = slide.headline.map((line, index) => (
     `<text x="${HEADLINE.x}" y="${HEADLINE.y + (index * HEADLINE.lineHeight)}" class="headline">${escapeXml(line)}</text>`
   )).join('');
-  const lastHeadlineBaseline = HEADLINE.y + ((slide.headline.length - 1) * HEADLINE.lineHeight);
-  const supportingY = lastHeadlineBaseline + SUPPORTING.gapAfterHeadline;
 
   return Buffer.from(`
     <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
@@ -199,7 +206,7 @@ function backgroundSvg(slide, slideNumber, slideCount, width, height) {
       <rect x="86" y="199" width="48" height="5" rx="2.5" fill="${slide.accent}"/>
       <text x="${EYEBROW.x}" y="${EYEBROW.y}" class="eyebrow">${escapeXml(slide.eyebrow)}</text>
       ${headline}
-      <text x="${SUPPORTING.x}" y="${supportingY}" class="supporting">${escapeXml(slide.supporting)}</text>
+      <text x="${SUPPORTING.x}" y="${layout.supportingY}" class="supporting">${escapeXml(slide.supporting)}</text>
     </svg>
   `);
 }
@@ -256,6 +263,29 @@ async function roundedScreenshot(sourcePath) {
     .toBuffer();
 }
 
+async function phoneLayer(screenshot, accent, visibleHeight) {
+  const fullPhone = await sharp({
+    create: {
+      width: PHONE.width,
+      height: PHONE.height,
+      channels: 4,
+      background: { r: 0, g: 0, b: 0, alpha: 0 },
+    },
+  })
+    .composite([
+      { input: phoneUnderlaySvg(accent), left: 0, top: 0 },
+      { input: screenshot, left: PHONE.inset, top: PHONE.inset },
+      { input: phoneOverlaySvg(accent), left: 0, top: 0 },
+    ])
+    .png()
+    .toBuffer();
+
+  return sharp(fullPhone)
+    .extract({ left: 0, top: 0, width: PHONE.width, height: visibleHeight })
+    .png()
+    .toBuffer();
+}
+
 async function renderSlide(slide, index, config, options) {
   const slideNumber = index + 1;
   const sourcePath = path.join(options.input, slide.source);
@@ -266,17 +296,21 @@ async function renderSlide(slide, index, config, options) {
   const outputStem = `${String(slideNumber).padStart(2, '0')}-${slide.id}`;
   const outputPath = path.join(options.output, `${outputStem}.jpg`);
   const { width, height } = config.canvas;
+  const layout = verticalLayout(slide);
+  const visiblePhoneHeight = height - layout.phoneY;
+  if (visiblePhoneHeight <= 0 || visiblePhoneHeight >= PHONE.height) {
+    throw new Error(`Slide ${slideNumber} must crop a positive portion of the phone at the bottom edge; visible=${visiblePhoneHeight}, phone=${PHONE.height}.`);
+  }
+  const phone = await phoneLayer(screenshot, slide.accent, visiblePhoneHeight);
 
   await Promise.all([
     rm(path.join(options.output, `${outputStem}.png`), { force: true }),
     rm(outputPath, { force: true }),
   ]);
 
-  await sharp(backgroundSvg(slide, slideNumber, config.slides.length, width, height))
+  await sharp(backgroundSvg(slide, slideNumber, config.slides.length, width, height, layout))
     .composite([
-      { input: phoneUnderlaySvg(slide.accent), left: PHONE.x, top: PHONE.y },
-      { input: screenshot, left: PHONE.x + PHONE.inset, top: PHONE.y + PHONE.inset },
-      { input: phoneOverlaySvg(slide.accent), left: PHONE.x, top: PHONE.y },
+      { input: phone, left: PHONE.x, top: layout.phoneY },
     ])
     .flatten({ background: '#030509' })
     .removeAlpha()
