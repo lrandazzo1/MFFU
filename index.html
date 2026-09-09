@@ -18766,6 +18766,14 @@ function monoBadge(name, px){
           background:linear-gradient(150deg,${a}22,#141a26);border-color:${a}44;">${esc(initialsFrom(name))}</div>`;
 }
 window.__fsnMono = (name, px)=> monoBadge(name, px);
+/* Network-authored coverage uses a network identity, not the subject team's
+   crest. Community/user-authored stories keep their team avatar. */
+function articleBylineAvatar(a, size){
+  const px = size || 30;
+  if(a && a.custom && a.crest) return crest(a.crest.name, a.crest.logo, px);
+  return `<img class="logo fsn-byline-logo" style="width:${px}px;height:${px}px;" src="assets/icon.svg" alt="FSN"
+          onerror="this.outerHTML=window.__fsnMono('FSN',${px})">`;
+}
 
 function toast(msg){
   const el = $('toast');
@@ -18835,15 +18843,32 @@ try{ window.effectiveWeek = effectiveWeek; }catch(_){}
 /* ============================================================
    WEEK SCRUBBER / SEASON TIME-MACHINE
 ============================================================ */
-function deriveCurrentWeek(d){
+function deriveCurrentWeek(d, now){
   if(!d) return null;
   const status = d.status || {};
   const vals = [status.currentMatchupPeriod, status.currentScoringPeriod, d.currentMatchupPeriod, d.scoringPeriodId];
+  let providerWeek = 0;
   for(const v of vals){
     const n = parseInt(v, 10);
-    if(n > 0) return n;
+    if(n > 0){ providerWeek = n; break; }
   }
-  return null;
+  // Provider status is primary, but live APIs can lag the real weekly rollover.
+  // Only the calendar-current season may use date/schedule fallbacks; historical
+  // payloads stay pinned to their own reported scoring period.
+  const ref = now instanceof Date ? now : new Date();
+  const seasonYear = parseInt(d.seasonId || d.season, 10);
+  const currentSeasonYear = ref.getMonth() < 2 ? ref.getFullYear() - 1 : ref.getFullYear();
+  if(!seasonYear || seasonYear !== currentSeasonYear || status.isActive === false){
+    return providerWeek || null;
+  }
+  const calendarWeek = nflRegularSeasonWeek(seasonYear, ref);
+  const scheduleWeek = scheduleWeekFromPayload(d, seasonYear, ref);
+  // Draft/preseason provider payloads occasionally expose a future scoring
+  // period. Before either calendar or schedule authority opens Week 1, keep
+  // the live head at Week 1 so the pregame board cannot jump ahead.
+  if(calendarWeek === 0 && scheduleWeek === 0) return providerWeek ? 1 : null;
+  const completedWeek = completedSlateNextWeek(d, providerWeek);
+  return Math.max(providerWeek, calendarWeek, scheduleWeek, completedWeek) || null;
 }
 
 /* The official NFL regular-season week for a calendar date. Week 1 opens on the
@@ -18868,8 +18893,63 @@ function nflRegularSeasonWeek(seasonYear, now){
   return Math.min(18, Math.floor(days / 7) + 1);
 }
 
+/* Schedule timestamps are a second live authority. They cover provider lag and
+   unusual kickoff calendars without letting a future matchup activate early:
+   each slate becomes selectable on its Tuesday rollover, matching the existing
+   app calendar contract above. */
+function scheduleWeekFromPayload(d, seasonYear, now){
+  const engine = window.EditorialScheduleEngine;
+  if(!d || !engine || typeof engine.firstGameTimestamp !== 'function') return 0;
+  const ref = now instanceof Date ? now : new Date();
+  const nowMs = ref.getTime();
+  if(!Number.isFinite(nowMs)) return 0;
+  let latest = 0;
+  for(let week=1; week<=18; week+=1){
+    const kickoff = Number(engine.firstGameTimestamp(seasonYear, week, d));
+    if(!Number.isFinite(kickoff) || kickoff <= 0) continue;
+    const rollover = new Date(kickoff);
+    const daysSinceTuesday = (rollover.getDay() + 5) % 7;
+    rollover.setDate(rollover.getDate() - daysSinceTuesday);
+    rollover.setHours(0, 0, 0, 0);
+    if(nowMs >= rollover.getTime()) latest = week;
+  }
+  return latest;
+}
+/* If the provider has finalized every matchup in the reported slate and already
+   exposes a timestamp for the following slate, advance immediately rather than
+   waiting for a stale currentMatchupPeriod field to catch up. */
+function completedSlateNextWeek(d, providerWeek){
+  const week = parseInt(providerWeek, 10);
+  if(!d || !Number.isFinite(week) || week < 1 || week >= 18 || !Array.isArray(d.schedule)) return week || 0;
+  let games = d.schedule.filter(g=> parseInt(g && g.matchupPeriodId, 10) === week);
+  if(!games.length && parseInt(d.scoringPeriodId, 10) === week) games = d.schedule;
+  if(!games.length) return week;
+  const allFinal = games.every(g=>{
+    const raw = g && (g.raw || g);
+    const status = raw && raw.status;
+    const type = status && status.type;
+    const statusName = String((type && (type.name || type.state)) || (raw && raw.state) || '').toUpperCase();
+    if(type && type.completed === true) return true;
+    if(statusName.includes('FINAL') || statusName === 'POST') return true;
+    const winner = String((raw && raw.winner) || (g && g.winner) || '').toUpperCase();
+    return !!winner && winner !== 'UNDECIDED';
+  });
+  if(!allFinal) return week;
+  const engine = window.EditorialScheduleEngine;
+  const seasonYear = parseInt(d.seasonId || d.season, 10);
+  const nextKickoff = engine && typeof engine.firstGameTimestamp === 'function'
+    ? Number(engine.firstGameTimestamp(seasonYear, week + 1, d))
+    : NaN;
+  return Number.isFinite(nextKickoff) && nextKickoff > 0 ? week + 1 : week;
+}
+
 function currentLeagueWeek(){
-  let wk = ui.currentWeek || deriveCurrentWeek(LeagueData.espnData) || effectiveWeek();
+  const derived = deriveCurrentWeek(LeagueData.espnData);
+  let wk = Math.max(
+    parseInt(ui.currentWeek, 10) || 0,
+    parseInt(derived, 10) || 0,
+    parseInt(effectiveWeek(), 10) || 0
+  ) || 1;
   /* Live-season calendar guard: before the NFL season actually opens, a league
      that has already drafted can report a scoring period of 1+ off a draft or
      rollover timestamp. Strictly map that preseason window back to Week 1 so the
@@ -19135,6 +19215,44 @@ function selectWeek(next, opts){
   if(!opts || opts.sync !== false) syncWeekPayload(week);
 }
 
+let automaticSeasonStageTimer = null;
+function syncAutomaticSeasonStage(storeData){
+  if(ui.sourceMode !== 'live' || !LeagueData.hasLive()) return false;
+  const active = uiActiveSeasonYear();
+  const viewed = parseInt(($('seasonYear').value || '').trim(), 10) || active;
+  if(viewed !== active) return false;
+  const resolved = parseInt(deriveCurrentWeek(storeData || LeagueData.espnData), 10) || 0;
+  const previous = parseInt(ui.currentWeek, 10) || 0;
+  if(!resolved) return false;
+  if(!previous){
+    ui.currentWeek = resolved;
+    if(ui.week == null) selectWeek(resolved, {sync: ui.provider === 'espn'});
+    else renderWeekScrubbers();
+    return true;
+  }
+  if(resolved <= previous) return false;
+  // Preserve intentional historical navigation. Only move the selected week if
+  // the reader was already sitting on the old live head.
+  const followsLiveHead = ui.week == null || parseInt(ui.week, 10) === previous;
+  ui.currentWeek = resolved;
+  if(followsLiveHead) selectWeek(resolved, {sync: ui.provider === 'espn'});
+  else renderWeekScrubbers();
+  return true;
+}
+function armAutomaticSeasonStageSync(){
+  if(automaticSeasonStageTimer !== null) return;
+  automaticSeasonStageTimer = window.setInterval(()=>{
+    try{ syncAutomaticSeasonStage(); }
+    catch(err){ console.error('[MFFU] automatic season-stage timer failed:', err); }
+  }, 60000);
+  document.addEventListener('visibilitychange', ()=>{
+    if(document.visibilityState !== 'visible') return;
+    try{ syncAutomaticSeasonStage(); }
+    catch(err){ console.error('[MFFU] automatic season-stage visibility refresh failed:', err); }
+  });
+}
+armAutomaticSeasonStageSync();
+
 /* ============================================================
    ACTIVE TEAM PROFILE
 ============================================================ */
@@ -19224,8 +19342,10 @@ function selectProfile(teamId){
    profile chooser; subsequent week payloads keep the selected identity. */
 LeagueData.subscribe((store)=>{
   if(store.espnData && !ui.currentWeek) ui.currentWeek = deriveCurrentWeek(store.espnData);
-  if(store.espnData) maybePromptTeamProfile();
-  else closeProfilePicker();
+  if(store.espnData){
+    syncAutomaticSeasonStage(store.espnData);
+    maybePromptTeamProfile();
+  } else closeProfilePicker();
 });
 
 /* ============================================================
@@ -24168,6 +24288,10 @@ function isPreseasonWeek1(week, viewedYear){
   if(parseInt(week,10) !== 1) return false;
   const active = uiActiveSeasonYear();
   if(viewedYear < active) return false;
+  // Once the live calendar or provider schedule has opened Week 1, the UI must
+  // stop branding the slate as PRESEASON even before the first score is posted.
+  if(Number(viewedYear) === active &&
+     (nflRegularSeasonWeek(active) > 0 || scheduleWeekFromPayload(LeagueData.espnData, active) > 0)) return false;
   const phase = typeof FSNIntel !== 'undefined' && FSNIntel.seasonPhase ? FSNIntel.seasonPhase(1) : null;
   if(phase === 'season') return false;
   if(LeagueData.hasLive()){
@@ -25360,7 +25484,7 @@ function railCard(a, idx){
       <h3 class="headline headline-rail">${a.headline}</h3>
       <p class="dek mt-2" style="display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;">${a.dek}</p>
       <div class="rail-footer flex items-center gap-2 mt-3 pt-3 border-t border-[var(--line)]">
-        ${a.crest ? crest(a.crest.name, a.crest.logo, 26) : ''}
+        ${articleBylineAvatar(a, 26)}
         <span class="byline truncate">${bylineLine(a)}</span>
         <span class="ml-auto text-[var(--cyan)] text-[15px] leading-none">›</span>
       </div>
@@ -25388,7 +25512,7 @@ function leadCard(a){
       <h2 class="headline" style="font-size:25px">${a.headline}</h2>
       <p class="dek mt-2.5">${a.dek}</p>
       <div class="flex items-center gap-2.5 mt-3.5 pt-3 border-t border-[var(--line)]">
-        ${a.crest ? crest(a.crest.name, a.crest.logo, 30) : ''}
+        ${articleBylineAvatar(a, 30)}
         <span class="byline">${bylineLine(a)}</span>
         <span class="ml-auto pill pill-cyan lead-read-btn" data-article="${id}" data-lead-read="1">READ ›</span>
       </div>
@@ -25577,7 +25701,7 @@ function articleHtml(a){
       ${a.dek ? `<p class="dek mt-3">${a.dek}</p>` : ''}
 
       <div class="flex items-center gap-3 mt-4 pb-4 border-b border-[var(--line)]">
-        ${a.crest ? crest(a.crest.name, a.crest.logo, 34) : ''}
+        ${articleBylineAvatar(a, 34)}
         <div class="min-w-0">
           <div class="byline" style="color:#e9edf4">${a.custom ? 'BY ' : ''}${esc(a.byline)}${a.custom && a.authorTeam ? ` · ${esc(a.authorTeam)}` : ''}</div>
           <div class="byline mt-0.5">${a.custom && a.createdAt ? esc(new Date(a.createdAt).toLocaleString([], {dateStyle:'medium', timeStyle:'short'})) : esc(NewsDesk.relTime(NewsDesk.age(a)))} · ${esc(a.dateline)}</div>
