@@ -2845,6 +2845,8 @@ html[data-fsn-boot="loading"] #tickerBar{ visibility:hidden; }
       </div>
     </div>
 
+    <p id="transactionWireStatus" class="px-4 text-xs text-[var(--dim)]" role="status" hidden></p>
+
     <!-- LEAD STORY -->
     <div class="px-4" id="newsLeadWrap"></div>
 
@@ -6796,6 +6798,82 @@ function featuredPlayoffGames(games, week){
    teams / members / schedule / settings / status. No downstream analytics,
    history, standings, or deterministic News Desk generator needs Yahoo logic.
 ============================================================================ */
+// Additive transaction cache client. Shared only through this block-one global.
+// No old generator, seed, archive payload, or Supabase client is changed.
+window.FSNTransactionWire = (function(){
+  const cache = new Map();
+  let epoch = 0;
+  function context(){
+    if(!LeagueData.hasLive()) return null;
+    const d = LeagueData.espnData;
+    const provider = LeagueData.activeProvider;
+    const league = String(selectedLeagueId());
+    const season = Number(d.seasonId);
+    const viewed = document.getElementById('seasonYear');
+    if(viewed && viewed.value && Number(viewed.value) !== season) return null;
+    const week = Number(d.status && d.status.currentMatchupPeriod || d.scoringPeriodId || 1);
+    if(!(provider === 'yahoo' ? /^\d+\.l\.\d+$/ : /^\d+$/).test(league) || !season || week < 1 || week > 18) return null;
+    return {provider,league,season,week,key:provider+':'+league+':'+season};
+  }
+  function paint(){
+    FSNBridge.call('renderNews');
+    FSNBridge.call('renderHomeStories');
+  }
+  async function refresh(c, entry){
+    entry.pending = true;
+    entry.checked = Date.now();
+    const started = epoch;
+    const headers = c.provider === 'espn' ? espnCredHeaders(c.league) : {};
+    const query = new URLSearchParams({provider:c.provider,league:c.league,season:String(c.season),week:String(c.week)});
+    try{
+      for(const method of ['GET','POST']){
+        const response = await fetch(FSNApi.resolve('/api/transaction-wire?'+query.toString()),{
+          method, headers, credentials:'same-origin', cache:'no-store', signal:AbortSignal.timeout(45000)
+        });
+        if(!response.ok) throw new Error('Transaction wire HTTP '+response.status);
+        const result = await response.json();
+        if(result.scope !== c.key || !Array.isArray(result.articles)) throw new Error('Transaction wire scope/shape mismatch');
+        if(started !== epoch) return;
+        entry.articles = result.articles.filter(a=>a && a.articleType === 'transaction_wire' && a.provider === c.provider && String(a.leagueId) === c.league && Number(a.season) === c.season);
+        entry.message = result.warnings && result.warnings.length ? 'Some roster moves could not be verified. The wire will retry on refresh.' : '';
+        const active = context();
+        if(active && active.key === c.key) paint();
+      }
+    }catch(err){
+      console.warn('[TransactionWire] refresh failed for '+c.key,err);
+      if(started === epoch){
+        entry.message = 'Transaction wire temporarily unavailable. Your existing News Desk stories are still available.';
+        // An auth failure must not leave previously cached private stories visible.
+        if(/HTTP (401|403)/.test(err.message)) entry.articles = [];
+      }
+    }finally{
+      entry.pending = false;
+      const active = context();
+      if(started === epoch && active && active.key === c.key) paint();
+    }
+  }
+  function merge(existing, week){
+    const c = context();
+    const status = document.getElementById('transactionWireStatus');
+    if(!c){ if(status) status.hidden = true; return existing; }
+    let entry = cache.get(c.key);
+    if(!entry){ entry = {articles:[],checked:0,pending:false,message:''}; cache.set(c.key,entry); }
+    if(!entry.pending && Date.now()-entry.checked > 60000) refresh(c,entry);
+    if(status){ status.textContent = entry.message; status.hidden = !entry.message; }
+    const ids = new Set(existing.map(a=>a.id));
+    const rows = entry.articles.filter(a=>!ids.has(a.id) && a.at <= Date.now() && (a.week == null ? Number(week) === c.week : Number(a.week) === Number(week)));
+    if(!rows.length) return existing;
+    // Keep the established lead exactly where the original desk put it.
+    const lead = existing[0] && existing[0].kind === 'sotl' ? existing[0] : null;
+    const combined = existing.filter(a=>a !== lead).concat(rows).sort((a,b)=>b.at-a.at);
+    return lead ? [lead].concat(combined) : combined;
+  }
+  LeagueData.subscribe(()=>{
+    if(!LeagueData.hasLive()){ epoch++; cache.clear(); }
+  });
+  return {merge};
+})();
+
 window.YahooAdapter = (function(){
 'use strict';
 
@@ -25207,6 +25285,7 @@ function newsList(){
       if(fallback) list=[fallback];
     }catch(err){ console.error('[NewsDesk] guaranteed fallback failed',err); }
   }
+  list = FSNTransactionWire.merge(list, effectiveWeek());
   ui.newsCache = {};
   list.forEach(a=>{ if(a && a.id) ui.newsCache[a.id] = a; });
   return list;
@@ -25492,6 +25571,7 @@ function articleHtml(a){
       <p class="text-[10.5px] text-[#4a5464] leading-relaxed mt-4 pt-4 border-t border-[var(--line)]">
         ${a.custom
           ? 'Community article submitted by a league manager and saved on this device for this league only.'
+          : a.articleType === 'transaction_wire' ? 'Filed from completed league transactions and observed roster designations. Roster context is timestamped in the ledger.'
           : `Auto-generated by the FSN News Desk from this week's ESPN box scores.
              Quotes are satirical and were never actually said out loud.`}
       </p>
