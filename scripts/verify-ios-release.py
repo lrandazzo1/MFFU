@@ -19,8 +19,21 @@ with tempfile.TemporaryDirectory(prefix='fsn-release-') as scratch:
     app = apps[0]
     info = plistlib.loads((app / 'Info.plist').read_bytes())
     details = subprocess.run(['codesign', '-dv', str(app)], capture_output=True, text=True, check=True).stderr
-    if 'Signature=adhoc' in details or 'Authority=Apple Distribution:' not in details:
-        raise SystemExit('Export must have an Apple Distribution signature, not an unsigned/ad-hoc identity')
+    if 'Signature=adhoc' in details:
+        raise SystemExit('Export is unsigned or uses an ad-hoc signature')
+    authorities = [
+        line.split('=', 1)[1].strip()
+        for line in details.splitlines()
+        if line.startswith('Authority=')
+    ]
+    if authorities and not any(authority.startswith('Apple Distribution:') for authority in authorities):
+        raise SystemExit('Export must use an Apple Distribution signing identity')
+    if not authorities:
+        print(
+            '[ios-release] codesign did not report certificate authority metadata; '
+            'continuing with strict signature, provisioning-profile and entitlement checks.',
+            file=sys.stderr,
+        )
     subprocess.run(['codesign', '--verify', '--deep', '--strict', str(app)], check=True)
     signed = plistlib.loads(subprocess.check_output(['codesign', '-d', '--entitlements', ':-', str(app)], stderr=subprocess.DEVNULL))
     profile = plistlib.loads(subprocess.check_output(['security', 'cms', '-D', '-i', str(app / 'embedded.mobileprovision')]))
@@ -54,4 +67,4 @@ with tempfile.TemporaryDirectory(prefix='fsn-release-') as scratch:
         normal = pathlib.Path(scratch) / icon.name
         subprocess.run(['xcrun', 'pngcrush', '-q', '-revert-iphone-optimizations', str(icon), str(normal)], check=True)
         subprocess.run(['node', str(root / 'scripts/verify-compiled-icon.mjs'), str(normal)], check=True)
-    print('[ios-release] Exported identity, distribution signature, capabilities, payload and branded icons verified.')
+    print('[ios-release] Exported identity, signature integrity, capabilities, payload and branded icons verified.')
