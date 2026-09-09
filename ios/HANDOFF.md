@@ -30,10 +30,14 @@ paths and incoming provider links are disabled in the initial iOS release.
 
 ## 2. Distribution gates
 
-The workflow archives without a development identity, embeds requested
-capabilities in a temporary ad-hoc signature, then exports with Apple
-distribution signing. Only the final distribution-signed IPA can pass the
-upload gate. The gate inspects the exported icon and HTML, the app identifier,
+The workflow passes the App Store Connect API key to both archive and export.
+Xcode automatically manages archive signing and provisioning, then cloud-signs
+the export with the managed Apple Distribution certificate and App Store
+profile. CI imports no certificate or profile and never creates an ad-hoc
+archive. Only the final distribution-signed IPA can pass the upload gate. The
+API key must have the Admin role because App Manager access can upload builds
+but cannot authorize cloud-managed distribution signing. The gate inspects the
+exported icon and HTML, the app identifier,
 production `aps-environment`, Associated Domains and provisioning-profile
 compatibility. It rejects a temporary ad-hoc identity or missing capabilities.
 

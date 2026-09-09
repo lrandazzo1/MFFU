@@ -30,6 +30,16 @@ jobs:
           npm run ios:assets
           npm run ios:applinks
           npm run ios:applinks
+      - name: Validate iOS release signing scripts
+        run: |
+          node --check scripts/appstore-preflight.mjs
+          python3 -m py_compile scripts/generate-ios-export-options.py scripts/verify-ios-release.py
+          python3 scripts/generate-ios-export-options.py "$RUNNER_TEMP/ExportOptions.plist" TESTTEAM123
+          python3 -c "import plistlib; p=plistlib.load(open('$RUNNER_TEMP/ExportOptions.plist','rb')); assert p == {'destination':'export','manageAppVersionAndBuildNumber':False,'method':'app-store-connect','signingCertificate':'Apple Distribution','signingStyle':'automatic','stripSwiftSymbols':True,'teamID':'TESTTEAM123'}"
+          if grep -q 'prepare-ios-archive.py' .github/workflows/ios-build.yml; then
+            echo "::error title=Ad-hoc signing regression::The removed archive surgery is referenced by the release workflow."
+            exit 1
+          fi
       - name: Verify release cleanup and provider restrictions
         run: npm run check:release
       - name: Verify all existing app flows
