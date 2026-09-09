@@ -16,14 +16,17 @@ const article = generate({key:`espn:999999:${season}`,provider:'espn',league:'99
   {players:{5:{name:'Wire Test Runner',pos:'RB'}},teams:{1:{id:'1',name:'Alpha',wins:1,losses:1,ties:0,points:220}}},now);
 const requests = [];
 let blockSecondLeague = false;
+let failLiveUpdate = false;
 const server = createServer((req,res)=>{
   const url = new URL(req.url,'http://localhost');
   if(url.pathname === '/api/transaction-wire'){
     requests.push({method:req.method,league:url.searchParams.get('league')});
     res.setHeader('Content-Type','application/json');
     if(blockSecondLeague && url.searchParams.get('league') === '888888'){res.writeHead(401);res.end('{}');return;}
+    // Reproduce the original failure: GET fails before the live POST is tried.
+    if(req.method === 'GET' || failLiveUpdate){res.writeHead(503);res.end('{}');return;}
     const key = `espn:${url.searchParams.get('league')}:${season}`;
-    res.end(JSON.stringify({scope:key,articles:key===`espn:999999:${season}`?[article]:[]}));return;
+    res.end(JSON.stringify({scope:key,mode:'live',storage:'unavailable',articles:key===`espn:999999:${season}`?[article]:[]}));return;
   }
   if(url.pathname.startsWith('/api/')){res.setHeader('Content-Type','application/json');res.end(JSON.stringify({configured:false}));return;}
   const path = resolve(root,'.'+(url.pathname === '/' ? '/index.html' : url.pathname));
@@ -56,6 +59,7 @@ try{
   assert.deepEqual(result,{lead:'lead',old:0,current:1});
   assert.ok(requests.some(r=>r.method==='GET'));
   assert.ok(requests.some(r=>r.method==='POST'));
+  assert.match(await page.locator('#transactionWireStatus').textContent(),/Live roster updates are shown/);
   if(await page.getAttribute('#profilePicker','data-open')==='true')await page.click('#profileGuest');
   await page.click('[data-tab="news"]');
   await page.waitForTimeout(200);
@@ -64,14 +68,22 @@ try{
   await row.click({force:true});
   assert.match(await page.locator('body').innerText(),/THE TRANSACTION LEDGER/i);
   assert.match(await page.locator('body').innerText(),/Wire Test Runner/);
+  failLiveUpdate=true;
+  await page.evaluate(()=>{
+    const original=Date.now;
+    Date.now=()=>original()+61000;
+    FSNTransactionWire.merge([],2);
+  });
+  await page.waitForFunction(()=>document.getElementById('transactionWireStatus').textContent.includes('Showing saved transactions'));
+  assert.equal(await page.evaluate(()=>FSNTransactionWire.merge([],2).length),1,'provider failure retains prior verified article');
   blockSecondLeague=true;
   await page.evaluate(()=>{document.getElementById('leagueIdInput').value='888888'; window.__fsnRender();});
-  await page.waitForFunction(()=>document.getElementById('transactionWireStatus').textContent.includes('unavailable'));
+  await page.waitForFunction(()=>document.getElementById('transactionWireStatus').textContent.includes('Reconnect this league'));
   assert.equal(await page.evaluate(()=>FSNTransactionWire.merge([],2).length),0,'no previous-league articles after switching');
   await page.evaluate(()=>LeagueData.setEspnData(null));
   assert.equal(await page.evaluate(()=>FSNTransactionWire.merge([],2).length),0,'disconnect clears wire');
   assert.deepEqual(errors,[]);
-  console.log('[transaction-wire-check] feed, reader, cached GET + sync POST, week gating, lead priority, league switch, auth failure and disconnect passed');
+  console.log('[transaction-wire-check] failed GET → live POST, feed, reader, stale fallback, week gating, lead priority, league switch, auth failure and disconnect passed');
 }finally{
   await browser.close(); await new Promise(r=>server.close(r));
 }

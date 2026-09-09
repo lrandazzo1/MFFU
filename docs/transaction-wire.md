@@ -1,5 +1,31 @@
 # FSN transaction wire
 
+## Failure recovery
+
+Live collection does not require the transaction-cache migration to be present.
+The cache GET returns `mode: "cache-unavailable"` when storage is unconfigured,
+missing, or unreachable. The UI still attempts the live POST, even if an older
+deployment returns a non-auth HTTP error for GET. POST returns verified live
+articles with `storage: "unavailable"` if saving fails; it never reports a
+successful durable write. Supabase requests have a five-second timeout, and
+Sleeper's three weekly transaction reads run concurrently.
+
+A provider outage returns previously stored articles only after provider access
+has been verified for this request. The browser also retains its scoped, already
+loaded stories when a refresh fails. HTTP 401/403 clears those stories and asks
+the reader to reconnect; it is never converted into a stale-cache success.
+
+An omitted ESPN transaction collection is marked with
+`ESPN_TRANSACTIONS_UNAVAILABLE`, allowing verified roster injury observations to
+continue. A malformed collection still raises an error. Missing detail is never
+presented as proof that no transaction happened. No new injury transition is
+inferred if the persistent baseline cannot be read.
+
+Failures remain logged by stage (cache, baseline, provider, commit) with the
+original error. The UI distinguishes live-only results, saved results, partial
+provider detail, and reconnection requirements. Cron reports a degraded result
+as unsuccessful rather than claiming it persisted unsaved articles.
+
 This adds completed-transaction articles beside the existing News Desk stories.
 It does not edit any existing generator, template pool, historical payload,
 provider wrapper, cloud-sync handler, or existing database table.
