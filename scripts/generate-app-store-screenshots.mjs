@@ -14,12 +14,12 @@ const DEFAULTS = {
 };
 
 const PHONE = {
-  x: 172,
-  y: 760,
-  width: 940,
-  height: 1942,
-  inset: 30,
-  radius: 92,
+  x: 122,
+  y: 625,
+  width: 1040,
+  height: 2145,
+  inset: 32,
+  radius: 104,
 };
 
 const HEADLINE = {
@@ -57,7 +57,7 @@ Usage:
 Options:
   --config <file>   Slide configuration JSON
   --input <dir>     Source screenshot directory
-  --output <dir>    Generated PNG directory
+  --output <dir>    Generated JPEG directory
   --help            Show this message`;
 }
 
@@ -233,7 +233,7 @@ function phoneOverlaySvg(accent) {
       <rect x="${inset}" y="${inset}" width="${width - (inset * 2)}" height="${height - (inset * 2)}" rx="${screenRadius}" fill="none" stroke="#ffffff" stroke-opacity="0.12" stroke-width="3"/>
       <rect x="${(width - 246) / 2}" y="47" width="246" height="66" rx="33" fill="#020308" stroke="#242a34" stroke-width="2"/>
       <circle cx="${(width / 2) + 88}" cy="80" r="8" fill="#121b26" stroke="${accent}" stroke-opacity="0.42" stroke-width="2"/>
-      <path d="M-1 310h8v132h-8z M933 354h8v190h-8z" fill="#242b35"/>
+      <path d="M-1 310h8v132h-8z M${width - 7} 354h8v190h-8z" fill="#242b35"/>
     </svg>
   `);
 }
