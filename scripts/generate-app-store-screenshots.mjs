@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { mkdir, readFile } from 'node:fs/promises';
+import { mkdir, readFile, rm } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
@@ -15,7 +15,7 @@ const DEFAULTS = {
 
 const PHONE = {
   x: 172,
-  y: 790,
+  y: 760,
   width: 940,
   height: 1942,
   inset: 30,
@@ -24,9 +24,27 @@ const PHONE = {
 
 const HEADLINE = {
   x: 86,
-  y: 278,
-  fontSize: 104,
-  lineHeight: 104,
+  y: 340,
+  fontSize: 92,
+  lineHeight: 118,
+  letterSpacing: 0.6,
+  wordSpacing: 9,
+};
+
+const EYEBROW = {
+  x: 151,
+  y: 211,
+  fontSize: 23,
+  letterSpacing: 2.4,
+  wordSpacing: 5,
+};
+
+const SUPPORTING = {
+  x: 86,
+  fontSize: 26,
+  letterSpacing: 0.15,
+  wordSpacing: 4,
+  gapAfterHeadline: 105,
 };
 
 function usage() {
@@ -132,7 +150,7 @@ async function validateHeadlineFit(slide, slideNumber) {
   for (const line of slide.headline) {
     const sample = Buffer.from(`
       <svg width="1600" height="180" xmlns="http://www.w3.org/2000/svg">
-        <text x="0" y="125" font-family="Nimbus Sans Narrow, Arial Narrow, sans-serif" font-size="${HEADLINE.fontSize}" font-weight="700" letter-spacing="-1">${escapeXml(line)}</text>
+        <text x="0" y="125" font-family="Nimbus Sans Narrow, Arial Narrow, sans-serif" font-size="${HEADLINE.fontSize}" font-weight="700" letter-spacing="${HEADLINE.letterSpacing}" word-spacing="${HEADLINE.wordSpacing}">${escapeXml(line)}</text>
       </svg>
     `);
     const { info } = await sharp(sample).trim().png().toBuffer({ resolveWithObject: true });
@@ -147,7 +165,8 @@ function backgroundSvg(slide, slideNumber, slideCount, width, height) {
   const headline = slide.headline.map((line, index) => (
     `<text x="${HEADLINE.x}" y="${HEADLINE.y + (index * HEADLINE.lineHeight)}" class="headline">${escapeXml(line)}</text>`
   )).join('');
-  const supportingY = HEADLINE.y + (slide.headline.length * HEADLINE.lineHeight) + 56;
+  const lastHeadlineBaseline = HEADLINE.y + ((slide.headline.length - 1) * HEADLINE.lineHeight);
+  const supportingY = lastHeadlineBaseline + SUPPORTING.gapAfterHeadline;
 
   return Buffer.from(`
     <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
@@ -163,8 +182,9 @@ function backgroundSvg(slide, slideNumber, slideCount, width, height) {
         </linearGradient>
         <style>
           .narrow { font-family: 'Nimbus Sans Narrow', 'Arial Narrow', sans-serif; font-weight: 700; }
-          .headline { font-family: 'Nimbus Sans Narrow', 'Arial Narrow', sans-serif; font-size: ${HEADLINE.fontSize}px; font-weight: 700; letter-spacing: -1px; fill: #f7f8fb; }
-          .supporting { font-family: 'DejaVu Sans', sans-serif; font-size: 26px; font-weight: 400; fill: #a6afbd; }
+          .headline { font-family: 'Nimbus Sans Narrow', 'Arial Narrow', sans-serif; font-size: ${HEADLINE.fontSize}px; font-weight: 700; letter-spacing: ${HEADLINE.letterSpacing}px; word-spacing: ${HEADLINE.wordSpacing}px; fill: #f7f8fb; }
+          .eyebrow { font-family: 'Nimbus Sans Narrow', 'Arial Narrow', sans-serif; font-size: ${EYEBROW.fontSize}px; font-weight: 700; letter-spacing: ${EYEBROW.letterSpacing}px; word-spacing: ${EYEBROW.wordSpacing}px; fill: ${slide.accent}; }
+          .supporting { font-family: 'DejaVu Sans', sans-serif; font-size: ${SUPPORTING.fontSize}px; font-weight: 400; letter-spacing: ${SUPPORTING.letterSpacing}px; word-spacing: ${SUPPORTING.wordSpacing}px; fill: #a6afbd; }
         </style>
       </defs>
       <rect width="${width}" height="${height}" fill="#030509"/>
@@ -174,12 +194,12 @@ function backgroundSvg(slide, slideNumber, slideCount, width, height) {
       </g>
       <rect x="86" y="76" width="54" height="54" rx="15" fill="${slide.accent}"/>
       <path d="M101 91h25v7h-17v7h15v7h-15v18h-8z" fill="#02050a"/>
-      <text x="158" y="115" class="narrow" font-size="29" letter-spacing="3.4" fill="#f7f8fb">FANTASY SPORTS NETWORK</text>
-      <text x="1198" y="114" text-anchor="end" class="narrow" font-size="25" letter-spacing="2.4" fill="#768091">${String(slideNumber).padStart(2, '0')} / ${String(slideCount).padStart(2, '0')}</text>
-      <rect x="86" y="191" width="48" height="5" rx="2.5" fill="${slide.accent}"/>
-      <text x="151" y="202" class="narrow" font-size="25" letter-spacing="3.1" fill="${slide.accent}">${escapeXml(slide.eyebrow)}</text>
+      <text x="158" y="115" class="narrow" font-size="28" letter-spacing="2.2" word-spacing="5" fill="#f7f8fb">FANTASY SPORTS NETWORK</text>
+      <text x="1198" y="114" text-anchor="end" class="narrow" font-size="24" letter-spacing="2.2" word-spacing="4" fill="#768091">${String(slideNumber).padStart(2, '0')} / ${String(slideCount).padStart(2, '0')}</text>
+      <rect x="86" y="199" width="48" height="5" rx="2.5" fill="${slide.accent}"/>
+      <text x="${EYEBROW.x}" y="${EYEBROW.y}" class="eyebrow">${escapeXml(slide.eyebrow)}</text>
       ${headline}
-      <text x="${HEADLINE.x}" y="${supportingY}" class="supporting">${escapeXml(slide.supporting)}</text>
+      <text x="${SUPPORTING.x}" y="${supportingY}" class="supporting">${escapeXml(slide.supporting)}</text>
     </svg>
   `);
 }
@@ -243,8 +263,14 @@ async function renderSlide(slide, index, config, options) {
   await validateHeadlineFit(slide, slideNumber);
 
   const screenshot = await roundedScreenshot(sourcePath);
-  const outputPath = path.join(options.output, `${String(slideNumber).padStart(2, '0')}-${slide.id}.png`);
+  const outputStem = `${String(slideNumber).padStart(2, '0')}-${slide.id}`;
+  const outputPath = path.join(options.output, `${outputStem}.jpg`);
   const { width, height } = config.canvas;
+
+  await Promise.all([
+    rm(path.join(options.output, `${outputStem}.png`), { force: true }),
+    rm(outputPath, { force: true }),
+  ]);
 
   await sharp(backgroundSvg(slide, slideNumber, config.slides.length, width, height))
     .composite([
@@ -254,15 +280,15 @@ async function renderSlide(slide, index, config, options) {
     ])
     .flatten({ background: '#030509' })
     .removeAlpha()
-    .png({ compressionLevel: 9, adaptiveFiltering: true })
+    .jpeg({ quality: 96, chromaSubsampling: '4:4:4', mozjpeg: true })
     .toFile(outputPath);
 
   const output = await sharp(outputPath).metadata();
-  if (output.width !== width || output.height !== height || output.hasAlpha || output.space !== 'srgb') {
-    throw new Error(`Generated asset failed validation: ${outputPath} (${output.width} × ${output.height}, alpha=${output.hasAlpha}, color=${output.space})`);
+  if (output.format !== 'jpeg' || output.width !== width || output.height !== height || output.hasAlpha || output.space !== 'srgb') {
+    throw new Error(`Generated asset failed validation: ${outputPath} (${output.format}, ${output.width} × ${output.height}, alpha=${output.hasAlpha}, color=${output.space})`);
   }
   await sharp(outputPath).stats();
-  console.log(`[app-store] ${path.basename(outputPath)} — ${output.width} × ${output.height}, opaque sRGB PNG`);
+  console.log(`[app-store] ${path.basename(outputPath)} — ${output.width} × ${output.height}, opaque sRGB JPEG`);
 }
 
 async function main() {

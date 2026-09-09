@@ -20,4 +20,5 @@ DerivedData/
 
 # Generated App Store marketing exports; source screenshots and templates are tracked.
 app-store-assets/*.png
+app-store-assets/*.jpg
 !app-store-assets/.gitkeep

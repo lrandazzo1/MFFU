@@ -1,8 +1,9 @@
 # FSN App Store marketing screenshots
 
 This template turns the four selected FSN screen captures into polished,
-device-framed 6.5-inch App Store assets. Every export is an opaque
-`1284 × 2778` PNG.
+device-framed 6.5-inch App Store assets. Every export is an opaque,
+high-quality `1284 × 2778` sRGB JPEG with 4:4:4 chroma sampling so the small UI
+text stays crisp.
 
 ## Generate the carousel
 
@@ -15,14 +16,15 @@ npm run screenshots:appstore
 
 The finished files are written to `app-store-assets/`:
 
-1. `01-power-index.png`
-2. `02-news-desk.png`
-3. `03-franchise-legacy.png`
-4. `04-rivalries.png`
+1. `01-power-index.jpg`
+2. `02-news-desk.jpg`
+3. `03-franchise-legacy.jpg`
+4. `04-rivalries.jpg`
 
 The generator validates every source and final image. It exits non-zero if a
 source is missing, is not a PNG, is too small to render cleanly, or if an export
-does not have the exact required dimensions and opaque RGB color space.
+does not have the exact required dimensions, JPEG format, and opaque RGB color
+space.
 
 ## Replace a screenshot or edit copy
 
@@ -30,7 +32,7 @@ does not have the exact required dimensions and opaque RGB color space.
   names referenced in `slides.json`.
 - Edit each slide's eyebrow, headline lines, supporting sentence, or accent in
   `app-store-marketing/slides.json`.
-- Run `npm run screenshots:appstore` again. Existing generated PNGs with the
+- Run `npm run screenshots:appstore` again. Existing generated JPEGs with the
   configured names are replaced; unrelated files are left alone.
 
 Keep headlines split into one to three short lines. The template renders and
