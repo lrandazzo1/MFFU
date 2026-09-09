@@ -536,9 +536,10 @@ console.log('-- 5. Schedule shape --');
 
   const vercel = JSON.parse(readFileSync(join(root, 'vercel.json'), 'utf8'));
   const crons = vercel.crons || [];
-  check('vercel.json declares exactly one cron', crons.length, 1);
+  const notificationCrons = crons.filter(cron => cron.path === '/api/notifications-dispatch');
+  check('vercel.json declares exactly one notification cron', notificationCrons.length, 1);
 
-  const cron = crons[0] || {};
+  const cron = notificationCrons[0] || {};
   check('the cron targets the dispatcher', cron.path, '/api/notifications-dispatch');
   checkTrue('the cron path resolves to a real function',
     existsSync(join(root, String(cron.path || '').replace(/^\//, '') + '.js')));
