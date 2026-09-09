@@ -5,6 +5,7 @@ import os
 import pathlib
 import plistlib
 import subprocess
+import struct
 import sys
 import tempfile
 import zipfile
@@ -29,32 +30,64 @@ with tempfile.TemporaryDirectory(prefix='fsn-release-') as scratch:
     if authorities and not any(authority.startswith('Apple Distribution:') for authority in authorities):
         raise SystemExit('Export must use an Apple Distribution signing identity')
 
-    # Xcode 26 cloud signatures can omit Authority= lines from codesign -dv.
-    # Extract the CMS leaf certificate instead of treating display formatting
-    # as signing identity. An ad-hoc signature has no certificate to extract.
-    certificate_prefix = pathlib.Path(scratch) / 'signer-cert-'
-    subprocess.run(
-        ['codesign', '-d', '--extract-certificates', str(certificate_prefix), str(app)],
+    # Xcode 26 cloud signatures can omit Authority= lines from codesign -dv,
+    # and codesign cannot extract their certificates. Read the standard Mach-O
+    # LC_CODE_SIGNATURE superblob directly and inspect its CMS certificate chain.
+    executable = app / info['CFBundleExecutable']
+    macho = executable.read_bytes()
+    if macho[:4] != b'\xcf\xfa\xed\xfe':
+        raise SystemExit('Exported executable is not a thin 64-bit iOS Mach-O')
+    command_count = struct.unpack_from('<I', macho, 16)[0]
+    command_offset = 32
+    signature = None
+    for _ in range(command_count):
+        if command_offset + 8 > len(macho):
+            raise SystemExit('Mach-O load commands are truncated')
+        command, command_size = struct.unpack_from('<II', macho, command_offset)
+        if command_size < 8 or command_offset + command_size > len(macho):
+            raise SystemExit('Mach-O load command has an invalid size')
+        if command == 0x1D:  # LC_CODE_SIGNATURE
+            data_offset, data_size = struct.unpack_from('<II', macho, command_offset + 8)
+            signature = macho[data_offset:data_offset + data_size]
+            if len(signature) != data_size:
+                raise SystemExit('Mach-O code signature is truncated')
+            break
+        command_offset += command_size
+    if signature is None:
+        raise SystemExit('Exported executable has no LC_CODE_SIGNATURE')
+
+    magic, signature_length, slot_count = struct.unpack_from('>III', signature, 0)
+    if magic != 0xFADE0CC0 or signature_length > len(signature):
+        raise SystemExit('Executable code signature superblob is invalid')
+    cms = None
+    for index in range(slot_count):
+        slot_type, slot_offset = struct.unpack_from('>II', signature, 12 + index * 8)
+        if slot_type != 0x10000:  # CSSLOT_SIGNATURESLOT
+            continue
+        slot_magic, slot_length = struct.unpack_from('>II', signature, slot_offset)
+        if slot_magic != 0xFADE0B01 or slot_offset + slot_length > signature_length:
+            raise SystemExit('Executable CMS signature slot is invalid')
+        cms = signature[slot_offset + 8:slot_offset + slot_length]
+        break
+    if not cms:
+        raise SystemExit('Exported executable has no CMS signing certificate')
+
+    certificates = subprocess.run(
+        ['/usr/bin/openssl', 'pkcs7', '-inform', 'DER', '-print_certs', '-noout'],
+        input=cms,
         capture_output=True,
-        text=True,
         check=True,
-    )
-    certificates = sorted(pathlib.Path(scratch).glob('signer-cert-*'))
-    if not certificates:
-        raise SystemExit('Export has no signing certificate to verify')
-    leaf_subject = subprocess.check_output(
-        [
-            '/usr/bin/openssl', 'x509', '-inform', 'DER',
-            '-in', str(certificates[0]), '-noout', '-subject',
-        ],
-        text=True,
-    )
-    if 'Apple Distribution:' not in leaf_subject:
+    ).stdout.decode('utf-8', errors='replace')
+    if 'Apple Distribution:' not in certificates:
         raise SystemExit('Export leaf certificate is not Apple Distribution')
+    if 'Apple Worldwide Developer Relations Certification Authority' not in certificates:
+        raise SystemExit('Export signing certificate has no Apple developer intermediate')
+    if 'Apple Root CA' not in certificates:
+        raise SystemExit('Export signing certificate has no Apple root certificate')
     if not authorities:
         print(
             '[ios-release] codesign omitted Authority metadata; '
-            'verified Apple Distribution from the extracted CMS leaf certificate.',
+            'verified the Apple Distribution CMS certificate chain directly.',
             file=sys.stderr,
         )
 
