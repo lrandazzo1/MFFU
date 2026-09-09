@@ -26,10 +26,38 @@ with tempfile.TemporaryDirectory(prefix='fsn-release-') as scratch:
         for line in details.splitlines()
         if line.startswith('Authority=')
     ]
-    if not authorities:
-        raise SystemExit('Export did not report a certificate authority; it is not distribution-signed')
-    if not any(authority.startswith('Apple Distribution:') for authority in authorities):
+    if authorities and not any(authority.startswith('Apple Distribution:') for authority in authorities):
         raise SystemExit('Export must use an Apple Distribution signing identity')
+
+    # Xcode 26 cloud signatures can omit Authority= lines from codesign -dv.
+    # Extract the CMS leaf certificate instead of treating display formatting
+    # as signing identity. An ad-hoc signature has no certificate to extract.
+    certificate_prefix = pathlib.Path(scratch) / 'signer-cert-'
+    subprocess.run(
+        ['codesign', '-d', '--extract-certificates', str(certificate_prefix), str(app)],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    certificates = sorted(pathlib.Path(scratch).glob('signer-cert-*'))
+    if not certificates:
+        raise SystemExit('Export has no signing certificate to verify')
+    leaf_subject = subprocess.check_output(
+        [
+            '/usr/bin/openssl', 'x509', '-inform', 'DER',
+            '-in', str(certificates[0]), '-noout', '-subject',
+        ],
+        text=True,
+    )
+    if 'Apple Distribution:' not in leaf_subject:
+        raise SystemExit('Export leaf certificate is not Apple Distribution')
+    if not authorities:
+        print(
+            '[ios-release] codesign omitted Authority metadata; '
+            'verified Apple Distribution from the extracted CMS leaf certificate.',
+            file=sys.stderr,
+        )
+
     subprocess.run(['codesign', '--verify', '--deep', '--strict', str(app)], check=True)
     signed = plistlib.loads(subprocess.check_output(['codesign', '-d', '--entitlements', ':-', str(app)], stderr=subprocess.DEVNULL))
     profile = plistlib.loads(subprocess.check_output(['security', 'cms', '-D', '-i', str(app / 'embedded.mobileprovision')]))
