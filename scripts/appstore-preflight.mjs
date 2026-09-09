@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // App Store Connect credential preflight for the iOS CI workflow.
 //
-// The distribution half of the iOS build (xcodebuild -exportArchive and the
+// The distribution half of the iOS build (xcodebuild archive, export and the
 // TestFlight upload) can only work if the four App Store Connect secrets are
 // present AND Apple actually accepts them. When they don't, xcodebuild reports
 // it as a wall of downstream noise -- "No profiles for '<bundle id>' were
@@ -333,9 +333,10 @@ if (!response.ok) {
       'apple-rejected-403',
       'App Store Connect authenticated the key but refused the request (HTTP 403' +
         `${appleCode ? `, ${appleCode}` : ''})${detail ? `: ${detail}` : '.'}`,
-      'This is a permissions problem, not a bad key. Give the key the **App Manager** role ' +
-        "(Users and Access → Integrations → the key's Access column). A Developer- or " +
-        'Marketing-role key cannot manage signing certificates or upload builds.'
+      'This is a permissions problem, not a bad key. Automatic cloud signing requires an ' +
+        '**Admin** App Store Connect API key (Users and Access → Integrations → the key\'s ' +
+        'Access column). App Manager can upload builds but cannot authorize Xcode to use ' +
+        'cloud-managed distribution certificates.'
     );
   }
 
@@ -379,4 +380,39 @@ if (bundleId) {
   }
 }
 
-emit(true, 'ok', 'App Store Connect accepted the API key. Proceeding with export and upload.', '');
+// ---------------------------------------------------------------------------
+// 5. Confirm this key can read signing resources. Authenticating against /apps
+// is not enough: App Manager keys can upload builds but Xcode cloud signing
+// requires Admin access to certificates and provisioning profiles.
+
+try {
+  const signingRes = await callApi('/certificates?limit=1', token);
+  if (signingRes.status === 403) {
+    emit(
+      false,
+      'cloud-signing-forbidden',
+      'App Store Connect accepted the key, but it cannot access signing certificates (HTTP 403).',
+      'Give this API key the **Admin** role under App Store Connect → Users and Access → ' +
+        'Integrations. Xcode cloud signing cannot use an App Manager key.'
+    );
+  }
+  if (!signingRes.ok) {
+    emit(
+      false,
+      `cloud-signing-http-${signingRes.status}`,
+      `Signing-resource preflight returned HTTP ${signingRes.status}.`,
+      'Re-run the workflow. If it repeats, check Apple system status and the API key role.'
+    );
+  }
+  notes.push('API key can access signing certificates for Xcode-managed signing.');
+} catch (err) {
+  console.error(`${TAG} signing-resource lookup failed:`, err);
+  emit(
+    false,
+    'cloud-signing-network-error',
+    `Could not verify signing-resource access: ${err.message}`,
+    'Re-run the workflow. If it repeats, check https://developer.apple.com/system-status/.'
+  );
+}
+
+emit(true, 'ok', 'App Store Connect accepted the API key and authorized cloud signing. Proceeding with signed archive, export and upload.', '');

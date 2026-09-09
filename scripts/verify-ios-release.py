@@ -26,14 +26,10 @@ with tempfile.TemporaryDirectory(prefix='fsn-release-') as scratch:
         for line in details.splitlines()
         if line.startswith('Authority=')
     ]
-    if authorities and not any(authority.startswith('Apple Distribution:') for authority in authorities):
-        raise SystemExit('Export must use an Apple Distribution signing identity')
     if not authorities:
-        print(
-            '[ios-release] codesign did not report certificate authority metadata; '
-            'continuing with strict signature, provisioning-profile and entitlement checks.',
-            file=sys.stderr,
-        )
+        raise SystemExit('Export did not report a certificate authority; it is not distribution-signed')
+    if not any(authority.startswith('Apple Distribution:') for authority in authorities):
+        raise SystemExit('Export must use an Apple Distribution signing identity')
     subprocess.run(['codesign', '--verify', '--deep', '--strict', str(app)], check=True)
     signed = plistlib.loads(subprocess.check_output(['codesign', '-d', '--entitlements', ':-', str(app)], stderr=subprocess.DEVNULL))
     profile = plistlib.loads(subprocess.check_output(['security', 'cms', '-D', '-i', str(app / 'embedded.mobileprovision')]))

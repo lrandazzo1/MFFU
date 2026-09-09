@@ -28,9 +28,9 @@ jobs:
     timeout-minutes: 40
 
     env:
-      # App Store Connect API key — used for distribution signing at export
-      # (xcodebuild -allowProvisioningUpdates) and for the TestFlight upload.
-      # The archive step does not need these; see the note on that step.
+      # App Store Connect API key — used by Xcode for automatic cloud-managed
+      # signing during both archive and export, and for the TestFlight upload.
+      # No certificate or provisioning profile is imported into the runner.
       APPSTORE_CONNECT_KEY_ID: ${{ secrets.APPSTORE_CONNECT_KEY_ID }}
       APPSTORE_CONNECT_ISSUER_ID: ${{ secrets.APPSTORE_CONNECT_ISSUER_ID }}
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
@@ -165,12 +165,10 @@ jobs:
           echo "ITSAppUsesNonExemptEncryption = $(/usr/libexec/PlistBuddy -c 'Print :ITSAppUsesNonExemptEncryption' "$PLIST")"
 
       # Validate the App Store Connect credentials BEFORE spending 30 minutes
-      # on an archive that cannot be exported. This normalizes and installs the
-      # .p8, then asks App Store Connect directly whether it accepts the key,
-      # so a credential problem is reported as a credential problem instead of
-      # surfacing later as xcodebuild's misleading "No profiles for
-      # 'app.fantasysportsnetwork' were found" / "No signing certificate
-      # \"iOS Distribution\" found".
+      # on an archive that cannot be signed. This normalizes and installs the
+      # .p8, verifies that Apple accepts the key and that it can access signing
+      # resources, then exposes the same key file to archive and export. Cloud
+      # signing requires an Admin-capable App Store Connect API key.
       #
       # It never fails the job on a push: an unusable key skips distribution
       # (see the `if:` guards below) so that a red run on main always means the
@@ -184,34 +182,46 @@ jobs:
           REQUIRE_SIGNING: ${{ inputs.require_signing }}
         run: node scripts/appstore-preflight.mjs
 
-      - name: Archive app
+      - name: Archive app with Xcode-managed signing
+        if: steps.signing.outputs.available == 'true'
         working-directory: ios/App
+        env:
+          API_KEY_PATH: ${{ steps.signing.outputs.key_path }}
         run: |
-          # Build the archive WITHOUT code signing. All signing is deferred to
-          # the export step, which mints/uses the Apple Distribution certificate
-          # and App Store provisioning profile via the App Store Connect API key
-          # (-allowProvisioningUpdates). Signing here would resolve to a
-          # *development* identity and fail on the runner's empty keychain
-          # ("Revoke certificate … private key is not installed"); an unsigned
-          # archive avoids that entirely and lets export do distribution signing.
-          #
-          # This step runs on every build regardless of credentials — it is the
-          # step that actually compiles the app, so it is the CI signal that a
-          # change to index.html or the Capacitor config broke the iOS binary.
+          # The archive must be signed. Entitlements are part of the code
+          # signature, so CODE_SIGNING_ALLOWED=NO followed by ad-hoc signing
+          # cannot produce a valid App Store archive. Xcode authenticates with
+          # the App Store Connect API key and dynamically manages the Apple
+          # Distribution certificate and App Store provisioning profile.
           xcodebuild archive \
             -workspace App.xcworkspace \
             -scheme App \
             -configuration Release \
             -destination 'generic/platform=iOS' \
             -archivePath "$RUNNER_TEMP/App.xcarchive" \
-            CODE_SIGNING_ALLOWED=NO \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$API_KEY_PATH" \
+            -authenticationKeyID "$APPSTORE_CONNECT_KEY_ID" \
+            -authenticationKeyIssuerID "$APPSTORE_CONNECT_ISSUER_ID" \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
+            CODE_SIGN_STYLE=Automatic \
+            CODE_SIGN_IDENTITY="Apple Distribution" \
             CURRENT_PROJECT_VERSION=${{ github.run_number }}
 
-      # Export derives capability requests from the archive's signature.
-      # Preserve them in a temporary ad-hoc signature before distribution
-      # signing. The exported IPA gate below forbids uploading that identity.
-      - name: Preserve archive capabilities for distribution export
-        run: python3 scripts/prepare-ios-archive.py "$RUNNER_TEMP/App.xcarchive"
+      # Preserve the compile-only CI signal when credentials are absent, but do
+      # not manufacture an unsigned archive and never route it toward export.
+      - name: Build app without signing
+        if: steps.signing.outputs.available != 'true'
+        working-directory: ios/App
+        run: |
+          xcodebuild build \
+            -workspace App.xcworkspace \
+            -scheme App \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/UnsignedDerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            CURRENT_PROJECT_VERSION=${{ github.run_number }}
 
       # The deployment target was raised before the build, but MinimumOSVersion
       # is written by Xcode into the *built* Info.plist, so this is the only
@@ -219,6 +229,7 @@ jobs:
       # upload (ITMS-90068, reported by email minutes after a green run) into a
       # failed step naming the value that was shipped.
       - name: Verify minimum OS version
+        if: steps.signing.outputs.available == 'true'
         env:
           MIN_IOS_VERSION: '15.0'
         run: |
@@ -239,37 +250,9 @@ jobs:
         env:
           API_KEY_PATH: ${{ steps.signing.outputs.key_path }}
         run: |
-          cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>method</key>
-            <string>app-store</string>
-            <key>signingStyle</key>
-            <string>automatic</string>
-            <key>signingCertificate</key>
-            <string>Apple Distribution</string>
-            <key>teamID</key>
-            <string>${APPLE_TEAM_ID}</string>
-            <key>destination</key>
-            <string>export</string>
-            <key>stripSwiftSymbols</key>
-            <true/>
-          </dict>
-          </plist>
-          EOF
-
-          # Guard the two release-signing invariants before Xcode touches the
-          # archive. Automatic profile management remains enabled, but the
-          # certificate class must never fall back to Apple Development.
-          plutil -lint "$RUNNER_TEMP/ExportOptions.plist"
-          EXPORT_METHOD="$(/usr/libexec/PlistBuddy -c 'Print :method' "$RUNNER_TEMP/ExportOptions.plist")"
-          SIGNING_CERTIFICATE="$(/usr/libexec/PlistBuddy -c 'Print :signingCertificate' "$RUNNER_TEMP/ExportOptions.plist")"
-          if [ "$EXPORT_METHOD" != "app-store" ] || [ "$SIGNING_CERTIFICATE" != "Apple Distribution" ]; then
-            echo "::error title=Invalid iOS export signing::Expected method=app-store and signingCertificate=Apple Distribution; got method=$EXPORT_METHOD and signingCertificate=$SIGNING_CERTIFICATE."
-            exit 1
-          fi
+          python3 scripts/generate-ios-export-options.py \
+            "$RUNNER_TEMP/ExportOptions.plist" \
+            "$APPLE_TEAM_ID"
 
           xcodebuild -exportArchive \
             -archivePath "$RUNNER_TEMP/App.xcarchive" \
@@ -335,21 +318,21 @@ jobs:
           wait-for-processing: 'false'
 
       - name: Upload IPA artifact
-        if: steps.signing.outputs.available == 'true'
+        if: always() && steps.ipa.outputs.path != ''
         uses: actions/upload-artifact@v4
         with:
           name: FSN.ipa
           path: ${{ steps.ipa.outputs.path }}
           retention-days: 14
 
-      # Without credentials there is no IPA, but the compiled app is still the
-      # proof that this commit builds. Keep it so a run is never empty-handed.
-      - name: Upload unsigned archive
+      # Without credentials there is no releasable archive, but keep the
+      # compile-only product so the run still proves the native app builds.
+      - name: Upload unsigned build
         if: steps.signing.outputs.available != 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: FSN-unsigned.xcarchive
-          path: ${{ runner.temp }}/App.xcarchive
+          name: FSN-unsigned-build
+          path: ${{ runner.temp }}/UnsignedDerivedData/Build/Products/Release-iphoneos/*.app
           retention-days: 7
 
       - name: Report distribution status
