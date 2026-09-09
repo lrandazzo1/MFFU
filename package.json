@@ -14,6 +14,8 @@
     "ios:applinks": "node scripts/ios-associated-domains.mjs",
     "ios:open": "npx cap open ios",
     "test:triggers": "node lib/notifications/selftest.js",
+    "test:wire": "node --test lib/transaction-wire/selftest.js",
+    "check:wire": "node scripts/transaction-wire-check.mjs",
     "check:scope": "node scripts/scope-scan.mjs",
     "check:render": "node scripts/render-check.mjs",
     "check:switch": "node scripts/switch-curtain-check.mjs",
