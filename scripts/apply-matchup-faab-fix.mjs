@@ -282,6 +282,9 @@ const literalReplacements = new Map([
   ["'No trade, no FAAB, no cost. Just waiting.'", "'No trade, no extra cost. Just waiting.'"],
   ["if(/WAIVER|FAAB|RAGE DROP|TRADE/.test(tag))", "if(/WAIVER|RAGE DROP|TRADE/.test(tag))"],
   ["{ id:'waivers',  label:'Waivers',        icon:'💰' }", "{ id:'waivers',  label:'Waivers',        icon:'↻' }"],
+  ['FAAB fallout, Thursday afternoon for the primer — and the stream is sorted', 'waiver fallout, Thursday afternoon for the primer — and the stream is sorted'],
+  ["if(['faab','rage'].includes(kind)) return 'transactions';", "if(['rage'].includes(kind)) return 'transactions';"],
+  ["roast:'blowout', power:'power', faab:'waiver', rage:'waiver',", "roast:'blowout', power:'power', rage:'waiver',"],
 ]);
 for(const [from,to] of literalReplacements){
   if(index.includes(from)) index = index.replaceAll(from,to);
