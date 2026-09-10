@@ -11,7 +11,9 @@ const config: CapacitorConfig = {
   webDir: 'www',
   bundledWebRuntime: false,
   ios: {
-    contentInset: 'always',
+    // The web shell already applies env(safe-area-inset-*) to its chrome.
+    // Capacitor disables WKWebView bounce; avoid adding a second native inset.
+    contentInset: 'never',
     limitsNavigationsToAppBoundDomains: false,
     scheme: 'FSN',
     backgroundColor: '#0b0d10'

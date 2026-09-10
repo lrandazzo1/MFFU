@@ -251,7 +251,7 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
    sit inside the same centred max-w-6xl column.
 ============================================================ */
 .screen-shell{ width:100%; max-width:72rem; margin-left:auto; margin-right:auto; overflow-y:auto;
-  overscroll-behavior-y:contain; }
+  overscroll-behavior-y:none; }
 /* The blocks inside a screen already ship the app's own 16px gutter. The
    shell owns the gutter now, so theirs is zeroed here in one place instead
    of being doubled on every child. #homeContent is the one screen block that
@@ -285,12 +285,13 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
 }
 .ticker-track{
   display:flex; align-items:center; gap:0;
+  width:max-content; flex-shrink:0;
   white-space:nowrap; will-change:transform;
-  animation:tickerScroll 42s linear infinite;
+  animation:tickerScroll var(--ticker-duration, 42s) linear infinite;
 }
 @keyframes tickerScroll{ from{ transform:translate3d(0,0,0);} to{ transform:translate3d(-50%,0,0);} }
 .ticker-item{
-  display:inline-flex; align-items:center; gap:7px;
+  display:inline-flex; flex-shrink:0; align-items:center; gap:7px;
   padding:0 15px; font-size:11.5px; letter-spacing:.06em;
   border-right:1px solid rgba(255,255,255,.07);
 }
@@ -579,7 +580,7 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
   /* A screen never overflows its own box (it is min-height, not height), so a
      touch that reaches its end must not chain out into the document and bounce
      the whole app. */
-  overscroll-behavior-y:contain;
+  overscroll-behavior-y:none;
 }
 @keyframes screenIn{ from{opacity:0; transform:translateY(7px);} to{opacity:1; transform:none;} }
 
@@ -19710,6 +19711,16 @@ const TICKER_OFF_AIR_ITEMS = [
 let tickerScope = null;   // leagueScopeToken() the mounted strip was built for
 let tickerHtml = '';      // the exact markup currently mounted, to skip no-op writes
 
+/* The doubled strip travels half its rendered width each cycle. Keep the
+   velocity at 90 CSS pixels/second across providers, font loads and resizes. */
+function updateTickerDuration(track){
+  const distance = track.getBoundingClientRect().width / 2;
+  if(distance > 0) track.style.setProperty('--ticker-duration', (distance / 90) + 's');
+}
+const tickerSizeObserver = new ResizeObserver(entries=>{
+  entries.forEach(entry=> updateTickerDuration(entry.target));
+});
+
 /* Re-trigger the crawl animation so its -50% keyframe is measured against the
    strip that is actually on screen. The reflow read between the two writes is
    load-bearing: without it the browser coalesces them and the animation is
@@ -19895,6 +19906,8 @@ function renderTicker(){
   if(!scopeChanged && !firstMount && html === tickerHtml) return;
 
   track.innerHTML = html;
+  updateTickerDuration(track);
+  tickerSizeObserver.observe(track);
   tickerHtml = html;
   tickerScope = scope;
   /* Only a mount or a league change re-anchors the animation. A same-league

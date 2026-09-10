@@ -314,6 +314,32 @@ try {
     fail('the outgoing league reappeared on the crawl after the unmount');
   }
 
+  // Measure actual animation travel with both short and long rendered strips.
+  const velocities = await page.evaluate(async () => {
+    const track = document.getElementById('tickerTrack');
+    const original = track.innerHTML;
+    const results = [];
+    for (const label of ['ESPN short', 'Sleeper very long team name '.repeat(20)]) {
+      const item = '<span class="ticker-item">' + label + '</span>';
+      track.innerHTML = item + item;
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      const animation = track.getAnimations()[0];
+      animation.pause();
+      animation.currentTime = 100;
+      const start = new DOMMatrix(getComputedStyle(track).transform).m41;
+      animation.currentTime = 600;
+      const end = new DOMMatrix(getComputedStyle(track).transform).m41;
+      results.push(Math.abs(end - start) / 0.5);
+      animation.play();
+    }
+    track.innerHTML = original;
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    return results;
+  });
+  if (velocities.every(speed => Math.abs(speed - 90) < 0.1)) {
+    pass('short and long ticker strips both travel at 90px/s: ' + velocities.join(', '));
+  } else fail('ticker velocity varies with content width: ' + velocities.join(', '));
+
   /* ---- 4. A scope change re-anchors the crawl animation ------------------- */
   /* tickerScroll translates the track by -50% of ITS OWN width, so a strip
      swapped in mid-cycle is measured against a length it was never laid out
@@ -410,7 +436,7 @@ try {
   } else {
     fail('the document still bounces past its content (html=' + chaining.html + ', body=' + chaining.body + ')');
   }
-  if (chaining.screen === 'contain') pass('a screen will not chain an overscroll out into the document');
+  if (chaining.screen === 'none') pass('a screen will not chain an overscroll out into the document');
   else fail('the active screen chains its overscroll (overscroll-behavior-y=' + chaining.screen + ')');
   if (chaining.reader === 'contain') pass('the reader overlay will not chain an overscroll out into the page behind it');
   else fail('the reader overlay chains its overscroll (overscroll-behavior=' + chaining.reader + ')');
