@@ -1,0 +1,52 @@
+name: Fix targeted analytics matchers
+
+on:
+  push:
+    branches:
+      - fix/dynamic-matchup-previews-strip-faab
+
+permissions:
+  contents: write
+
+jobs:
+  fix-analytics-matchers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/dynamic-matchup-previews-strip-faab
+      - name: Replace brittle analytics render matchers
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('scripts/apply-matchup-faab-fix.mjs')
+          s = p.read_text()
+
+          label = s.index("'waiver gem metadata render'")
+          start = s.rfind('index = ', 0, label)
+          end = s.index('\nindex = ', label)
+          metadata = r'''index = replaceLiteral(index,
+            "<div class=\\\"analytics-gem-meta truncate\\\">${esc(gem.team ? gem.team.name : 'Unknown team')} · Week ${gem.week || '—'} · ${gem.free ? 'Free add' : '$'+analyticsValue(gem.bid,0)+' FAAB'}</div>",
+            "<div class=\\\"analytics-gem-meta truncate\\\">${esc(gem.team ? gem.team.name : 'Unknown team')} · Week ${gem.week || '—'} · completed add</div>",
+            'waiver gem metadata render');'''
+          s = s[:start] + metadata + s[end:]
+
+          label = s.index("'waiver gem value render'")
+          start = s.rfind('index = ', 0, label)
+          end = s.index('\nindex = ', label)
+          value = r'''index = replaceLiteral(index,
+            "<div class=\\\"analytics-gem-roi\\\">${analyticsValue(gem.roi)}×<span>${analyticsValue(gem.points)} PTS / $1</span></div>",
+            "<div class=\\\"analytics-gem-roi\\\">${analyticsValue(gem.points)}<span>POST-ADD PTS</span></div>",
+            'waiver gem value render');'''
+          s = s[:start] + value + s[end:]
+
+          p.write_text(s)
+          PY
+      - name: Commit repair and remove helper
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm -f .github/workflows/fix-targeted-analytics-matchers.yml
+          git add scripts/apply-matchup-faab-fix.mjs .github/workflows/fix-targeted-analytics-matchers.yml
+          git commit -m "Fix targeted waiver analytics matchers [analytics-matcher-fix]"
+          git push origin HEAD:fix/dynamic-matchup-previews-strip-faab
