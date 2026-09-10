@@ -1,1 +1,1 @@
-trigger assertion-guarded matchup/waiver patch after analytics matcher repair
+trigger assertion-guarded matchup/waiver patch after structural analytics repair
