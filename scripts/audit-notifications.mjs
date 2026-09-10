@@ -19,6 +19,11 @@
         vercel.json fires once per calendar day, and the feed's rate limiter
         keeps a second invocation on the same day from reaching the upstream.
 
+     4. `?selftest=<deviceId>` sends to exactly ONE device and leaves NO trace:
+        no ledger row, no last_sent_at, no retirement, no outbound pull. A
+        diagnostic that quietly consumed the week's real alert for the device
+        being diagnosed would make the problem it is used to find worse.
+
    Property 2 is the dangerous one. A dry run that silently dispatches for real
    is worse than having no dry run at all, because the operator believes they
    are safe. So this does not check a flag or read the source: it replaces the
@@ -154,19 +159,46 @@ stub('@supabase/supabase-js', { createClient: () => makeSupabaseDouble() });
    runs against. */
 const transportState = { apns: true, web: true };
 
+/* What the APNs double answers with. Overridden per scenario so the audit can
+   drive the rejection path — the one a TestFlight token hitting the wrong APNs
+   environment actually takes — and not only the happy one. */
+let apnsOutcome = null;
+function apnsResult() {
+  return apnsOutcome || { ok: true, status: 200, apnsId: 'audit-apns-id', reason: '', retryable: false, unregister: false };
+}
+
 stub(join(root, 'lib/notifications/apns.js'), {
   isConfigured: () => transportState.apns,
+  /* Mirrors the real describe(): non-secret, and never the key itself. The
+     audit asserts the route SURFACES this, not what the real values are. */
+  describe: () => ({
+    configured: transportState.apns,
+    env: 'production',
+    host: 'https://api.push.apple.com',
+    topic: 'app.fantasysportsnetwork',
+    keyId: 'AUDITKEY01', teamId: 'AUDITTEAM1',
+    keyPresent: transportState.apns, keyFormat: 'pem',
+    keyUsable: transportState.apns, keyError: null,
+    matches: 'TestFlight / App Store builds (aps-environment=production)',
+  }),
   openSession: () => { calls.apnsSession++; return { __fake: true }; },
   closeSession: () => {},
   send: (session, token, notification) => {
     calls.apnsSend.push({ token, title: notification.title });
-    return Promise.resolve({ ok: true, status: 200, reason: '', retryable: false, unregister: false });
+    return Promise.resolve(apnsResult());
   },
   apnsConfig: () => ({}),
 });
 
 stub(join(root, 'lib/notifications/webpush.js'), {
   isConfigured: () => transportState.web,
+  describe: () => ({
+    configured: transportState.web,
+    libraryLoaded: true,
+    publicKeyPresent: transportState.web,
+    privateKeyPresent: transportState.web,
+    subject: 'https://fantasysportsnetwork.app',
+  }),
   publicKey: () => 'test-key',
   validSubscription: () => true,
   send: (subscription, notification) => {
@@ -253,6 +285,7 @@ function scenario(name, envPatch, fixturePatch) {
   process.env.CRON_SECRET = SECRET;
   transportState.apns = true;
   transportState.web = true;
+  apnsOutcome = null;
   fixture = { devices: [], ledger: [], schedule: null, insertError: null };
   Object.assign(process.env, envPatch || {});
   Object.assign(fixture, fixturePatch || {});
@@ -577,6 +610,119 @@ console.log('-- 5. Schedule shape --');
   }
   check('no GitHub workflow runs on a schedule', scheduled, []);
   check('no GitHub workflow invokes the dispatcher', touchingDispatch, []);
+}
+
+/* ==========================================================================
+   6. SELFTEST MODE
+
+   The force-fire path. Its whole value is that an operator can trust it enough
+   to run it against a live device mid-season, so what it must NOT do is worth
+   more assertions than what it does: no ledger row, no device-state write, no
+   fan-out, no outbound pull, and no reachability without the secret.
+========================================================================== */
+console.log('-- 6. Selftest mode --');
+{
+  const auth = { authorization: 'Bearer ' + SECRET };
+  const DEVICE = 'a'.repeat(64);
+  const iosDevice = (overrides) => dueDevice(Object.assign({
+    platform: 'ios',
+    apns_token: 'f'.repeat(64),
+    subscription: null,
+  }, overrides || {}));
+
+  const selftest = async (query, fixturePatch, opts) => {
+    scenario('selftest', null, fixturePatch || {});
+    Object.assign(transportState, (opts && opts.transports) || {});
+    if (opts && opts.outcome) apnsOutcome = opts.outcome;
+    return invoke({ url: '/api/notifications-dispatch?selftest=' + query, headers: auth });
+  };
+
+  // --- the happy path: one real push, to the one named device
+  let res = await selftest(DEVICE, { devices: [iosDevice()] });
+  check('a selftest returns 200', res.statusCode, 200);
+  check('it declares itself a selftest', res.body && res.body.selftest, true);
+  check('it sent EXACTLY ONE APNs push', calls.apnsSend.length, 1);
+  check('it sent ZERO web pushes', calls.webpushSend, []);
+  check('it reports the provider status verbatim', res.body.delivery.status, 200);
+  checkTrue('it reports the APNs environment it sent in', res.body.apnsConfig.env === 'production');
+  checkTrue('it reports the apns-topic it sent with', res.body.apnsConfig.topic === 'app.fantasysportsnetwork');
+
+  /* The assertion this mode lives or dies on. A ledger row here would collide
+     with the device's real weekly send and silence it for the week — a
+     diagnostic making the reported fault worse. */
+  check('a selftest wrote ZERO database rows', calls.dbWrites, []);
+  check('a selftest says so in its own response', res.body.ledgerWritten, false);
+  check('a selftest made ZERO outbound requests (it does not spend the daily pull)', calls.fetches, []);
+  checkTrue('a selftest does not read the send ledger', !calls.dbReads.includes('notification_sends'));
+
+  // --- a rejection must be reported, not swallowed, and must not retire the row
+  res = await selftest(DEVICE, { devices: [iosDevice()] }, {
+    outcome: { ok: false, status: 400, apnsId: 'x', reason: 'BadDeviceToken', retryable: false, unregister: true },
+  });
+  check('a rejected selftest still returns 200 with the diagnosis', res.statusCode, 200);
+  check('the rejection is reported as not-ok', res.body.ok, false);
+  check("Apple's reason is passed through verbatim", res.body.delivery.reason, 'BadDeviceToken');
+  check('a rejected selftest still writes nothing (it does not retire the device)', calls.dbWrites, []);
+
+  // --- a device that was already retired is still testable, and says so
+  res = await selftest(DEVICE, {
+    devices: [iosDevice({ disabled_at: '2026-09-01T00:00:00.000Z', disabled_reason: 'BadDeviceToken' })],
+  });
+  check('a retired device can still be selftested', res.statusCode, 200);
+  check('the response surfaces that the cron is skipping it', res.body.device.disabledAt, '2026-09-01T00:00:00.000Z');
+
+  // --- it cannot be widened into a fan-out
+  res = await selftest('all', { devices: [iosDevice()] });
+  check('a non-hex target -> 400', res.statusCode, 400);
+  check('a non-hex target names the fault', res.body.error, 'BAD_DEVICE_ID');
+  check('a non-hex target sent nothing', calls.apnsSend.length + calls.webpushSend.length, 0);
+
+  res = await selftest('', { devices: [iosDevice()] });
+  check('an empty selftest value falls through to a normal run, not a fan-out of one',
+    res.body && res.body.selftest, undefined);
+
+  // --- unknown device
+  res = await selftest(DEVICE, { devices: [] });
+  check('an unregistered device id -> 404', res.statusCode, 404);
+  check('404 sent nothing', calls.apnsSend.length + calls.webpushSend.length, 0);
+
+  // --- unknown trigger
+  scenario('selftest bad trigger', null, { devices: [iosDevice()] });
+  res = await invoke({ url: '/api/notifications-dispatch?selftest=' + DEVICE + '&trigger=nope', headers: auth });
+  check('an unknown trigger -> 400', res.statusCode, 400);
+  check('an unknown trigger sent nothing', calls.apnsSend.length, 0);
+
+  // --- a named trigger is honoured
+  scenario('selftest named trigger', null, { devices: [iosDevice()] });
+  res = await invoke({ url: '/api/notifications-dispatch?selftest=' + DEVICE + '&trigger=waiver_wire', headers: auth });
+  check('a named trigger is used', res.body.notification.trigger, 'waiver_wire');
+
+  // --- no transport for that platform: a clear 503, not a silent success
+  res = await selftest(DEVICE, { devices: [iosDevice()] }, { transports: { apns: false } });
+  check('an iOS selftest with no APNs keys -> 503', res.statusCode, 503);
+  check('the 503 names the missing transport', res.body.error, 'TRANSPORT_NOT_CONFIGURED');
+  checkTrue('the 503 still reports the APNs configuration so it can be fixed',
+    !!(res.body && res.body.apnsConfig));
+
+  // --- and it is not reachable without the secret
+  scenario('unauthenticated selftest', null, { devices: [iosDevice()] });
+  res = await invoke({ url: '/api/notifications-dispatch?selftest=' + DEVICE });
+  check('a selftest without the secret -> 401', res.statusCode, 401);
+  check('a 401 selftest sent nothing', calls.apnsSend.length + calls.webpushSend.length, 0);
+  check('a 401 selftest read nothing', calls.dbReads, []);
+
+  // --- honoured from the URL when the runtime does not pre-parse the query
+  scenario('selftest without req.query', null, { devices: [iosDevice()] });
+  res = await invoke({ url: '/api/notifications-dispatch?selftest=' + DEVICE, headers: auth, withQuery: false });
+  check('selftest is honoured from the URL when req.query is absent', res.body && res.body.selftest, true);
+
+  // --- the dry run now reports HOW each transport is pointed, not just whether
+  scenario('dry run reports transport config', null, { devices: [iosDevice()] });
+  res = await invoke({ url: '/api/notifications-dispatch?dry=1', headers: auth });
+  checkTrue('the dry run reports the APNs environment', res.body.apnsConfig.env === 'production');
+  check('the dry run still writes nothing after the addition', calls.dbWrites, []);
+  checkTrue('the APNs diagnostic never carries the private key',
+    !JSON.stringify(res.body.apnsConfig).toLowerCase().includes('private key'));
 }
 
 /* ------------------------------------------------------------------------- */
