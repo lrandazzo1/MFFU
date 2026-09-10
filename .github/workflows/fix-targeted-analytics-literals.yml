@@ -1,0 +1,39 @@
+name: Fix targeted analytics literals
+
+on:
+  push:
+    branches:
+      - fix/dynamic-matchup-previews-strip-faab
+
+permissions:
+  contents: write
+
+jobs:
+  fix-literals:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/dynamic-matchup-previews-strip-faab
+      - name: Preserve runtime interpolation literals
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('scripts/apply-matchup-faab-fix.mjs')
+          s = p.read_text()
+          old1 = "index = index.slice(0, gemMetaStart) + `<div class=\"analytics-gem-meta truncate\">${esc(gem.team ? gem.team.name : 'Unknown team')} · Week ${gem.week || '—'} · completed add</div>` + index.slice(gemMetaEnd);"
+          new1 = "index = index.slice(0, gemMetaStart) + '<div class=\"analytics-gem-meta truncate\">${esc(gem.team ? gem.team.name : \\'Unknown team\\')} · Week ${gem.week || \\'—\\'} · completed add</div>' + index.slice(gemMetaEnd);"
+          old2 = "index = index.slice(0, gemValueStart) + `<div class=\"analytics-gem-roi\">${analyticsValue(gem.points)}<span>POST-ADD PTS</span></div>` + index.slice(gemValueEnd);"
+          new2 = "index = index.slice(0, gemValueStart) + '<div class=\"analytics-gem-roi\">${analyticsValue(gem.points)}<span>POST-ADD PTS</span></div>' + index.slice(gemValueEnd);"
+          if old1 not in s or old2 not in s:
+              raise SystemExit('expected analytics literal targets not found')
+          p.write_text(s.replace(old1,new1,1).replace(old2,new2,1))
+          PY
+      - name: Commit repair and remove helper
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm -f .github/workflows/fix-targeted-analytics-literals.yml
+          git add scripts/apply-matchup-faab-fix.mjs .github/workflows/fix-targeted-analytics-literals.yml
+          git commit -m "Preserve waiver analytics runtime literals [analytics-literal-fix]"
+          git push origin HEAD:fix/dynamic-matchup-previews-strip-faab
