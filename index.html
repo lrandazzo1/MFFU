@@ -199,20 +199,41 @@ html,body{
      well past the first and last card into an expanse of bare --ink, and let a
      downward drag at the top arm pull-to-refresh — which on this app throws
      away the hydrated league and replays the whole cold boot. The app owns its
-     own refresh (Setup), so neither gesture has a job here. */
+     own refresh (Setup), so neither gesture has a job here.
+
+     It is declared on both elements deliberately: the root's value is what the
+     UA propagates to the viewport, and body's is a no-op belt on top of it for
+     as long as body is not itself a scroll container (see below). */
   overscroll-behavior-y:none;
   /* Small-viewport guard: nothing is ever wide enough to swipe the whole
      page sideways. In-page carousels (story rail, topic chips, week scrubber)
      keep their own contained overflow-x; this only clips a stray blowout. */
   max-width:100%;
-  overflow-x:hidden;
 }
-html{ min-height:100%; overflow-y:scroll; }
+/* ---- THE VIEWPORT IS THE APP'S ONE SCROLLER ----
+   Both axes are declared HERE and only here, because the root element's
+   overflow is what the UA propagates to the viewport — the root itself is then
+   laid out as `visible` and never becomes a scroll container of its own.
+
+   The horizontal clip used to be declared on `html, body` together, and body
+   carried `overflow-y:auto` besides. That made <body> a second, redundant
+   scroll container wrapping every screen — one that can never actually scroll,
+   because its height is content-driven. A scroll container that cannot scroll
+   is exactly what `overscroll-behavior-y:none` is defined to seal shut: the
+   wheel/trackpad gesture latches onto <body>, body has nothing to consume it
+   with, and the containment stops it chaining out to the viewport. On desktop
+   that reads as a page that simply will not scroll. Phones were unaffected
+   because the native shell drives the scroll rather than a latched wheel
+   gesture, which is why this only ever showed up on laptops.
+
+   Keep the app's overflow declarations on the root. Nothing between the
+   viewport and a card may be `overflow:auto` unless it genuinely scrolls
+   (the overlays below do; screens do not). */
+html{ min-height:100%; overflow-y:scroll; overflow-x:hidden; }
 body{
   margin:0;
   min-height:100vh;
   min-height:100dvh;
-  overflow-y:auto;
   -webkit-font-smoothing:antialiased;
   text-rendering:optimizeLegibility;
 }
@@ -250,8 +271,16 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
    Every screen, the franchise dossier, the reader and the recordbook stack now
    sit inside the same centred max-w-6xl column.
 ============================================================ */
-.screen-shell{ width:100%; max-width:72rem; margin-left:auto; margin-right:auto; overflow-y:auto;
-  overscroll-behavior-y:none; }
+/* `display:flow-root` rather than the `overflow-y:auto` this used to carry.
+   The shell never scrolls — it is an auto-height column inside an auto-height
+   screen — so all `auto` bought was a third dead scroll container between the
+   viewport and the cards, sealed shut by its own overscroll containment and
+   swallowing the desktop wheel. flow-root keeps the one property the old
+   declaration was actually load-bearing for (a block formatting context, so
+   child margins do not collapse out through the shell) and creates no
+   scrollport at all. */
+.screen-shell{ width:100%; max-width:72rem; margin-left:auto; margin-right:auto;
+  display:flow-root; }
 /* The blocks inside a screen already ship the app's own 16px gutter. The
    shell owns the gutter now, so theirs is zeroed here in one place instead
    of being doubled on every child. #homeContent is the one screen block that
@@ -569,18 +598,22 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
 .screen{ display:none; animation:screenIn .22s ease both; }
 .screen > header{ position:relative; z-index:2; }
 .screen[data-active="true"]{
-  display:block;
+  /* flow-root, not block: a screen needs its own block formatting context so a
+     card's margin does not collapse out through it into the shell's padding.
+     That context used to come from `overflow-y:auto`, which also made every
+     screen a scroll container. A screen never overflows its own box — it is
+     min-height, not height — so that scrollport could never scroll, and the
+     `overscroll-behavior-y` on it then stopped a desktop wheel gesture from
+     chaining out to the viewport instead of stopping a rubber-band. The
+     document's own bounce guard lives on the root element, where it belongs
+     and where it still applies. */
+  display:flow-root;
   /* Exactly the viewport minus the fixed chrome the shell already padded for.
      Written against the same two variables so the two can no longer drift: the
      old form subtracted the raw --ticker-h/--nav-h and missed the 9px of
      breathing room in the shell's padding, so every screen was 9px taller than
      the space it had and every screen scrolled that far into nothing. */
   min-height:calc(100dvh - var(--shell-inset-top) - var(--shell-inset-bottom));
-  overflow-y:auto;
-  /* A screen never overflows its own box (it is min-height, not height), so a
-     touch that reaches its end must not chain out into the document and bounce
-     the whole app. */
-  overscroll-behavior-y:none;
 }
 @keyframes screenIn{ from{opacity:0; transform:translateY(7px);} to{opacity:1; transform:none;} }
 
@@ -15533,15 +15566,27 @@ function matchupDraftSnapshot(A, B, week){
   }
 }
 
-function tlPrimer(ctx){
-  const out = [];
+/* ---- WHICH GAME IS MATCHUP OF THE WEEK ----
+   The single source of truth for the marquee pick, lifted verbatim out of
+   tlPrimer() so the Home screen's marquee card can read the same answer through
+   NewsDesk.marqueeMatchup() instead of ranking the board by points on its own.
+   The pool, the ordering and therefore the article seed are unchanged — this is
+   a move, not a rewrite: the Desk must keep generating the identical article
+   for a given league/season/week.
+
+   The card used to pick by highest combined score (or, before kickoff, highest
+   combined projection). That is a different question from the one the Desk
+   answers, so on most weeks the dashboard named one game "GAME OF THE WEEK"
+   while the News tab's Matchup of the Week article was about another. */
+function selectMarqueeGame(ctx){
+  if(!ctx) return null;
   /* Matchup of the Week never comes out of the consolation ladder. In a
      bracket week the candidates are the title games plus, in the final round,
      the Sacko final — the same pool the Desk screen features. */
   const games = (ctx.playoffWeek && ctx.featuredGames && ctx.featuredGames.length)
     ? ctx.featuredGames
     : ctx.games;
-  if(!games.length) return out;
+  if(!games || !games.length) return null;
 
   const table = FSNIntel.standingsThrough(ctx.week - 1);
   const ratingOf = (team)=>{
@@ -15552,7 +15597,13 @@ function tlPrimer(ctx){
   /* Marquee = the two best teams facing each other. */
   const ranked = games.slice().sort((a,b)=>
     (ratingOf(b.homeTeam) + ratingOf(b.awayTeam)) - (ratingOf(a.homeTeam) + ratingOf(a.awayTeam)));
-  const g = ranked[0];
+  return ranked[0] || null;
+}
+
+function tlPrimer(ctx){
+  const out = [];
+  const g = selectMarqueeGame(ctx);
+  if(!g) return out;
   const A = g.awayTeam, B = g.homeTeam;
   const probA = FSNIntel.winProbability(ctx.week - 1, A, B);
   const seed = 'motw' + ctx.week + A.id + B.id;
@@ -17766,6 +17817,16 @@ return {
   /* Manager of the Week — exported so the News Desk and any future view can
      read the same Coaching Efficiency board the timeline writes from. */
   genManagerOfTheWeek,
+  /* Matchup of the Week — the game the Desk's marquee article is written about.
+     Additive: nothing here changes what tlPrimer() generates, it just lets the
+     Home screen's marquee card bind to the Desk's pick instead of ranking the
+     board by raw point margins and naming a different game. Returns the same
+     week-matchup object shape LeagueData.getWeekMatchups() yields, or null when
+     the week has no eligible board. */
+  marqueeMatchup(week){
+    const ctx = weekContext(week);
+    return selectMarqueeGame(ctx);
+  },
   lineupEfficiencyOf, fillOptimalLineup, STANDARD_LINEUP_TEMPLATE,
   getTimelineStream, getNewsFeedForWeek, guaranteedTimelineFallback, tickerHeadlines, restamp, stamp,
   getShuffledDeck, seasonToneBucket, viewedSeasonYear, activeSeasonYear,
@@ -20007,50 +20068,98 @@ function renderHome(){
   $('pulseHigh').textContent = scoredPoints.length ? Math.max(...scoredPoints).toFixed(1) : '—';
 
   /* ---- MATCHUP OF THE WEEK ----
-     The biggest game on the board: highest combined points, with the margin
-     called out so a nail-biter reads as one.
+     The game the News Desk made Matchup of the Week, not a second opinion.
+
+     This card used to rank the board itself by highest combined points (or,
+     before kickoff, highest combined projection). That answers a different
+     question from the one the Desk's marquee article answers — the Desk ranks
+     by power rating, i.e. the two best teams facing each other — so on most
+     weeks the dashboard headlined one game while the News tab's "Matchup of the
+     Week" was written about another. The two now read the same selector:
+     NewsDesk.marqueeMatchup() is the exact function tlPrimer() picks with.
 
      In a postseason week the candidate pool is filtered first. A 5th-place
      consolation-ladder game can outscore a semifinal and it still is not the
      matchup of the week, so only the true Championship Bracket — plus the
      Toilet Bowl final in the last round, where the Sacko is on the line —
-     is eligible to be featured. */
+     is eligible to be featured. The Desk filters on the same rule (it reads
+     ctx.featuredGames, which is featuredPlayoffGames()), so its pick is always
+     already inside this pool. */
   const playoffWeek = isPlayoffWeek(week, games);
   const motwPool = playoffWeek ? featuredPlayoffGames(games, week) : games;
   const motwRound = playoffWeek ? playoffRoundLabel(week, games) : '';
+  const motwCandidates = motwPool.length ? motwPool : games;
 
-  /* In a postseason week the Championship Bracket is the story, full stop.
-     A consolation-ladder shootout does not get promoted over a semifinal, and
-     an active title game outranks one that is already final. Only inside that
-     tier does combined scoring break the tie. */
-  const motwRank = (g)=>{
-    if(!playoffWeek) return 0;
-    const bracketKind = playoffBracketOf(g);
-    if(bracketKind === 'championship') return isActivePlayoffGame(g) ? 3 : 2;
-    if(bracketKind === 'toilet' && isFinalPlayoffWeek(week)) return 1;
-    return -1;                                   // consolation ladder — never featured
-  };
+  /* Same two franchises, same fixture. The Desk builds its context from its own
+     LeagueData read, so its game object is not guaranteed to be the identical
+     reference this render is holding; bind by team ids and then keep using THIS
+     render's object, so every helper below (actualOf, gameHasActiveTeam,
+     playoffBracketOf) reads the board the card is actually painting. */
+  const sameFixture = (a, b)=> !!(a && b && a.homeTeam && b.homeTeam && a.awayTeam && b.awayTeam &&
+    String(a.homeTeam.id) === String(b.homeTeam.id) &&
+    String(a.awayTeam.id) === String(b.awayTeam.id));
 
-  /* CHOOSING the marquee game may lean on projections before kickoff — that
-     is a ranking decision, not a printed number, and a board where every game
-     reads 0.0 would otherwise hand the slot to whichever game came first.
-     What the card DISPLAYS is always the real score: hs/as below are actuals
-     at every state, and the combined total in the copy is derived from them
-     rather than from this ranking weight. */
-  let motw = null, bestWeight = -1, bestRank = -Infinity;
-  (motwPool.length ? motwPool : games).forEach(g=>{
-    const st = gameStatus(g);
-    const hs = actualOf(g, 'home') || 0;
-    const as = actualOf(g, 'away') || 0;
-    const weight = st === 'pre'
-      ? (projectedOf(g, 'home') || 0) + (projectedOf(g, 'away') || 0)
-      : hs + as;
-    const rank = motwRank(g);
-    if(rank < bestRank) return;
-    if(rank > bestRank || weight > bestWeight){
-      bestRank = rank; bestWeight = weight; motw = { g, hs, as, st };
-    }
-  });
+  let deskMarquee = null;
+  try{
+    deskMarquee = NewsDesk.marqueeMatchup(week);
+  }catch(err){
+    console.error('[Home] Matchup of the Week could not be read from the News Desk for week ' + week +
+      '. The marquee card is falling back to ranking the board itself and may name a different game ' +
+      'than the News tab.', err);
+  }
+
+  let motw = null;
+  const boundGame = deskMarquee ? (motwCandidates.find(g=> sameFixture(g, deskMarquee)) || null) : null;
+  if(deskMarquee && !boundGame){
+    console.warn('[Home] The News Desk\'s Matchup of the Week for week ' + week + ' (' +
+      String(deskMarquee.awayTeam && deskMarquee.awayTeam.name) + ' at ' +
+      String(deskMarquee.homeTeam && deskMarquee.homeTeam.name) +
+      ') is not on this render\'s eligible board. Falling back to the board ranking.');
+  }
+
+  if(boundGame){
+    motw = {
+      g: boundGame,
+      hs: actualOf(boundGame, 'home') || 0,
+      as: actualOf(boundGame, 'away') || 0,
+      st: gameStatus(boundGame),
+    };
+  } else {
+    /* Fallback only. Reached when the Desk has no context for this week (an
+       empty or unhydrated board) or when the lookup above threw — both of which
+       are logged. In a postseason week the Championship Bracket is still the
+       story, full stop: a consolation-ladder shootout does not get promoted over
+       a semifinal, and an active title game outranks one that is already final.
+       Only inside that tier does combined scoring break the tie.
+
+       CHOOSING the marquee game may lean on projections before kickoff — that
+       is a ranking decision, not a printed number, and a board where every game
+       reads 0.0 would otherwise hand the slot to whichever game came first.
+       What the card DISPLAYS is always the real score: hs/as are actuals at
+       every state, and the combined total in the copy is derived from them
+       rather than from this ranking weight. */
+    const motwRank = (g)=>{
+      if(!playoffWeek) return 0;
+      const bracketKind = playoffBracketOf(g);
+      if(bracketKind === 'championship') return isActivePlayoffGame(g) ? 3 : 2;
+      if(bracketKind === 'toilet' && isFinalPlayoffWeek(week)) return 1;
+      return -1;                                 // consolation ladder — never featured
+    };
+    let bestWeight = -1, bestRank = -Infinity;
+    motwCandidates.forEach(g=>{
+      const st = gameStatus(g);
+      const hs = actualOf(g, 'home') || 0;
+      const as = actualOf(g, 'away') || 0;
+      const weight = st === 'pre'
+        ? (projectedOf(g, 'home') || 0) + (projectedOf(g, 'away') || 0)
+        : hs + as;
+      const rank = motwRank(g);
+      if(rank < bestRank) return;
+      if(rank > bestRank || weight > bestWeight){
+        bestRank = rank; bestWeight = weight; motw = { g, hs, as, st };
+      }
+    });
+  }
 
   if(!motw){
     $('motwCard').classList.remove('active-team-matchup');
@@ -20126,13 +20235,74 @@ function renderHome(){
                  : `Combined <b class="text-[var(--off)] font-mono tabular">${combined.toFixed(1)}</b> points.`}`
             : (pregameWeek
                 ? `The marquee matchup is set. Combined scoring will land once the slate finalizes.`
-                : `Combined <b class="text-[var(--off)] font-mono tabular">${combined.toFixed(1)}</b> points — the highest total on this week's board.`)}
+                /* No longer "the highest total on this week's board": the card
+                   now features the Desk's marquee game — the two best teams
+                   facing each other — which is frequently not the week's top
+                   scoring total. Quote the number, do not rank it. */
+                : `Combined <b class="text-[var(--off)] font-mono tabular">${combined.toFixed(1)}</b> points. Read the full Matchup of the Week file on the News Desk.`)}
         </div>
       </div>`;
   }
 
-  /* ---- FRAUD ALERT / HOT SEAT ---- */
-  const low = LeagueData.getWeekExtremes(week).low;
+  /* ---- FRAUD ALERT / HOT SEAT ----
+     Who is actually bottom of the league this week, judged only on games that
+     have started, with projections breaking the ties the scoreboard cannot.
+
+     This used to read LeagueData.getWeekExtremes().low, which sorts every side
+     on the board by its raw feed score. Two things went wrong with that early
+     in a week. First, the raw field is the provider's uncorrected total, not the
+     corrected actual every other surface on this screen prints. Second, and
+     worse, a side whose game has not kicked off sits on a legitimate 0.0 — so
+     the moment ONE game went live and flipped hasScoring true, the Fraud Alert
+     handed its roast to whichever team merely happens to play Monday night. The
+     card read as broken because it was accusing a team of nothing.
+
+     getWeekExtremes() is deliberately left alone: the crawl reads it too, and
+     its contract is "extremes of the raw board". The Fraud Alert's question is
+     narrower, so it is answered here.
+
+     Selection, in order:
+       1. Only sides whose game has actually started are eligible. A pre-game
+          0.0 is not evidence.
+       2. Lowest corrected actual wins the seat.
+       3. Ties — which in practice means a group all sitting on 0.0 in games
+          that have kicked off but not yet posted — break on the LOWEST live
+          projection, because that is the only signal separating them. A side
+          with no projection at all sorts last rather than inheriting the roast
+          on a technicality.
+       4. Team id last, so the same board always names the same team. */
+  const fraudSides = [];
+  games.forEach(g=>{
+    const st = gameStatus(g);
+    if(st === 'pre') return;                     // hasn't kicked off — not evidence
+    ['home','away'].forEach(side=>{
+      const team = side === 'home' ? g.homeTeam : g.awayTeam;
+      const actual = actualOf(g, side);
+      if(!team || actual == null) return;
+      fraudSides.push({ team, score: actual, projected: projectedOf(g, side), status: st });
+    });
+  });
+  const TIED = 0.05;                             // one display digit; 0.0 vs 0.0
+  fraudSides.sort((a, b)=>{
+    if(Math.abs(a.score - b.score) > TIED) return a.score - b.score;
+    const pa = a.projected == null ? Infinity : a.projected;
+    const pb = b.projected == null ? Infinity : b.projected;
+    if(pa !== pb) return pa - pb;
+    return String(a.team.id).localeCompare(String(b.team.id));
+  });
+  const low = fraudSides[0] || null;
+  /* Everyone the scoreboard cannot separate from the bottom. */
+  const tiedAtLow = low ? fraudSides.filter(side=> Math.abs(side.score - low.score) <= TIED) : [];
+  /* True when the seat was decided by projection rather than by the scoreboard:
+     more than one side is level on actual points AND at least one of them is
+     still playing, so the number under the crest is not a finished result. The
+     card says that out loud rather than printing a bare 0.0 as a verdict.
+
+     A tie between two FINISHED sides is a real tie, not a projection call — the
+     sort still breaks it deterministically, but the card reads as the ordinary
+     verdict it is. */
+  const lowIsProjectionCall = tiedAtLow.length > 1 && tiedAtLow.some(side=> side.status !== 'final');
+  const lowIsProvisional = !!(low && low.status !== 'final');
   if(!hasScoring){
     $('hotSeatCard').innerHTML = `
       <div class="pl-5 pr-4 py-4">
@@ -20154,16 +20324,33 @@ function renderHome(){
     const streak = low.team.ownerId ? currentStreak(low.team.ownerId) : null;
     const streakLine = streak && streak.result === 'L'
       ? `<span class="pill" style="border-color:rgba(255,45,85,.4);color:var(--red)">LOST ${streak.length} STRAIGHT</span>` : '';
+    /* Measured against the top of the SAME pool the seat was judged from, so a
+       "behind the high" number can never be computed against a side the desk
+       ruled ineligible. */
     const gap = (() => {
-      const high = LeagueData.getWeekExtremes(week).high;
-      return high ? (high.score - low.score).toFixed(1) : null;
+      const high = fraudSides.reduce((best, side)=> (!best || side.score > best.score ? side : best), null);
+      return high && high.score - low.score > 0.05 ? (high.score - low.score).toFixed(1) : null;
     })();
+    /* A seat decided on projections is labelled as such in the kicker, the pill
+       and the closing line. Printing "LOWEST SCORE · 0.0" over a game that is
+       live but unposted is the exact thing that read as broken. */
+    const kicker = lowIsProjectionCall ? 'FRAUD WATCH · PROJECTED LOW' : 'FRAUD ALERT · LOWEST SCORE';
+    const statePill = lowIsProjectionCall
+      ? `<span class="pill pill-cyan">PROJECTED</span>`
+      : (lowIsProvisional ? `<span class="pill pill-cyan">IN PROGRESS</span>` : '');
+    const projectedLine = low.projected != null
+      ? `<span class="pill pill-final">${low.projected.toFixed(1)} PROJECTED</span>` : '';
+    const closing = lowIsProjectionCall
+      ? `Nothing has separated the bottom of the board on actual points yet, so the seat is assigned on the lowest live projection. The verdict firms up as the slate posts.`
+      : (lowIsProvisional
+          ? `Bottom of the league on points posted so far. The seat is warm, and it is not final until Tuesday.`
+          : `Bottom of the league this week. The seat is warm.`);
 
     $('hotSeatCard').innerHTML = `
       <div class="pl-5 pr-4 py-4">
         <div class="flex items-center justify-between mb-3.5">
-          <div class="kicker text-[var(--red)]">FRAUD ALERT · LOWEST SCORE</div>
-          <span class="pill" style="border-color:rgba(255,45,85,.45);color:var(--red);background:rgba(255,45,85,.09)">WK ${week}</span>
+          <div class="kicker text-[var(--red)]">${kicker}</div>
+          ${statePill || `<span class="pill" style="border-color:rgba(255,45,85,.45);color:var(--red);background:rgba(255,45,85,.09)">WK ${week}</span>`}
         </div>
         <div class="flex items-center gap-3">
           ${crest(low.team.name, low.team.logo, 50)}
@@ -20178,10 +20365,11 @@ function renderHome(){
         </div>
         <div class="mt-3 flex flex-wrap gap-1.5">
           ${streakLine}
+          ${lowIsProjectionCall ? projectedLine : ''}
           ${gap ? `<span class="pill pill-final">${gap} BEHIND THE HIGH</span>` : ''}
         </div>
         <div class="mt-3 pt-3 border-t border-[var(--line)] text-[11.5px] text-[var(--dim)] leading-relaxed">
-          Bottom of the league this week. The seat is warm.
+          ${closing}
         </div>
       </div>`;
   }

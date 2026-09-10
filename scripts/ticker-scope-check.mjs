@@ -41,7 +41,14 @@
        than to the previous league's scores
      - a same-league render leaves the running crawl alone
      - every screen whose content fits the viewport has zero scrollable
-       remainder, and the document and screens refuse to chain an overscroll
+       remainder, and the document refuses to chain an overscroll
+     - the viewport is the app's ONLY scroller: no element between it and a card
+       is a scroll container. A screen and its shell are auto-height, so an
+       overflow:auto on either is a scrollport that can never scroll — and with
+       overscroll containment on it, it silently swallows a desktop wheel
+       gesture instead of letting it reach the viewport. That is what stopped
+       laptops scrolling at all, so it is asserted here rather than left to a
+       reviewer's eye.
 ============================================================================ */
 
 import { createServer } from 'node:http';
@@ -423,12 +430,28 @@ try {
   }
 
   const chaining = await page.evaluate(() => {
+    const scrollsY = (el) => {
+      const value = getComputedStyle(el).overflowY;
+      return value === 'auto' || value === 'scroll' || value === 'hidden' || value === 'clip';
+    };
     const active = document.querySelector('.screen[data-active="true"]');
+    const shell = active ? active.querySelector('.screen-shell') : null;
     return {
       html: getComputedStyle(document.documentElement).overscrollBehaviorY,
       body: getComputedStyle(document.body).overscrollBehaviorY,
-      screen: active ? getComputedStyle(active).overscrollBehaviorY : '',
       reader: getComputedStyle(document.getElementById('readerBody')).overscrollBehavior,
+      /* The desktop-scroll guard. Anything on this path that is a scroll
+         container is a scrollport the page content does not need and that a
+         wheel gesture can latch onto. */
+      bodyOverflowY: getComputedStyle(document.body).overflowY,
+      appShellScrolls: scrollsY(document.getElementById('appShell')),
+      screenScrolls: active ? scrollsY(active) : false,
+      shellScrolls: shell ? scrollsY(shell) : false,
+      /* A screen and its shell must still hold their own block formatting
+         context; that is the only thing the old overflow:auto was doing for
+         layout, and display:flow-root replaces it without a scrollport. */
+      screenDisplay: active ? getComputedStyle(active).display : '',
+      shellDisplay: shell ? getComputedStyle(shell).display : '',
     };
   });
   if (chaining.html === 'none' && chaining.body === 'none') {
@@ -436,10 +459,29 @@ try {
   } else {
     fail('the document still bounces past its content (html=' + chaining.html + ', body=' + chaining.body + ')');
   }
-  if (chaining.screen === 'none') pass('a screen will not chain an overscroll out into the document');
-  else fail('the active screen chains its overscroll (overscroll-behavior-y=' + chaining.screen + ')');
   if (chaining.reader === 'contain') pass('the reader overlay will not chain an overscroll out into the page behind it');
   else fail('the reader overlay chains its overscroll (overscroll-behavior=' + chaining.reader + ')');
+
+  /* ---- 6b. The viewport is the only scroller --------------------------- */
+  if (chaining.bodyOverflowY === 'visible') {
+    pass('<body> is not a second scroll container wrapping the app');
+  } else {
+    fail('<body> is a scroll container (overflow-y=' + chaining.bodyOverflowY + ') — it can never scroll, ' +
+      'so a desktop wheel gesture latches onto it and stops there');
+  }
+  if (!chaining.appShellScrolls) pass('#appShell does not open a scrollport of its own');
+  else fail('#appShell is a scroll container — the wheel latches onto it instead of the viewport');
+  if (!chaining.screenScrolls) pass('the active screen does not open a scrollport of its own');
+  else fail('the active screen is a scroll container — it is auto-height, so it can never scroll, ' +
+    'and it swallows the desktop wheel gesture');
+  if (!chaining.shellScrolls) pass('.screen-shell does not open a scrollport of its own');
+  else fail('.screen-shell is a scroll container — it is auto-height, so it can never scroll, ' +
+    'and it swallows the desktop wheel gesture');
+  if (chaining.screenDisplay === 'flow-root') pass('the active screen still holds its own block formatting context');
+  else fail('the active screen lost its block formatting context (display=' + chaining.screenDisplay +
+    ') — card margins will collapse out through it');
+  if (chaining.shellDisplay === 'flow-root') pass('.screen-shell still holds its own block formatting context');
+  else fail('.screen-shell lost its block formatting context (display=' + chaining.shellDisplay + ')');
 
   for (const name of SCREENS) {
     await page.evaluate((screen) => {
