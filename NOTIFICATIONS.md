@@ -244,9 +244,203 @@ curl -H "x-cron-secret: $CRON_SECRET" \
 `GET` and `POST` both work; anything else returns 405. The secret is compared in
 constant time.
 
+A live invocation delivers only what the cadence says is due. To force a push to
+one device right now, see the next section.
+
 Running this by hand is safe with respect to the upstream: the feed's rate
 limiter means a second invocation on the same day makes **no** outbound request
 and serves the cached week.
+
+## Force-firing one device (`?selftest=`)
+
+The section above triggers the *cadence*: it delivers whatever each device is
+due for right now, which on most days, in most timezones, is nothing. That
+makes it useless for the question you actually have when a build is sitting on
+your phone — *does a push arrive at all?*
+
+`?selftest=<deviceId>` answers that one. It sends a **real** notification to one
+named device immediately, bypassing the weekday bands, the local-hour window and
+the send ledger, and hands back the provider's verbatim answer.
+
+```bash
+DEPLOY=https://app.fantasysportsnetwork.app
+DEVICE=<the 64-char hex device id>
+
+curl -sS -H "Authorization: Bearer $CRON_SECRET" \
+  "$DEPLOY/api/notifications-dispatch?selftest=$DEVICE" | jq
+```
+
+Pick which alert's copy to send with `&trigger=` — one of `waiver_wire`,
+`weekly_recap`, `tnf_lock`, `sunday_lineup` (the default) or `gameday_pulse`.
+The payload is byte-identical to the real alert; marking it as a test would
+answer a different question than the one being asked.
+
+### Finding your device id
+
+The id is the SHA-256 of the push address, and it is what
+`/api/notifications-register` returned to the app when the device registered.
+Read it back out of Supabase:
+
+```sql
+select device_id, platform, timezone, prefs, disabled_at, disabled_reason,
+       season_year, week, last_sent_at, created_at
+from public.notification_devices
+order by created_at desc;
+```
+
+An empty result means **no device has registered** — nothing is wrong with the
+dispatcher, there is simply nothing for it to send to. See the checklist below.
+
+### What it will not do
+
+A diagnostic that quietly consumed the week's real alert for the device being
+diagnosed would make the fault it is used to find worse, so this mode:
+
+- writes **no** ledger row, stamps no `last_sent_at`, and changes no device
+  state — running it mid-season cannot suppress that device's genuine weekly
+  alert, and running it ten times in a row is harmless;
+- **retires nothing**: a rejected self-test leaves the row enabled, unlike a
+  rejection during a real run;
+- makes **no** outbound schedule request, so it does not spend the day's one
+  pull or move the rate limiter;
+- takes exactly one device id. There is no fan-out form of this mode, and a
+  value that is not 64 hex characters is refused rather than interpreted;
+- still requires the secret. Without it, 401, same as every other mode.
+
+A **retired** device is deliberately still testable — "it just stopped
+arriving" is usually a row that was disabled after a dead-token rejection, and
+the response reports `disabledAt` so you can see the daily cron is skipping it
+even when the test push itself succeeds. Re-registering from the app clears it.
+
+### Reading the answer
+
+```jsonc
+{
+  "ok": true,
+  "selftest": true,
+  "device": {
+    "deviceId": "…", "platform": "ios", "timezone": "America/New_York",
+    "disabledAt": null,          // non-null -> the daily cron is skipping this row
+    "disabledReason": null
+  },
+  "notification": { "trigger": "sunday_lineup", "title": "Set your lineup · Week 2", "body": "…" },
+  "delivery": {
+    "status": 200,               // 200 = Apple accepted it
+    "apnsId": "…",               // Apple's own id for the push, for a support ticket
+    "reason": null,              // Apple's rejection string when status is not 200
+    "retryable": false,
+    "unregister": false          // true -> this address is permanently dead
+  },
+  "apnsConfig": {
+    "env": "production",         // which Apple host the send went to
+    "host": "https://api.push.apple.com",
+    "topic": "app.fantasysportsnetwork",   // the apns-topic header; must equal the bundle id
+    "keyId": "…", "teamId": "…",
+    "keyFormat": "pem",
+    "keyUsable": true,           // false -> the .p8 in the environment will not sign
+    "matches": "TestFlight / App Store builds (aps-environment=production)"
+  },
+  "ledgerWritten": false
+}
+```
+
+`apnsConfig` is reported by `?dry=1` as well, so the environment can be checked
+without sending anything. It never contains the private key.
+
+## The APNs environment, and why TestFlight is the confusing case
+
+The environment is chosen by the **signature on the installed binary**, not by
+anything the app does at runtime, and the server has to be pointed at the
+matching Apple host:
+
+| Build | `aps-environment` | Apple host | `APNS_ENV` |
+|---|---|---|---|
+| Xcode → attached device | `development` | `api.sandbox.push.apple.com` | `sandbox` |
+| **TestFlight** | `production` | `api.push.apple.com` | `production` (the default) |
+| App Store | `production` | `api.push.apple.com` | `production` (the default) |
+
+TestFlight is a **production** signature — that is the part that catches people
+out, because it is a pre-release channel that behaves like a release build here.
+`ios/App.entitlements` pins `aps-environment` to `production` and
+`scripts/verify-ios-release.py` asserts it on the exported archive, so the
+default `APNS_ENV=production` is already the correct pairing for TestFlight.
+**Do not set `APNS_ENV` to `sandbox` while testing through TestFlight.**
+
+When the two disagree, Apple does not say so. It accepts the connection and
+answers every push with `400 BadDeviceToken`, which the dispatcher then treats
+as a permanently dead address and retires the row. Symptom: pushes silently stop
+and the device row acquires a `disabled_reason` of BadDeviceToken.
+
+### Reading a rejection
+
+| status / reason | What it means | Fix |
+|---|---|---|
+| `200` | Apple accepted it. If nothing appears on the phone, the problem is on the device: notification permission, Focus mode, or the app was never granted alerts. | — |
+| `400` BadDeviceToken | The token was issued under the *other* APNs environment, or for a different app. | Match `APNS_ENV` to the build's `aps-environment` (TestFlight = `production`), then re-register from the app to capture a fresh token. |
+| `400` DeviceTokenNotForTopic | The `apns-topic` sent does not equal the app's bundle id. | Set `APNS_BUNDLE_ID` to the binary's real bundle id. |
+| `403` InvalidProviderToken | The signed JWT was rejected — usually the `.p8`, key id, or team id is wrong, or the key is not enabled for this App ID. | Check `keyUsable` in the response, then the key's Push Notifications service in the Developer portal. |
+| `410` Unregistered | The app was deleted from the device. | Reinstall and re-register. |
+| `429` / `500` / `503` | Apple is throttling or briefly unavailable. | Retry later; the dispatcher marks these retryable. |
+
+## When nothing arrives: the order to check it in
+
+Work down this list — each step is cheap and rules out everything above it.
+
+1. **Are the keys provisioned at all?**
+
+   ```bash
+   curl -sS https://app.fantasysportsnetwork.app/api/notifications-register | jq
+   ```
+
+   `{"configured": false, "apns": false}` means `APNS_KEY_P8`, `APNS_KEY_ID` or
+   `APNS_TEAM_ID` is missing from the deployment's environment. This is the
+   first thing to check, because it fails **silently and early**: the app reads
+   this endpoint on boot, sees push is unavailable, and disables the Setup
+   switch — so the device can never register, the devices table stays empty,
+   and the daily cron has nothing to send to. Every other symptom follows from
+   this one.
+
+2. **Has the schema been applied in full?** `supabase/notifications.sql` creates
+   three tables. Confirm all three exist:
+
+   ```sql
+   select table_name from information_schema.tables
+   where table_schema = 'public' and table_name like 'notification_%';
+   ```
+
+   A missing `notification_schedule` does not stop delivery, but the daily pull
+   can neither cache nor rate-limit itself: every invocation re-fetches the
+   scoreboard and every run falls back to the week each device last reported.
+
+3. **Has the device registered?** Run the device query above. Empty means the
+   app never captured a token — either step 1 is unfixed, or the reader never
+   turned the master switch on and granted permission.
+
+4. **Force-fire it** with `?selftest=` and read `delivery.reason` against the
+   table above.
+
+5. **Only then look at the cadence.** `?dry=1` reports `missingTimezone`,
+   `noGroupsEnabled` and `outsideDailyWindow` — the three conditions that
+   silence a device that is otherwise perfectly configured.
+
+## Authorization and rate limits, in one place
+
+- **Every** mode — live, `?dry=1`, `?selftest=` — is gated on the same secret,
+  compared in constant time, and fails **closed**: with `CRON_SECRET` unset the
+  route answers 401 to everyone rather than defaulting open. Vercel attaches the
+  bearer to its own scheduled invocations automatically.
+- **The external schedule source** is capped at one request per 20 hours, on the
+  last *attempt* rather than the last success, so no number of manual
+  invocations can turn into a retry storm. `?dry=1` and `?selftest=` make no
+  outbound request at all.
+- **Apple** is not rate-limited by us and does not need to be at this size:
+  every push in a run is serialised over a single HTTP/2 session, one device at
+  a time, capped at 2000 devices per invocation. A `429` from Apple is recorded
+  as retryable on the ledger row rather than retried inside the run.
+- **Duplicate suppression** is the ledger's composite primary key, so a manual
+  live invocation that overlaps the cron cannot double-deliver. `?selftest=`
+  sits outside that mechanism entirely — by writing nothing, it can neither
+  duplicate nor consume a real send.
 
 ## Health check (`?dry=1`)
 
@@ -326,7 +520,8 @@ npm run check:render        # Chromium: all six screens, zero errors, opt-in con
 
 `audit:notifications` replaces the Supabase client, both transports **and global
 `fetch`** with instrumented doubles, drives the real route handler, and asserts
-the recordings. It does not read the source or trust a flag: the "once a day"
+the recordings. It also pins the self-test mode's guarantees: one device, zero
+database writes, zero outbound requests, and no reachability without the secret. It does not read the source or trust a flag: the "once a day"
 claim is a count of intercepted outbound requests, and the "once a day" cron is
 a parsed cron expression, not a phrase in a comment.
 

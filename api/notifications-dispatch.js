@@ -9,6 +9,35 @@
    GET  /api/notifications-dispatch            deliver
    GET  /api/notifications-dispatch?dry=1      evaluate and report, send nothing,
                                                write nothing, fetch nothing
+   GET  /api/notifications-dispatch?selftest=<deviceId>
+                                               send ONE real push to ONE named
+                                               device, now, bypassing the
+                                               cadence; writes no ledger row
+
+   ---- WHY A SELFTEST MODE EXISTS ----
+
+   Neither of the first two modes can answer "does a push actually arrive on my
+   phone". A live run delivers only what the cadence says is due, which on most
+   days in most timezones is nothing at all, and ?dry=1 deliberately reaches no
+   provider. So verifying a fresh APNs key, a new TestFlight build, or a device
+   that has just registered meant waiting for the next band to open.
+
+   ?selftest sends a real notification to one explicitly named device and
+   reports Apple's (or the push service's) verbatim answer — status, apns-id,
+   and reason — alongside the environment the send was made in. It is a
+   diagnostic, so it is deliberately NOT part of the cadence:
+
+     * it names ONE device id. There is no fan-out form of this mode.
+     * it writes NO ledger row, so a self-test cannot consume the week's real
+       alert for that device and silence it.
+     * it stamps no last_sent_at and retires nothing, so a failing test cannot
+       disable a live device row.
+     * it makes no outbound schedule request, for the same reason ?dry=1 does
+       not: a rehearsal must not spend the day's one pull.
+
+   The payload it sends is byte-identical to the real alert for that trigger.
+   Marking it as a test would answer a different question than the one being
+   asked, which is whether a genuine alert renders on the device.
 
    ---- WHY ONCE A DAY ----
 
@@ -212,6 +241,185 @@ function isDryRun(req) {
   return false;
 }
 
+/* Read one query parameter the same way isDryRun() reads `dry`: from the URL
+   first, with req.query accepted as well, so the behaviour does not depend on
+   whether the runtime pre-parsed the query string. */
+function queryParam(req, name) {
+  try {
+    const url = new URL(String((req && req.url) || ''), 'http://dispatch.local');
+    const fromUrl = String(url.searchParams.get(name) || '');
+    if (fromUrl) return fromUrl;
+  } catch (err) {
+    console.warn('[FSNPush] could not parse the request URL to read "' + name +
+      '"; falling back to req.query. Request URL was: ' + String(req && req.url), err);
+  }
+  return req && req.query ? String(req.query[name] || '') : '';
+}
+
+/* --------------------------------------------------------------------------
+   selftestTarget(req)
+
+   The device id named by ?selftest=, or ''. A 64-hex string is the whole
+   contract: device ids are the SHA-256 of a push address, so anything else is
+   a typo or an attempt to widen the mode into a fan-out, and both are refused
+   rather than interpreted.
+-------------------------------------------------------------------------- */
+function selftestTarget(req) {
+  return queryParam(req, 'selftest').trim().toLowerCase();
+}
+
+/* --------------------------------------------------------------------------
+   runSelftest(...)
+
+   One device, one push, no bookkeeping. Everything the dispatcher normally
+   does around a send — the ledger claim, the outcome write, last_sent_at, the
+   retirement of a dead address — is deliberately absent. See the header.
+-------------------------------------------------------------------------- */
+async function runSelftest(supabase, res, deviceId, triggerId, readiness) {
+  if (!/^[0-9a-f]{64}$/.test(deviceId)) {
+    res.status(400).json({
+      error: 'BAD_DEVICE_ID',
+      detail: 'selftest takes one device id: the 64-character hex string /api/notifications-register ' +
+        'returned when the device registered.',
+    });
+    return;
+  }
+
+  const trigger = engine.TRIGGERS_BY_ID[triggerId];
+  if (!trigger) {
+    res.status(400).json({
+      error: 'UNKNOWN_TRIGGER',
+      detail: 'trigger must be one of: ' + engine.TRIGGERS.map((t) => t.id).join(', '),
+    });
+    return;
+  }
+
+  /* Disabled rows are read too, on purpose: "my device stopped receiving
+     anything" is most often a row that was retired after a dead-token
+     rejection, and that is exactly what this mode is for finding out. */
+  const { data: rows, error: readError } = await supabase
+    .from('notification_devices')
+    .select('device_id, platform, apns_token, subscription, league_id, team_id, timezone, prefs, season_year, week, first_kickoff_ms, disabled_at, disabled_reason')
+    .eq('device_id', deviceId)
+    .limit(1);
+
+  if (readError) {
+    console.error('[FSNPush] selftest could not read device ' + deviceId, readError);
+    res.status(500).json({ error: 'DEVICE_READ_FAILED', detail: readError.message });
+    return;
+  }
+
+  const row = (Array.isArray(rows) && rows[0]) || null;
+  if (!row) {
+    res.status(404).json({
+      error: 'DEVICE_NOT_FOUND',
+      deviceId,
+      detail: 'No row in notification_devices for that id. The device has not registered, ' +
+        'or registered against a different deployment.',
+    });
+    return;
+  }
+
+  const transportReady = row.platform === 'ios' ? readiness.apns : readiness.web;
+  if (!transportReady) {
+    console.error('[FSNPush] selftest cannot reach device ' + deviceId + ': the "' +
+      row.platform + '" transport is not configured on this deployment.',
+      new Error('TRANSPORT_NOT_CONFIGURED'));
+    res.status(503).json({
+      error: 'TRANSPORT_NOT_CONFIGURED',
+      platform: row.platform,
+      transports: { apns: readiness.apns, web: readiness.web },
+      apnsConfig: apns.describe(),
+      detail: row.platform === 'ios'
+        ? 'Set APNS_KEY_P8, APNS_KEY_ID and APNS_TEAM_ID in this deployment\'s environment.'
+        : 'Set VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY and VAPID_SUBJECT in this deployment\'s environment.',
+    });
+    return;
+  }
+
+  /* The device's own last-reported season and week. The schedule feed is NOT
+     consulted: a self-test must not spend the day's one outbound pull, and the
+     week number only decorates the title here. */
+  const notification = engine.buildNotification(trigger.id, {
+    leagueId: row.league_id,
+    seasonYear: row.season_year,
+    week: row.week,
+  });
+  if (!notification) {
+    res.status(500).json({ error: 'NOTIFICATION_BUILD_FAILED', trigger: trigger.id });
+    return;
+  }
+
+  let session = null;
+  let result;
+  const startedAt = Date.now();
+  try {
+    if (row.platform === 'ios') {
+      session = apns.openSession();
+      result = await apns.send(session, row.apns_token, notification);
+    } else {
+      result = await webpush.send(row.subscription, notification);
+    }
+  } catch (err) {
+    console.error('[FSNPush] selftest transport threw sending ' + trigger.id +
+      ' to device ' + deviceId + ' (' + row.platform + ')', err);
+    result = { ok: false, status: 0, reason: String((err && err.message) || 'THREW'), retryable: true, unregister: false };
+  } finally {
+    if (session) apns.closeSession(session);
+  }
+
+  if (!result.ok) {
+    console.error('[FSNPush] selftest push to device ' + deviceId + ' (' + row.platform +
+      ') was rejected: status ' + result.status + ' ' + (result.reason || ''),
+      new Error('SELFTEST_PUSH_REJECTED'));
+  }
+
+  res.status(200).json({
+    ok: result.ok,
+    selftest: true,
+    sentAt: new Date(startedAt).toISOString(),
+    elapsedMs: Date.now() - startedAt,
+
+    device: {
+      deviceId: row.device_id,
+      platform: row.platform,
+      timezone: row.timezone,
+      leagueId: row.league_id,
+      seasonYear: row.season_year,
+      week: row.week,
+      prefs: row.prefs,
+      /* A retired row still receives the test push. If this is set, the device
+         WAS disabled by an earlier rejection and the daily cron is skipping it
+         even when the test succeeds — re-register from the app to clear it. */
+      disabledAt: row.disabled_at || null,
+      disabledReason: row.disabled_reason || null,
+    },
+
+    notification: { trigger: trigger.id, group: trigger.group, title: notification.title, body: notification.body },
+
+    /* Verbatim from the provider. `reason` is Apple's own string — see
+       lib/notifications/apns.js for what each one means. */
+    delivery: {
+      status: result.status,
+      apnsId: result.apnsId || null,
+      reason: result.reason || null,
+      retryable: !!result.retryable,
+      /* True means the address is permanently dead. On a TestFlight device
+         that almost always means the token was issued under the OTHER APNs
+         environment than the one below. */
+      unregister: !!result.unregister,
+    },
+
+    apnsConfig: apns.describe(),
+    webPushConfig: webpush.describe(),
+
+    /* Said explicitly so nobody has to infer it from the absence of fields. */
+    ledgerWritten: false,
+    note: 'No ledger row was written and no device state changed, so this send neither ' +
+      'consumed nor suppressed the device\'s real weekly alert.',
+  });
+}
+
 async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
 
@@ -245,6 +453,18 @@ async function handler(req, res) {
 
   const apnsReady = apns.isConfigured();
   const webReady = webpush.isConfigured();
+
+  /* ---- ?selftest=<deviceId> ---------------------------------------------
+     Handled before every part of the run below — the transport guard, the
+     device sweep, the schedule pull, the ledger read. None of them apply to a
+     single named send, and the schedule pull in particular must not be spent
+     on one. See the header. */
+  const selftestDeviceId = selftestTarget(req);
+  if (selftestDeviceId) {
+    const triggerId = queryParam(req, 'trigger').trim() || 'sunday_lineup';
+    await runSelftest(supabase, res, selftestDeviceId, triggerId, { apns: apnsReady, web: webReady });
+    return;
+  }
 
   /* A LIVE run with nowhere to send is a misconfiguration and must fail loudly.
      A DRY run must not: the first health check anyone performs is against a
@@ -418,6 +638,14 @@ async function handler(req, res) {
       /* Whether a real run could actually deliver anything right now. */
       transports: { apns: apnsReady, web: webReady },
       deliverable: apnsReady || webReady,
+
+      /* HOW each transport is pointed, not just whether it is set. The APNs
+         environment and the app's bundle id are the two settings that reject
+         every push when they disagree with the installed binary, and neither
+         is visible from a boolean. No secret is included — see
+         apns.describe(). */
+      apnsConfig: apns.describe(),
+      webPushConfig: webpush.describe(),
 
       /* Cache-only in a dry run: `pulledThisRun` is always false here, by
          design. See the feed read above. */
