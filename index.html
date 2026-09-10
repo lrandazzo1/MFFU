@@ -18712,11 +18712,44 @@ function gameStatus(g){
 }
 
 /* The number each side is shown with: actual once the game is under way,
-   projected before kickoff. */
+   projected before kickoff. Retained for the Desk surfaces (league pulse,
+   Matchup of the Week ranking, quick scores) that intentionally rank a
+   not-yet-played week off its projections. The matchup board and the ticker
+   deliberately do NOT use it — see actualPoints()/projectedPoints() below. */
 function displayScore(score, projected, status){
   const value = status === 'pre' ? projected : score;
   if(value == null || String(value).trim() === '' || !Number.isFinite(Number(value))) return '—';
   return Number(value).toFixed(1);
+}
+
+/* ---- score display primitives ----
+   The matchup cards and the crawl read the ACTUAL score as the primary
+   value at every state. A week that has not kicked off shows 0.0, because
+   0.0 is the true score; substituting the projection there printed a number
+   that never happened and read as a real result. Projections stay available
+   as a separate, explicitly labelled secondary value. */
+
+/* Real points on the board. ESPN hands these over as numeric strings and a
+   not-yet-played side is a legitimate 0, so only a genuinely absent or
+   non-numeric value degrades to null. */
+function actualPoints(score){
+  if(score == null || String(score).trim() === '') return null;
+  const n = Number(score);
+  return Number.isFinite(n) ? n : null;
+}
+
+/* The projection for a side, or null when the feed has none. The data engine
+   already collapses an empty live estimate to '', and a projection of exactly
+   0 is the provider's "no number yet" sentinel rather than a forecast of a
+   shutout, so both report as absent. */
+function projectedPoints(projected){
+  if(projected == null || String(projected).trim() === '') return null;
+  const n = Number(projected);
+  return Number.isFinite(n) && n !== 0 ? n : null;
+}
+
+function formatPoints(value){
+  return value == null ? '\u2014' : Number(value).toFixed(1);
 }
 
 function effectiveWeek(){
@@ -19298,8 +19331,10 @@ function tickerItems(){
   const games = LeagueData.getWeekMatchups(week);
   games.forEach(g=>{
     const st = gameStatus(g);
-    const hs = displayScore(g.homeScore, g.homeProjected, st);
-    const as = displayScore(g.awayScore, g.awayProjected, st);
+    // Real points only. The crawl used to swap in the projection before
+    // kickoff, which put a number on screen that had never been scored.
+    const hs = formatPoints(actualPoints(g.homeScore));
+    const as = formatPoints(actualPoints(g.awayScore));
     const homeWins = parseFloat(g.homeScore) > parseFloat(g.awayScore);
     // Pre-game and mid-game slates are label-less on the crawl now — the only
     // moment the ticker calls out a state is when the ball is in the air (LIVE).
@@ -19343,17 +19378,50 @@ function tickerItems(){
     }
   }catch(err){ console.error('[Timeline] ticker extras', err); }
 
-  const scoredGames = games.filter(g=> gameStatus(g) !== 'pre');
-  const metricGames = scoredGames.length ? scoredGames : games;
-  const metricRows = metricGames.flatMap(g=>{
+  /* ---- weekly extremes ----
+     Four independent reads on the crawl: the projected ceiling and floor for
+     the week, and the real ceiling and floor of whatever has actually been
+     scored. The two pairs come from separate pools and neither falls back to
+     the other, so a slate in progress carries a projected high and a live low
+     at the same time instead of collapsing into a single blended HIGH whose
+     meaning changed with the day of the week. */
+  const tickerSides = games.flatMap(g=>{
     const st = gameStatus(g);
     return ['home','away'].map(side=>({
-      team:g[side + 'Team'], value:displayScore(g[side + 'Score'], g[side + 'Projected'], st),
-    })).filter(row=> row.value !== '—');
-  }).sort((a,b)=> Number(b.value) - Number(a.value));
-  const high = metricRows[0], low = metricRows[metricRows.length - 1];
-  if(high) items.push(`<span class="ticker-item"><span class="tk-tag" style="color:var(--gold)">${scoredGames.length ? 'HIGH' : 'PROJ HIGH'}</span><span class="tk-team">${esc(high.team.name)}</span><span class="tk-score tk-win">${esc(high.value)}</span></span>`);
-  if(low && scoredGames.length) items.push(`<span class="ticker-item"><span class="tk-tag">${scoredGames.every(g=> gameStatus(g) === 'final') ? 'FRAUD' : 'LIVE LOW'}</span><span class="tk-team">${esc(low.team.name)}</span><span class="tk-score">${esc(low.value)}</span></span>`);
+      team: g[side + 'Team'],
+      status: st,
+      actual: actualPoints(g[side + 'Score']),
+      projected: projectedPoints(g[side + 'Projected']),
+    }));
+  }).filter(row=> row.team);
+
+  /* High and low on one key, drawn only from sides that carry that key. A
+     pool of one has no meaningful low, so the low is dropped rather than
+     printing the same team as both ends of the week. */
+  const extremesOn = (rows, key)=>{
+    const pool = rows.filter(r=> r[key] != null).sort((a,b)=> b[key] - a[key]);
+    if(!pool.length) return null;
+    return { high: pool[0], low: pool.length > 1 ? pool[pool.length - 1] : null };
+  };
+  const projExtremes = extremesOn(tickerSides, 'projected');
+  /* A 0.0 from a game that has not kicked off is not the week's low score,
+     so only sides with a game under way feed the actual extremes. */
+  const actualExtremes = extremesOn(tickerSides.filter(r=> r.status !== 'pre'), 'actual');
+
+  const extremeItem = (label, tagColor, row, key, scoreClass)=>
+    `<span class="ticker-item">` +
+    `<span class="tk-tag" style="color:${tagColor}">${esc(label)}</span>` +
+    `<span class="tk-team">${esc(row.team.name)}</span>` +
+    `<span class="tk-score${scoreClass ? ' ' + scoreClass : ''}">${esc(formatPoints(row[key]))}</span></span>`;
+
+  if(projExtremes){
+    items.push(extremeItem('PROJ HIGH', 'var(--cyan)', projExtremes.high, 'projected', ''));
+    if(projExtremes.low) items.push(extremeItem('PROJ LOW', 'var(--cyan)', projExtremes.low, 'projected', ''));
+  }
+  if(actualExtremes){
+    items.push(extremeItem('ACTUAL HIGH', 'var(--gold)', actualExtremes.high, 'actual', 'tk-win'));
+    if(actualExtremes.low) items.push(extremeItem('ACTUAL LOW', 'var(--red)', actualExtremes.low, 'actual', ''));
+  }
   if(LeagueData.hasHistory()){
     items.push(`<span class="ticker-item"><span class="tk-tag" style="color:var(--cyan)">VAULT</span><span class="tk-team">${LeagueData.seasonCount()} seasons · ${LeagueData.matchupCount().toLocaleString()} matchups</span></span>`);
   }
@@ -19701,9 +19769,18 @@ function renderMatchups(){
 
 function matchupCard(g){
   const st = gameStatus(g);
-  const hs = parseFloat(displayScore(g.homeScore, g.homeProjected, st)) || 0;
-  const as = parseFloat(displayScore(g.awayScore, g.awayProjected, st)) || 0;
-  const homeLeads = hs >= as;
+  /* The real score is the primary value on the card at every state. A slate
+     that has not kicked off reads 0.0 — the projection is rendered under the
+     score as its own labelled line rather than standing in for it. */
+  const hs = actualPoints(g.homeScore) || 0;
+  const as = actualPoints(g.awayScore) || 0;
+  const homeProj = projectedPoints(g.homeProjected);
+  const awayProj = projectedPoints(g.awayProjected);
+  const scored = st !== 'pre';
+  /* Nobody leads a game that has not started, so a pre-kickoff card dims
+     neither side instead of implying a projected winner. */
+  const homeLeads = scored ? hs >= as : true;
+  const awayLeads = scored ? !homeLeads : true;
   const margin = Math.abs(hs - as);
 
   /* Only LIVE and FINAL earn a state pill. Pre-kickoff and mid-slate cards
@@ -19739,9 +19816,9 @@ function matchupCard(g){
         <div class="flex items-center gap-1.5">${statusPill}${playoff}</div>
         ${marginBadge}
       </div>
-      ${matchupSide(g.awayTeam, as, !homeLeads, st, g.awayProjected, effectiveWeek())}
+      ${matchupSide(g.awayTeam, as, awayLeads, st, awayProj, effectiveWeek())}
       <div class="h-px bg-[var(--line)] my-2.5"></div>
-      ${matchupSide(g.homeTeam, hs, homeLeads, st, g.homeProjected, effectiveWeek())}
+      ${matchupSide(g.homeTeam, hs, homeLeads, st, homeProj, effectiveWeek())}
       ${finalizeNotice}
     </div>
   </div>`;
@@ -19757,10 +19834,14 @@ function matchupSide(team, score, leading, status, projected, week){
       border-color:${won ? 'rgba(57,255,140,.4)' : 'rgba(255,45,85,.4)'};
       color:${won ? 'var(--green)' : 'var(--red)'};">${won ? 'W' : 'L'}${streak.length}</span>`;
   }
-  /* The PROJ sub-value under each team's score is retired along with the
-     PROJECTED pills — the finalize sub-text on the card is now the single
-     authoritative statement about non-final numbers. */
-  const projLine = '';
+  /* The projection rides under the real score as a small muted annotation.
+     It is strictly secondary: the score above it is what actually happened,
+     and a missing projection simply drops the line. */
+  const proj = projectedPoints(projected);
+  const projLine = proj == null
+    ? ''
+    : `<div class="font-mono tabular text-[10px] text-[var(--dim)] leading-none mt-1.5 whitespace-nowrap"
+         data-score-projected="${esc(formatPoints(proj))}">Projected: ${esc(formatPoints(proj))}</div>`;
 
   return `<div class="flex items-center gap-3">
     ${crest(team.name, team.logo, 40)}
@@ -19773,7 +19854,8 @@ function matchupSide(team, score, leading, status, projected, week){
       </div>
     </div>
     <div class="text-right flex-none">
-      <div class="font-mono tabular text-[23px] font-extrabold leading-none ${leading ? 'text-[var(--cyan)]' : 'text-[#5d6879]'}">${score.toFixed(1)}</div>
+      <div class="font-mono tabular text-[23px] font-extrabold leading-none ${leading ? 'text-[var(--cyan)]' : 'text-[#5d6879]'}"
+           data-score-actual="${score.toFixed(1)}">${score.toFixed(1)}</div>
       ${projLine}
     </div>
   </div>`;

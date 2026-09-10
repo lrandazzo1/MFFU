@@ -518,13 +518,74 @@ try {
       })),
       high:document.querySelector('#pulseHigh').textContent,
     }));
-    const high = values.items.find(item=> /^(PROJ HIGH|HIGH)$/.test(item.tag));
-    const expected = {projected:'127.8', live:'42.7', negative:'0.0', 'final-zero':'0.0'}[scenario];
-    if(scenario === 'missing' ? (high || values.high !== '—') : (!high || high.scores[0] !== expected || values.high !== expected)) {
-      fail('score hydration ' + scenario + ': ' + JSON.stringify(values));
+    /* The crawl carries four independent reads. Projections ride on their own
+       labelled lines and never stand in for a real score, so ACTUAL HIGH /
+       ACTUAL LOW appear only once a game is actually under way, and PROJ HIGH /
+       PROJ LOW appear only when the feed supplies projections at all. */
+    const tagged = (tag)=> values.items.find(entry=> entry.tag === tag);
+    const pair = (hi, lo)=> (hi && lo) ? [hi.scores[0], lo.scores[0]] : null;
+    const same = (a, b)=> JSON.stringify(a) === JSON.stringify(b);
+    const expected = {
+      projected:    { proj:['127.8','109.4'], actual:null,           pulse:'127.8' },
+      missing:      { proj:null,              actual:null,           pulse:'—' },
+      live:         { proj:['127.8','109.4'], actual:['42.7','0.0'], pulse:'42.7' },
+      negative:     { proj:['127.8','109.4'], actual:['0.0','-2.0'], pulse:'0.0' },
+      'final-zero': { proj:['127.8','109.4'], actual:['0.0','0.0'],  pulse:'0.0' },
+    }[scenario];
+    const seen = {
+      proj: pair(tagged('PROJ HIGH'), tagged('PROJ LOW')),
+      actual: pair(tagged('ACTUAL HIGH'), tagged('ACTUAL LOW')),
+      pulse: values.high,
+    };
+    if(!same(seen.proj, expected.proj) || !same(seen.actual, expected.actual) || seen.pulse !== expected.pulse) {
+      fail('score hydration ' + scenario + ': expected ' + JSON.stringify(expected) +
+        ', saw ' + JSON.stringify(seen) + ' — ' + JSON.stringify(values.items));
     } else pass('score hydration ' + scenario);
     if(/FAAB|WINNING BID|undefined|\[object Object\]/i.test(values.text)) fail('invalid ticker text: ' + values.text);
     if(['projected','missing'].includes(scenario) && values.items.some(item=>item.tag === 'FRAUD')) fail('pregame fraud verdict');
+  }
+
+  /* ---- 6.7 MATCHUP CARD SCORE / PROJECTION SPLIT ------------------------
+     The true score is the primary value on every card at every state, and the
+     projection is a labelled sub-line beneath it. A week that has not kicked
+     off must read 0.0 with "Projected: ..." underneath — never the projection
+     promoted into the score slot. */
+  for (const scenario of ['pregame', 'live']) {
+    const data = syntheticLeague();
+    data.schedule.forEach(game=>{
+      game.winner = 'UNDECIDED';
+      for (const side of ['home','away']) {
+        game[side].totalPoints = 0;
+        game[side].totalPointsLive = 0;
+        game[side].totalProjectedPoints = side === 'home' ? '127.8' : '109.4';
+      }
+      if(scenario === 'live') game.home.totalPoints = 42.7;
+    });
+    await page.evaluate(data=> window.LeagueData.setEspnData(data), data);
+    await page.click('#tabBar .tab-btn[data-tab="matchups"]');
+    await page.waitForTimeout(300);
+
+    const board = await page.evaluate(()=> Array.from(document.querySelectorAll('#matchupList .card')).map(card=>({
+      actual: Array.from(card.querySelectorAll('[data-score-actual]')).map(el=> el.dataset.scoreActual),
+      projected: Array.from(card.querySelectorAll('[data-score-projected]')).map(el=> el.dataset.scoreProjected),
+      text: card.textContent.replace(/\s+/g, ' ').trim(),
+    })));
+
+    if(!board.length){ fail('matchup board rendered no cards (' + scenario + ')'); continue; }
+
+    // Away side is rendered first, home second.
+    const wantActual = scenario === 'live' ? ['0.0','42.7'] : ['0.0','0.0'];
+    const wantProjected = ['109.4','127.8'];
+    const broken = board.find(card=>
+      JSON.stringify(card.actual) !== JSON.stringify(wantActual) ||
+      JSON.stringify(card.projected) !== JSON.stringify(wantProjected));
+    if(broken) fail('matchup card score/projection split wrong (' + scenario + '): ' + JSON.stringify(broken));
+    else pass('matchup cards (' + scenario + ') show true scores ' + JSON.stringify(wantActual) +
+      ' with projections ' + JSON.stringify(wantProjected) + ' beneath');
+
+    const mislabelled = board.find(card=> !/Projected: 109\.4/.test(card.text) || !/Projected: 127\.8/.test(card.text));
+    if(mislabelled) fail('projection sub-label copy missing (' + scenario + '): ' + mislabelled.text);
+    else pass('projection sub-labels read "Projected: ..." (' + scenario + ')');
   }
 
   /* ---- 7. Error budget --------------------------------------------------- */
