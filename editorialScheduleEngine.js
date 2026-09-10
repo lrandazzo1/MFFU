@@ -333,7 +333,7 @@
   }
 })();
 
-/* Matchup Preview Context Guard — additive, preview-game-* only. */
+/* Matchup Preview + no-FAAB runtime guard — additive and output-scoped. */
 (function(){
   'use strict';
   function esc(v){ return String(v == null ? '' : v).replace(/[&<>"']/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
@@ -388,7 +388,7 @@
     }catch(err){ console.error('[MatchupPreviewGuard] scoring context failed for Week '+week,err); }
     return 'There is not yet a complete prior-week scoring sample for both teams, so this preview stays anchored to verified records, series history, and the model rather than manufacturing a production edge.';
   }
-  function repair(article){
+  function repairPreview(article){
     if(!article||article.__dynamicMatchupBound||typeof article.id!=='string'||article.id.indexOf('preview-game-')!==0) return article;
     var pair=pairFor(article);
     if(!pair){ console.error('[MatchupPreviewGuard] could not resolve teams for '+article.id,new Error('MATCHUP_PREVIEW_TEAM_BINDING_FAILED')); return article; }
@@ -399,13 +399,58 @@
     copy.paragraphs=['Week <b>'+week+'</b> is its own case file: <b>'+esc(A.name)+'</b> enters at <b>'+esc(recA)+'</b> and <b>'+esc(B.name)+'</b> enters at <b>'+esc(recB)+'</b>. The model gives <b>'+esc(fav.name)+'</b> a <b>'+edge+'%</b> edge over <b>'+esc(dog.name)+'</b>; that probability was calculated for these two teams, not copied from another game.',seriesLine(A,B,series),scoringLine(A,B,week),closers[hash(week+':'+A.id+':'+B.id)%closers.length]];
     return copy;
   }
-  function repairList(list){ return Array.isArray(list)?list.map(repair):list; }
+  function financialOnly(article){
+    if(!article) return false;
+    return /faab/i.test([article.id,article.kind,article.tag,article.metaTag,article.headline,article.articleType].filter(Boolean).join(' '));
+  }
+  function scrubString(value){
+    return String(value).replace(/\bFAAB\b/gi,'waiver priority').replace(/\bwaiver budget\b/gi,'waiver order').replace(/\bbidding money\b/gi,'waiver position');
+  }
+  function scrubValue(value){
+    if(typeof value==='string') return scrubString(value);
+    if(Array.isArray(value)) return value.map(scrubValue);
+    if(value&&typeof value==='object'){
+      var out={}; Object.keys(value).forEach(function(k){ out[k]=scrubValue(value[k]); }); return out;
+    }
+    return value;
+  }
+  function cleanArticle(article){
+    if(financialOnly(article)) return null;
+    return scrubValue(repairPreview(article));
+  }
+  function cleanList(list){ return Array.isArray(list)?list.map(cleanArticle).filter(Boolean):list; }
+  function scrubAnalytics(){
+    try{
+      document.querySelectorAll('.analytics-model').forEach(function(card){
+        var text=card.textContent||'';
+        if(/Waiver Wire Gem Finder ROI|FAAB|PTS\s*\/\s*\$1/i.test(text)) card.remove();
+      });
+    }catch(err){ console.error('[NoFaabGuard] analytics scrub failed',err); }
+  }
   function patch(){
     if(!window.NewsDesk||window.NewsDesk.__dynamicMatchupGuard) return false;
-    ['getTimelineStream','getNewsFeedForWeek','generate'].forEach(function(name){ var original=window.NewsDesk[name]; if(typeof original==='function') window.NewsDesk[name]=function(){ return repairList(original.apply(this,arguments)); }; });
+    if(window.FSNIntel&&typeof window.FSNIntel.faabReport==='function'){
+      window.FSNIntel.faabReport=function(){ return null; };
+    }
+    ['getTimelineStream','getNewsFeedForWeek','generate'].forEach(function(name){
+      var original=window.NewsDesk[name];
+      if(typeof original==='function') window.NewsDesk[name]=function(){ return cleanList(original.apply(this,arguments)); };
+    });
+    if(typeof window.NewsDesk.tickerHeadlines==='function'){
+      var originalTicker=window.NewsDesk.tickerHeadlines;
+      window.NewsDesk.tickerHeadlines=function(){
+        var result=originalTicker.apply(this,arguments);
+        if(Array.isArray(result)) return result.filter(function(item){return !/FAAB|\$\d+[^<]{0,40}(?:CLAIM|WAIVER)/i.test(String(item));}).map(scrubString);
+        return scrubString(result);
+      };
+    }
     try{ Object.defineProperty(window.NewsDesk,'__dynamicMatchupGuard',{value:true,enumerable:false}); }catch(_){ window.NewsDesk.__dynamicMatchupGuard=true; }
+    scrubAnalytics();
+    if(typeof MutationObserver==='function'){
+      new MutationObserver(scrubAnalytics).observe(document.documentElement,{childList:true,subtree:true});
+    }
     return true;
   }
-  function boot(n){ if(patch()) return; if(n>=120){ console.error('[MatchupPreviewGuard] NewsDesk did not become available; matchup previews were not rebound.',new Error('MATCHUP_PREVIEW_GUARD_UNAVAILABLE')); return; } setTimeout(function(){boot(n+1);},25); }
+  function boot(n){ if(patch()) return; if(n>=120){ console.error('[MatchupPreviewGuard] NewsDesk did not become available; matchup/no-FAAB guards were not installed.',new Error('MATCHUP_PREVIEW_GUARD_UNAVAILABLE')); return; } setTimeout(function(){boot(n+1);},25); }
   if(typeof window!=='undefined') setTimeout(function(){boot(0);},0);
 })();
