@@ -20207,12 +20207,13 @@ function renderHome(){
     const primaryNumber = lowIsProjectionCall && low.projected != null
       ? low.projected.toFixed(1)
       : low.score.toFixed(1);
+    /* In projected-low mode the top-right state pill already reads
+       "PROJECTED", so the kicker under the number drops to the live
+       accumulation ("X.X actual") rather than repeating the word — one
+       PROJECTED label per card, not two. */
     const primaryLabel = lowIsProjectionCall && low.projected != null
-      ? 'projected'
+      ? `${low.score.toFixed(1)} actual`
       : 'points';
-    const secondaryLine = lowIsProjectionCall && low.projected != null
-      ? `<div class="text-[10.5px] text-[var(--dim)] mt-0.5 font-mono tabular">${low.score.toFixed(1)} actual</div>`
-      : '';
     const projectedLine = low.projected != null && !lowIsProjectionCall
       ? `<span class="pill pill-final">${low.projected.toFixed(1)} PROJECTED</span>` : '';
     const closing = lowIsProjectionCall
@@ -20236,7 +20237,6 @@ function renderHome(){
           <div class="text-right">
             <div class="font-mono tabular text-[27px] font-extrabold text-[var(--red)] leading-none">${primaryNumber}</div>
             <div class="kicker text-[var(--dim)] mt-1">${primaryLabel}</div>
-            ${secondaryLine}
           </div>
         </div>
         <div class="mt-3 flex flex-wrap gap-1.5">
