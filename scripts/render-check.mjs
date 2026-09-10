@@ -493,6 +493,40 @@ try {
     else pass('CTA landed the reader on Setup to connect their league');
   }
 
+  /* Score bindings must update on hydration, without tab switching. */
+  await page.click('#tabBar .tab-btn[data-tab="home"]');
+  for (const scenario of ['projected', 'missing', 'live', 'negative', 'final-zero']) {
+    const data = syntheticLeague();
+    data.schedule.forEach(game=>{
+      game.winner = 'UNDECIDED';
+      for (const side of ['home','away']) {
+        game[side].totalPoints = 0;
+        game[side].totalPointsLive = 0;
+        game[side].totalProjectedPoints = scenario === 'missing' ? null : (side === 'home' ? '127.8' : '109.4');
+      }
+      if(scenario === 'live') game.home.totalPoints = 42.7;
+      if(scenario === 'negative') game.home.totalPoints = -2;
+      if(scenario === 'final-zero') game.winner = 'TIE';
+    });
+    await page.evaluate(data=> window.LeagueData.setEspnData(data), data);
+    await page.waitForTimeout(250);
+    const values = await page.evaluate(()=>({
+      text:document.querySelector('#tickerTrack').textContent,
+      items:Array.from(document.querySelectorAll('#tickerTrack .ticker-item')).map(el=>({
+        tag:el.querySelector('.tk-tag')?.textContent || '',
+        scores:Array.from(el.querySelectorAll('.tk-score')).map(score=>score.textContent),
+      })),
+      high:document.querySelector('#pulseHigh').textContent,
+    }));
+    const high = values.items.find(item=> /^(PROJ HIGH|HIGH)$/.test(item.tag));
+    const expected = {projected:'127.8', live:'42.7', negative:'0.0', 'final-zero':'0.0'}[scenario];
+    if(scenario === 'missing' ? (high || values.high !== '—') : (!high || high.scores[0] !== expected || values.high !== expected)) {
+      fail('score hydration ' + scenario + ': ' + JSON.stringify(values));
+    } else pass('score hydration ' + scenario);
+    if(/FAAB|WINNING BID|undefined|\[object Object\]/i.test(values.text)) fail('invalid ticker text: ' + values.text);
+    if(['projected','missing'].includes(scenario) && values.items.some(item=>item.tag === 'FRAUD')) fail('pregame fraud verdict');
+  }
+
   /* ---- 7. Error budget --------------------------------------------------- */
   if (pageErrors.length) {
     fail(pageErrors.length + ' uncaught page error(s):');

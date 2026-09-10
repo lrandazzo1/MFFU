@@ -4830,10 +4830,17 @@ window.LeagueData = (function(){
       return source.map(game=>{
         const home = game.home || {};
         const away = game.away || {};
-        const homeProjected = typeof home.totalPointsLive === 'number' ? home.totalPointsLive.toFixed(1)
-                             : (typeof home.totalProjectedPoints === 'number' ? home.totalProjectedPoints.toFixed(1) : '');
-        const awayProjected = typeof away.totalPointsLive === 'number' ? away.totalPointsLive.toFixed(1)
-                             : (typeof away.totalProjectedPoints === 'number' ? away.totalProjectedPoints.toFixed(1) : '');
+        // Accept provider numeric strings; an empty live estimate must not hide
+        // an available pregame projection. Actual scores remain totalPoints.
+        const projection = side=>{
+          const values = [side.totalPointsLive, side.totalProjectedPoints]
+            .filter(v=> v != null && String(v).trim() !== '')
+            .map(Number).filter(Number.isFinite);
+          const value = values.find(v=> v !== 0);
+          return value == null ? '' : value.toFixed(1);
+        };
+        const homeProjected = projection(home);
+        const awayProjected = projection(away);
         return {
           matchupPeriodId: game.matchupPeriodId,
           /* The untouched ESPN game object — the News Desk reads lineups
@@ -4942,7 +4949,7 @@ function buildEspnUrlForYear(league, year, week){
 
   // mMatchupScore + mScoreboard are what actually carry live/final point totals per
   // side of a game — mMatchup alone often returns the schedule shell with 0s.
-  // mTransactions2 feeds the waiver-wire desk (FAAB bids, adds, drops) and
+  // mTransactions2 feeds the waiver-wire desk (adds and drops) and
   // mDraftDetail feeds draft season coverage (picks, rounds, keeper flags).
   const views = isHistorical ? HISTORICAL_VIEWS : ESPN_VIEWS;
 
@@ -7754,7 +7761,7 @@ return { fetchLive, fetchHistory, buildSeason, loadPlayerIndex, looksLikeSleeper
    The parsing layer that sits between the raw ESPN payload and the editorial
    engine. Everything the Timeline and analytics views need that isn't just a
    box score lives here: the player index (names, positions, ADP, injuries),
-   the transaction log (FAAB bids, adds, drops), the draft board, week-by-week
+   the transaction log (adds and drops), the draft board, week-by-week
    standings rebuilt from the schedule, and power ratings.
 
    Each read is memoised against the store's publish counter, so a screen can
@@ -7917,7 +7924,6 @@ function transactions(){
         status: t.status || '',
         executed: String(t.status || '').toUpperCase() === 'EXECUTED',
         teamId: t.teamId,
-        bid: typeof t.bidAmount === 'number' ? t.bidAmount : 0,
         week: t.scoringPeriodId || 0,
         at: t.proposedDate || t.processDate || 0,
         adds, drops, moved,
@@ -7928,51 +7934,6 @@ function transactions(){
 
 function teamOf(teamId){
   return LeagueData.getTeams().find(t=> String(t.id) === String(teamId)) || null;
-}
-
-/* Waiver-wire report for a given week: who spent, who got sniped, and the
-   dollar claims that will be quoted back at people in December. */
-function faabReport(week){
-  return memo('faab:' + week, ()=>{
-    const all = transactions();
-    if(!all.length) return null;
-
-    const claims = all.filter(t=>
-      (t.type === 'WAIVER' || t.type === 'WAIVER_ERROR' || t.type === 'FREEAGENT') && t.adds.length);
-    const inWeek = claims.filter(t=> !week || t.week === week || t.week === week - 1);
-    const pool = inWeek.length ? inWeek : claims.slice(-40);
-
-    const won  = pool.filter(t=> t.executed && t.bid > 0);
-    const lost = pool.filter(t=> !t.executed);
-
-    won.sort((a,b)=> b.bid - a.bid);
-    const topSpend = won[0] || null;
-
-    // The $1 heartbreak: a claim that lost, on a player somebody else landed,
-    // where the gap was pocket change.
-    let heartbreak = null;
-    lost.forEach(l=>{
-      const target = l.adds[0];
-      if(!target) return;
-      const winner = won.find(w=> w.adds.some(a=> a.playerId === target.playerId));
-      if(!winner) return;
-      const gap = winner.bid - l.bid;
-      if(gap < 0) return;
-      if(!heartbreak || gap < heartbreak.gap) heartbreak = { loser:l, winner, gap, target };
-    });
-
-    // Fallback flavour: the cheapest winning claim of the week.
-    const bargain = won.length ? won.reduce((lo,w)=> (w.bid < lo.bid ? w : lo), won[0]) : null;
-
-    const totalSpent = won.reduce((s,w)=> s + w.bid, 0);
-    const freeAdds = pool.filter(t=> t.executed && !t.bid).length;
-
-    if(!won.length && !lost.length && !freeAdds) return null;
-    return {
-      week, won, lost, topSpend, heartbreak, bargain, totalSpent, freeAdds,
-      claimCount: won.length + lost.length,
-    };
-  });
 }
 
 /* A drop nobody makes calmly: the earliest-drafted player to hit the wire. */
@@ -9379,7 +9340,7 @@ function seasonPhase(week){
 
 return {
   players, player, playerName,
-  transactions, faabReport, rageDrops,
+  transactions, rageDrops,
   draft, draftGrades, gradeFor,
   standingsThrough, getRecordAsOfWeek, getStreakAsOfWeek, powerRankings, fsnPowerIndex, winProbability,
   injuries, stashCandidates,
@@ -10748,9 +10709,9 @@ const PHASE_OUTROS = {
     'Week 1 can be a fluke. Week 2 can be noise. By Week 3, managers at least have enough data to start arguing responsibly.'
   ],
   mid: [
-    'Now the season turns into a depth test: FAAB discipline, bye-week planning and the second starting lineup matter as much as draft night.',
+    'Now the season turns into a depth test: waiver discipline, bye-week planning and the second starting lineup matter as much as draft night.',
     'Weeks 4–9 expose who built depth and who spent September borrowing points from perfect health.',
-    'The waiver budget and the bye-week map are becoming part of the standings, whether managers admit it or not.',
+    'The waiver order and the bye-week map are becoming part of the standings, whether managers admit it or not.',
     'At midseason, the contender tier is less about one spike week and more about who can survive missing starters.'
   ],
   stretch: [
@@ -13072,7 +13033,7 @@ function genFraudAlert(ctx){
     );
   } else {
     paragraphs.push(
-      `${esc(mgr)} now spends a week explaining ${pick(['the process','the injury report','the waiver budget','the bye weeks'], seed + 'x')} to a group chat that has stopped listening. ` +
+      `${esc(mgr)} now spends a week explaining ${pick(['the process','the injury report','the waiver order','the bye weeks'], seed + 'x')} to a group chat that has stopped listening. ` +
       `The seat is not warm. The seat is on fire.`
     );
   }
@@ -14189,7 +14150,7 @@ function buildCustomNumbers(week, team){
    The News Desk stops being a static tab here and becomes a wire that moves
    with the calendar. Every story is stamped with the moment it would have
    broken — Sunday night for the bench disasters, Wednesday morning for the
-   FAAB fallout, Thursday afternoon for the primer — and the stream is sorted
+   Waiver fallout, Thursday afternoon for the primer — and the stream is sorted
    by that stamp, newest first. Come back on Wednesday and the waiver desk is
    on top; come back Sunday night and it's buried under the carnage.
 
@@ -15015,68 +14976,6 @@ function tlRecap(ctx){
 ============================================================ */
 function tlWaivers(ctx){
   const out = [];
-  const report = FSNIntel.faabReport(ctx.week);
-
-  if(report && (report.topSpend || report.heartbreak)){
-    const spend = report.topSpend;
-    const hb = report.heartbreak;
-    const team = spend ? FSNIntel.teamOf(spend.teamId) : null;
-    const target = spend && spend.adds[0];
-    const seed = 'faab' + ctx.week + (spend ? spend.id : 'x');
-
-    const rows = [];
-    if(spend && team) rows.push({ label: `${esc(team.name)} → ${esc((target && target.name) || 'the top claim')}`, value: '$' + spend.bid, note:'Highest winning bid of the run.' });
-    if(hb){
-      const lteam = FSNIntel.teamOf(hb.loser.teamId);
-      const wteam = FSNIntel.teamOf(hb.winner.teamId);
-      rows.push({ label: `${esc(lteam ? lteam.name : 'A rival')} missed by`, value: '$' + hb.gap, note: `${esc(hb.target.name || 'The player')} went to ${esc(wteam ? wteam.name : 'the other guy')} at $${hb.winner.bid}.` });
-    }
-    if(report.bargain){
-      const bteam = FSNIntel.teamOf(report.bargain.teamId);
-      const bp = report.bargain.adds[0];
-      rows.push({ label:'Cheapest winning claim', value: '$' + report.bargain.bid, note: `${esc(bteam ? bteam.name : 'Someone')} on ${esc((bp && bp.name) || 'a free square')}.` });
-    }
-    rows.push({ label:'Total FAAB burned', value:'$' + report.totalSpent, note: report.claimCount + ' claims processed.' });
-
-    out.push(tl({
-      id: 'tl-faab-' + ctx.week,
-      kind:'faab', topic:'waivers', slot:'waivers', offset: (hash(seed) % 70),
-      metaTag:'WAIVERS',
-      tag:'FAAB WAR', tone:'green', priority: 78,
-      byline:'FSN Front Office Correspondent',
-      crest: team ? { name: team.name, logo: team.logo } : null,
-      headline: spend && team
-        ? `${upper(team.name)} SPENDS $${spend.bid} ON ${upper((target && target.name) || 'THE WIRE')} AND THE LEAGUE HAS QUESTIONS`
-        : `WAIVER RUN FALLOUT: ${report.claimCount} CLAIMS, ${report.lost.length} BROKEN HEARTS`,
-      dek: hb
-        ? `And ${esc((FSNIntel.teamOf(hb.loser.teamId) || {}).name || 'someone')} lost ${esc(hb.target.name || 'the player')} by $${hb.gap}.`
-        : `$${report.totalSpent} changed hands in the Week ${ctx.week} run.`,
-      paragraphs: [
-        spend && team
-          ? `${datelineTag()} <b>${esc(team.name)}</b> put <b>$${spend.bid}</b> of free-agent budget on ` +
-            `<b>${esc((target && target.name) || 'the top name on the wire')}</b>${target && target.meta && target.meta.pos ? ` (${esc(target.meta.pos)}${target.meta.proTeam ? ', ' + esc(target.meta.proTeam) : ''})` : ''} ` +
-            `and dared the rest of the league to say something.`
-          : `${datelineTag()} The Week ${ctx.week} waiver run processed <b>${report.claimCount}</b> claims and left ` +
-            `<b>${report.lost.length}</b> managers refreshing a page that was never going to change.`,
-
-        hb
-          ? `The cruelty was in the gap. <b>${esc((FSNIntel.teamOf(hb.loser.teamId) || {}).name || 'A rival')}</b> bid <b>$${hb.loser.bid}</b>. ` +
-            `The winning claim was <b>$${hb.winner.bid}</b>. <b>$${hb.gap}</b> — ${pick(['a coffee','a rounding error','the price of not thinking about it for one more second'], seed)} — ` +
-            `was the difference between a starter and an open roster spot.`
-          : `Nobody got sniped by a dollar this week, which in this league counts as a quiet run.`,
-
-        `Total burned in the run: <b>$${report.totalSpent}</b>${report.freeAdds ? `, plus ${report.freeAdds} free-agent adds that cost nothing but roster space` : ''}. ` +
-        `The budget is a season-long resource. Half this league treats it like it expires Thursday.`,
-      ],
-      quote: hb ? { text: pick([
-        'A dollar. One dollar. I want a recount.',
-        'I bid what he was worth. Somebody else bid what they were scared of.',
-        'That\'s my season. That\'s the whole season right there.',
-      ], seed + 'q'), who: upper((FSNIntel.teamOf(hb.loser.teamId) || {}).owner || 'The losing bidder') } : null,
-      numbers: { title:'The Waiver Run', rows, note:'Parsed from the league\'s Week ' + ctx.week + ' transaction log.' },
-    }));
-  }
-
   /* ---- THE RAGE DROP ---- */
   const rages = FSNIntel.rageDrops(ctx.week);
   if(rages.length){
@@ -15849,7 +15748,7 @@ function tlDraft(ctx){
         `to <b>${esc((steal.team && steal.team.name) || 'the room\'s most patient manager')}</b>.`,
         `<b>${n1(steal.delta)}</b> picks of free value. Nine other managers passed. Several of them will explain why for the rest of the season.`,
         pick(['That is the pick that wins a league quietly.',
-              'No trade, no FAAB, no cost. Just waiting.',
+              'No trade, no claim. Just waiting.',
               'It will look obvious in November. It always does.'], seed),
       ],
       numbers: { title:'Best Value Picks', rows: board.steals.slice(0, 5).map(p=>({
@@ -17481,7 +17380,7 @@ function shareBriefCategory(a){
   if((kind === 'sotl' && week <= 1) || /pre[ -]?season/i.test(preSeasonText)) return 'preseason';
   if(['power','sotl','playoff-picture','playoff-bracket'].includes(kind)) return 'standings';
   if(['bench','coaching','fraud','sacko','startsit'].includes(kind)) return 'audit';
-  if(['faab','rage'].includes(kind)) return 'transactions';
+  if(['rage'].includes(kind)) return 'transactions';
   if(kind === 'injury') return 'availability';
   if(['preview','rivalry','motw','draft'].includes(kind)) return 'preview';
   return 'results';
@@ -17630,7 +17529,7 @@ function computePlayerPointIndex(schedule, throughWeek){
 
 function waiverGems(schedule, throughWeek){
   let transactions = [];
-  try{ transactions = FSNIntel.transactions() || []; }catch(e){ transactions = []; }
+  try{ transactions = FSNIntel.transactions() || []; }catch(err){ console.error('[SeasonAnalytics] waiver transactions failed', err); }
   if(!transactions.length) return [];
   const pointIndex = computePlayerPointIndex(schedule, throughWeek);
   const gems = [];
@@ -17648,23 +17547,18 @@ function waiverGems(schedule, throughWeek){
       const fromWeek = transactionWeek;
       const points = rows.reduce((sum,row)=> sum + (row.week >= fromWeek && row.week <= throughWeek ? number(row.points) : 0), 0);
       if(points <= 0) return;
-      const bid = Math.max(0, number(tx.bid));
-      const costFloor = Math.max(1, bid);
       gems.push({
         id:String(tx.id) + ':' + String(add.playerId),
         player:add.name || meta.name || ('Player ' + add.playerId),
         pos,
         team:FSNIntel.teamOf(tx.teamId),
         week:fromWeek,
-        bid,
-        free:bid === 0,
         points,
-        roi:points / costFloor,
       });
     });
   });
 
-  gems.sort((a,b)=> (b.roi - a.roi) || (b.points - a.points) || a.player.localeCompare(b.player));
+  gems.sort((a,b)=> (b.points - a.points) || a.player.localeCompare(b.player));
   return gems.slice(0, 12);
 }
 
@@ -18810,7 +18704,7 @@ function emptyState(title, sub, gotoTab){
    of UNDECIDED and at least one side has points on the board. */
 function gameStatus(g){
   const hs = parseFloat(g.homeScore), as = parseFloat(g.awayScore);
-  const played = hs > 0 || as > 0;
+  const played = (Number.isFinite(hs) && hs !== 0) || (Number.isFinite(as) && as !== 0);
   const decided = g.winner && g.winner !== 'UNDECIDED';
   if(decided) return 'final';
   if(played) return 'live';
@@ -18820,8 +18714,9 @@ function gameStatus(g){
 /* The number each side is shown with: actual once the game is under way,
    projected before kickoff. */
 function displayScore(score, projected, status){
-  if(status === 'pre' && projected) return projected;
-  return score;
+  const value = status === 'pre' ? projected : score;
+  if(value == null || String(value).trim() === '' || !Number.isFinite(Number(value))) return '—';
+  return Number(value).toFixed(1);
 }
 
 function effectiveWeek(){
@@ -19401,11 +19296,8 @@ function tickerItems(){
 
   const week = effectiveWeek();
   const games = LeagueData.getWeekMatchups(week);
-  const totalScored = games.reduce((sum, g)=>
-    sum + (parseFloat(g.homeScore) || 0) + (parseFloat(g.awayScore) || 0), 0);
-
   games.forEach(g=>{
-    const st = totalScored === 0 ? 'pre' : gameStatus(g);
+    const st = gameStatus(g);
     const hs = displayScore(g.homeScore, g.homeProjected, st);
     const as = displayScore(g.awayScore, g.awayProjected, st);
     const homeWins = parseFloat(g.homeScore) > parseFloat(g.awayScore);
@@ -19441,17 +19333,8 @@ function tickerItems(){
     });
   }catch(err){ console.error('[Timeline] ticker', err); }
 
-  /* Waiver movement rides the crawl too — a $47 claim is a score in its
-     own right. */
+  /* Current ranking movement also rides the crawl. */
   try{
-    const faab = FSNIntel.faabReport(week);
-    if(faab && faab.topSpend){
-      const t = FSNIntel.teamOf(faab.topSpend.teamId);
-      const p = faab.topSpend.adds[0];
-      items.push(`<span class="ticker-item"><span class="tk-tag" style="color:var(--green)">FAAB</span>` +
-        `<span class="tk-team">${esc((t && t.abbrev) || 'TM')} · ${esc((p && p.name) || 'CLAIM')}</span>` +
-        `<span class="tk-score tk-win">$${faab.topSpend.bid}</span></span>`);
-    }
     const power = FSNIntel.powerRankings(week);
     const mover = power.filter(r=> r.delta > 0).sort((a,b)=> b.delta - a.delta)[0];
     if(mover){
@@ -19460,9 +19343,17 @@ function tickerItems(){
     }
   }catch(err){ console.error('[Timeline] ticker extras', err); }
 
-  const ext = LeagueData.getWeekExtremes(week);
-  if(ext.high) items.push(`<span class="ticker-item"><span class="tk-tag" style="color:var(--gold)">HIGH</span><span class="tk-team">${esc(ext.high.team.name)}</span><span class="tk-score tk-win">${ext.high.score.toFixed(1)}</span></span>`);
-  if(ext.low)  items.push(`<span class="ticker-item"><span class="tk-tag">FRAUD</span><span class="tk-team">${esc(ext.low.team.name)}</span><span class="tk-score">${ext.low.score.toFixed(1)}</span></span>`);
+  const scoredGames = games.filter(g=> gameStatus(g) !== 'pre');
+  const metricGames = scoredGames.length ? scoredGames : games;
+  const metricRows = metricGames.flatMap(g=>{
+    const st = gameStatus(g);
+    return ['home','away'].map(side=>({
+      team:g[side + 'Team'], value:displayScore(g[side + 'Score'], g[side + 'Projected'], st),
+    })).filter(row=> row.value !== '—');
+  }).sort((a,b)=> Number(b.value) - Number(a.value));
+  const high = metricRows[0], low = metricRows[metricRows.length - 1];
+  if(high) items.push(`<span class="ticker-item"><span class="tk-tag" style="color:var(--gold)">${scoredGames.length ? 'HIGH' : 'PROJ HIGH'}</span><span class="tk-team">${esc(high.team.name)}</span><span class="tk-score tk-win">${esc(high.value)}</span></span>`);
+  if(low && scoredGames.length) items.push(`<span class="ticker-item"><span class="tk-tag">${scoredGames.every(g=> gameStatus(g) === 'final') ? 'FRAUD' : 'LIVE LOW'}</span><span class="tk-team">${esc(low.team.name)}</span><span class="tk-score">${esc(low.value)}</span></span>`);
   if(LeagueData.hasHistory()){
     items.push(`<span class="ticker-item"><span class="tk-tag" style="color:var(--cyan)">VAULT</span><span class="tk-team">${LeagueData.seasonCount()} seasons · ${LeagueData.matchupCount().toLocaleString()} matchups</span></span>`);
   }
@@ -19550,19 +19441,17 @@ function renderHome(){
   /* ---- league pulse ----
      Keep actual scoring separate from projected display values so a fully
      unplayed week stays recognizably pre-game instead of looking final at 0.0. */
-  const scores = [];
   const displayScores = [];
   games.forEach(g=>{
     const st = gameStatus(g);
-    scores.push(parseFloat(g.homeScore) || 0);
-    scores.push(parseFloat(g.awayScore) || 0);
-    displayScores.push(parseFloat(displayScore(g.homeScore, g.homeProjected, st)) || 0);
-    displayScores.push(parseFloat(displayScore(g.awayScore, g.awayProjected, st)) || 0);
+    [displayScore(g.homeScore, g.homeProjected, st), displayScore(g.awayScore, g.awayProjected, st)].forEach(value=>{
+      if(value !== '—') displayScores.push(Number(value));
+    });
   });
-  const totalScored = scores.reduce((a,b)=> a + b, 0);
+  const hasScoring = games.some(g=> gameStatus(g) !== 'pre');
   const avg = displayScores.length ? displayScores.reduce((a,b)=>a+b,0) / displayScores.length : 0;
   $('pulseGames').textContent = games.length;
-  $('pulseAvg').textContent = avg ? avg.toFixed(1) : '—';
+  $('pulseAvg').textContent = displayScores.length ? avg.toFixed(1) : '—';
   $('pulseHigh').textContent = displayScores.length ? Math.max(...displayScores).toFixed(1) : '—';
 
   /* ---- MATCHUP OF THE WEEK ----
@@ -19610,7 +19499,7 @@ function renderHome(){
     $('motwCard').classList.toggle('active-team-matchup', gameHasActiveTeam(g));
     const margin = Math.abs(hs - as);
     const homeLeads = hs >= as;
-    const pregameWeek = totalScored === 0;
+    const pregameWeek = !hasScoring;
     /* Only LIVE and FINAL earn a pill on the marquee card now — the app has
        never actually tracked live-game scoring, and printing PROJECTED on a
        Tuesday scoreboard sold a service that does not exist. Pre-game and any
@@ -19677,7 +19566,7 @@ function renderHome(){
 
   /* ---- FRAUD ALERT / HOT SEAT ---- */
   const low = LeagueData.getWeekExtremes(week).low;
-  if(totalScored === 0){
+  if(!hasScoring){
     $('hotSeatCard').innerHTML = `
       <div class="pl-5 pr-4 py-4">
         <div class="flex items-center justify-between mb-3.5">
@@ -20407,9 +20296,9 @@ function renderAnalytics(){
     <div class="analytics-gem">
       <div class="min-w-0">
         <div class="analytics-gem-name truncate">${index+1}. ${esc(gem.player)} · ${esc(gem.pos)}</div>
-        <div class="analytics-gem-meta truncate">${esc(gem.team ? gem.team.name : 'Unknown team')} · Week ${gem.week || '—'} · ${gem.free ? 'Free add' : '$'+analyticsValue(gem.bid,0)+' FAAB'}</div>
+        <div class="analytics-gem-meta truncate">${esc(gem.team ? gem.team.name : 'Unknown team')} · Week ${gem.week || '—'}</div>
       </div>
-      <div class="analytics-gem-roi">${analyticsValue(gem.roi)}×<span>${analyticsValue(gem.points)} PTS / $1</span></div>
+      <div class="analytics-gem-roi">${analyticsValue(gem.points)}<span>POINTS AFTER ADD</span></div>
     </div>`).join('')}</div>`
     : '<div class="analytics-empty">No executed QB/RB/WR/TE waiver addition has posted measurable points in the loaded feed yet. K and D/ST are excluded by design.</div>';
 
@@ -20419,7 +20308,7 @@ function renderAnalytics(){
     ${analyticsModel('03','Scoring Consistency CV','Population standard deviation divided by average scoring. Lower CV means a steadier weekly floor.','var(--green)',consistencyTable,false,'Measures week-to-week volatility. Lower % = steady, reliable floor; higher % = boom-or-bust.')}
     ${analyticsModel('04','Schedule Hardship','Opponent points per game compared with the league’s opponent-scoring baseline. Positive means a tougher draw.','#a78bfa',hardshipTable,false,'How tough your opponents have been. Positive = you’ve faced hotter teams than average; negative = an easier road.')}
     ${analyticsModel('05','Heartbreak / Blowout Index','Blowout credit begins beyond 24 points; heartbreak pressure applies to losses of 12 or fewer. The signed index measures the excess margin.','var(--red)',marginTable,true,'Rewards dominant wins and punishes gut-punch close losses. Positive = you win big; negative = you keep losing nail-biters.')}
-    ${analyticsModel('06','Waiver Wire Gem Finder ROI','Points scored after an executed add divided by FAAB cost (free adds use a $1 floor). Skill positions only; K and D/ST excluded.','var(--cyan)',gemBody,true,'Which pickups paid off most per dollar of FAAB spent. Higher = a bigger bargain off the wire.')}
+    ${analyticsModel('06','Waiver Wire Gems','Points scored after an executed add. Skill positions only; K and D/ST excluded.','var(--cyan)',gemBody,true,'Which pickups produced the most points after joining their team.')}
   </div>`;
 }
 
@@ -26018,7 +25907,7 @@ function shareCopyTagBucket(label){
   if(/WEEK HIGH|TOP SCORE|MASTERCLASS/.test(tag))          return 'statement';
   if(/POWER INDEX|POWER RANK/.test(tag))                   return 'power';
   if(/PLAYOFF|BRACKET|SEEDING/.test(tag))                  return 'playoff';
-  if(/WAIVER|FAAB|RAGE DROP|TRADE/.test(tag))              return 'waiver';
+  if(/WAIVER|RAGE DROP|TRADE/.test(tag))              return 'waiver';
   if(/DRAFT|ROUND 1|REACH|STEAL/.test(tag))                return 'draft';
   if(/RECORD BOOK|MILESTONE|RIVALRY/.test(tag))            return 'record';
   if(/BREAKING|UPSET ALERT|INJURY/.test(tag))              return 'breaking';
@@ -26053,7 +25942,7 @@ function shareCopyBucket(a){
   const KIND_BUCKETS = {
     sotl:'sotl', motw:'matchup', fraud:'fraud', sacko:'fraud',
     bench:'bench', startsit:'bench', heartbreak:'nailbiter', shootout:'nailbiter',
-    roast:'blowout', power:'power', faab:'waiver', rage:'waiver',
+    roast:'blowout', power:'power', rage:'waiver',
     draft:'draft', injury:'breaking', recap:'result', debrief:'result',
   };
   if(KIND_BUCKETS[kind]) return KIND_BUCKETS[kind];
