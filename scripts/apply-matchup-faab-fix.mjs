@@ -227,10 +227,23 @@ index = replaceOnce(index,
   'waiver timeline financial block');
 
 // Ticker: show the most recent completed claim, never a dollar amount.
-index = replaceOnce(index,
-  /\/\* Waiver movement rides the crawl too[\s\S]*?\}\s*catch\(err\)\{ console\.error\('\[Timeline\] ticker', err\); \}/,
-  `/* Completed waiver movement rides the crawl too. */\n  try{\n    const waiver = FSNIntel.waiverReport(week);\n    if(waiver && waiver.featured){\n      const t = FSNIntel.teamOf(waiver.featured.teamId);\n      const p = waiver.featured.adds && waiver.featured.adds[0];\n      items.push(\`<span class=\"ticker-item\"><span class=\"tk-tag\" style=\"color:var(--green)\">WAIVER</span>\` +\n        \`<span class=\"tk-team\">\${esc((t && t.abbrev) || 'TM')} · \${esc((p && p.name) || 'CLAIM')}</span>\` +\n        \`<span class=\"tk-score tk-win\">ADDED</span></span>\`);\n    }\n  }catch(err){ console.error('[Timeline] ticker', err); }`,
-  'waiver ticker block');
+const tickerStart = index.indexOf('  /* Waiver movement rides the crawl too');
+const tickerPower = index.indexOf('    const power = FSNIntel.powerRankings(week);', tickerStart);
+if(tickerStart < 0 || tickerPower < 0) throw new Error('PATCH_MISS: waiver ticker block');
+const tickerReplacement = `  /* Completed waiver movement rides the crawl too. */
+  try{
+    const waiver = FSNIntel.waiverReport(week);
+    if(waiver && waiver.featured){
+      const t = FSNIntel.teamOf(waiver.featured.teamId);
+      const p = waiver.featured.adds && waiver.featured.adds[0];
+      items.push(\`<span class="ticker-item"><span class="tk-tag" style="color:var(--green)">WAIVER</span>\` +
+        \`<span class="tk-team">\${esc((t && t.abbrev) || 'TM')} · \${esc((p && p.name) || 'CLAIM')}</span>\` +
+        \`<span class="tk-score tk-win">ADDED</span></span>\`);
+    }
+  }catch(err){ console.error('[Timeline] ticker waiver', err); }
+  try{
+`;
+index = index.slice(0, tickerStart) + tickerReplacement + index.slice(tickerPower);
 
 // Analytics: keep the useful "gem" idea but rank by post-add points, not money.
 index = replaceOnce(index,
