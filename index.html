@@ -4728,6 +4728,227 @@ window.FSNBridge = {
 };
 
 /* ============================================================
+   GLOBAL SCOPE — LIVE PROJECTION ENGINE (FSNLiveProject)
+
+   A team's projected final score is not a constant. The moment the ball is in
+   the air the only honest forecast is:
+
+       points already banked  +  what the rest of the lineup still projects
+
+   The board used to print `side.totalProjectedPoints` and nothing else. That
+   field is the PREGAME forecast: the provider computes it before kickoff and
+   never moves it again. So a manager whose Thursday-night starter went 24.6
+   against a 12.1 projection still read a rigid 124.5 on Friday morning, when
+   the honest number had already climbed past 133. The projection was not
+   wrong — it was answering a question nobody was asking any more.
+
+   Three sources, in descending order of authority:
+
+     1. side.totalProjectedPointsLive — ESPN's own live-updating projection.
+        It is computed against real game clocks, so when the provider sends it,
+        nothing here beats it.
+     2. The starting lineup, summed per player (sideProjectionFromRoster below).
+        This answers for payloads that carry rosters but no live total: cloud
+        restores, archive reads, third-party adapters.
+     3. side.totalProjectedPoints — the pregame snapshot, unchanged. It is the
+        floor of the chain, not the head of it.
+
+   This lives at global scope in the first script block, per the rule at the top
+   of this file: the data engine below computes with it and the UI layer in the
+   last block reads what it publishes, and those are separate closed scopes.
+============================================================ */
+window.FSNLiveProject = (function(){
+  'use strict';
+
+  /* 20 = bench, 21 = IR. Deliberately a private copy rather than a shared
+     global: the later engine blocks each already declare their own
+     `const BENCH_SLOTS`, and a same-named global const in this block would be
+     a redeclaration at parse time. Only this module uses it. */
+  const BENCH_SLOT_IDS = { 20:true, 21:true };
+
+  /* A lineup fragment must not answer for a whole team. Two entries summing to
+     30 points is not a projection, it is a wrong number wearing one. */
+  const MIN_STARTERS = 5;
+
+  /* How far the roster's own actual sum may sit from the scoreboard's actual
+     before the roster is judged to be describing a different snapshot. */
+  const ACTUAL_TOLERANCE = 1.0;
+
+  /* Providers hand numbers over as numeric strings often enough that Number()
+     is the parse, not the check. Booleans are excluded so `true` cannot read
+     as 1. */
+  function num(value){
+    if(value == null || value === '' || typeof value === 'boolean') return null;
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  function playerOf(entry){
+    const ppe = entry && entry.playerPoolEntry;
+    return (ppe && ppe.player) || (entry && entry.player) || null;
+  }
+
+  /* ESPN stat records carry statSourceId 0 for what a player actually did and
+     1 for what he was forecast to do; statSplitTypeId 1 marks a single scoring
+     period rather than a season aggregate.
+
+     The week match is exact on purpose. A player card carries every week of the
+     season, and a loose match would let week 3's actuals answer a week 11
+     question — a stale number that looks live is worse than no number. Records
+     carrying no scoringPeriodId at all are the single fallback, and only when
+     the exact-week pass came back empty for this source. */
+  function weeklyStat(player, week, sourceId){
+    const stats = player && Array.isArray(player.stats) ? player.stats : [];
+    let undated = null;
+    for(let i=0; i<stats.length; i++){
+      const row = stats[i];
+      if(!row || Number(row.statSourceId) !== sourceId) continue;
+      if(row.statSplitTypeId != null && Number(row.statSplitTypeId) !== 1) continue;
+      const applied = num(row.appliedTotal);
+      if(applied == null) continue;
+      if(row.scoringPeriodId == null){
+        if(undated == null) undated = applied;
+        continue;
+      }
+      if(week == null || Number(row.scoringPeriodId) === Number(week)) return applied;
+    }
+    return undated;
+  }
+
+  /* Points already on the board for one roster entry. The adapters (Sleeper,
+     the cloud mirror) publish appliedStatTotal directly and a raw ESPN entry
+     carries it too, with the player card as the last resort. */
+  function entryActual(entry, week){
+    const direct = num(entry && entry.appliedStatTotal);
+    if(direct != null) return direct;
+    const ppe = entry && entry.playerPoolEntry;
+    const pooled = num(ppe && ppe.appliedStatTotal);
+    if(pooled != null) return pooled;
+    return weeklyStat(playerOf(entry), week, 0);
+  }
+
+  /* What this player is forecast to finish THIS week with. `projectedStatTotal`
+     is the hook an adapter uses when it has a forecast but no ESPN player card
+     to hang it on. */
+  function entryProjection(entry, week){
+    const fromCard = weeklyStat(playerOf(entry), week, 1);
+    if(fromCard != null) return fromCard;
+    const adapter = num(entry && entry.projectedStatTotal);
+    if(adapter != null) return adapter;
+    const ppe = entry && entry.playerPoolEntry;
+    return num(ppe && ppe.projectedStatTotal);
+  }
+
+  /* Has this player's game kicked off? ESPN publishes no weekly ACTUAL stat
+     record for a player whose game has not started, so the record existing at
+     all is one signal and real points on the board are the other. */
+  function entryStarted(entry, week){
+    const actual = entryActual(entry, week);
+    if(actual != null && actual !== 0) return true;
+    return weeklyStat(playerOf(entry), week, 0) != null;
+  }
+
+  /* Is this player's game over? A decided matchup settles every starter on it
+     at once, and that is the only completion signal the league payload
+     guarantees, so it is passed in from the caller. Per-player game state is
+     honoured when a provider or adapter supplies it and is otherwise reported
+     as unknown — never inferred, because guessing "final" freezes a player who
+     is still on the field and permanently understates his team. */
+  const FINAL_STATE_RE = /^(post|final|complete|completed|closed)/i;
+  function entryFinal(entry, week, settled){
+    if(settled) return true;
+    if(entry && entry.gameComplete === true) return true;
+    const player = playerOf(entry) || {};
+    if(player.gameComplete === true) return true;
+    const state = (entry && entry.playerGameStatus) || player.proGameStatus || player.gameStatus;
+    return typeof state === 'string' && FINAL_STATE_RE.test(state.trim());
+  }
+
+  /* Every starter on one side of a game. Bench and IR are excluded: they cannot
+     score for this team, so folding their forecasts in would inflate the
+     projection by an entire second lineup. */
+  function starterEntries(side){
+    const roster = side && (side.rosterForCurrentScoringPeriod || side.rosterForMatchupPeriod);
+    const entries = roster && Array.isArray(roster.entries) ? roster.entries : [];
+    return entries.filter(entry=> entry && !BENCH_SLOT_IDS[entry.lineupSlotId]);
+  }
+
+  /* The team forecast, rebuilt player by player.
+
+       finished  → the actual. His game is over; there is nothing left to
+                   project, and holding his pregame number there is exactly the
+                   staleness this module exists to remove.
+       not begun → the projection. Nothing is banked yet.
+       in play   → max(actual, projected), i.e. actual + max(0, projected -
+                   actual). Points already scored are a floor and are never
+                   projected away; the rest of his game is still worth whatever
+                   it was forecast to be worth.
+
+     Returns null — never a number — whenever the roster cannot honestly answer,
+     so the caller falls through to a source that can. */
+  function sideProjectionFromRoster(side, week, settled, actualTotal){
+    const starters = starterEntries(side);
+    if(starters.length < MIN_STARTERS) return null;
+
+    let total = 0, actualSum = 0, forecasts = 0;
+    for(let i=0; i<starters.length; i++){
+      const entry = starters[i];
+      const actual = entryActual(entry, week) || 0;
+      const projected = entryProjection(entry, week);
+      actualSum += actual;
+      if(projected == null){ total += actual; continue; }
+      forecasts++;
+      if(entryFinal(entry, week, settled)){ total += actual; continue; }
+      if(!entryStarted(entry, week)){ total += projected; continue; }
+      total += Math.max(actual, projected);
+    }
+
+    // No per-player forecast anywhere in the lineup: this is a sum of actuals
+    // wearing a projection's name, and the provider's own number is better.
+    if(!forecasts) return null;
+
+    /* The roster has to be describing the same game the scoreboard is. When it
+       is not — a partial snapshot, a week the payload never hydrated, a roster
+       held at the current scoring period while an older week is on screen — its
+       sum is not this team's score and its forecast is not this team's
+       forecast. */
+    if(actualTotal != null && actualTotal !== 0 &&
+       Math.abs(actualSum - actualTotal) > ACTUAL_TOLERANCE) return null;
+
+    return total;
+  }
+
+  /* The live projection for one side of a game.
+
+     opts.week    the scoring period the roster and player cards should match
+     opts.settled true once the matchup is decided (every starter is final)
+     opts.actual  the side's real score right now, used to confirm the roster
+                  snapshot and the scoreboard agree before trusting the roster
+
+     Returns { value, source } or null when no source can answer. `source` is
+     for diagnostics and is deliberately not rendered — the reader is shown a
+     projection, not a provenance chain. */
+  function forSide(side, opts){
+    if(!side || typeof side !== 'object') return null;
+    const options = opts || {};
+    const week = options.week != null ? options.week : null;
+
+    const providerLive = num(side.totalProjectedPointsLive);
+    if(providerLive != null && providerLive !== 0) return { value:providerLive, source:'provider-live' };
+
+    const computed = sideProjectionFromRoster(side, week, !!options.settled, num(options.actual));
+    if(computed != null && computed !== 0) return { value:computed, source:'roster' };
+
+    const pregame = num(side.totalProjectedPoints);
+    if(pregame != null && pregame !== 0) return { value:pregame, source:'pregame' };
+
+    return null;
+  }
+
+  return { forSide, fromRoster:sideProjectionFromRoster, starterEntries };
+})();
+
+/* ============================================================
    SHARED STORE — one league object, one history object, and the
    read helpers every screen renders from.
 ============================================================ */
@@ -4868,6 +5089,41 @@ window.LeagueData = (function(){
         };
         const homeProjected = projection(home);
         const awayProjected = projection(away);
+
+        /* ---- the LIVE projection ----
+           `projection()` above reads totalProjectedPoints, which is the PREGAME
+           forecast and never moves once kickoff passes. That is the stale
+           number: a starter who beat his Thursday-night projection by twelve
+           points left the team total sitting exactly where it started.
+
+           FSNLiveProject rebuilds the forecast against what the payload knows
+           right now — banked points for finished starters, remaining forecast
+           for everyone still to play — and falls back through the provider's
+           own live number to the pregame snapshot when it cannot do better.
+
+           Published as its OWN field. homeProjected/awayProjected keep their
+           exact previous meaning per CLAUDE.md rule 2, so nothing already
+           reading them changes underneath. */
+        const settled = !!(game.winner && String(game.winner).toUpperCase() !== 'UNDECIDED');
+        const projectionWeek = points(game.scoringPeriodId) || points(game.matchupPeriodId) || null;
+        const homeActual = actualScore(home);
+        const awayActual = actualScore(away);
+        const liveProjection = (side, actualText)=>{
+          try{
+            const result = FSNLiveProject.forSide(side, {
+              week: projectionWeek,
+              settled,
+              actual: actualText,
+            });
+            return result && result.value != null ? result.value.toFixed(1) : '';
+          }catch(err){
+            console.error('[LeagueData] live projection failed for week ' + game.matchupPeriodId +
+              ', team ' + (side && side.teamId), err);
+            return '';
+          }
+        };
+        const homeLiveProjected = liveProjection(home, homeActual);
+        const awayLiveProjected = liveProjection(away, awayActual);
         return {
           matchupPeriodId: game.matchupPeriodId,
           /* The untouched ESPN game object — the News Desk reads lineups
@@ -4881,9 +5137,12 @@ window.LeagueData = (function(){
              alongside them for the display layer to read. */
           homeScore: Number(home.totalPoints || 0).toFixed(1),
           awayScore: Number(away.totalPoints || 0).toFixed(1),
-          homeActual: actualScore(home),
-          awayActual: actualScore(away),
+          homeActual, awayActual,
           homeProjected, awayProjected,
+          /* The dynamically recalculated forecast. Every display surface reads
+             this first (see projectedOf() in the UI block) and degrades to the
+             pregame field above only when no live number can be derived. */
+          homeLiveProjected, awayLiveProjected,
           winner: game.winner || '',
           playoffTierType: game.playoffTierType || 'NONE',
           /* Sides are copied so the official bracket seed stamped on THIS game
@@ -18800,9 +19059,23 @@ function actualOf(g, side){
   return actualPoints(g[side + 'Score']);
 }
 
-/* The forecast for one side, or null when the feed has none. */
+/* The forecast for one side, or null when the feed has none.
+
+   Reads the LIVE projection first. The data engine recomputes that field on
+   every read from real banked points plus the remaining lineup's forecast, so
+   a team whose starters are beating their projections climbs during the slate
+   instead of sitting on the rigid pregame number it opened the week with.
+
+   homeProjected/awayProjected — the provider's pregame snapshot — stay as the
+   fallback for payloads that carry no live signal at all (archive seasons,
+   cloud-restored weeks, a provider that never published one). Every surface
+   that shows a projection goes through here, so the crawl's PROJ HIGH / PROJ
+   LOW, the marquee weighting and the matchup cards all read the same number. */
 function projectedOf(g, side){
-  return g ? projectedPoints(g[side + 'Projected']) : null;
+  if(!g) return null;
+  const live = projectedPoints(g[side + 'LiveProjected']);
+  if(live != null) return live;
+  return projectedPoints(g[side + 'Projected']);
 }
 
 function effectiveWeek(){
