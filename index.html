@@ -4830,14 +4830,41 @@ window.LeagueData = (function(){
       return source.map(game=>{
         const home = game.home || {};
         const away = game.away || {};
-        // Accept provider numeric strings; an empty live estimate must not hide
-        // an available pregame projection. Actual scores remain totalPoints.
+        /* ESPN reports three different numbers per side and exactly one of
+           them is a forecast:
+
+             totalPoints          the settled score for the matchup period
+             totalPointsLive      the running ACTUAL score while games play
+             totalProjectedPoints the forecast final score
+
+           totalPointsLive was being read as a projection. That is the whole of
+           the "actual score shows 0.0 while a projection takes the big slot"
+           bug: during a live week ESPN holds totalPoints at 0 until the period
+           settles and streams the real running total in totalPointsLive, so
+           the genuine score was routed into the projection slot and the score
+           slot was left showing the placeholder zero. The number in the big
+           slot was real all along — it was sourced backwards.
+
+           Accepts provider numeric strings. A projection of 0 is the
+           provider's "no forecast yet" sentinel, not a predicted shutout. */
+        const points = value=>{
+          if(value == null || String(value).trim() === '') return null;
+          const n = Number(value);
+          return Number.isFinite(n) ? n : null;
+        };
+        /* The real score to print: the settled number once there is one, the
+           live running total while the period is still open, and 0.0 for a
+           game that genuinely has not scored. */
+        const actualScore = side=>{
+          const settled = points(side.totalPoints);
+          if(settled != null && settled !== 0) return settled.toFixed(1);
+          const live = points(side.totalPointsLive);
+          if(live != null && live !== 0) return live.toFixed(1);
+          return (settled == null ? 0 : settled).toFixed(1);
+        };
         const projection = side=>{
-          const values = [side.totalPointsLive, side.totalProjectedPoints]
-            .filter(v=> v != null && String(v).trim() !== '')
-            .map(Number).filter(Number.isFinite);
-          const value = values.find(v=> v !== 0);
-          return value == null ? '' : value.toFixed(1);
+          const value = points(side.totalProjectedPoints);
+          return value == null || value === 0 ? '' : value.toFixed(1);
         };
         const homeProjected = projection(home);
         const awayProjected = projection(away);
@@ -4846,8 +4873,16 @@ window.LeagueData = (function(){
           /* The untouched ESPN game object — the News Desk reads lineups
              (rosterForCurrentScoringPeriod) straight off it. */
           raw: game,
+          /* UNCHANGED, deliberately. weekContext() feeds every deterministic
+             article generator from these two fields, and CLAUDE.md rule 2
+             makes that pipeline additive-only: a new reading is a new field,
+             never a redefined one. So homeScore/awayScore keep their exact
+             previous meaning and the corrected live value is published
+             alongside them for the display layer to read. */
           homeScore: Number(home.totalPoints || 0).toFixed(1),
           awayScore: Number(away.totalPoints || 0).toFixed(1),
+          homeActual: actualScore(home),
+          awayActual: actualScore(away),
           homeProjected, awayProjected,
           winner: game.winner || '',
           playoffTierType: game.playoffTierType || 'NONE',
@@ -18703,24 +18738,23 @@ function emptyState(title, sub, gotoTab){
 /* A game is "live" when the scores are still moving — ESPN reports a winner
    of UNDECIDED and at least one side has points on the board. */
 function gameStatus(g){
-  const hs = parseFloat(g.homeScore), as = parseFloat(g.awayScore);
-  const played = (Number.isFinite(hs) && hs !== 0) || (Number.isFinite(as) && as !== 0);
+  /* Reads the corrected actual, so a slate that ESPN is still scoring reports
+     LIVE instead of PRE. The old reading came off totalPoints alone, which the
+     provider holds at 0 until the matchup period settles — an in-progress
+     week therefore looked like it had not kicked off. */
+  const hs = actualOf(g, 'home'), as = actualOf(g, 'away');
+  const played = (hs != null && hs !== 0) || (as != null && as !== 0);
   const decided = g.winner && g.winner !== 'UNDECIDED';
   if(decided) return 'final';
   if(played) return 'live';
   return 'pre';
 }
 
-/* The number each side is shown with: actual once the game is under way,
-   projected before kickoff. Retained for the Desk surfaces (league pulse,
-   Matchup of the Week ranking, quick scores) that intentionally rank a
-   not-yet-played week off its projections. The matchup board and the ticker
-   deliberately do NOT use it — see actualPoints()/projectedPoints() below. */
-function displayScore(score, projected, status){
-  const value = status === 'pre' ? projected : score;
-  if(value == null || String(value).trim() === '' || !Number.isFinite(Number(value))) return '—';
-  return Number(value).toFixed(1);
-}
+/* displayScore() used to live here: it returned the projection whenever a game
+   had not kicked off, which is how a forecast ended up in the big score slot on
+   every surface that called it. It is deliberately deleted rather than left
+   unused — in place, the substitution stayed one call site away from coming
+   back. Every surface now reads actualOf() / projectedOf(). */
 
 /* ---- score display primitives ----
    The matchup cards and the crawl read the ACTUAL score as the primary
@@ -18750,6 +18784,25 @@ function projectedPoints(projected){
 
 function formatPoints(value){
   return value == null ? '\u2014' : Number(value).toFixed(1);
+}
+
+/* The real score for one side of a game, as a number or null.
+
+   The data engine publishes homeActual/awayActual — settled points once the
+   matchup period has settled, the live running total while it has not —
+   beside the homeScore/awayScore fields the article generators read. Display
+   reads the corrected value and falls back to the settled field, so a game
+   shaped by an adapter that predates the split still renders a number. */
+function actualOf(g, side){
+  if(!g) return null;
+  const corrected = g[side + 'Actual'];
+  if(corrected != null && String(corrected).trim() !== '') return actualPoints(corrected);
+  return actualPoints(g[side + 'Score']);
+}
+
+/* The forecast for one side, or null when the feed has none. */
+function projectedOf(g, side){
+  return g ? projectedPoints(g[side + 'Projected']) : null;
 }
 
 function effectiveWeek(){
@@ -19331,11 +19384,13 @@ function tickerItems(){
   const games = LeagueData.getWeekMatchups(week);
   games.forEach(g=>{
     const st = gameStatus(g);
-    // Real points only. The crawl used to swap in the projection before
-    // kickoff, which put a number on screen that had never been scored.
-    const hs = formatPoints(actualPoints(g.homeScore));
-    const as = formatPoints(actualPoints(g.awayScore));
-    const homeWins = parseFloat(g.homeScore) > parseFloat(g.awayScore);
+    // Real points only, and now the CORRECTED real points: a week ESPN is
+    // still scoring reports its running totals here instead of the zeros it
+    // parks in totalPoints until the period settles.
+    const homeActual = actualOf(g, 'home'), awayActual = actualOf(g, 'away');
+    const hs = formatPoints(homeActual);
+    const as = formatPoints(awayActual);
+    const homeWins = (homeActual || 0) > (awayActual || 0);
     // Pre-game and mid-game slates are label-less on the crawl now — the only
     // moment the ticker calls out a state is when the ball is in the air (LIVE).
     // A projection tag on a Tuesday scoreboard implied live tracking the app
@@ -19390,8 +19445,8 @@ function tickerItems(){
     return ['home','away'].map(side=>({
       team: g[side + 'Team'],
       status: st,
-      actual: actualPoints(g[side + 'Score']),
-      projected: projectedPoints(g[side + 'Projected']),
+      actual: actualOf(g, side),
+      projected: projectedOf(g, side),
     }));
   }).filter(row=> row.team);
 
@@ -19507,20 +19562,23 @@ function renderHome(){
   $('homeSeasonLabel').textContent = (d.seasonId || d.season || $('seasonYear').value || '') + ' SEASON';
 
   /* ---- league pulse ----
-     Keep actual scoring separate from projected display values so a fully
-     unplayed week stays recognizably pre-game instead of looking final at 0.0. */
-  const displayScores = [];
+     Real points only. A week with nothing on the board reports —, because a
+     projected average printed under a tile labelled AVG is the same bug as a
+     projection printed in a score slot: the reader has no way to tell it is a
+     forecast. Projections have their own labelled line on the matchup card. */
+  const scoredPoints = [];
   games.forEach(g=>{
-    const st = gameStatus(g);
-    [displayScore(g.homeScore, g.homeProjected, st), displayScore(g.awayScore, g.awayProjected, st)].forEach(value=>{
-      if(value !== '—') displayScores.push(Number(value));
+    if(gameStatus(g) === 'pre') return;
+    ['home','away'].forEach(side=>{
+      const value = actualOf(g, side);
+      if(value != null) scoredPoints.push(value);
     });
   });
   const hasScoring = games.some(g=> gameStatus(g) !== 'pre');
-  const avg = displayScores.length ? displayScores.reduce((a,b)=>a+b,0) / displayScores.length : 0;
+  const avg = scoredPoints.length ? scoredPoints.reduce((a,b)=>a+b,0) / scoredPoints.length : 0;
   $('pulseGames').textContent = games.length;
-  $('pulseAvg').textContent = displayScores.length ? avg.toFixed(1) : '—';
-  $('pulseHigh').textContent = displayScores.length ? Math.max(...displayScores).toFixed(1) : '—';
+  $('pulseAvg').textContent = scoredPoints.length ? avg.toFixed(1) : '—';
+  $('pulseHigh').textContent = scoredPoints.length ? Math.max(...scoredPoints).toFixed(1) : '—';
 
   /* ---- MATCHUP OF THE WEEK ----
      The biggest game on the board: highest combined points, with the margin
@@ -19547,15 +19605,24 @@ function renderHome(){
     return -1;                                   // consolation ladder — never featured
   };
 
-  let motw = null, bestTotal = -1, bestRank = -Infinity;
+  /* CHOOSING the marquee game may lean on projections before kickoff — that
+     is a ranking decision, not a printed number, and a board where every game
+     reads 0.0 would otherwise hand the slot to whichever game came first.
+     What the card DISPLAYS is always the real score: hs/as below are actuals
+     at every state, and the combined total in the copy is derived from them
+     rather than from this ranking weight. */
+  let motw = null, bestWeight = -1, bestRank = -Infinity;
   (motwPool.length ? motwPool : games).forEach(g=>{
     const st = gameStatus(g);
-    const hs = parseFloat(displayScore(g.homeScore, g.homeProjected, st)) || 0;
-    const as = parseFloat(displayScore(g.awayScore, g.awayProjected, st)) || 0;
+    const hs = actualOf(g, 'home') || 0;
+    const as = actualOf(g, 'away') || 0;
+    const weight = st === 'pre'
+      ? (projectedOf(g, 'home') || 0) + (projectedOf(g, 'away') || 0)
+      : hs + as;
     const rank = motwRank(g);
     if(rank < bestRank) return;
-    if(rank > bestRank || hs + as > bestTotal){
-      bestRank = rank; bestTotal = hs + as; motw = { g, hs, as, st };
+    if(rank > bestRank || weight > bestWeight){
+      bestRank = rank; bestWeight = weight; motw = { g, hs, as, st };
     }
   });
 
@@ -19565,6 +19632,12 @@ function renderHome(){
   } else {
     const { g, hs, as, st } = motw;
     $('motwCard').classList.toggle('active-team-matchup', gameHasActiveTeam(g));
+    /* The combined total the copy quotes comes from the two REAL scores on the
+       card. It used to be the selection weight, which is projected before
+       kickoff — so a board where some other game had scored (making the week
+       "not pregame") printed this game's projected sum as "Combined N points"
+       with nothing marking it as a forecast. */
+    const combined = hs + as;
     const margin = Math.abs(hs - as);
     const homeLeads = hs >= as;
     const pregameWeek = !hasScoring;
@@ -19624,10 +19697,10 @@ function renderHome(){
                     : 'Championship Bracket. The loser is out of the title picture for good.')}
                ${pregameWeek
                  ? `The marquee matchup is set; combined scoring lands once the slate finalizes.`
-                 : `Combined <b class="text-[var(--off)] font-mono tabular">${bestTotal.toFixed(1)}</b> points.`}`
+                 : `Combined <b class="text-[var(--off)] font-mono tabular">${combined.toFixed(1)}</b> points.`}`
             : (pregameWeek
                 ? `The marquee matchup is set. Combined scoring will land once the slate finalizes.`
-                : `Combined <b class="text-[var(--off)] font-mono tabular">${bestTotal.toFixed(1)}</b> points — the highest total on this week's board.`)}
+                : `Combined <b class="text-[var(--off)] font-mono tabular">${combined.toFixed(1)}</b> points — the highest total on this week's board.`)}
         </div>
       </div>`;
   }
@@ -19709,15 +19782,15 @@ function motwSide(team, score, leading, status, week){
 
 function compactGameRow(g){
   const st = gameStatus(g);
-  const hs = parseFloat(displayScore(g.homeScore, g.homeProjected, st)) || 0;
-  const as = parseFloat(displayScore(g.awayScore, g.awayProjected, st)) || 0;
+  const hs = actualOf(g, 'home') || 0;
+  const as = actualOf(g, 'away') || 0;
   const homeWins = hs >= as;
   const dim = 'text-[#5d6879]';
-  // Preseason (no scores yet) reads as a projected preview rather than a 0.0
-  // final; the score slots show "—" until kickoff.
+  // A slate that has not kicked off shows "—" rather than a 0.0 that reads
+  // like a final — and never a projection standing in for a score.
   const pre = st === 'pre';
-  const awayShown = pre && as === 0 ? '—' : as.toFixed(1);
-  const homeShown = pre && hs === 0 ? '—' : hs.toFixed(1);
+  const awayShown = pre ? '—' : as.toFixed(1);
+  const homeShown = pre ? '—' : hs.toFixed(1);
   return `<div class="card px-3.5 py-2.5 flex items-center gap-2.5 ${gameHasActiveTeam(g) ? 'active-team-matchup' : ''}">
     <div class="flex-1 min-w-0 flex items-center gap-2">
       ${crest(g.awayTeam.name, g.awayTeam.logo, 26)}
@@ -19772,10 +19845,10 @@ function matchupCard(g){
   /* The real score is the primary value on the card at every state. A slate
      that has not kicked off reads 0.0 — the projection is rendered under the
      score as its own labelled line rather than standing in for it. */
-  const hs = actualPoints(g.homeScore) || 0;
-  const as = actualPoints(g.awayScore) || 0;
-  const homeProj = projectedPoints(g.homeProjected);
-  const awayProj = projectedPoints(g.awayProjected);
+  const hs = actualOf(g, 'home') || 0;
+  const as = actualOf(g, 'away') || 0;
+  const homeProj = projectedOf(g, 'home');
+  const awayProj = projectedOf(g, 'away');
   const scored = st !== 'pre';
   /* Nobody leads a game that has not started, so a pre-kickoff card dims
      neither side instead of implying a projected winner. */
@@ -23988,8 +24061,22 @@ const BOOT_CURTAIN_FLOOR_MS = 420;
    named on the Setup screen — rather than hold a loading screen that has
    stopped meaning "nearly there". */
 const BOOT_CURTAIN_REHYDRATE_MS = 12000;
-/* The failsafe under all of it. Nothing below may leave the curtain up. */
-const BOOT_CURTAIN_WATCHDOG_MS = 15000;
+/* The archive walk and the shared-archive read are still in the air when the
+   live season lands, and applying either republishes to the store. A bounded
+   extra hold for them, well under the switch path's 20s ceiling: a cold launch
+   has to feel like an app opening, not like a full archive sync, and the reader
+   gets the live season the moment this budget runs out. */
+const BOOT_CURTAIN_ARCHIVE_MS = 5000;
+/* The failsafe under all of it. Nothing below may leave the curtain up.
+
+   It has to sit ABOVE the sum of the bounded steps the reveal now awaits
+   (rehydrate 12s + history 5s + crests 1.5s + the floor), or the slow-but-
+   working path would trip it — and a watchdog that fires on a healthy boot is
+   worse than no watchdog: it lifts the curtain mid-hydration, which is the
+   exact flash it is meant to prevent, and shouts about a defect that is not
+   there. Every step below resolves rather than rejects, so reaching this is
+   still a genuine "the reveal path never ran". */
+const BOOT_CURTAIN_WATCHDOG_MS = 24000;
 
 let bootCurtainOwned = false;
 let bootCurtainDone = false;
@@ -24059,6 +24146,46 @@ function finishBootCurtain(){
   safeRun('boot:ftu', maybeShowFtu);
 }
 
+/* The live season landing is NOT the end of a league's data initialisation.
+   fetchLeagueData starts the multi-year archive walk and the shared-archive
+   read detached, so both are still running when the rehydration promise
+   resolves — and applying either republishes to the store, repainting every
+   history-derived surface at once: records and streaks on the matchup cards,
+   the ticker's Vault line, the Record Book, the analytics boards and the
+   Desk's lead story.
+
+   Revealing before they land is precisely the cold-start flicker: the app
+   appears, holds a set of numbers computed against an empty archive for a
+   beat, then corrects itself in front of the reader.
+
+   settleLeagueMount() has always held the LEAGUE-SWITCH reveal for exactly
+   this. Cold boot did not, which is why the flicker survived only on launch.
+   The two reads are independent, so they are awaited together rather than in
+   sequence, under one ceiling. */
+async function settleBootLeagueArchive(route){
+  const provider = String((route && route.provider) || '').trim();
+  const leagueId = String((route && route.leagueId) || '').trim();
+  if(!provider || !leagueId) return;
+
+  const pending = [];
+  const walk = LEAGUE_ARCHIVE_WALKS.get(leagueCacheKey(provider, leagueId));
+  if(walk) pending.push(walk);
+  const cloud = ui.cloudHydrateInFlight;
+  if(cloud && cloud.promise && String(cloud.key || '').indexOf(leagueId + ':') === 0){
+    pending.push(cloud.promise);
+  }
+  if(!pending.length) return;
+
+  /* Named on the curtain, the same way the switch path names it: this is the
+     long phase of the hold and an unlabelled one reads as a stall. */
+  if(walk){
+    safeRun('boot:curtainHistoryLabel', ()=> updateLeagueCurtainLabel('Loading league history…'));
+  }
+  /* withMountWatchdog never rejects and says loudly which case it took, so a
+     failed or slow archive costs the reveal this budget and nothing more. */
+  await withMountWatchdog(Promise.all(pending), 'Cold-boot league history', BOOT_CURTAIN_ARCHIVE_MS);
+}
+
 /* Hold the loading screen until this launch has resolved, then land the reader
    on the right screen and reveal.
 
@@ -24081,6 +24208,9 @@ async function settleBootCurtain(route){
     if(route && !route.attempted && !route.screenFromLink && !LeagueData.hasLive()){
       safeRun('boot:routeSetup', ()=> setScreen('setup'));
     }
+    /* Everything this league's initialisation still owes, before the reveal
+       rather than after it. */
+    await settleBootLeagueArchive(route);
     /* Same contract as the league-switch reveal: render from the final state,
        let two frames commit it, give the crests a moment, then uncover a screen
        that is already finished rather than one that assembles itself in view. */
@@ -27863,6 +27993,11 @@ function bootApp(){
     rehydration:null,
     attempted:false,
     screenFromLink:String((deepLink && deepLink.screen) || ''),
+    /* Which league the reveal is waiting on, so settleBootLeagueArchive can
+       find that league's in-flight archive walk. Yahoo fills these in once its
+       auth check has answered, which is after the reveal starts waiting. */
+    provider:'',
+    leagueId:'',
   };
 
   if(ui.provider === 'yahoo'){
@@ -27878,6 +28013,8 @@ function bootApp(){
       if(!connected) return false;
       bootRoute.attempted = true;
       const yahooLeague = window.YahooAdapter.normalizeYahooLeagueKey($('leagueIdInput').value);
+      bootRoute.provider = 'yahoo';
+      bootRoute.leagueId = String(yahooLeague || '').trim();
       return fetchYahooLeagueData({ leagueId:yahooLeague, silent:true, navigate:false })
         .catch(err=>{
           console.warn('[YahooAdapter] silent league rehydration failed', err);
@@ -27889,6 +28026,8 @@ function bootApp(){
     });
   } else if(savedLeagueId){
     bootRoute.attempted = true;
+    bootRoute.provider = ui.provider;
+    bootRoute.leagueId = savedLeagueId;
     /* Still fire-and-forget for the app — fetchLeagueData awaits both concurrent
        network operations and repaints when hydration completes, and nothing
        below depends on it. The loading screen is the one thing that does, and it

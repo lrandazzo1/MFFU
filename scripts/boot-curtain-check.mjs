@@ -57,6 +57,12 @@ const LEAGUE = '444444';
    could finish inside the first frame and the check would prove nothing: the
    flash under test only exists because the fetch takes time. */
 const RELAY_DELAY_MS = 900;
+/* The multi-year archive answers well after the live season does, which is the
+   real shape of a cold launch: fetchLeagueData connects the current year and
+   walks the completed ones in a detached task. The gap between the two is the
+   window the launch flicker used to live in. */
+const ARCHIVE_DELAY_MS = 1600;
+let archiveMode = 'off';
 
 /* An ESPN-shaped payload whose every visible string carries the League ID, so
    "is the dashboard actually painted" is answerable from the DOM alone. */
@@ -128,6 +134,21 @@ function startServer() {
         const target = url.searchParams.get('url') || '';
         const season = (target.match(/seasons\/(\d{4})/) || [])[1];
         const league = (target.match(/leagues\/(\d+)/) || [])[1];
+        /* The consolidated multi-season route. Answering it (slowly) is what
+           lets this check see whether the reveal waits for the archive walk. */
+        const archiveLeague = (target.match(/leagueHistory\/(\d+)/) || [])[1];
+        if (archiveLeague) {
+          if (archiveMode !== 'slow') {
+            res.writeHead(404, { 'content-type': 'application/json' });
+            res.end(JSON.stringify({ error: 'No archive for this league.' }));
+            return;
+          }
+          setTimeout(() => {
+            res.writeHead(200, { 'content-type': 'application/json' });
+            res.end(JSON.stringify([leaguePayload(archiveLeague, CURRENT_YEAR - 1)]));
+          }, ARCHIVE_DELAY_MS);
+          return;
+        }
         setTimeout(() => {
           if (relayMode === 'down') {
             res.writeHead(502, { 'content-type': 'application/json' });
@@ -205,6 +226,14 @@ function instrument(seed) {
     dclAt: 0,
     dropAt: 0,
     atDrop: null,
+    /* The launch flicker, measured. The ticker grows a VAULT line ("N seasons
+       · M matchups") only once the multi-year archive has been applied, so it
+       is a clean one-bit read on whether the league's history had landed. If
+       it flips AFTER the curtain is down, the reader watched the dashboard
+       change under them — which is the bug. */
+    historyAtDrop: null,
+    historyAfterDrop: '',
+    historyChangedAfterDrop: 0,
   };
   window.__bootProbe = state;
   document.addEventListener('DOMContentLoaded', () => {
@@ -227,6 +256,25 @@ function instrument(seed) {
     const y = Math.round(Math.max(0, box.top) + Math.min(box.height, 40) / 2);
     const hit = document.elementFromPoint(x, y);
     return !!(hit && (hit === el || el.contains(hit)));
+  }
+
+  /* The ticker's VAULT line — "N seasons · M matchups" — read as TEXT, not as
+     presence. Presence proves nothing: the live season alone makes the league
+     one season deep, so the line is already on the crawl before the archive
+     lands and only its numbers change when the completed seasons arrive. That
+     change, seen after the reveal, IS the flicker.
+
+     Matched on the item's own tag element because the crawl also carries News
+     Desk headlines, and a loose text match on "seasons" hits those instead. */
+  function historyReading() {
+    const items = document.querySelectorAll('#tickerTrack .ticker-item');
+    for (let i = 0; i < items.length; i++) {
+      const tag = items[i].querySelector('.tk-tag');
+      if (tag && tag.textContent.trim() === 'VAULT') {
+        return items[i].textContent.replace(/\s+/g, ' ').trim();
+      }
+    }
+    return '';
   }
 
   function snapshot() {
@@ -261,6 +309,14 @@ function instrument(seed) {
       if (!state.firstExposureAt) state.firstExposureAt = Math.round(performance.now());
       if (state.dropAt) state.exposedAfterDrop += 1;
       else state.exposedBeforeDrop += 1;
+    }
+    if (state.dropAt) {
+      const reading = historyReading();
+      if (state.historyAtDrop === null) state.historyAtDrop = reading;
+      else if (reading !== state.historyAtDrop) {
+        state.historyChangedAfterDrop += 1;
+        state.historyAfterDrop = reading;
+      }
     }
     requestAnimationFrame(tick);
   };
@@ -306,11 +362,16 @@ async function launch(seed) {
   });
   await page.addInitScript(instrument, seed);
   relayMode = seed.relay || 'ok';
+  archiveMode = seed.archive || 'off';
   await page.goto(base + '/', { waitUntil: 'load' });
   // Long enough for the relay beat, the reveal and its minimum-visible floor.
   await page.waitForFunction(() => window.__bootProbe && window.__bootProbe.dropAt > 0,
     null, { timeout: 20000 }).catch(() => {});
-  await page.waitForTimeout(700);
+  /* Keep sampling well past the reveal. A launch whose archive is deliberately
+     late needs the window to outlast the archive itself, or a curtain that
+     lifted too early would stop being watched before the repaint it let
+     through ever arrives — and the flicker would go unmeasured. */
+  await page.waitForTimeout(seed.archive === 'slow' ? ARCHIVE_DELAY_MS + 1400 : 700);
   const probe = await page.evaluate(() => window.__bootProbe);
   await context.close();
   return { probe, pageErrors, consoleErrors };
@@ -381,6 +442,37 @@ try {
   } else {
     fail('failed restore: the reveal moved the reader to "' + atBrokenDrop.screen +
       '"; a failed restore is not the same as having no league');
+  }
+  /* ---- D. a saved league whose multi-year archive lands late -------------
+     The launch flicker. fetchLeagueData connects the live season and walks the
+     completed ones in a DETACHED task, so the archive is still in the air when
+     the rehydration promise resolves. Applying it republishes to the store and
+     repaints every history-derived surface at once — records and streaks on
+     the matchup cards, the ticker's Vault line, the Record Book, the analytics
+     boards, the Desk's lead story. Revealing before it lands is what made a
+     cold launch show one set of numbers and then correct itself.
+
+     The league-switch reveal has always waited for this walk; cold boot did
+     not. So: the curtain must still be up when the archive lands, and nothing
+     history-derived may change once it is down. */
+  const late = await launch({ leagueId: LEAGUE, relay: 'ok', archive: 'slow' });
+  assertCommon('late archive', late);
+  const lateProbe = late.probe || {};
+  const revealDelay = (lateProbe.dropAt || 0) - (lateProbe.dclAt || 0);
+  if (revealDelay >= ARCHIVE_DELAY_MS) {
+    pass('late archive: the curtain held ' + revealDelay + 'ms, past the archive served at ' +
+      ARCHIVE_DELAY_MS + 'ms');
+  } else {
+    fail('late archive: the curtain came down at ' + revealDelay + 'ms, before the archive served at ' +
+      ARCHIVE_DELAY_MS + 'ms — the reveal is not waiting for the league history at all');
+  }
+  if (!lateProbe.historyChangedAfterDrop) {
+    pass('late archive: the Vault line read "' + lateProbe.historyAtDrop +
+      '" at the reveal and never changed after it — no cold-start flicker');
+  } else {
+    fail('late archive: the Vault line read "' + lateProbe.historyAtDrop + '" at the reveal and became "' +
+      lateProbe.historyAfterDrop + '" on ' + lateProbe.historyChangedAfterDrop +
+      ' later frame(s) — the reader watched the dashboard correct itself. That is the flicker.');
   }
 } catch (err) {
   fail('the check itself threw: ' + ((err && err.stack) || err));
