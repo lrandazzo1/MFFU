@@ -1,0 +1,55 @@
+name: Fix targeted patch ticker matcher
+
+on:
+  push:
+    branches:
+      - fix/dynamic-matchup-previews-strip-faab
+
+permissions:
+  contents: write
+
+jobs:
+  fix-ticker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/dynamic-matchup-previews-strip-faab
+      - name: Replace brittle ticker matcher with marker slicing
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('scripts/apply-matchup-faab-fix.mjs')
+          s = p.read_text()
+          anchor = s.index('// Ticker: show the most recent completed claim')
+          start = s.index('index = replaceOnce(index,', anchor)
+          end = s.index('// Analytics: keep the useful "gem" idea', start)
+          replacement = r'''const tickerStart = index.indexOf('  /* Waiver movement rides the crawl too');
+          const tickerPower = index.indexOf('    const power = FSNIntel.powerRankings(week);', tickerStart);
+          if(tickerStart < 0 || tickerPower < 0) throw new Error('PATCH_MISS: waiver ticker block');
+          const tickerReplacement = `  /* Completed waiver movement rides the crawl too. */
+            try{
+              const waiver = FSNIntel.waiverReport(week);
+              if(waiver && waiver.featured){
+                const t = FSNIntel.teamOf(waiver.featured.teamId);
+                const p = waiver.featured.adds && waiver.featured.adds[0];
+                items.push(\`<span class="ticker-item"><span class="tk-tag" style="color:var(--green)">WAIVER</span>\` +
+                  \`<span class="tk-team">\${esc((t && t.abbrev) || 'TM')} · \${esc((p && p.name) || 'CLAIM')}</span>\` +
+                  \`<span class="tk-score tk-win">ADDED</span></span>\`);
+              }
+            }catch(err){ console.error('[Timeline] ticker waiver', err); }
+            try{
+          `;
+          index = index.slice(0, tickerStart) + tickerReplacement + index.slice(tickerPower);
+
+          '''
+          p.write_text(s[:start] + replacement + s[end:])
+          PY
+      - name: Commit repair and remove helper
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm -f .github/workflows/fix-targeted-patch-ticker.yml
+          git add scripts/apply-matchup-faab-fix.mjs .github/workflows/fix-targeted-patch-ticker.yml
+          git commit -m "Fix targeted waiver ticker matcher [ticker-fix]"
+          git push origin HEAD:fix/dynamic-matchup-previews-strip-faab
