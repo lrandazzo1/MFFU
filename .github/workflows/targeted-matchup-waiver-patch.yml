@@ -1,0 +1,35 @@
+name: Targeted matchup and waiver patch
+
+on:
+  push:
+    branches:
+      - fix/dynamic-matchup-previews-strip-faab
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    if: ${{ !contains(github.event.head_commit.message, '[targeted-patch-complete]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: fix/dynamic-matchup-previews-strip-faab
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Apply assertion-guarded patch and checks
+        run: node scripts/apply-matchup-faab-fix.mjs
+      - name: Commit only final source changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm -f scripts/apply-matchup-faab-fix.mjs .github/workflows/targeted-matchup-waiver-patch.yml
+          git add index.html lib/transaction-wire/providers.js lib/transaction-wire/engine.js lib/transaction-wire/selftest.js scripts/apply-matchup-faab-fix.mjs .github/workflows/targeted-matchup-waiver-patch.yml
+          git diff --cached --check
+          git commit -m "Fix dynamic matchup previews and strip waiver financial fields [targeted-patch-complete]"
+          git push origin HEAD:fix/dynamic-matchup-previews-strip-faab
