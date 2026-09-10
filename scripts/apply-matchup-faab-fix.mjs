@@ -213,7 +213,7 @@ const waiverTimelinePrefix = `function tlWaivers(ctx){
           ? \`\${datelineTag()} <b>\${esc(team.name)}</b> added <b>\${esc(target.name || 'a player')}</b> in the Week \${ctx.week} transaction run. The wire records the roster change — who was added, who was dropped and when it processed — and nothing else.\`
           : \`\${datelineTag()} The Week \${ctx.week} transaction run produced <b>\${report.claimCount}</b> successful additions across <b>\${report.teamCount}</b> teams.\`,
         \`The activity ledger is ordered by completed roster movement. It does not infer losing claims or attach acquisition-dollar values that this league does not use.\`,
-        report.freeAdds ? \`<b>\${report.freeAdds}</b> of the completed moves were recorded as direct free-agent adds; the rest were successful waiver claims.\` : `All completed additions in this report came through the waiver transaction path.`,
+        report.freeAdds ? \`<b>\${report.freeAdds}</b> of the completed moves were recorded as direct free-agent adds; the rest were successful waiver claims.\` : 'All completed additions in this report came through the waiver transaction path.',
       ],
       numbers:{title:'The Waiver Run',rows,note:'Parsed from completed roster transactions only; financial fields are intentionally excluded.'},
       narrativeLocked:true, headlineLocked:true,
