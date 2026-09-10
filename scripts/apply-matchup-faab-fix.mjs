@@ -258,14 +258,15 @@ index = replaceOnce(index,
       });`,
   'waiver gem financial fields');
 index = replaceOnce(index, /gems\.sort\(\(a,b\)=> \(b\.roi - a\.roi\) \|\| \(b\.points - a\.points\) \|\| a\.player\.localeCompare\(b\.player\)\);/, `gems.sort((a,b)=> (b.points - a.points) || a.player.localeCompare(b.player));`, 'waiver gem sort');
-index = replaceLiteral(index,
-  "<div class=\\\"analytics-gem-meta truncate\\\">${esc(gem.team ? gem.team.name : 'Unknown team')} · Week ${gem.week || '—'} · ${gem.free ? 'Free add' : '$'+analyticsValue(gem.bid,0)+' FAAB'}</div>",
-  "<div class=\\\"analytics-gem-meta truncate\\\">${esc(gem.team ? gem.team.name : 'Unknown team')} · Week ${gem.week || '—'} · completed add</div>",
-  'waiver gem metadata render');
-index = replaceLiteral(index,
-  "<div class=\\\"analytics-gem-roi\\\">${analyticsValue(gem.roi)}×<span>${analyticsValue(gem.points)} PTS / $1</span></div>",
-  "<div class=\\\"analytics-gem-roi\\\">${analyticsValue(gem.points)}<span>POST-ADD PTS</span></div>",
-  'waiver gem value render');
+const gemMetaStart = index.indexOf('<div class="analytics-gem-meta truncate">');
+if(gemMetaStart < 0) throw new Error('PATCH_MISS: waiver gem metadata render');
+const gemMetaEnd = index.indexOf('</div>', gemMetaStart) + '</div>'.length;
+index = index.slice(0, gemMetaStart) + `<div class="analytics-gem-meta truncate">${esc(gem.team ? gem.team.name : 'Unknown team')} · Week ${gem.week || '—'} · completed add</div>` + index.slice(gemMetaEnd);
+const gemValueStart = index.indexOf('<div class="analytics-gem-roi">', gemMetaStart);
+if(gemValueStart < 0) throw new Error('PATCH_MISS: waiver gem value render');
+const gemValueEnd = index.indexOf('</div>', gemValueStart) + '</div>'.length;
+index = index.slice(0, gemValueStart) + `<div class="analytics-gem-roi">${analyticsValue(gem.points)}<span>POST-ADD PTS</span></div>` + index.slice(gemValueEnd);
+
 index = replaceLiteral(index,
   "${analyticsModel('06','Waiver Wire Gem Finder ROI','Points scored after an executed add divided by FAAB cost (free adds use a $1 floor). Skill positions only; K and D/ST excluded.','var(--cyan)',gemBody,true,'Which pickups paid off most per dollar of FAAB spent. Higher = a bigger bargain off the wire.')}",
   "${analyticsModel('06','Waiver Wire Impact','Points scored after an executed add. Skill positions only; K and D/ST excluded.','var(--cyan)',gemBody,true,'Which pickups produced the most points after joining the roster. Higher = more post-add production.')}",
