@@ -644,6 +644,184 @@ try {
     }
   }
 
+
+  /* ---- 6.8 LIVE PROJECTION RECALCULATION --------------------------------
+     A team's projection has to move while the slate is being played. The board
+     used to print `totalProjectedPoints`, which the provider computes before
+     kickoff and never touches again, so a manager whose Thursday-night starter
+     doubled his projection still read the rigid pregame number on Friday.
+
+     The engine now rebuilds the forecast from the lineup itself — banked points
+     for players who are done, remaining forecast for everyone still to come —
+     and these scenarios pin every branch of that chain, including the fallbacks
+     that must keep behaving exactly as they did before. */
+  {
+    const WEEK = 2;
+
+    /* One ESPN-shaped starter. `actual` null means his game has not begun, so
+       no statSourceId-0 record exists for him — which is precisely how ESPN
+       signals it. `complete` is the per-player "his game is over" flag. */
+    const starter = (slotId, playerId, projected, actual, complete) => {
+      const stats = [{ statSourceId:1, statSplitTypeId:1, scoringPeriodId:WEEK, appliedTotal:projected }];
+      if (actual != null) stats.push({ statSourceId:0, statSplitTypeId:1, scoringPeriodId:WEEK, appliedTotal:actual });
+      const entry = {
+        lineupSlotId: slotId,
+        playerId,
+        appliedStatTotal: actual == null ? 0 : actual,
+        playerPoolEntry: {
+          id: playerId,
+          player: { id: playerId, fullName: 'Player ' + playerId, defaultPositionId: 2, stats },
+        },
+      };
+      if (complete) entry.gameComplete = true;
+      return entry;
+    };
+
+    /* Nine starters in real lineup slots, plus a bench player carrying a fat
+       projection that must never reach the team total. */
+    const lineup = (idBase, projected, headliner, played) => {
+      const slots = [0, 2, 2, 4, 4, 6, 23, 17, 16];
+      const entries = slots.map((slot, i) => i === 0 && headliner
+        ? starter(slot, idBase + i, headliner.projected, headliner.actual, headliner.complete)
+        : starter(slot, idBase + i, projected, played ? projected : null, played));
+      entries.push(starter(20, idBase + 90, 30.0, null, false));   // bench — excluded
+      return { entries };
+    };
+
+    const sumActual = (roster) => roster.entries
+      .filter((e) => e.lineupSlotId !== 20 && e.lineupSlotId !== 21)
+      .reduce((total, e) => total + (e.appliedStatTotal || 0), 0);
+
+    /* Home: eight starters at 12.0 (96.0) plus a headliner. Away: nine at 11.2
+       (100.8) and nothing played, so away is the control that must not move. */
+    const HOME_REST = 96.0, AWAY_TOTAL = 100.8;
+    const PREGAME_HOME = 108.1;      // 96.0 + the headliner's 12.1 forecast
+
+    const build = (headliner, opts) => {
+      const options = opts || {};
+      const data = syntheticLeague();
+      data.schedule.forEach((game) => {
+        if (game.matchupPeriodId !== WEEK) return;
+        game.winner = options.winner || 'UNDECIDED';
+        /* A settled week has every starter's game behind it; a live week has
+           only the headliner's. */
+        const homeRoster = lineup(1000, 12.0, headliner, !!options.settled);
+        const awayRoster = lineup(2000, 11.2, null, !!options.settled);
+        const homeActual = sumActual(homeRoster);
+        const awayActual = options.awayActual != null ? options.awayActual : sumActual(awayRoster);
+
+        game.home.rosterForCurrentScoringPeriod = options.stripRosters ? null : homeRoster;
+        game.away.rosterForCurrentScoringPeriod = options.stripRosters ? null : awayRoster;
+        game.home.totalProjectedPoints = String(PREGAME_HOME);
+        game.away.totalProjectedPoints = String(AWAY_TOTAL);
+        if (options.providerLive != null) game.home.totalProjectedPointsLive = options.providerLive;
+
+        if (options.settled) {
+          game.home.totalPoints = homeActual;
+          game.away.totalPoints = awayActual;
+        } else {
+          game.home.totalPoints = 0;
+          game.away.totalPoints = 0;
+          game.home.totalPointsLive = homeActual;
+          game.away.totalPointsLive = awayActual;
+        }
+      });
+      return data;
+    };
+
+    /* The projection sub-lines on the week's cards, away side first. */
+    const projectionsOnBoard = async (data) => {
+      await page.evaluate((payload) => window.LeagueData.setEspnData(payload), data);
+      await page.click('#tabBar .tab-btn[data-tab="matchups"]');
+      await page.waitForTimeout(300);
+      return page.evaluate(() => Array.from(document.querySelectorAll('#matchupList .card'))
+        .map((card) => Array.from(card.querySelectorAll('[data-score-projected]'))
+          .map((el) => el.dataset.scoreProjected)));
+    };
+
+    const expect = async (label, data, want, why) => {
+      const board = await projectionsOnBoard(data);
+      if (!board.length) { fail('live projection ' + label + ': the board rendered no cards'); return; }
+      const wrong = board.find((card) => JSON.stringify(card) !== JSON.stringify(want));
+      if (wrong) fail('live projection ' + label + ': expected ' + JSON.stringify(want) +
+        ', saw ' + JSON.stringify(wrong) + ' — ' + why);
+      else pass('live projection ' + label + ': ' + why);
+    };
+
+    // Nothing kicked off: every starter contributes his forecast and the team
+    // total is the pregame number, arrived at honestly rather than copied.
+    await expect('pregame', build({ projected:12.1, actual:null, complete:false }),
+      [AWAY_TOTAL.toFixed(1), PREGAME_HOME.toFixed(1)],
+      'an unplayed lineup sums to its pregame forecast ' + PREGAME_HOME.toFixed(1));
+
+    // THE REPORTED BUG. The Thursday starter beat his 12.1 forecast with 24.6.
+    // His banked points replace that forecast and the team climbs by the 12.5
+    // he beat it by; the eight starters still to play keep theirs.
+    await expect('thursday overperformance',
+      build({ projected:12.1, actual:24.6, complete:false }),
+      [AWAY_TOTAL.toFixed(1), (HOME_REST + 24.6).toFixed(1)],
+      'a starter beating 12.1 with 24.6 lifts the team from ' + PREGAME_HOME.toFixed(1) +
+      ' to ' + (HOME_REST + 24.6).toFixed(1) + ' instead of holding the stale pregame total');
+
+    // The same starter, finished with 3.0 against a 12.1 forecast. Once his
+    // game is known to be over there is nothing left to project, so the team
+    // total falls below the pregame number rather than clinging to it.
+    await expect('finished underperformance',
+      build({ projected:12.1, actual:3.0, complete:true }),
+      [AWAY_TOTAL.toFixed(1), (HOME_REST + 3.0).toFixed(1)],
+      'a finished starter at 3.0 against a 12.1 forecast drops the team to ' +
+      (HOME_REST + 3.0).toFixed(1));
+
+    // A starter mid-game keeps his forecast as the floor: points already on the
+    // board are never projected away, and the rest of his game is still worth
+    // what it was worth.
+    await expect('mid-game floor',
+      build({ projected:12.1, actual:3.0, complete:false }),
+      [AWAY_TOTAL.toFixed(1), PREGAME_HOME.toFixed(1)],
+      'a starter still playing holds his 12.1 forecast at 3.0 scored');
+
+    // ESPN's own live projection is computed against real game clocks, so when
+    // the provider sends one it outranks anything derived here.
+    await expect('provider live total',
+      build({ projected:12.1, actual:24.6, complete:false }, { providerLive:133.3 }),
+      [AWAY_TOTAL.toFixed(1), '133.3'],
+      "ESPN's totalProjectedPointsLive outranks the locally derived number");
+
+    // A decided matchup settles every starter at once, so the projection is the
+    // final score and cannot disagree with it.
+    await expect('settled matchup',
+      build({ projected:12.1, actual:24.6, complete:false }, { settled:true, winner:'HOME' }),
+      [AWAY_TOTAL.toFixed(1), (HOME_REST + 24.6).toFixed(1)],
+      'a final matchup projects exactly what was scored');
+
+    // REGRESSION GUARD. No rosters and no live total is every archive season,
+    // every cloud-restored week and both third-party adapters. That path must
+    // still print the provider's pregame forecast, untouched.
+    await expect('no roster (pregame fallback)',
+      build({ projected:12.1, actual:null, complete:false }, { stripRosters:true }),
+      [AWAY_TOTAL.toFixed(1), PREGAME_HOME.toFixed(1)],
+      'a payload with no lineups still falls back to totalProjectedPoints');
+
+    /* The crawl reads the same number the cards do. PROJ HIGH must be the
+       recalculated home total, not the pregame one it used to quote. */
+    await page.evaluate((payload) => window.LeagueData.setEspnData(payload),
+      build({ projected:12.1, actual:24.6, complete:false }));
+    await page.click('#tabBar .tab-btn[data-tab="home"]');
+    await page.waitForTimeout(300);
+    const projHigh = await page.evaluate(() => {
+      const item = Array.from(document.querySelectorAll('#tickerTrack .ticker-item'))
+        .find((el) => (el.querySelector('.tk-tag') || {}).textContent === 'PROJ HIGH');
+      return item ? (item.querySelector('.tk-score') || {}).textContent : '';
+    });
+    const wantHigh = (HOME_REST + 24.6).toFixed(1);
+    if (projHigh !== wantHigh) {
+      fail('the ticker PROJ HIGH reads ' + JSON.stringify(projHigh) + ' but the live projection is ' +
+        wantHigh + ' — the crawl is still on the pregame snapshot');
+    } else {
+      pass('ticker PROJ HIGH quotes the recalculated live projection ' + wantHigh);
+    }
+  }
+
   /* ---- 7. Error budget --------------------------------------------------- */
   if (pageErrors.length) {
     fail(pageErrors.length + ' uncaught page error(s):');
