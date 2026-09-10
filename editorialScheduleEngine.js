@@ -566,7 +566,7 @@
       var originalTicker=window.NewsDesk.tickerHeadlines;
       window.NewsDesk.tickerHeadlines=function(){
         var result=originalTicker.apply(this,arguments);
-        if(Array.isArray(result)) return result.filter(function(item){return !/FAAB|\$\d+[^<]{0,40}(?:CLAIM|WAIVER)/i.test(String(item));}).map(scrubString);
+        if(Array.isArray(result)) return result.filter(function(item){return !/FAAB|\$\d+[^<]{0,40}(?:CLAIM|WAIVER)/i.test(typeof item==='string' ? item : JSON.stringify(item));}).map(scrubValue);
         return scrubString(result);
       };
     }

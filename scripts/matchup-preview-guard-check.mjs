@@ -89,7 +89,7 @@ const windowStub = {
     getTimelineStream(){ return rawFeed(); },
     getNewsFeedForWeek(){ return rawFeed(); },
     generate(){ return rawFeed(); },
-    tickerHeadlines(){ return ['FAAB $27 WAIVER CLAIM', 'Safe roster move']; },
+    tickerHeadlines(){ return ['FAAB $27 WAIVER CLAIM', 'Safe roster move', {tag:'LIVE',text:'Alpha leads 42.7 to 31.2'}, {tag:'FAAB',text:'Winning bid $0'}]; },
   },
 };
 
@@ -109,7 +109,7 @@ const previews = feed.filter((article) => /^preview-game-/.test(String(article.i
 assert.equal(previews.length, 4, 'all four matchup previews must survive');
 assert.equal(feed.some((article) => /faab/i.test(String(article.id))), false, 'FAAB-only stories must be suppressed');
 assert.equal(windowStub.FSNIntel.faabReport(), null, 'legacy FAAB report must be disabled');
-assert.deepEqual(windowStub.NewsDesk.tickerHeadlines(), ['Safe roster move'], 'FAAB ticker items must be stripped');
+assert.equal(JSON.stringify(windowStub.NewsDesk.tickerHeadlines()), JSON.stringify(['Safe roster move', {tag:'LIVE',text:'Alpha leads 42.7 to 31.2'}]), 'ticker objects must retain their shape and financial items must be stripped');
 
 const expectedEdges = [64,55,61,73];
 const serialized = [];
