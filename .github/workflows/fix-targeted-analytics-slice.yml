@@ -24,14 +24,14 @@ jobs:
           start = s.index("index = replaceLiteral(index,\n  \"<div class=\\\\\\\"analytics-gem-meta truncate")
           end = s.index("\nindex = replaceLiteral(index,\n  \"${analyticsModel('06'", start)
           replacement = r'''const gemMetaStart = index.indexOf('<div class="analytics-gem-meta truncate">');
-if(gemMetaStart < 0) throw new Error('PATCH_MISS: waiver gem metadata render');
-const gemMetaEnd = index.indexOf('</div>', gemMetaStart) + '</div>'.length;
-index = index.slice(0, gemMetaStart) + `<div class="analytics-gem-meta truncate">${esc(gem.team ? gem.team.name : 'Unknown team')} · Week ${gem.week || '—'} · completed add</div>` + index.slice(gemMetaEnd);
-const gemValueStart = index.indexOf('<div class="analytics-gem-roi">', gemMetaStart);
-if(gemValueStart < 0) throw new Error('PATCH_MISS: waiver gem value render');
-const gemValueEnd = index.indexOf('</div>', gemValueStart) + '</div>'.length;
-index = index.slice(0, gemValueStart) + `<div class="analytics-gem-roi">${analyticsValue(gem.points)}<span>POST-ADD PTS</span></div>` + index.slice(gemValueEnd);
-'''
+          if(gemMetaStart < 0) throw new Error('PATCH_MISS: waiver gem metadata render');
+          const gemMetaEnd = index.indexOf('</div>', gemMetaStart) + '</div>'.length;
+          index = index.slice(0, gemMetaStart) + `<div class="analytics-gem-meta truncate">${esc(gem.team ? gem.team.name : 'Unknown team')} · Week ${gem.week || '—'} · completed add</div>` + index.slice(gemMetaEnd);
+          const gemValueStart = index.indexOf('<div class="analytics-gem-roi">', gemMetaStart);
+          if(gemValueStart < 0) throw new Error('PATCH_MISS: waiver gem value render');
+          const gemValueEnd = index.indexOf('</div>', gemValueStart) + '</div>'.length;
+          index = index.slice(0, gemValueStart) + `<div class="analytics-gem-roi">${analyticsValue(gem.points)}<span>POST-ADD PTS</span></div>` + index.slice(gemValueEnd);
+          '''
           p.write_text(s[:start] + replacement + s[end:])
           PY
       - name: Commit repair and remove helper
