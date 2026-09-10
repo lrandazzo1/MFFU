@@ -178,6 +178,15 @@ window.FSNBoot = (function(){
   --dim:#7c8698;
   --nav-h:64px;
   --ticker-h:34px;
+  /* The vertical budget the fixed chrome takes out of the viewport, declared
+     once. #appShell pads by exactly this and .screen subtracts exactly this, so
+     a screen whose content fits the viewport produces no scrollable remainder.
+     They used to be written out separately and disagreed by the 1px + 8px of
+     breathing room only the padding knew about, which left every screen — even
+     an empty Record Book — with a few pixels of scroll into dead space below
+     the tab bar. */
+  --shell-inset-top:calc(var(--ticker-h) + env(safe-area-inset-top) + 1px);
+  --shell-inset-bottom:calc(var(--nav-h) + env(safe-area-inset-bottom) + 8px);
 }
 
 *{ -webkit-tap-highlight-color:transparent; }
@@ -186,7 +195,12 @@ html,body{
   background:var(--ink);
   color:#fff;
   font-family:'Oswald',system-ui,-apple-system,sans-serif;
-  overscroll-behavior-y:auto;
+  /* Hard stop at both ends of the document. `auto` let the page rubber-band
+     well past the first and last card into an expanse of bare --ink, and let a
+     downward drag at the top arm pull-to-refresh — which on this app throws
+     away the hydrated league and replays the whole cold boot. The app owns its
+     own refresh (Setup), so neither gesture has a job here. */
+  overscroll-behavior-y:none;
   /* Small-viewport guard: nothing is ever wide enough to swipe the whole
      page sideways. In-page carousels (story rail, topic chips, week scrubber)
      keep their own contained overflow-x; this only clips a stray blowout. */
@@ -223,8 +237,8 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
 #appShell{
   min-height:100vh;
   min-height:100dvh;
-  padding-top:calc(var(--ticker-h) + env(safe-area-inset-top) + 1px);
-  padding-bottom:calc(var(--nav-h) + env(safe-area-inset-bottom) + 8px);
+  padding-top:var(--shell-inset-top);
+  padding-bottom:var(--shell-inset-bottom);
   overflow-y:visible;
 }
 
@@ -236,7 +250,8 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
    Every screen, the franchise dossier, the reader and the recordbook stack now
    sit inside the same centred max-w-6xl column.
 ============================================================ */
-.screen-shell{ width:100%; max-width:72rem; margin-left:auto; margin-right:auto; overflow-y:auto; }
+.screen-shell{ width:100%; max-width:72rem; margin-left:auto; margin-right:auto; overflow-y:auto;
+  overscroll-behavior-y:contain; }
 /* The blocks inside a screen already ship the app's own 16px gutter. The
    shell owns the gutter now, so theirs is zeroed here in one place instead
    of being doubled on every child. #homeContent is the one screen block that
@@ -524,7 +539,8 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
   padding:20px; background:rgba(3,6,10,.72); backdrop-filter:blur(4px); }
 #fsnIndexInfoModal[data-open="true"]{ display:flex; animation:fsnInfoFade .18s ease both; }
 @keyframes fsnInfoFade{ from{ opacity:0 } to{ opacity:1 } }
-.fsn-info-panel{ width:100%; max-width:440px; max-height:86vh; overflow-y:auto; border:1px solid var(--line);
+.fsn-info-panel{ width:100%; max-width:440px; max-height:86vh; overflow-y:auto; overscroll-behavior:contain;
+  border:1px solid var(--line);
   border-radius:16px; background:linear-gradient(160deg,#111824,#080c13); box-shadow:0 24px 60px rgba(0,0,0,.55); }
 .fsn-info-head{ position:sticky; top:0; display:flex; align-items:flex-start; justify-content:space-between; gap:12px;
   padding:16px; background:linear-gradient(160deg,#121a26,#0c111a); border-bottom:1px solid var(--line); }
@@ -553,9 +569,17 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
 .screen > header{ position:relative; z-index:2; }
 .screen[data-active="true"]{
   display:block;
-  min-height:calc(100dvh - var(--ticker-h) - var(--nav-h) - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  /* Exactly the viewport minus the fixed chrome the shell already padded for.
+     Written against the same two variables so the two can no longer drift: the
+     old form subtracted the raw --ticker-h/--nav-h and missed the 9px of
+     breathing room in the shell's padding, so every screen was 9px taller than
+     the space it had and every screen scrolled that far into nothing. */
+  min-height:calc(100dvh - var(--shell-inset-top) - var(--shell-inset-bottom));
   overflow-y:auto;
-  overscroll-behavior-y:auto;
+  /* A screen never overflows its own box (it is min-height, not height), so a
+     touch that reaches its end must not chain out into the document and bounce
+     the whole app. */
+  overscroll-behavior-y:contain;
 }
 @keyframes screenIn{ from{opacity:0; transform:translateY(7px);} to{opacity:1; transform:none;} }
 
@@ -838,6 +862,7 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
   display:flex; flex-direction:column; justify-content:center;
   padding:12px 24px 20px;
   min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch;
+  overscroll-behavior:contain;
 }
 /* Tour slides carry a UI preview + description + mini tab map, so they align to
    the top and scroll rather than vertically centering their taller content. */
@@ -957,7 +982,7 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
   font-family:'JetBrains Mono',monospace; font-size:9px; font-weight:700;
   letter-spacing:.2em; text-transform:uppercase; color:var(--dim);
 }
-.ftu-demo-scroll{ flex:1; overflow-y:auto; padding:6px 18px 20px; }
+.ftu-demo-scroll{ flex:1; overflow-y:auto; overscroll-behavior:contain; padding:6px 18px 20px; }
 .ftu-demo-card{
   border-radius:14px; padding:16px; margin-bottom:14px;
   background:linear-gradient(160deg,rgba(255,45,85,.08),rgba(11,15,23,.4));
@@ -1220,7 +1245,7 @@ html[data-fsn-boot="loading"] #tickerBar{ visibility:hidden; }
   border-bottom:1px solid var(--line);
 }
 .onboard-body{
-  flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch;
+  flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain;
   padding:18px 16px calc(40px + env(safe-area-inset-bottom));
   max-width:720px; width:100%; margin:0 auto;
 }
@@ -1481,7 +1506,8 @@ html[data-fsn-boot="loading"] #tickerBar{ visibility:hidden; }
 .dossier-link-btn{ padding:9px; }
 /* Horizontal padding lives on .dossier-shell (px-4 sm:px-6) so the dossier
    column and the bar above it line up on any screen. */
-#franchiseModalBody{ flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:18px 0 calc(34px + env(safe-area-inset-bottom)); }
+#franchiseModalBody{ flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain;
+  padding:18px 0 calc(34px + env(safe-area-inset-bottom)); }
 .dossier-shell{ width:100%; max-width:72rem; margin:0 auto; }
 .dossier-hero{
   position:relative; overflow:hidden; border-radius:20px; border:1px solid var(--line-2);
@@ -1877,6 +1903,9 @@ html[data-fsn-boot="loading"] #tickerBar{ visibility:hidden; }
 }
 #readerBody{
   flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch;
+  /* The reader sits over a locked page, so a drag past the end of an article
+     had nothing under it but the overlay's own backdrop. */
+  overscroll-behavior:contain;
   padding-bottom:calc(28px + env(safe-area-inset-bottom));
 }
 .icon-btn{
@@ -2063,7 +2092,7 @@ html[data-fsn-boot="loading"] #tickerBar{ visibility:hidden; }
 }
 .story-compose-title{ font-family:'Anton',Impact,sans-serif; font-size:20px; letter-spacing:.055em; }
 #storyForm{ min-height:0; display:flex; flex:1; flex-direction:column; }
-.story-compose-body{ min-height:0; flex:1; overflow-y:auto; padding:17px; }
+.story-compose-body{ min-height:0; flex:1; overflow-y:auto; overscroll-behavior:contain; padding:17px; }
 .story-form-grid{ display:grid; grid-template-columns:1fr 1fr; gap:14px; }
 .story-field-wide{ grid-column:1 / -1; }
 .story-field-head{ display:flex; align-items:center; justify-content:space-between; gap:10px; }
@@ -2347,7 +2376,7 @@ html[data-fsn-boot="loading"] #tickerBar{ visibility:hidden; }
   backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px);
 }
 #profilePicker[data-open="true"]{ display:flex; }
-.profile-shell{ width:min(760px,100%); max-height:100%; overflow-y:auto; text-align:center; }
+.profile-shell{ width:min(760px,100%); max-height:100%; overflow-y:auto; overscroll-behavior:contain; text-align:center; }
 .profile-title{
   margin:5px 0 0; font-family:'Anton',Impact,sans-serif; font-size:clamp(32px,8vw,54px);
   line-height:1; letter-spacing:.04em; text-transform:uppercase; color:#fff;
@@ -19643,14 +19672,82 @@ LeagueData.subscribe(scheduleHydrationRepaint);
 /* ============================================================
    TICKER
 ============================================================ */
+
+/* The off-air strip: the crawl's honest empty state. It is the copy the bar has
+   always shown before a league is connected, held in one place now because the
+   renderer below also needs it as the degrade target when a crawl cannot be
+   assembled at all. Byte-identical to what tickerItems() returned inline. */
+const TICKER_OFF_AIR_ITEMS = [
+  `<span class="ticker-item"><span class="tk-tag">FSN</span><span class="tk-team">Fantasy Sports Network</span></span>`,
+  `<span class="ticker-item"><span class="tk-team">Connect your ESPN league in Setup</span></span>`,
+  `<span class="ticker-item"><span class="tk-tag">OFF AIR</span><span class="tk-team">Awaiting signal</span></span>`,
+];
+
+/* ---- TICKER SCOPE LIFECYCLE ----
+   The crawl is the one surface that is on screen on every screen, which is
+   exactly why it was the one that survived a league switch. Two things kept it
+   there:
+
+     1. Nothing recorded which league the mounted strip belonged to. Every other
+        derived surface in the app namespaces itself by leagueScopeToken() (the
+        FSNIntel reads, the SeasonAnalytics models, the News Desk caches) and
+        `ui.activeLeagueKey` records what is resident in the stores. The ticker
+        tracked neither, so it had no way to know its DOM was stale — and when
+        anything in tickerItems() threw, safeRun() logged it and left the
+        OUTGOING league's scores sliding across the top of the incoming one,
+        permanently, because the next render threw in exactly the same place.
+
+     2. The crawl animation is never retired. `tickerScroll` translates the track
+        by -50% of ITS OWN width, so swapping the strip's contents mid-cycle
+        re-anchors that percentage onto a track of a different length: a shorter
+        incoming strip starts already scrolled off the end of the bar, which
+        reads as a ticker that is stuck or empty until the 42s cycle comes back
+        around. A Sleeper league (18 teams, long names) into an ESPN league is
+        the worst case of it.
+
+   Both are league-lifecycle bugs, so both are fixed on the league lifecycle:
+   the strip is scoped, and a scope change unmounts it and restarts the crawl. */
+let tickerScope = null;   // leagueScopeToken() the mounted strip was built for
+let tickerHtml = '';      // the exact markup currently mounted, to skip no-op writes
+
+/* Re-trigger the crawl animation so its -50% keyframe is measured against the
+   strip that is actually on screen. The reflow read between the two writes is
+   load-bearing: without it the browser coalesces them and the animation is
+   never actually retired. */
+function restartTickerAnimation(track){
+  if(!track) return;
+  try{
+    track.style.animation = 'none';
+    void track.offsetWidth;
+    track.style.animation = '';
+  }catch(err){
+    console.error('[Ticker] could not restart the crawl animation; the strip may stay mid-cycle ' +
+      'against its previous width.', err);
+  }
+}
+
+/* Retire the crawl on the spot. Called from clearLeagueStateForSwitch() so the
+   strip goes dark in the same turn the stores are emptied rather than carrying
+   the outgoing league's scores until the next coalesced repaint lands a frame
+   later. Leaving tickerScope null marks the bar unmounted, so the next
+   renderTicker() treats the incoming league as a first paint. */
+function resetTicker(reason){
+  tickerScope = null;
+  tickerHtml = '';
+  const track = $('tickerTrack');
+  if(!track){
+    console.warn('[Ticker] reset requested (' + (reason || 'unspecified') + ') but #tickerTrack is ' +
+      'not in the document; nothing to unmount.');
+    return;
+  }
+  track.innerHTML = '';
+  restartTickerAnimation(track);
+}
+
 function tickerItems(){
   const items = [];
   if(!LeagueData.hasLive()){
-    return [
-      `<span class="ticker-item"><span class="tk-tag">FSN</span><span class="tk-team">Fantasy Sports Network</span></span>`,
-      `<span class="ticker-item"><span class="tk-team">Connect your ESPN league in Setup</span></span>`,
-      `<span class="ticker-item"><span class="tk-tag">OFF AIR</span><span class="tk-team">Awaiting signal</span></span>`,
-    ];
+    return TICKER_OFF_AIR_ITEMS.slice();
   }
 
   const week = effectiveWeek();
@@ -19757,9 +19854,52 @@ function tickerItems(){
 }
 
 function renderTicker(){
-  const items = tickerItems();
+  const track = $('tickerTrack');
+  if(!track){
+    console.error('[Ticker] #tickerTrack is not in the document; the crawl cannot render.');
+    return;
+  }
+
+  let scope;
+  try{
+    scope = leagueScopeToken();
+  }catch(err){
+    console.error('[Ticker] could not read the league scope token; rebuilding the crawl unscoped.', err);
+    scope = '';
+  }
+  const firstMount = tickerScope === null;
+  const scopeChanged = !firstMount && scope !== tickerScope;
+
+  /* Unmount the outgoing league BEFORE the incoming one is assembled. Whatever
+     happens below then degrades to an empty or off-air crawl for the NEW
+     league, never to the previous league's scores left running on the bar. */
+  if(scopeChanged){
+    track.innerHTML = '';
+    tickerHtml = '';
+  }
+
+  let items = null;
+  try{
+    items = tickerItems();
+  }catch(err){
+    console.error('[Ticker] crawl assembly failed for league scope "' + scope + '"; falling back to the ' +
+      'off-air strip rather than leaving the previous league on the bar.', err);
+  }
+  if(!items || !items.length) items = TICKER_OFF_AIR_ITEMS.slice();
+
   // Doubling the strip is what makes the -50% keyframe loop seamlessly.
-  $('tickerTrack').innerHTML = items.join('') + items.join('');
+  const html = items.join('') + items.join('');
+  /* Same league, same strip: leave the running crawl alone. Rewriting identical
+     markup on every coalesced repaint and every 60s rebuild would restart the
+     animation under a reader who is mid-read. */
+  if(!scopeChanged && !firstMount && html === tickerHtml) return;
+
+  track.innerHTML = html;
+  tickerHtml = html;
+  tickerScope = scope;
+  /* Only a mount or a league change re-anchors the animation. A same-league
+     content update (a score landing) keeps its place in the cycle. */
+  if(scopeChanged || firstMount) restartTickerAnimation(track);
 }
 
 /* ============================================================
@@ -22970,6 +23110,14 @@ function clearLeagueStateForSwitch(nextLeagueId, nextProvider){
   // The reader-view article lookup is keyed by article id; drop it so a
   // deep-linked story id from the previous league can't resolve after the swap.
   ui.newsCache = null;
+
+  /* The crawl is fixed to the top of every screen, so it is the one surface a
+     reader can still see while the rest of the app is empty mid-swap. Unmount
+     it here, synchronously, alongside the stores it reads from: the store
+     publishes above only queue a repaint into the next animation frame, and a
+     frame of the outgoing league's scores over an emptied app is exactly the
+     stale state this switch exists to prevent. */
+  resetTicker('league switch to ' + (nextKey || 'no league'));
 
   hideHistoryBanner();
   return true;
@@ -27153,7 +27301,9 @@ function renderNews(){
 /* Rebuild the active News feed once a minute so newly released deterministic
    stories and the crawl cross their release boundary on the same timer. */
 setInterval(()=>{
-  renderTicker();
+  /* Guarded: an unguarded throw here aborted the whole tick, so a crawl failure
+     also silently stopped the News feed from ever refreshing again. */
+  safeRun('ticker:minuteRebuild', renderTicker);
   if(ui.screen !== 'news' || $('reader').dataset.open === 'true') return;
   safeRun('news', renderNews, ()=> renderScreenFallback('news'));
 }, 60000);

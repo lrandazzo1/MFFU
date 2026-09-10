@@ -20,6 +20,7 @@
     "check:matchup-previews": "node scripts/matchup-preview-guard-check.mjs",
     "check:render": "node scripts/render-check.mjs",
     "check:switch": "node scripts/switch-curtain-check.mjs",
+    "check:ticker": "node scripts/ticker-scope-check.mjs",
     "check:boot": "node scripts/boot-curtain-check.mjs",
     "check:apibase": "node scripts/api-base-check.mjs",
     "check:links": "node scripts/legal-links-check.mjs",
@@ -27,7 +28,7 @@
     "check:news": "node scripts/news-library-check.mjs",
     "check:applinks": "node scripts/check-applinks.mjs",
     "check:deeplinks": "node scripts/deeplink-check.mjs",
-    "verify": "npm run check:scope && npm run check:matchup-previews && npm run test:wire && npm run check:wire && npm run test:triggers && npm run audit:notifications && npm run check:render && npm run check:switch && npm run check:boot && npm run check:apibase && npm run check:links && npm run check:claims && npm run check:news && npm run check:applinks && npm run check:deeplinks",
+    "verify": "npm run check:scope && npm run check:matchup-previews && npm run test:wire && npm run check:wire && npm run test:triggers && npm run audit:notifications && npm run check:render && npm run check:switch && npm run check:ticker && npm run check:boot && npm run check:apibase && npm run check:links && npm run check:claims && npm run check:news && npm run check:applinks && npm run check:deeplinks",
     "audit:notifications": "node scripts/audit-notifications.mjs",
     "assets:source": "node scripts/build-brand-assets.mjs",
     "check:release": "npm run build:ios && node scripts/release-cleanup-check.mjs && node scripts/release-browser-check.mjs"
