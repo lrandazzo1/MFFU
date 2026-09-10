@@ -234,8 +234,15 @@ index = replaceOnce(index,
 
 // Analytics: keep the useful "gem" idea but rank by post-add points, not money.
 index = replaceOnce(index,
-  /\s*const bid = Math\.max\(0, number\(tx\.bid\)\);\n\s*const costFloor = Math\.max\(1, bid\);\n\s*gems\.push\(\{([\s\S]*?)week:fromWeek,\n\s*)bid,\n\s*free:bid === 0,\n\s*points,\n\s*roi:points \/ costFloor,\n\s*\}\);/,
-  `\n      gems.push({$1points,\n      });`,
+  /      const bid = Math\.max\(0, number\(tx\.bid\)\);[\s\S]*?      \}\);/,
+  `      gems.push({
+        id:String(tx.id) + ':' + String(add.playerId),
+        player:add.name || meta.name || ('Player ' + add.playerId),
+        pos,
+        team:FSNIntel.teamOf(tx.teamId),
+        week:fromWeek,
+        points,
+      });`,
   'waiver gem financial fields');
 index = replaceOnce(index, /gems\.sort\(\(a,b\)=> \(b\.roi - a\.roi\) \|\| \(b\.points - a\.points\) \|\| a\.player\.localeCompare\(b\.player\)\);/, `gems.sort((a,b)=> (b.points - a.points) || a.player.localeCompare(b.player));`, 'waiver gem sort');
 index = replaceOnce(index,
