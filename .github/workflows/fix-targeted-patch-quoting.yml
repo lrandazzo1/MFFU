@@ -1,0 +1,38 @@
+name: Fix targeted patch quoting
+
+on:
+  push:
+    branches:
+      - fix/dynamic-matchup-previews-strip-faab
+
+permissions:
+  contents: write
+
+jobs:
+  fix-quoting:
+    if: ${{ !contains(github.event.head_commit.message, '[quote-fix]') && !contains(github.event.head_commit.message, '[targeted-patch-complete]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/dynamic-matchup-previews-strip-faab
+      - name: Repair patch-script quoting
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('scripts/apply-matchup-faab-fix.mjs')
+          s = p.read_text()
+          old = "report.freeAdds ? \\`<b>\\${report.freeAdds}</b> of the completed moves were recorded as direct free-agent adds; the rest were successful waiver claims.\\` : `All completed additions in this report came through the waiver transaction path.`,"
+          new = "report.freeAdds ? \\`<b>\\${report.freeAdds}</b> of the completed moves were recorded as direct free-agent adds; the rest were successful waiver claims.\\` : 'All completed additions in this report came through the waiver transaction path.',"
+          if old not in s:
+              raise SystemExit('expected quoting target not found')
+          p.write_text(s.replace(old, new, 1))
+          PY
+      - name: Commit repaired script and remove helper workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm -f .github/workflows/fix-targeted-patch-quoting.yml
+          git add scripts/apply-matchup-faab-fix.mjs .github/workflows/fix-targeted-patch-quoting.yml
+          git commit -m "Fix targeted patch script quoting [quote-fix]"
+          git push origin HEAD:fix/dynamic-matchup-previews-strip-faab
