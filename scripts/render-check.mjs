@@ -495,7 +495,7 @@ try {
 
   /* Score bindings must update on hydration, without tab switching. */
   await page.click('#tabBar .tab-btn[data-tab="home"]');
-  for (const scenario of ['projected', 'missing', 'live', 'negative', 'final-zero']) {
+  for (const scenario of ['projected', 'missing', 'live', 'live-espn', 'negative', 'final-zero']) {
     const data = syntheticLeague();
     data.schedule.forEach(game=>{
       game.winner = 'UNDECIDED';
@@ -505,6 +505,15 @@ try {
         game[side].totalProjectedPoints = scenario === 'missing' ? null : (side === 'home' ? '127.8' : '109.4');
       }
       if(scenario === 'live') game.home.totalPoints = 42.7;
+      /* The shape ESPN actually serves mid-slate: totalPoints parked at 0
+         until the matchup period settles, the real running score streaming in
+         totalPointsLive, and the forecast in totalProjectedPoints. This is the
+         case that used to put 127.8 in the big score slot and 0.0 nowhere the
+         reader could see. */
+      if(scenario === 'live-espn'){
+        game.home.totalPointsLive = 118.6;
+        game.away.totalPointsLive = 104.2;
+      }
       if(scenario === 'negative') game.home.totalPoints = -2;
       if(scenario === 'final-zero') game.winner = 'TIE';
     });
@@ -526,11 +535,15 @@ try {
     const pair = (hi, lo)=> (hi && lo) ? [hi.scores[0], lo.scores[0]] : null;
     const same = (a, b)=> JSON.stringify(a) === JSON.stringify(b);
     const expected = {
-      projected:    { proj:['127.8','109.4'], actual:null,           pulse:'127.8' },
-      missing:      { proj:null,              actual:null,           pulse:'—' },
-      live:         { proj:['127.8','109.4'], actual:['42.7','0.0'], pulse:'42.7' },
-      negative:     { proj:['127.8','109.4'], actual:['0.0','-2.0'], pulse:'0.0' },
-      'final-zero': { proj:['127.8','109.4'], actual:['0.0','0.0'],  pulse:'0.0' },
+      /* pulse is the Desk's HIGH tile. It reads real points only: a week with
+         nothing on the board reports — rather than a projection under a label
+         that gives the reader no way to tell it is one. */
+      projected:    { proj:['127.8','109.4'], actual:null,             pulse:'—' },
+      missing:      { proj:null,              actual:null,             pulse:'—' },
+      live:         { proj:['127.8','109.4'], actual:['42.7','0.0'],   pulse:'42.7' },
+      'live-espn':  { proj:['127.8','109.4'], actual:['118.6','104.2'], pulse:'118.6' },
+      negative:     { proj:['127.8','109.4'], actual:['0.0','-2.0'],   pulse:'0.0' },
+      'final-zero': { proj:['127.8','109.4'], actual:['0.0','0.0'],    pulse:'0.0' },
     }[scenario];
     const seen = {
       proj: pair(tagged('PROJ HIGH'), tagged('PROJ LOW')),
@@ -550,7 +563,7 @@ try {
      projection is a labelled sub-line beneath it. A week that has not kicked
      off must read 0.0 with "Projected: ..." underneath — never the projection
      promoted into the score slot. */
-  for (const scenario of ['pregame', 'live']) {
+  for (const scenario of ['pregame', 'live', 'live-espn']) {
     const data = syntheticLeague();
     data.schedule.forEach(game=>{
       game.winner = 'UNDECIDED';
@@ -560,6 +573,10 @@ try {
         game[side].totalProjectedPoints = side === 'home' ? '127.8' : '109.4';
       }
       if(scenario === 'live') game.home.totalPoints = 42.7;
+      if(scenario === 'live-espn'){
+        game.home.totalPointsLive = 118.6;
+        game.away.totalPointsLive = 104.2;
+      }
     });
     await page.evaluate(data=> window.LeagueData.setEspnData(data), data);
     await page.click('#tabBar .tab-btn[data-tab="matchups"]');
@@ -574,7 +591,7 @@ try {
     if(!board.length){ fail('matchup board rendered no cards (' + scenario + ')'); continue; }
 
     // Away side is rendered first, home second.
-    const wantActual = scenario === 'live' ? ['0.0','42.7'] : ['0.0','0.0'];
+    const wantActual = { live:['0.0','42.7'], 'live-espn':['104.2','118.6'] }[scenario] || ['0.0','0.0'];
     const wantProjected = ['109.4','127.8'];
     const broken = board.find(card=>
       JSON.stringify(card.actual) !== JSON.stringify(wantActual) ||
@@ -586,6 +603,45 @@ try {
     const mislabelled = board.find(card=> !/Projected: 109\.4/.test(card.text) || !/Projected: 127\.8/.test(card.text));
     if(mislabelled) fail('projection sub-label copy missing (' + scenario + '): ' + mislabelled.text);
     else pass('projection sub-labels read "Projected: ..." (' + scenario + ')');
+
+    /* ---- Matchup of the Week ----
+       The marquee card carries no projection at all: its two scores are real,
+       and the combined total in its copy is the sum of those two. A projected
+       number here would be indistinguishable from an actual one, because the
+       card has nowhere to say which it is. */
+    /* Read it on the Desk. The hydration repaint rebuilds the ACTIVE screen,
+       so #motwCard still holds the previous scenario's markup while the
+       matchup board is in front — asserting against it from here would be
+       asserting against stale DOM. */
+    await page.click('#tabBar .tab-btn[data-tab="home"]');
+    await page.waitForTimeout(300);
+    const motw = await page.evaluate(()=>{
+      const card = document.getElementById('motwCard');
+      return card ? card.textContent.replace(/\s+/g, ' ').trim() : '';
+    });
+    if(!motw){ fail('the Matchup of the Week card rendered nothing (' + scenario + ')'); continue; }
+
+    const leaked = ['127.8','109.4'].filter(value=> motw.indexOf(value) !== -1);
+    if(leaked.length){
+      fail('the Matchup of the Week card printed projection value(s) ' + leaked.join(', ') +
+        ' with nothing marking them as projections (' + scenario + '): ' + motw);
+    } else {
+      pass('Matchup of the Week carries no unlabelled projection (' + scenario + ')');
+    }
+
+    const wantCombined = { live:'42.7', 'live-espn':'222.8' }[scenario];
+    if(!wantCombined){
+      // A board with nothing scored quotes no combined total at all.
+      // "Combined scoring will land once the slate finalizes" is the pregame
+      // copy and carries no number; only "Combined <n>" is a quoted total.
+      if(/Combined\s+\d/.test(motw)) fail('Matchup of the Week quoted a combined total before any game scored: ' + motw);
+      else pass('Matchup of the Week quotes no combined total before kickoff (' + scenario + ')');
+    } else if(motw.indexOf('Combined ' + wantCombined) !== -1){
+      pass('Matchup of the Week quotes the real combined total ' + wantCombined + ' (' + scenario + ')');
+    } else {
+      fail('Matchup of the Week should quote a combined total of ' + wantCombined +
+        ' from the two real scores (' + scenario + '): ' + motw);
+    }
   }
 
   /* ---- 7. Error budget --------------------------------------------------- */
