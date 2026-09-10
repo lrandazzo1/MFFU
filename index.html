@@ -20355,7 +20355,11 @@ function renderHome(){
     $('hotSeatCard').innerHTML = `<div class="p-5 text-center text-[12.5px] text-[var(--dim)]">No scored team is available yet this week.</div>`;
   } else {
     const streak = low.team.ownerId ? currentStreak(low.team.ownerId) : null;
-    const streakLine = streak && streak.result === 'L'
+    /* Week 1 has no completed matchups in the current season yet, so any
+       streak reported here is trailing from a prior year's log — showing a
+       "LOST 1 STRAIGHT" pill on the Fraud Watch card reads as this season's
+       momentum and is a phantom. Gate the badge on week > 1. */
+    const streakLine = (week > 1 && streak && streak.result === 'L')
       ? `<span class="pill" style="border-color:rgba(255,45,85,.4);color:var(--red)">LOST ${streak.length} STRAIGHT</span>` : '';
     /* Measured against the top of the SAME pool the seat was judged from, so a
        "behind the high" number can never be computed against a side the desk
