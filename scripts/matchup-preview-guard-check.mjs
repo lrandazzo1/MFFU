@@ -146,3 +146,35 @@ assert.deepEqual(
 );
 
 console.log('[matchup-preview-guard-check] 4 unique matchup previews, matchup-specific records/H2H/probabilities, deterministic replay, and no FAAB surfaces — clean');
+
+// Exercise full slates, sparse opening weeks, tied scoring, and postseason weeks.
+const expandedTeams = Array.from({length:24}, (_,i)=>({id:String(i+1),ownerId:'m'+i,name:'Club '+String(i+1).padStart(2,'0')}));
+windowStub.LeagueData.getTeams=()=>expandedTeams;
+windowStub.FSNIntel.getRecordAsOfWeek=()=> '3-2';
+let testWeek=1, sparse=true, tied=false, reverse=false;
+windowStub.FSNIntel.winProbability=()=>50;
+windowStub.FSNIntel.standingsThrough=()=> sparse?[]:expandedTeams.map((team,i)=>({team,avg:tied?110:100+i}));
+windowStub.getH2HAsOf=()=>sparse?null:{winsFor:2,winsAgainst:2,ties:0,meetingCount:4};
+// Original wrapper closes over rawFeed, whose pair IDs remain configurable.
+previewIds.splice(0,previewIds.length,...Array.from({length:12},(_,i)=>(i+1)+'-'+(i+13)));
+const originalRawFeed=rawFeed;
+rawFeed=function(){
+  const feed=originalRawFeed().map(a=>a.id.startsWith('preview-game-')?{...a,id:a.id.replace('preview-game-2-','preview-game-'+testWeek+'-'),week:testWeek}:a);
+  return reverse?feed.reverse():feed;
+};
+for(const forecast of [50,72]) for(const week of [1,6,12,16]) for(const missing of [true,false]) for(const equal of [true,false]){
+  testWeek=week;sparse=missing;tied=equal;reverse=false;
+  windowStub.FSNIntel.winProbability=()=>forecast;
+  const stories=windowStub.NewsDesk.generate().filter(a=>a.kind==='preview');
+  assert.equal(stories.length,12);
+  const beats=stories.flatMap(a=>a.paragraphs);
+  assert.equal(new Set(beats).size,beats.length,'no repeated paragraph in a 12-game slate');
+  const normalize=p=>p.replace(/<b>.*?<\/b>/g,'VALUE');
+  for(const position of [0,1]) assert.equal(new Set(stories.map(a=>normalize(a.paragraphs[position]))).size,12,'distinct sentence structures, not just substituted names');
+  assert.equal(new Set(stories.map(a=>normalize(a.paragraphs.at(-1)))).size,12,'12 distinct closing structures');
+  for(const story of stories) assert.doesNotMatch(JSON.stringify(story),/not copied|not borrowed|does not invent|manufacturing|undefined|NaN|case file|matchup-specific/i);
+  reverse=true;
+  const reordered=windowStub.NewsDesk.generate().filter(a=>a.kind==='preview');
+  for(const story of stories) assert.deepEqual(reordered.find(a=>a.id===story.id).paragraphs,story.paragraphs,'feed order must not affect copy');
+}
+console.log('[matchup-preview-guard-check] 384 previews: 12 distinct hooks/bodies/closers per slate, opening/mid/late/playoff weeks, missing history/scoring, equal pace/probability, and order-independent replay — clean');
