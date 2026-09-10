@@ -372,31 +372,150 @@
     }
     return clamp(p,12,88);
   }
-  function seriesLine(A,B,s){
-    if(!s) return 'The Record Book has no verified series edge available for this pairing, so the preview does not invent one.';
-    var aw=num(s.winsFor!=null?s.winsFor:s.aWins)||0, bw=num(s.winsAgainst!=null?s.winsAgainst:s.bWins)||0, ties=num(s.ties)||0, meetings=num(s.meetingCount);
-    if(meetings==null) meetings=aw+bw+ties;
-    if(!meetings) return '<b>'+esc(A.name)+'</b> and <b>'+esc(B.name)+'</b> have no verified prior meeting in the loaded Record Book window.';
-    if(aw===bw) return 'The Record Book is level after <b>'+meetings+'</b> meeting'+(meetings===1?'':'s')+': <b>'+aw+'-'+bw+(ties?'-'+ties:'')+'</b>. This matchup arrives without a historical owner.';
-    var leader=aw>bw?A:B;
-    return '<b>'+esc(leader.name)+'</b> owns the verified series <b>'+Math.max(aw,bw)+'-'+Math.min(aw,bw)+(ties?'-'+ties:'')+'</b> through <b>'+meetings+'</b> meeting'+(meetings===1?'':'s')+'. That history belongs to this matchup only; it is not borrowed from the league-wide marquee game.';
-  }
-  function scoringLine(A,B,week){
+  // Private output-layer pools. Each slot has twelve independently written beats.
+  // Values are escaped before interpolation; selection never changes model inputs.
+  var PREVIEW_COPY = {
+    hook: [
+      '{A} brings {RA} into Week {W}; {B} answers with {RB}. The pressure falls first on {F}, carrying {E}% win probability into a game {D} can turn with one productive lineup.',
+      'Start with the challenger: {D} gets a shot at {F} in Week {W}. {A} stands at {RA}, {B} at {RB}, and the forecast gives {F} {E}%.',
+      'A win is the immediate prize for {A} ({RA}) and {B} ({RB}) in Week {W}. At {E}%, {F} has the stronger forecast; {D} has the opportunity to spoil it.',
+      'The Week {W} assignment for {A}: get past {B}. Their records read {RA} and {RB}, respectively, with {F} holding a {E}% chance to take this meeting.',
+      '{B} draws {A} in Week {W}, bringing a {RB} record against {RA}. The forecast favors {F} at {E}%, putting {D} in position to deliver the upset.',
+      'Two records frame this Week {W} contest: {RA} for {A}, {RB} for {B}. {F} gets {E}% from the forecast, but {D} still controls its own lineup.',
+      'For {F}, Week {W} comes with an expectation to meet. {A} enters {RA} against {B} at {RB}; the {E}% forecast leaves {D} a route through.',
+      '{A} and {B} reach Week {W} from different corners of the schedule, at {RA} and {RB}. This time they settle matters directly, with {F} assigned {E}% win probability.',
+      'Circle {A} against {B} on the Week {W} board. The records are {RA} and {RB}, and {F} carries a {E}% forecast into the pairing.',
+      'The next entry beside {A}’s {RA} record depends on {B}, which arrives {RB}. Week {W} gives {F} a {E}% chance to win and {D} a clear target.',
+      'Week {W} puts {B} ({RB}) across from {A} ({RA}). {F} holds the forecast at {E}%; a strong start from {D} would put that advantage under immediate pressure.',
+      '{D} can make this an uncomfortable Week {W} for {F}. {A} carries {RA}, {B} carries {RB}, and the projected favorite starts with {E}% win probability.'
+    ],
+    pace: [
+      '{A} has averaged {PA} points against {B}’s {PB}. The {G}-point separation measures their weekly production, not the margin this game must follow. A repeat of those averages would favor {L}.',
+      'Production puts {L} ahead: {PA} per game for {A}, {PB} for {B}. Closing that {G}-point gap is the first scoring task for {T}, before any extra cushion enters the conversation.',
+      'Look past the records and {A}’s {PA} meets {B}’s {PB} points per game. {L} owns a {G}-point pace advantage; {T} needs a better relative performance than those averages describe.',
+      'The scoring comparison is {PA} for {A}, {PB} for {B}. That leaves {G} points between them each week. {L} can draw confidence from the output, while {T} needs to change the terms.',
+      '{T} faces a production test against {L}. Their pace gap is {G} points, built from {A} at {PA} and {B} at {PB}; reducing it would bring the game closer before the late starters finish.',
+      'Average output gives this matchup its clearest measuring stick. {A}: {PA}. {B}: {PB}. The {G}-point spread favors {L}, though an average is no ceiling for {T}.',
+      '{L} has the stronger scoring baseline. {A} supplies {PA} per game and {B} supplies {PB}, a difference of {G}. For {T}, a win asks for a departure from that balance.',
+      'A routine scoring week would help {L}: {A} averages {PA}, with {B} at {PB}. {T} must bridge {G} points relative to that baseline to pull level.',
+      'The numbers behind this pairing begin with {PA} points per week from {A} and {PB} from {B}. {L} leads by {G}; {T} can narrow that distance through improved output or an opponent’s shortfall.',
+      '{A} and {B} have set the production bar at {PA} and {PB}. The gap is {G}, in {L}’s favor. That is the benchmark {T} must challenge, rather than chase a reputation.',
+      'Before kickoff, {L} has a {G}-point edge in scoring pace. {A}’s {PA} and {B}’s {PB} explain the gap; the coming lineup totals will determine whether it holds.',
+      'There is a concrete hurdle for {T}: {G} points of average production separate it from {L}. {A} enters at {PA} per game, {B} at {PB}, making relative improvement central to the contest.'
+    ],
+    setup: [
+      '{A}’s lineup and {B}’s lineup will supply the first useful comparison in this contest. Every active slot matters, particularly when a late scratch can leave a manager short of a full week’s opportunities.',
+      'For {B}, preparation starts with a complete starting lineup against {A}. Available replacements and kickoff times deserve attention before the first slot locks.',
+      '{A} has to make its starting choices with {B} across the board. The practical task is straightforward: protect the active lineup and leave workable replacement options where possible.',
+      'The first contest between {A} and {B} this week happens at lineup lock. A manager who waits on an uncertain starter needs an alternative whose game has not already begun.',
+      '{B} can give itself a cleaner shot at {A} by settling availability questions before kickoff. An unused replacement cannot recover points once its game locks.',
+      '{A} versus {B} puts the attention on selection. The strongest available starters belong in active slots; a name on the bench cannot contribute to this week’s total.',
+      'Lineup flexibility is part of {B}’s assignment against {A}. Later kickoff options can preserve a response to changing availability, provided the eligible slot remains open.',
+      '{A} needs its choices ready when each game starts against {B}. Waiting for information can help, but waiting beyond a replacement’s kickoff removes that option altogether.',
+      'Against {A}, {B} has a week of individual player outcomes to assemble into one total. Getting a full active lineup is the controllable part before those outcomes arrive.',
+      '{A} and {B} begin with start-sit decisions, then live with the results. Checking eligibility and availability early keeps an avoidable empty slot from becoming the story.',
+      'There is practical work for {B} before it faces {A}: confirm starters, review replacements, and account for kickoff order. Those decisions shape the opportunities the lineup gets.',
+      '{A}’s preparation for {B} extends to the last eligible starting slot. A backup plan matters most when news arrives after the early games have already locked.'
+    ],
+    history: [
+      '{A}’s series record against {B} stands at {S} over {M} meetings. Another result adds weight to a rivalry already measured in more than a single week.',
+      'The longer view belongs in the conversation: {A} is {S} against {B} through {M} meetings. This week gives both sides another entry to answer for.',
+      '{M} meetings have left {A} with a {S} record against {B}. The next one can shift the balance, even if it cannot erase the games behind it.',
+      '{B} is a familiar opponent for {A}: {M} meetings, a {S} mark from {A}’s side. That is the history these lineups inherit.',
+      'Revisit the series and {A} holds a {S} record against {B}. Across {M} games, the pairing has acquired a ledger that this result will extend.',
+      'This matchup reaches beyond the current standings. {A} has gone {S} against {B} in {M} meetings, giving the next final score a place in a longer argument.',
+      '{A} and {B} have crossed paths {M} times. Read from {A}’s side, the record is {S}; another week offers the chance to strengthen or repair that line.',
+      'A {S} series record follows {A} into the meeting with {B}. The {M} previous contests supply background, while the active lineups decide the next entry.',
+      'The rivalry ledger lists {M} meetings between {A} and {B}, with {A} at {S}. Each manager has a reason to care about where that count goes next.',
+      '{B} knows this pairing has a past. {A}’s {S} mark over {M} meetings gives the contest a second frame alongside the season records.',
+      'Over {M} encounters with {B}, {A} has recorded {S}. The next result joins that total, carrying a little more permanence than one week’s standings position.',
+      'The series gives {A} and {B} something tangible to revisit: {S} from {A}’s perspective across {M} meetings. This week adds the next piece.'
+    ],
+    close: [
+      '{A} wants the win; {B} stands in the way. Once the final active player finishes, their Week {W} argument belongs to the scoreboard.',
+      'The closing question for Week {W} is whether {D} can make {F} pay for a shortfall. Both lineups will have to earn their totals.',
+      '{B} has the same immediate objective as {A}: finish Week {W} with the larger total. Every starting slot contributes to that pursuit.',
+      'For {A}, the next step is through {B}. Week {W} will measure the lineup chosen, not the alternatives left unused.',
+      '{F} carries the expectation, {D} the chance to overturn it. By the end of Week {W}, one of those positions will look considerably better.',
+      'Whatever the early scores suggest, {A} and {B} must account for every remaining starter. The Week {W} result waits for the whole lineup.',
+      '{D} does not need to win the forecast against {F}. It needs the higher final total in Week {W}, one starting slot at a time.',
+      'The next move belongs to the managers of {A} and {B}. Their Week {W} selections turn the preparation into a result they must own.',
+      '{B} can answer {A} only with production. The Week {W} lineup is the place to put that answer together.',
+      'Week {W} brings the attention back to {A} and {B} when their starters take the field. From there, the point total becomes the argument.',
+      '{F} has a position to justify against {D}. Week {W} offers no credit for the forecast until the lineup delivers.',
+      'When Week {W} closes, {A} and {B} will have a fresh result between them. The decisions made before kickoff are the ones they take into it.'
+    ]
+  };
+  PREVIEW_COPY.evenHook = [
+    "Week {W} brings {A} ({RA}) against {B} ({RB}) with a {E}% forecast for {F}. There is little separation here; a single strong starter can change the complexion of the contest.",
+    "{A} enters {RA}, {B} enters {RB}, and Week {W} offers neither much breathing room. The forecast sits at {E}% for {F}, leaving this pairing finely balanced.",
+    "Put {A}’s {RA} beside {B}’s {RB}: those are the records entering Week {W}. A {E}% forecast for {F} points to a close contest rather than a commanding advantage.",
+    "{B} meets {A} in Week {W} at {RB} against {RA}. With {F} at {E}%, both managers have reason to expect a competitive afternoon.",
+    "The Week {W} pairing of {A} and {B} starts with records of {RA} and {RB}. {F} receives {E}% win probability, a narrow forecast that leaves the game open.",
+    "{A} has {RA} on the season; {B} brings {RB} to Week {W}. The forecast is close at {E}% for {F}, making each productive lineup slot particularly welcome.",
+    "A tight forecast frames {A} ({RA}) against {B} ({RB}) in Week {W}. {F} stands at {E}%, with little reason for either manager to feel comfortable before kickoff.",
+    "For {A} and {B}, Week {W} begins near the middle of the probability board. Their records are {RA} and {RB}, and {F} gets {E}%. The contest remains there to take.",
+    "{B}’s {RB} record gets its next test from {A} at {RA}. Week {W} assigns {F} {E}% win probability, keeping the focus on the small advantages either lineup can find.",
+    "There is no overwhelming forecast in {A} versus {B}. Week {W} finds them {RA} and {RB}; {F} holds {E}%, close enough for both managers to see an opening.",
+    "{A} and {B} arrive at Week {W} with {RA} and {RB} records. At {E}% for {F}, the forecast offers little protection against one poor starting decision.",
+    "Watch the individual contributions in {A} ({RA}) against {B} ({RB}). The Week {W} forecast places {F} at {E}%, leaving modest swings room to matter."
+];
+  PREVIEW_COPY.evenClose = [
+    "{A} and {B} have a close Week {W} contest to resolve. A narrow win counts all the same once the last starter finishes.",
+    "Neither {A} nor {B} can treat this Week {W} assignment casually. A small contribution may prove as useful as a headline performance.",
+    "Week {W} asks {A} and {B} to find separation the forecast barely offers. The active lineups get the final say.",
+    "{B} has an opening against {A}, and the reverse is just as true. Week {W} is a chance for either side to take it.",
+    "For {A}, beating {B} in Week {W} begins with getting useful output across the lineup. One quiet slot can place the burden on the rest.",
+    "{A} and {B} may need every available point in Week {W}. Until the final starter is done, neither has a result to bank.",
+    "The Week {W} opportunity belongs equally on both managers’ desks. {A} and {B} now have to turn choices into production.",
+    "{B} cannot plan around an easy passage past {A}. This Week {W} pairing asks both sides to stay attentive through lineup lock.",
+    "When the Week {W} scores begin to move, {A} and {B} will look for a cushion. The forecast has supplied very little of one.",
+    "{A} against {B} gives Week {W} a contest with room for a late turn. Remaining starters matter more than an early lead.",
+    "For {B} and {A}, Week {W} comes down to the total their chosen players build. Close forecasts still produce a full result.",
+    "{A} and {B} have reached the point where the Week {W} preparation must become points. Neither side has much forecasted margin to waste."
+];
+  function scoringContext(A,B,week){
     try{
-      var table=window.FSNIntel.standingsThrough(Math.max(0,week-1))||[], ra=table.find(function(r){return r&&r.team&&String(r.team.id)===String(A.id);}), rb=table.find(function(r){return r&&r.team&&String(r.team.id)===String(B.id);});
-      if(ra&&rb&&num(ra.avg)!=null&&num(rb.avg)!=null){ var d=Math.abs(Number(ra.avg)-Number(rb.avg)), leader=Number(ra.avg)>=Number(rb.avg)?A:B; return 'The current scoring file gives <b>'+esc(leader.name)+'</b> a <b>'+d.toFixed(1)+'-point</b> per-game production edge entering this week.'; }
+      if(week<=1) return null;
+      var table=window.FSNIntel.standingsThrough(week-1)||[];
+      var ra=table.find(function(r){return r&&r.team&&String(r.team.id)===String(A.id);});
+      var rb=table.find(function(r){return r&&r.team&&String(r.team.id)===String(B.id);});
+      if(ra&&rb&&ra.avg!=null&&rb.avg!=null&&num(ra.avg)!=null&&num(rb.avg)!=null) return {a:Number(ra.avg),b:Number(rb.avg)};
     }catch(err){ console.error('[MatchupPreviewGuard] scoring context failed for Week '+week,err); }
-    return 'There is not yet a complete prior-week scoring sample for both teams, so this preview stays anchored to verified records, series history, and the model rather than manufacturing a production edge.';
+    return null;
   }
-  function repairPreview(article){
+  function repairPreview(article,draw){
     if(!article||article.__dynamicMatchupBound||typeof article.id!=='string'||article.id.indexOf('preview-game-')!==0) return article;
     var pair=pairFor(article);
     if(!pair){ console.error('[MatchupPreviewGuard] could not resolve teams for '+article.id,new Error('MATCHUP_PREVIEW_TEAM_BINDING_FAILED')); return article; }
     var A=pair.A,B=pair.B,week=pair.week,recA=record(A,week),recB=record(B,week),series=h2h(A,B,week),pA=probability(A,B,week,series),fav=pA>=50?A:B,dog=pA>=50?B:A,edge=Math.round(Math.max(pA,100-pA));
-    var closers=['This is a two-team file, not a league-wide template: the result will either validate this matchup-specific edge or rewrite it by Sunday night.','The model has picked a side; the Record Book has supplied the history. What remains is the only part no preview can prewrite — the score.','There is enough evidence here to frame the game and not enough to declare it over. That is exactly where a useful preview should stop.','The numbers establish the pressure points. The lineup choices decide whether any of them survive contact with the actual week.'];
+    var pace=scoringContext(A,B,week);
+    var values={A:esc(A.name),B:esc(B.name),RA:esc(recA),RB:esc(recB),W:week,F:esc(fav.name),D:esc(dog.name),E:edge};
+    var season=typeof window.NewsDesk.viewedSeasonYear==='function'?window.NewsDesk.viewedSeasonYear():0;
+    var league=typeof window.selectedLeagueId==='function'?window.selectedLeagueId():allTeams().map(function(t){return t.id;}).sort().join('|');
+    var seed=JSON.stringify([league,season,week,A.id,B.id,recA,recB,pA,series&&[series.winsFor,series.winsAgainst,series.aWins,series.bWins,series.ties,series.meetingCount]]);
+    function beat(slot){
+      var pool=PREVIEW_COPY[slot], key=week+':'+slot;
+      if(!draw[key]) draw[key]=new Set();
+      var used=draw[key], start=hash(seed+':'+slot)%pool.length, chosen=start;
+      for(var n=0;n<pool.length;n++){ var candidate=(start+n)%pool.length; if(!used.has(candidate)){ chosen=candidate; break; } }
+      used.add(chosen);
+      return pool[chosen].replace(/\{([A-Z]+)\}/g,function(_,k){return '<b>'+values[k]+'</b>';});
+    }
+    var paragraphs=[beat(edge<=55?'evenHook':'hook')];
+    if(pace&&pace.a!==pace.b){
+      values.PA=pace.a.toFixed(1); values.PB=pace.b.toFixed(1); values.G=Math.abs(pace.a-pace.b).toFixed(1);
+      values.L=esc(pace.a>pace.b?A.name:B.name); values.T=esc(pace.a>pace.b?B.name:A.name);
+      paragraphs.push(beat('pace'));
+    }else paragraphs.push(beat('setup'));
+    if(series&&Number(series.meetingCount)>0){
+      values.S=esc((series.winsFor!=null?series.winsFor:series.aWins)+'-'+(series.winsAgainst!=null?series.winsAgainst:series.bWins)+(series.ties?'-'+series.ties:''));
+      values.M=esc(series.meetingCount); paragraphs.push(beat('history'));
+    }
+    paragraphs.push(beat(edge<=55?'evenClose':'close'));
     var copy=Object.assign({},article); copy.__dynamicMatchupBound=true; copy.narrativeLocked=true;
-    copy.dek=esc(A.name)+' ('+esc(recA)+') at '+esc(B.name)+' ('+esc(recB)+') — '+esc(fav.name)+' carries a '+edge+'% matchup-specific model lean.';
-    copy.paragraphs=['Week <b>'+week+'</b> is its own case file: <b>'+esc(A.name)+'</b> enters at <b>'+esc(recA)+'</b> and <b>'+esc(B.name)+'</b> enters at <b>'+esc(recB)+'</b>. The model gives <b>'+esc(fav.name)+'</b> a <b>'+edge+'%</b> edge over <b>'+esc(dog.name)+'</b>; that probability was calculated for these two teams, not copied from another game.',seriesLine(A,B,series),scoringLine(A,B,week),closers[hash(week+':'+A.id+':'+B.id)%closers.length]];
+    copy.dek=esc(A.name)+' ('+esc(recA)+') at '+esc(B.name)+' ('+esc(recB)+') — '+esc(fav.name)+' at '+edge+'% win probability.';
+    copy.paragraphs=paragraphs;
     return copy;
   }
   function financialOnly(article){
@@ -414,11 +533,18 @@
     }
     return value;
   }
-  function cleanArticle(article){
+  function cleanArticle(article,draw){
     if(financialOnly(article)) return null;
-    return scrubValue(repairPreview(article));
+    return scrubValue(repairPreview(article,draw));
   }
-  function cleanList(list){ return Array.isArray(list)?list.map(cleanArticle).filter(Boolean):list; }
+  function cleanList(list){
+    if(!Array.isArray(list)) return list;
+    // Allocate in stable ID order, then restore editorial order. No persistent
+    // state: refreshes and differently ordered feeds produce the same copy.
+    var draw=Object.create(null), cleaned=new Map();
+    list.slice().sort(function(a,b){return String(a&&a.id).localeCompare(String(b&&b.id));}).forEach(function(article){cleaned.set(article,cleanArticle(article,draw));});
+    return list.map(function(article){return cleaned.get(article);}).filter(Boolean);
+  }
   function scrubAnalytics(){
     try{
       document.querySelectorAll('.analytics-model').forEach(function(card){
