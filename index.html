@@ -20266,10 +20266,14 @@ function renderHome(){
           0.0 is not evidence.
        2. Lowest corrected actual wins the seat.
        3. Ties — which in practice means a group all sitting on 0.0 in games
-          that have kicked off but not yet posted — break on the LOWEST live
-          projection, because that is the only signal separating them. A side
-          with no projection at all sorts last rather than inheriting the roast
-          on a technicality.
+          that have kicked off but not yet posted — become a projection call.
+          The seat is then reassigned to the team with the absolute lowest
+          total projection ACROSS THE ENTIRE LEAGUE BOARD (every active team,
+          not just the ones that have already kicked off), because when the
+          scoreboard cannot separate the field, the honest question is which
+          roster the model expects to score fewest — no matter what kickoff
+          slot they drew. A side with no projection at all sorts last rather
+          than inheriting the roast on a technicality.
        4. Team id last, so the same board always names the same team. */
   const fraudSides = [];
   games.forEach(g=>{
@@ -20282,6 +20286,22 @@ function renderHome(){
       fraudSides.push({ team, score: actual, projected: projectedOf(g, side), status: st });
     });
   });
+  /* League-wide projection pool for the tied-actuals tiebreak. Includes every
+     active team on the board — pre-game games too — because a team we ruled
+     ineligible for a raw-score verdict can still hold the lowest projection,
+     and that is the signal the tiebreak is supposed to be reading. */
+  const allProjectionSides = [];
+  games.forEach(g=>{
+    const st = gameStatus(g);
+    ['home','away'].forEach(side=>{
+      const team = side === 'home' ? g.homeTeam : g.awayTeam;
+      if(!team) return;
+      const projected = projectedOf(g, side);
+      if(projected == null) return;
+      const rawActual = actualOf(g, side);
+      allProjectionSides.push({ team, score: rawActual == null ? 0 : rawActual, projected, status: st });
+    });
+  });
   const TIED = 0.05;                             // one display digit; 0.0 vs 0.0
   fraudSides.sort((a, b)=>{
     if(Math.abs(a.score - b.score) > TIED) return a.score - b.score;
@@ -20290,9 +20310,22 @@ function renderHome(){
     if(pa !== pb) return pa - pb;
     return String(a.team.id).localeCompare(String(b.team.id));
   });
-  const low = fraudSides[0] || null;
+  let low = fraudSides[0] || null;
   /* Everyone the scoreboard cannot separate from the bottom. */
   const tiedAtLow = low ? fraudSides.filter(side=> Math.abs(side.score - low.score) <= TIED) : [];
+  /* If the scoreboard cannot separate the bottom and at least one of the tied
+     sides is still playing, reassign the seat to the absolute lowest projection
+     league-wide. Math.min() over every active side's total projection, ties
+     broken by team id so the same board always names the same team. This is
+     what prevents the desk from crowning a 119.7 projection when a 110.8 sits
+     on a game that has not kicked off yet. */
+  if(low && tiedAtLow.length > 1 && tiedAtLow.some(side=> side.status !== 'final') && allProjectionSides.length){
+    const projectedLow = allProjectionSides.slice().sort((a, b)=>{
+      if(a.projected !== b.projected) return a.projected - b.projected;
+      return String(a.team.id).localeCompare(String(b.team.id));
+    })[0];
+    if(projectedLow) low = projectedLow;
+  }
   /* True when the seat was decided by projection rather than by the scoreboard:
      more than one side is level on actual points AND at least one of them is
      still playing, so the number under the crest is not a finished result. The
