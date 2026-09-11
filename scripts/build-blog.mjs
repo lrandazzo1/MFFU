@@ -37,6 +37,16 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SRC_DIR = path.join(ROOT, 'landing', 'content', 'blog');
 const OUT_DIR = path.join(ROOT, 'landing', 'content', 'generated', 'blog');
 const POSTS_DIR = path.join(OUT_DIR, 'posts');
+// The reader is a static shell that resolves its slug from the URL path. The
+// landing project runs cleanUrls, which serves an extensionless path from a
+// matching .html file BEFORE any rewrite is consulted, so a single
+// /blog/:slug rewrite does not fire. To make every article slug resolve on
+// the root domain we stamp one page per slug (a verbatim copy of the reader
+// shell) into landing/blog/, which cleanUrls then serves at /blog/<slug>.
+const PAGES_DIR = path.join(ROOT, 'landing', 'blog');
+const READER_TEMPLATE = path.join(PAGES_DIR, 'reader.html');
+// Hand-authored shells in landing/blog that the build must never delete.
+const RESERVED_PAGES = new Set(['index.html', 'reader.html']);
 
 const CHECK_ONLY = process.argv.includes('--check');
 
@@ -360,7 +370,19 @@ function build() {
     fs.writeFileSync(path.join(POSTS_DIR, post.slug + '.json'), JSON.stringify(post, null, 2) + '\n');
   }
 
-  console.log(`[blog] built ${posts.length} article(s) -> content/generated/blog/`);
+  // Stamp one static reader page per slug so cleanUrls serves /blog/<slug>.
+  const readerShell = fs.readFileSync(READER_TEMPLATE, 'utf8');
+  const wantSlugPages = new Set(posts.map((p) => p.slug + '.html'));
+  for (const f of fs.readdirSync(PAGES_DIR)) {
+    if (f.endsWith('.html') && !RESERVED_PAGES.has(f) && !wantSlugPages.has(f)) {
+      fs.unlinkSync(path.join(PAGES_DIR, f)); // remove pages for deleted articles
+    }
+  }
+  for (const post of posts) {
+    fs.writeFileSync(path.join(PAGES_DIR, post.slug + '.html'), readerShell);
+  }
+
+  console.log(`[blog] built ${posts.length} article(s) -> landing/content/generated/blog/ + landing/blog/<slug>.html`);
   for (const p of posts) console.log(`  - ${p.slug} (${p.entities.length} entit${p.entities.length === 1 ? 'y' : 'ies'})`);
 }
 
