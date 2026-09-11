@@ -2374,6 +2374,71 @@ body.fsn-dd-lock{ overflow:hidden; }
 }
 
 /* ============================================================
+   THE DESK WIRE — the day's article from the root-domain blog
+
+   One card above the deterministic timeline, filled by FSNArticles (block 1)
+   with whatever the desk published for today's slot and annotated with the
+   reader's own rosters. Presentational only; when the engine has nothing the
+   renderer hides #deskWireWrap and the News Desk below is untouched.
+============================================================ */
+#deskWireWrap{ position:relative; z-index:30; }
+.wire-card{ border-color:rgba(255,196,0,.24); }
+.wire-card .wire-top{ height:3px; background:var(--gold); box-shadow:0 0 18px var(--gold); }
+.wire-head{ background:radial-gradient(130% 100% at 0% 0%, rgba(255,196,0,.09), transparent 60%); }
+.wire-title{
+  font-family:'Anton',sans-serif; font-size:21px; line-height:1.12;
+  letter-spacing:.01em; margin:0;
+}
+.wire-dek{ font-size:12.5px; line-height:1.55; color:var(--off); margin:9px 0 0; }
+.wire-matchline{ font-size:11px; line-height:1.5; color:var(--dim); }
+.wire-chip{
+  display:inline-flex; align-items:center; gap:5px; white-space:nowrap;
+  padding:3px 8px; border-radius:999px; font-size:10px; letter-spacing:.04em;
+  border:1px solid rgba(0,224,255,.35); color:var(--cyan); background:rgba(0,224,255,.07);
+}
+.wire-chip .wire-chip-owner{ color:var(--off); letter-spacing:0; }
+.wire-chip.wire-chip-free{
+  border-color:rgba(255,255,255,.16); color:var(--dim); background:transparent;
+}
+/* The article body. Deliberately narrow in scope: only the tags the sanitizer
+   in FSNArticles lets through can appear here. */
+.wire-body{ font-size:13.5px; line-height:1.65; color:var(--off); }
+.wire-body p{ margin:0 0 11px; }
+.wire-body h2,.wire-body h3,.wire-body h4{
+  font-family:'Anton',sans-serif; font-size:13.5px; letter-spacing:.06em;
+  text-transform:uppercase; color:#fff; margin:16px 0 8px;
+}
+.wire-body ul,.wire-body ol{ margin:0 0 11px; padding-left:18px; }
+.wire-body li{ margin:0 0 5px; }
+.wire-body strong{ color:#fff; font-weight:600; }
+.wire-body a{ color:var(--cyan); text-decoration:underline; }
+.wire-body blockquote{
+  margin:0 0 11px; padding:9px 12px; border-left:2px solid var(--gold);
+  background:rgba(255,196,0,.05); color:var(--off); font-style:italic;
+}
+.wire-body[data-collapsed="true"]{
+  max-height:168px; overflow:hidden;
+  -webkit-mask-image:linear-gradient(180deg,#000 60%,transparent);
+  mask-image:linear-gradient(180deg,#000 60%,transparent);
+}
+/* The ownership tag injected into the copy at a player's first mention. */
+.wire-own{
+  display:inline-block; margin-left:5px; padding:1px 6px; border-radius:999px;
+  font-family:'Oswald',sans-serif; font-size:9.5px; font-weight:600;
+  letter-spacing:.1em; text-transform:uppercase; vertical-align:middle;
+  color:var(--gold); border:1px solid rgba(255,196,0,.4); background:rgba(255,196,0,.08);
+  white-space:nowrap;
+}
+.wire-action{
+  display:inline-flex; align-items:center; gap:6px; padding:5px 11px;
+  border-radius:999px; border:1px solid var(--line-2); background:transparent;
+  font-family:'Oswald',sans-serif; font-size:10px; font-weight:600;
+  letter-spacing:.16em; text-transform:uppercase; color:var(--off); cursor:pointer;
+}
+.wire-action:hover{ border-color:rgba(0,224,255,.45); color:var(--cyan); }
+.wire-action:focus-visible{ outline:2px solid var(--cyan); outline-offset:2px; }
+
+/* ============================================================
    TIMELINE STREAM — Bleacher Report-style chronological feed
 ============================================================ */
 .topic-bar{
@@ -3089,6 +3154,11 @@ body.fsn-dd-lock{ overflow:hidden; }
     </div>
 
     <p id="transactionWireStatus" class="px-4 text-xs text-[var(--dim)]" role="status" hidden></p>
+
+    <!-- THE DESK WIRE — today's published article, routed by the weekly
+         cadence and annotated with this league's rosters. Hidden whenever
+         FSNArticles has nothing for the slot, so the desk below stands alone. -->
+    <div class="px-4" id="deskWireWrap" hidden></div>
 
     <!-- LEAD STORY -->
     <div class="px-4" id="newsLeadWrap"></div>
@@ -8068,6 +8138,818 @@ return {
   looksLikeYahooLeagueKey,
 };
 })();
+
+/* ============================================================
+   GLOBAL SCOPE — APP ARTICLE INGESTION (FSNArticles)
+
+   The blog on the root domain is compiled by scripts/build-blog.mjs into a
+   static, structured payload:
+
+     /content/generated/blog/index.json        the manifest
+     /content/generated/blog/posts/<slug>.json one normalized article
+
+   This engine is the app's reader for that payload. It does three things and
+   nothing else:
+
+     1. FETCH   the manifest on launch and on every return to the foreground,
+                behind a TTL so a tab switch does not hammer the origin.
+     2. ROUTE   one article to the surface, chosen by the day of the week. The
+                desk publishes on a fixed weekly cadence, so the app shows the
+                slot that is actually live right now rather than whatever
+                happens to be newest:
+
+                  Sunday            pregame previews, matchup breakdowns
+                  Monday, Tuesday   recaps, highs and lows, MNF standouts
+                  Wednesday         waiver wire, FAAB targets
+                  Thursday, Friday  TNF recaps, injury reports, roster watch
+                  Saturday          open slot, the most recent piece stands
+
+     3. MATCH   the article's `entities` array against the rosters in the
+                reader's OWN league, so a player named in a league-agnostic
+                article carries "owned by <their manager>" when that manager is
+                someone they play against every week.
+
+   WHY IT LIVES HERE. Per CLAUDE.md rule 1, anything called across script
+   blocks is declared at global scope in the first block. The renderer that
+   paints the card needs block 6's closure and therefore stays there, reached
+   through FSNBridge — never through a `typeof` probe.
+
+   DETERMINISM. Rule 2's contract holds here too, for the same reason: two
+   readers of the same league on the same day must see the same card. So the
+   whole matching path is a dictionary lookup over data already in memory —
+   no Math.random(), no Date.now() inside the selection, no model call, and no
+   second network read. The only clock this touches is the calendar day, which
+   is the routing input by design, and ties are broken on slug so the ordering
+   cannot wobble between two articles sharing a publish date.
+
+   THIS ENGINE NEVER TOUCHES THE NEWS DESK. The deterministic generators in
+   block 4, their seeds, their copy pools and their caches are read-only. This
+   is a separate, additive surface that sits above them: if it has nothing to
+   say it disables its own slot and the desk below is exactly what it always
+   was.
+============================================================ */
+window.FSNArticles = (function(){
+  'use strict';
+
+  /* The blog is served by the `fsn-landing` Vercel project on the root domain,
+     not by the app project. See DEPLOYMENT.md. The app is served from
+     app.fantasysportsnetwork.app on the web and from capacitor://localhost in
+     the native shell, so both reads are cross-origin and the landing project
+     answers this directory with Access-Control-Allow-Origin: * (see
+     landing/vercel.json). */
+  const DEFAULT_ORIGIN = 'https://fantasysportsnetwork.app';
+  const INDEX_PATH = '/content/generated/blog/index.json';
+  const POSTS_PATH = '/content/generated/blog/posts/';
+  const READER_PATH = '/blog/';
+
+  const CACHE_KEY = 'fsn_articles_payload_v1';
+  /* A tab switch is cheap to trigger and the desk publishes a few times a
+     week, so the foreground hook is rate limited rather than throttled at the
+     network layer. */
+  const FRESH_MS = 15 * 60 * 1000;
+  /* How long a cached payload may still paint when the network is gone. Past
+     this the slot simply disables itself rather than showing stale copy. */
+  const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+  /* The reader is looking at this card, so it gets an interactive deadline,
+     not the archive's long leash. */
+  const TIMEOUT_MS = 9000;
+  /* A day slot only accepts copy from the current publishing window. Without
+     this a Wednesday with no waiver piece would surface last month's, which
+     reads as a live recommendation and is worse than an empty slot. */
+  const MAX_AGE_DAYS = 8;
+
+  /* ---- 1. WHERE THE PAYLOAD LIVES -------------------------------------- */
+
+  /* `window.FSN_ARTICLES_ORIGIN` is the one seam for pointing the app at a
+     preview deploy or at a local fixture server. Same shape of guard as
+     FSNApi's origin override: a bare https origin, or (for a local harness)
+     an http origin on loopback. Anything else is refused loudly and the
+     production origin stands, because a malformed value here produces silently
+     broken URLs rather than an obvious failure. */
+  function contentOrigin(){
+    let raw = '';
+    try{
+      raw = String(window.FSN_ARTICLES_ORIGIN == null ? '' : window.FSN_ARTICLES_ORIGIN);
+    }catch(err){
+      console.warn('[FSNArticles] window.FSN_ARTICLES_ORIGIN was unreadable; using ' + DEFAULT_ORIGIN + '.', err);
+      return DEFAULT_ORIGIN;
+    }
+    const trimmed = raw.trim().replace(/\/+$/, '');
+    if(!trimmed) return DEFAULT_ORIGIN;
+    const httpsOrigin = /^https:\/\/[A-Za-z0-9.-]+(?::\d+)?$/.test(trimmed);
+    const loopback = /^http:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?$/.test(trimmed);
+    if(!httpsOrigin && !loopback){
+      console.error('[FSNArticles] window.FSN_ARTICLES_ORIGIN ("' + raw + '") is not a bare https origin, ' +
+        'so it has been ignored and article reads fall back to ' + DEFAULT_ORIGIN + '.');
+      return DEFAULT_ORIGIN;
+    }
+    return trimmed;
+  }
+
+  function indexUrl(){ return contentOrigin() + INDEX_PATH; }
+  function postUrl(slug){ return contentOrigin() + POSTS_PATH + encodeURIComponent(slug) + '.json'; }
+  function readerUrl(slug){ return contentOrigin() + READER_PATH + encodeURIComponent(slug); }
+
+  /* ---- 2. THE WEEKLY CADENCE ------------------------------------------- */
+
+  /* One slot per publishing window. `terms` are matched against the article's
+     category first and its title second, both normalized, so a category the
+     desk words slightly differently ("Waiver Wire", "waivers", "FAAB targets")
+     still routes to the day it belongs to. A slot with no terms accepts any
+     category.
+
+     This table is the routing contract. Adding a story type means adding terms
+     here, never rewriting what an existing slot means. */
+  const SLOTS = {
+    pregame: {
+      id:'pregame',
+      label:'Sunday Pregame',
+      blurb:'Previews and matchup breakdowns',
+      terms:['preview','previews','pregame','pre game','matchup','matchups','breakdown','breakdowns',
+             'start sit','start/sit','sit start','lineup','lineups','projection','projections','rankings'],
+    },
+    recap: {
+      id:'recap',
+      label:'The Recap',
+      blurb:'Recaps, highs and lows, weekend standouts',
+      terms:['recap','recaps','review','reviews','takeaway','takeaways','highs','lows','high low',
+             'standout','standouts','studs','duds','mnf','monday night','sunday night','snf',
+             'winners','losers','weekend','week in review','report card'],
+    },
+    waiver: {
+      id:'waiver',
+      label:'Waiver Wire',
+      blurb:'Waiver claims and FAAB targets',
+      terms:['waiver','waivers','waiver wire','faab','pickup','pickups','add','adds','claim','claims',
+             'stream','streamer','streamers','streaming','wire','risers','sleeper','sleepers'],
+    },
+    roster: {
+      id:'roster',
+      label:'Roster Watch',
+      blurb:'TNF, injuries and roster moves',
+      terms:['tnf','thursday','thursday night','injury','injuries','injury report','roster',
+             'roster watch','practice','inactive','inactives','questionable','news and notes',
+             'designation','designations','snap count','snap counts'],
+    },
+    open: {
+      id:'open',
+      label:'From the Desk',
+      blurb:'The latest from the FSN desk',
+      terms:[],
+    },
+  };
+
+  /* Sunday is index 0, matching Date#getDay, so the lookup is the day itself. */
+  const WEEK_PLAN = ['pregame', 'recap', 'recap', 'waiver', 'roster', 'roster', 'open'];
+
+  /* The reader's local calendar day. Local, not UTC: a Tuesday-night reader in
+     California is reading Tuesday's slot, and UTC would have already rolled
+     them into Wednesday's waiver copy. */
+  function localDay(date){
+    const d = date instanceof Date ? date : new Date();
+    const day = d.getDay();
+    return Number.isFinite(day) ? day : 0;
+  }
+
+  function localDateKey(date){
+    const d = date instanceof Date ? date : new Date();
+    const pad = (n)=> (n < 10 ? '0' : '') + n;
+    return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+  }
+
+  /* The slot that is live for a given day. Exposed so a caller (and the
+     verification harness) can ask about any day without moving the clock. */
+  function slotForDay(day){
+    const key = WEEK_PLAN[((Number(day) % 7) + 7) % 7] || 'open';
+    return SLOTS[key] || SLOTS.open;
+  }
+
+  function slotForDate(date){ return slotForDay(localDay(date)); }
+
+  /* ---- 3. MATCHING A POST TO A SLOT ------------------------------------ */
+
+  function normalizeText(value){
+    return String(value == null ? '' : value)
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  /* Does this manifest row belong to the given slot? Category is the signal the
+     desk controls deliberately, so it is checked first; the title is the
+     fallback for a piece filed under a generic category.
+
+     The comparison is whole-word, not substring, and that is load bearing: a
+     bare indexOf lets the recap slot's "review" match the word "preview", which
+     silently routes Sunday's matchup breakdown into Monday's slot. Both sides
+     are normalized to single-spaced words and padded, so a term matches only a
+     complete word or a complete phrase. */
+  function postMatchesSlot(post, slot){
+    if(!post || !slot) return false;
+    if(!slot.terms.length) return true;
+    const haystacks = [normalizeText(post.category), normalizeText(post.title)];
+    for(let h = 0; h < haystacks.length; h++){
+      const hay = haystacks[h];
+      if(!hay) continue;
+      const padded = ' ' + hay + ' ';
+      for(let i = 0; i < slot.terms.length; i++){
+        const term = normalizeText(slot.terms[i]);
+        if(!term) continue;
+        if(padded.indexOf(' ' + term + ' ') !== -1) return true;
+      }
+    }
+    return false;
+  }
+
+  /* Calendar days between two YYYY-MM-DD keys. Parsed as UTC midnight on both
+     sides so the subtraction cannot be thrown off by a DST boundary. */
+  function daysBetween(fromKey, toKey){
+    const from = Date.parse(String(fromKey) + 'T00:00:00Z');
+    const to = Date.parse(String(toKey) + 'T00:00:00Z');
+    if(!Number.isFinite(from) || !Number.isFinite(to)) return null;
+    return Math.round((to - from) / 86400000);
+  }
+
+  /* Pick the one article for a slot: published, inside the publishing window,
+     newest first, ties broken on slug so the choice is stable. Returns null
+     when the slot has nothing, which is the signal to disable the card. */
+  function selectForSlot(posts, slot, todayKey){
+    const rows = (Array.isArray(posts) ? posts : []).filter(row=>{
+      if(!row || !row.slug || !row.title) return false;
+      const age = daysBetween(row.publishDate, todayKey);
+      if(age == null) return false;
+      if(age < 0) return false;                 // scheduled, not published yet
+      if(age > MAX_AGE_DAYS) return false;      // outside this publishing window
+      return postMatchesSlot(row, slot);
+    });
+    rows.sort((a, b)=>{
+      if(a.publishDate !== b.publishDate) return a.publishDate < b.publishDate ? 1 : -1;
+      return String(a.slug) < String(b.slug) ? -1 : 1;
+    });
+    return rows[0] || null;
+  }
+
+  /* ---- 4. FETCH + CACHE ------------------------------------------------ */
+
+  /* status:
+       idle     nothing attempted yet
+       loading  a read is in flight and there is nothing to paint
+       ready    `post` holds the article for today's slot
+       empty    the fetch succeeded and today's slot has no article
+       offline  the fetch failed and no usable cached article exists   */
+  let state = { status:'idle', slot:slotForDate(), post:null, dateKey:'', fetchedAt:0, cached:false, reason:'' };
+  let inflight = null;
+  let lastAttemptAt = 0;
+
+  const listeners = [];
+
+  function publish(){
+    for(let i = 0; i < listeners.length; i++){
+      try{ listeners[i](current()); }
+      catch(err){ console.error('[FSNArticles] a state listener threw', err); }
+    }
+    /* The card lives in block 6's closure, so the repaint goes through the
+       bridge, which reports a missing or throwing handler instead of taking
+       this engine down with it. */
+    if(FSNBridge.has('renderDeskWire')) FSNBridge.call('renderDeskWire');
+  }
+
+  function current(){
+    return {
+      status: state.status,
+      slot: state.slot,
+      post: state.post,
+      dateKey: state.dateKey,
+      cached: state.cached,
+      reason: state.reason,
+      fetchedAt: state.fetchedAt,
+      readerUrl: state.post ? readerUrl(state.post.slug) : '',
+    };
+  }
+
+  function readCache(){
+    const row = FSNStore.getJSON(CACHE_KEY, null);
+    if(!row || !row.post || !row.post.slug) return null;
+    const age = Date.now() - (Number(row.ts) || 0);
+    if(!(age >= 0) || age > CACHE_TTL_MS) return null;
+    return row;
+  }
+
+  function writeCache(post, slotId, dateKey){
+    /* Pure convenience: it exists so a cold launch on a dead network still has
+       something honest to paint. Marked evictable so a quota failure here is
+       housekeeping and the league archive can always reclaim it. */
+    FSNStore.setJSON(CACHE_KEY, { ts:Date.now(), slot:slotId, dateKey, post }, { evictable:true });
+  }
+
+  async function readJson(url, label){
+    const res = await FSNNet.fetch(url, { headers:{ Accept:'application/json' }, cache:'no-store' },
+      { timeoutMs:TIMEOUT_MS, label });
+    if(!res.ok) throw new Error(label + ' answered HTTP ' + res.status);
+    return res.json();
+  }
+
+  /* Normalize one fetched article into the shape the renderer reads. Unknown
+     fields are carried through untouched; missing ones become empty, never
+     undefined, so the card never prints "undefined". */
+  function normalizePost(raw, manifestRow){
+    const row = manifestRow || {};
+    const src = raw && typeof raw === 'object' ? raw : {};
+    const entities = (Array.isArray(src.entities) ? src.entities : []).map(e=>({
+      name: String((e && e.name) || '').trim(),
+      position: String((e && e.position) || '').trim(),
+      team: String((e && e.team) || '').trim(),
+      sleeperPlayerId: String((e && e.sleeperPlayerId) || '').trim(),
+    })).filter(e=> e.name || e.sleeperPlayerId);
+    return {
+      slug: String(src.slug || row.slug || '').trim(),
+      title: String(src.title || row.title || '').trim(),
+      excerpt: String(src.excerpt || row.excerpt || '').trim(),
+      category: String(src.category || row.category || '').trim(),
+      author: String(src.author || row.author || 'FSN Desk').trim(),
+      publishDate: String(src.publishDate || row.publishDate || '').trim(),
+      bodyHtml: typeof src.bodyHtml === 'string' ? src.bodyHtml : '',
+      entities,
+    };
+  }
+
+  function settle(next){
+    state = Object.assign({}, state, next);
+    publish();
+  }
+
+  /* The one network path. `force` skips the freshness gate (a manual retry);
+     everything else — launch, foreground, a screen repaint — is rate limited
+     so returning to the tab does not re-read the origin every time. */
+  function refresh(options){
+    const opts = options || {};
+    const now = Date.now();
+    const dateKey = localDateKey();
+    const slot = slotForDate();
+
+    /* The day rolled over while the app sat in the background: the cached
+       answer belongs to yesterday's slot, so it has to be re-routed even
+       though the payload itself is still fresh. */
+    const dayChanged = state.dateKey && state.dateKey !== dateKey;
+
+    if(inflight) return inflight;
+    if(!opts.force && !dayChanged && state.status !== 'idle' && (now - lastAttemptAt) < FRESH_MS){
+      return Promise.resolve(current());
+    }
+
+    lastAttemptAt = now;
+    if(state.status === 'idle') settle({ status:'loading', slot, dateKey });
+
+    inflight = (async ()=>{
+      const manifest = await readJson(indexUrl(), 'blog manifest');
+      const posts = (manifest && Array.isArray(manifest.posts)) ? manifest.posts : [];
+      const pick = selectForSlot(posts, slot, dateKey);
+      if(!pick){
+        return { status:'empty', slot, post:null, dateKey, cached:false, fetchedAt:Date.now(),
+                 reason:'No ' + slot.label + ' article is published for today.' };
+      }
+      const body = await readJson(postUrl(pick.slug), 'blog post ' + pick.slug);
+      const post = normalizePost(body, pick);
+      if(!post.slug || !post.bodyHtml){
+        return { status:'empty', slot, post:null, dateKey, cached:false, fetchedAt:Date.now(),
+                 reason:'The published ' + slot.label + ' article carried no body.' };
+      }
+      writeCache(post, slot.id, dateKey);
+      return { status:'ready', slot, post, dateKey, cached:false, fetchedAt:Date.now(), reason:'' };
+    })().then(next=>{
+      inflight = null;
+      annotationMemo = null;
+      settle(next);
+      return current();
+    }).catch(err=>{
+      inflight = null;
+      /* An unreachable origin is an ordinary offline condition on a phone, not
+         a defect in this app, so it warns rather than errors — but it always
+         says which read died and why, per CLAUDE.md rule 3. */
+      console.warn('[FSNArticles] the article feed at ' + indexUrl() + ' could not be read for ' +
+        slot.label + ' (' + dateKey + '); falling back to the cached copy if there is one.', err);
+      const cached = readCache();
+      if(cached && cached.slot === slot.id && cached.post){
+        annotationMemo = null;
+        settle({ status:'ready', slot, post:normalizePost(cached.post, cached.post), dateKey,
+                 cached:true, fetchedAt:Number(cached.ts) || 0, reason:'Showing the last article this device downloaded.' });
+      } else {
+        annotationMemo = null;
+        settle({ status:'offline', slot, post:null, dateKey, cached:false, fetchedAt:0,
+                 reason:'The article feed is unreachable right now.' });
+      }
+      return current();
+    });
+
+    return inflight;
+  }
+
+  /* ---- 5. THE ROSTER LOOKUP -------------------------------------------- */
+
+  /* Suffixes and punctuation are the whole of the variance between how a desk
+     writes a name and how a provider stores it ("A.J. Brown" / "AJ Brown",
+     "Kenneth Walker III" / "Kenneth Walker"). Normalizing both sides the same
+     way is what makes the match a dictionary hit rather than a fuzzy search. */
+  const NAME_SUFFIXES = /\s+(?:jr|sr|ii|iii|iv|v)$/;
+  function normalizeName(value){
+    let out = String(value == null ? '' : value)
+      .toLowerCase()
+      .replace(/[.'`’]/g, '')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    out = out.replace(NAME_SUFFIXES, '').trim();
+    return out;
+  }
+
+  function rosterEntriesOf(side){
+    const roster = side && (side.rosterForCurrentScoringPeriod || side.rosterForMatchupPeriod);
+    const entries = roster && Array.isArray(roster.entries) ? roster.entries : [];
+    return entries;
+  }
+
+  /* A signature that changes exactly when the ownership answer could change:
+     a different league, a different season, or a new week of rosters. Used to
+     memoize the index so a repaint is a map read rather than a schedule walk. */
+  function ownershipSignature(data){
+    const schedule = (data && Array.isArray(data.schedule)) ? data.schedule : [];
+    let latest = 0, entries = 0;
+    for(let i = 0; i < schedule.length; i++){
+      const game = schedule[i];
+      const week = Number(game && game.matchupPeriodId) || 0;
+      if(week > latest) latest = week;
+      entries += rosterEntriesOf(game && game.home).length + rosterEntriesOf(game && game.away).length;
+    }
+    return leagueScopeToken() + '|' + String((data && data.seasonId) || '') + '|' + latest + '|' + entries;
+  }
+
+  let ownershipMemo = null;
+
+  /* id -> { teamId, teamName, manager } and normalizedName -> the same, built
+     from the most recent week of rosters the payload carries. Two passes on
+     purpose: the first finds each team's latest scored week, the second indexes
+     only that week, so a player traded in week 4 is credited to whoever holds
+     him now rather than to both managers. */
+  function buildOwnership(){
+    const data = LeagueData.espnData;
+    const empty = { byId:Object.create(null), byName:Object.create(null), count:0, week:0 };
+    if(!data || !Array.isArray(data.schedule) || !data.schedule.length) return empty;
+
+    const teams = LeagueData.getTeams();
+    const teamById = Object.create(null);
+    teams.forEach(t=>{ if(t && t.id != null) teamById[String(t.id)] = t; });
+
+    const schedule = data.schedule;
+    const latestWeekByTeam = Object.create(null);
+    const noteSide = (side, week)=>{
+      if(!side || side.teamId == null) return;
+      if(!rosterEntriesOf(side).length) return;
+      const key = String(side.teamId);
+      if(week > (latestWeekByTeam[key] || 0)) latestWeekByTeam[key] = week;
+    };
+    for(let i = 0; i < schedule.length; i++){
+      const game = schedule[i];
+      const week = Number(game && game.matchupPeriodId) || 0;
+      noteSide(game && game.home, week);
+      noteSide(game && game.away, week);
+    }
+
+    const byId = Object.create(null);
+    const byName = Object.create(null);
+    let count = 0, indexedWeek = 0;
+
+    const indexSide = (side, week)=>{
+      if(!side || side.teamId == null) return;
+      const key = String(side.teamId);
+      if(week !== (latestWeekByTeam[key] || 0)) return;
+      const team = teamById[key] || null;
+      const owner = {
+        teamId: key,
+        teamName: (team && team.name) || ('Team ' + key),
+        manager: (team && team.owner) || '',
+        abbrev: (team && team.abbrev) || '',
+      };
+      if(week > indexedWeek) indexedWeek = week;
+      const entries = rosterEntriesOf(side);
+      for(let e = 0; e < entries.length; e++){
+        const entry = entries[e];
+        const player = (entry && entry.playerPoolEntry && entry.playerPoolEntry.player)
+          || (entry && entry.player) || null;
+        if(!player) continue;
+        /* Sleeper's own player id, stamped by the adapter. It is the exact key
+           an article's `entities[].sleeperPlayerId` carries, so when both sides
+           have it the match needs no string handling at all. */
+        const pid = String((player.sleeperPlayerId != null ? player.sleeperPlayerId : '') || '').trim();
+        const name = String(player.fullName || player.name || '').trim();
+        const normalized = normalizeName(name);
+        /* First team wins on a duplicate, and teams are walked in schedule
+           order, so the answer cannot flip between two repaints of the same
+           payload. */
+        if(pid && !byId[pid]) byId[pid] = owner;
+        if(normalized && !byName[normalized]){ byName[normalized] = owner; count++; }
+      }
+    };
+    for(let i = 0; i < schedule.length; i++){
+      const game = schedule[i];
+      const week = Number(game && game.matchupPeriodId) || 0;
+      indexSide(game && game.home, week);
+      indexSide(game && game.away, week);
+    }
+
+    return { byId, byName, count, week:indexedWeek };
+  }
+
+  function ownership(){
+    const data = LeagueData.espnData;
+    const signature = ownershipSignature(data);
+    if(ownershipMemo && ownershipMemo.signature === signature) return ownershipMemo.index;
+    let index;
+    try{
+      index = buildOwnership();
+    }catch(err){
+      console.error('[FSNArticles] building the roster ownership index failed for scope ' +
+        leagueScopeToken() + '; entity matching is disabled for this paint.', err);
+      index = { byId:Object.create(null), byName:Object.create(null), count:0, week:0 };
+    }
+    ownershipMemo = { signature, index };
+    return index;
+  }
+
+  /* Resolve one article entity against the reader's league. Id first (exact),
+     name second (normalized). Returns null when the player is not rostered,
+     which for a waiver piece is itself the useful answer. */
+  function ownerOf(entity){
+    if(!entity) return null;
+    const index = ownership();
+    if(!index.count) return null;
+    const pid = String(entity.sleeperPlayerId || '').trim();
+    if(pid && index.byId[pid]) return index.byId[pid];
+    const normalized = normalizeName(entity.name);
+    if(normalized && index.byName[normalized]) return index.byName[normalized];
+    return null;
+  }
+
+  /* The label injected into the copy. Manager name when the league publishes
+     one, the franchise name otherwise, and both when they differ. */
+  function ownerLabel(owner){
+    if(!owner) return '';
+    const manager = String(owner.manager || '').trim();
+    const team = String(owner.teamName || '').trim();
+    if(manager && team && normalizeName(manager) !== normalizeName(team)) return manager + ', ' + team;
+    return manager || team;
+  }
+
+  /* ---- 6. ANNOTATION --------------------------------------------------- */
+
+  /* The payload is first party, compiled by our own build script from copy we
+     wrote. It is still parsed and filtered rather than handed straight to
+     innerHTML: this file is the shell of a native binary, and a tag allowlist
+     is the difference between a bad deploy being a formatting bug and it being
+     script execution inside the app. */
+  const ALLOWED_TAGS = {
+    P:1, H2:1, H3:1, H4:1, UL:1, OL:1, LI:1, BLOCKQUOTE:1,
+    STRONG:1, EM:1, B:1, I:1, BR:1, HR:1, CODE:1, SPAN:1, A:1, FIGURE:1, FIGCAPTION:1,
+  };
+  const DROP_TAGS = { SCRIPT:1, STYLE:1, IFRAME:1, OBJECT:1, EMBED:1, LINK:1, META:1, FORM:1, INPUT:1, BUTTON:1 };
+
+  function sanitizeInto(node, doc){
+    const children = Array.prototype.slice.call(node.childNodes);
+    for(let i = 0; i < children.length; i++){
+      const child = children[i];
+      if(child.nodeType === 3) continue;                     // text, kept as is
+      if(child.nodeType !== 1){ node.removeChild(child); continue; }
+      const tag = child.tagName.toUpperCase();
+      if(DROP_TAGS[tag]){ node.removeChild(child); continue; }
+      sanitizeInto(child, doc);
+      if(!ALLOWED_TAGS[tag]){
+        /* Unwrap rather than delete: an unexpected wrapper must not take the
+           paragraph inside it out of the article. */
+        while(child.firstChild) node.insertBefore(child.firstChild, child);
+        node.removeChild(child);
+        continue;
+      }
+      const attrs = Array.prototype.slice.call(child.attributes);
+      for(let a = 0; a < attrs.length; a++){
+        const name = attrs[a].name.toLowerCase();
+        const keep = (tag === 'A' && name === 'href');
+        if(!keep) child.removeAttribute(attrs[a].name);
+      }
+      if(tag === 'A'){
+        const href = FSNLinks.externalUrl(child.getAttribute('href') || '');
+        if(!href) child.removeAttribute('href');
+        else{
+          child.setAttribute('href', href);
+          child.setAttribute('target', '_blank');
+          child.setAttribute('rel', 'noopener noreferrer');
+        }
+      }
+    }
+  }
+
+  /* Every text node under a root, in document order, skipping anything already
+     inside an injected ownership tag. */
+  function textNodesOf(root){
+    const out = [];
+    (function collect(node){
+      const children = node.childNodes;
+      for(let i = 0; i < children.length; i++){
+        const child = children[i];
+        if(child.nodeType === 3){ out.push(child); continue; }
+        if(child.nodeType !== 1) continue;
+        if(child.className === 'wire-own') continue;
+        collect(child);
+      }
+    })(root);
+    return out;
+  }
+
+  /* A letters-and-digits-only projection of a string, plus the raw index each
+     surviving character came from. Matching on this is what lets "A.J. Brown"
+     in the copy find "AJ Brown" on the roster: both compact to "ajbrown", and
+     the offset table maps the hit back to the exact slice of the original text
+     so the surrounding markup and punctuation survive untouched. */
+  function compactOf(text){
+    let compact = '';
+    const offsets = [];
+    for(let i = 0; i < text.length; i++){
+      const code = text.charCodeAt(i);
+      const isDigit = code >= 48 && code <= 57;
+      const isUpper = code >= 65 && code <= 90;
+      const isLower = code >= 97 && code <= 122;
+      if(!isDigit && !isUpper && !isLower) continue;
+      compact += isUpper ? String.fromCharCode(code + 32) : text.charAt(i);
+      offsets.push(i);
+    }
+    return { compact, offsets };
+  }
+
+  function isWordChar(ch){
+    if(!ch) return false;
+    const code = ch.charCodeAt(0);
+    return (code >= 48 && code <= 57) || (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
+  }
+
+  const SUFFIX_WORD = /^(?:jr|sr|ii|iii|iv|v)$/i;
+
+  /* The next word after `from`, with the index just past it. Used only to pull
+     a generational suffix inside the tagged span, so "Kenneth Walker III" does
+     not end up reading "Kenneth Walker owned by Alpha III". */
+  function wordAfter(text, from){
+    const match = /^[^A-Za-z0-9]*([A-Za-z0-9]+)/.exec(text.slice(from));
+    if(!match) return null;
+    return { word:match[1], end:from + match[0].length };
+  }
+
+  /* Inject the ownership tag at the FIRST mention of a player and nowhere else.
+     Walking text nodes rather than running a regex over the HTML string is the
+     point: a name can never be matched inside a tag name or an attribute, and
+     the markup the desk wrote around it (a <strong>, a link) is preserved
+     exactly. Returns true when a tag was placed. */
+  function injectOwnership(root, doc, entity, owner){
+    const needle = normalizeName(entity.name).replace(/[^a-z0-9]/g, '');
+    if(!needle) return false;
+    const label = ownerLabel(owner);
+    if(!label) return false;
+
+    const nodes = textNodesOf(root);
+    for(let i = 0; i < nodes.length; i++){
+      const textNode = nodes[i];
+      const text = textNode.nodeValue || '';
+      if(text.length < needle.length) continue;
+      const map = compactOf(text);
+      let from = 0;
+      while(from <= map.compact.length - needle.length){
+        const at = map.compact.indexOf(needle, from);
+        if(at === -1) break;
+        from = at + 1;
+
+        const rawStart = map.offsets[at];
+        let rawEnd = map.offsets[at + needle.length - 1] + 1;
+
+        // A name must start on a word boundary: "Chase" inside "Chases" is not a hit.
+        if(isWordChar(text.charAt(rawStart - 1))) continue;
+
+        // ...and end on one, unless what follows is a generational suffix.
+        const nextCompact = at + needle.length;
+        if(nextCompact < map.offsets.length && map.offsets[nextCompact] === rawEnd) continue;
+        const trailing = wordAfter(text, rawEnd);
+        if(trailing && SUFFIX_WORD.test(trailing.word)) rawEnd = trailing.end;
+
+        const parent = textNode.parentNode;
+        if(!parent) break;
+        const tag = doc.createElement('span');
+        tag.className = 'wire-own';
+        tag.textContent = 'owned by ' + label;
+        const after = textNode.splitText(rawEnd);
+        parent.insertBefore(tag, after);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  let annotationMemo = null;
+
+  /* The reader-facing article: sanitized body, ownership injected, and the
+     match list the card prints above the copy. Memoized on the slug plus the
+     roster signature, so switching leagues re-annotates and a plain repaint
+     does not. */
+  function annotated(){
+    const snapshot = current();
+    if(snapshot.status !== 'ready' || !snapshot.post) return null;
+    const post = snapshot.post;
+    const signature = post.slug + '|' + ownershipSignature(LeagueData.espnData);
+    if(annotationMemo && annotationMemo.signature === signature) return annotationMemo.value;
+
+    let value;
+    try{
+      const doc = new DOMParser().parseFromString('<div id="fsn-wire-root">' + post.bodyHtml + '</div>', 'text/html');
+      const root = doc.getElementById('fsn-wire-root');
+      if(!root) throw new Error('WIRE_BODY_UNPARSEABLE');
+      sanitizeInto(root, doc);
+
+      const matches = [];
+      const unmatched = [];
+      for(let i = 0; i < post.entities.length; i++){
+        const entity = post.entities[i];
+        const owner = ownerOf(entity);
+        if(owner){
+          const injected = injectOwnership(root, doc, entity, owner);
+          matches.push({ name:entity.name, position:entity.position, owner, label:ownerLabel(owner), injected });
+        } else {
+          unmatched.push({ name:entity.name, position:entity.position });
+        }
+      }
+      value = { post, html:root.innerHTML, matches, unmatched, rostered:ownership().count };
+    }catch(err){
+      console.error('[FSNArticles] annotating "' + post.slug + '" for scope ' + leagueScopeToken() +
+        ' failed; the card falls back to the excerpt only.', err);
+      value = { post, html:'', matches:[], unmatched:[], rostered:0 };
+    }
+    annotationMemo = { signature, value };
+    return value;
+  }
+
+  /* ---- 7. ARMING ------------------------------------------------------- */
+
+  let armed = false;
+
+  /* Launch and every return to the foreground, exactly as specified, plus a
+     plain `focus` for desktop browsers that do not fire visibilitychange on an
+     alt-tab. Both go through the same rate-limited refresh(). */
+  function arm(){
+    if(armed) return;
+    armed = true;
+
+    const wake = (why)=>{
+      refresh({ reason:why }).catch(err=>{
+        console.warn('[FSNArticles] the ' + why + ' article refresh failed.', err);
+      });
+    };
+
+    document.addEventListener('visibilitychange', ()=>{
+      if(document.visibilityState !== 'visible') return;
+      wake('foreground');
+    });
+    window.addEventListener('focus', ()=> wake('focus'));
+
+    /* Paint whatever this device already downloaded before the network answers,
+       so a returning reader never sees an empty slot flash first. */
+    const cached = readCache();
+    if(cached && cached.slot === slotForDate().id && cached.post){
+      settle({ status:'ready', slot:slotForDate(), post:normalizePost(cached.post, cached.post),
+               dateKey:localDateKey(), cached:true, fetchedAt:Number(cached.ts) || 0, reason:'' });
+    }
+    wake('launch');
+  }
+
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', arm, { once:true });
+  } else {
+    arm();
+  }
+
+  return {
+    SLOTS,
+    WEEK_PLAN,
+    MAX_AGE_DAYS,
+    slotForDay,
+    slotForDate,
+    postMatchesSlot,
+    selectForSlot,
+    normalizeName,
+    ownership,
+    ownerOf,
+    ownerLabel,
+    annotated,
+    current,
+    refresh,
+    readerUrl,
+    indexUrl,
+    onChange(fn){ if(typeof fn === 'function') listeners.push(fn); return fn; },
+  };
+})();
 </script>
 
 <script>
@@ -8265,7 +9147,12 @@ function entriesForSide(sideMatchup, slots, playerIndex){
     entries.push({
       lineupSlotId: slots[i] != null ? slots[i] : 23,
       appliedStatTotal: pts,
-      playerPoolEntry:{ player:{ fullName:meta.name, defaultPositionId:posToEspn(meta.pos) } },
+      /* `sleeperPlayerId` is carried through additively, alongside the fields
+         every existing consumer already reads. Nothing in the standings,
+         matchup, history or News Desk paths looks at it; FSNArticles uses it
+         as the exact key for matching an article's `entities[].sleeperPlayerId`
+         against this league's rosters without any string handling at all. */
+      playerPoolEntry:{ player:{ fullName:meta.name, defaultPositionId:posToEspn(meta.pos), sleeperPlayerId:String(pid) } },
     });
   });
 
@@ -8277,7 +9164,12 @@ function entriesForSide(sideMatchup, slots, playerIndex){
     entries.push({
       lineupSlotId: 20,   // BN
       appliedStatTotal: pts,
-      playerPoolEntry:{ player:{ fullName:meta.name, defaultPositionId:posToEspn(meta.pos) } },
+      /* `sleeperPlayerId` is carried through additively, alongside the fields
+         every existing consumer already reads. Nothing in the standings,
+         matchup, history or News Desk paths looks at it; FSNArticles uses it
+         as the exact key for matching an article's `entities[].sleeperPlayerId`
+         against this league's rosters without any string handling at all. */
+      playerPoolEntry:{ player:{ fullName:meta.name, defaultPositionId:posToEspn(meta.pos), sleeperPlayerId:String(pid) } },
     });
   });
 
@@ -27988,7 +28880,149 @@ function newsPlaceholderCard(week, newsLabel){
   </div>`;
 }
 
+/* ============================================================
+   THE DESK WIRE — today's published article, in the app
+
+   FSNArticles (block 1) owns the fetch, the day routing and the roster match.
+   This is the paint, and it lives here because it needs this IIFE's closure
+   (esc, emptyState, the screen's DOM). The engine reaches it through
+   FSNBridge.call('renderDeskWire'), registered at the bottom of this block,
+   so a missing or throwing handler is reported rather than taking the engine's
+   state machine down with it.
+
+   Everything below the card — the lead story, the timeline, the topic bar — is
+   the existing deterministic News Desk and is not touched by any of this. When
+   the engine has no article for today the wrapper is hidden outright and the
+   desk renders exactly as it always has.
+============================================================ */
+
+/* Collapsed by default: the card is a slot on a busy screen, not a reader.
+   Per-session and deliberately not persisted, so a returning reader always
+   gets the compact card back. */
+let wireExpanded = false;
+
+function wirePublishLabel(dateKey){
+  const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dateKey || ''));
+  if(!parts) return '';
+  /* Parsed as UTC and formatted from the UTC fields: the publish date is a
+     calendar day, not an instant, and letting the local timezone shift it
+     prints "yesterday" for every reader west of the meridian. */
+  const when = new Date(Date.UTC(Number(parts[1]), Number(parts[2]) - 1, Number(parts[3])));
+  if(!Number.isFinite(when.getTime())) return '';
+  const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+  return months[when.getUTCMonth()] + ' ' + when.getUTCDate();
+}
+
+/* The "who on your wire owns him" line. Matched players first, and for the
+   waiver slot the players NOBODY in this league rosters, which is the whole
+   point of a waiver piece. */
+function wireMatchLine(view, slot){
+  const owned = view.matches.filter(m=> m && m.owner);
+  const free = view.unmatched || [];
+  const chips = [];
+  owned.forEach(m=>{
+    chips.push('<span class="wire-chip">' + esc(m.name) +
+      ' <span class="wire-chip-owner">' + esc(m.label) + '</span></span>');
+  });
+  if(slot && slot.id === 'waiver'){
+    free.forEach(m=>{
+      chips.push('<span class="wire-chip wire-chip-free">' + esc(m.name) + ' <span class="wire-chip-owner">free agent</span></span>');
+    });
+  }
+  if(!chips.length) return '';
+  const heading = owned.length
+    ? 'Named in this article, on your wire'
+    : 'Named in this article, unrostered in your league';
+  return `<div class="mt-3 pt-3 border-t border-[var(--line)]">
+      <div class="kicker text-[var(--dim)]">${esc(heading)}</div>
+      <div class="flex flex-wrap gap-1.5 mt-2">${chips.join('')}</div>
+    </div>`;
+}
+
+function renderDeskWire(){
+  const wrap = $('deskWireWrap');
+  if(!wrap) return;
+
+  const hide = ()=>{ wrap.hidden = true; wrap.innerHTML = ''; };
+
+  const snapshot = FSNArticles.current();
+  /* 'empty' (nothing published for today's slot) and 'offline' (the feed could
+     not be read and no cached copy applies) are both ordinary, expected states
+     — the slot disables itself and the layout closes over it cleanly. */
+  if(!snapshot || snapshot.status !== 'ready' || !snapshot.post){ hide(); return; }
+
+  const view = FSNArticles.annotated();
+  if(!view || !view.html){ hide(); return; }
+
+  const post = view.post;
+  const slot = snapshot.slot || {};
+  const published = wirePublishLabel(post.publishDate);
+  const collapsed = wireExpanded ? 'false' : 'true';
+  const toggleLabel = wireExpanded ? 'Show less' : 'Read the full story';
+  const cachedNote = snapshot.cached
+    ? `<div class="text-[10.5px] text-[var(--dim)] mt-2">Saved copy. This device has not reached the desk since it downloaded this.</div>`
+    : '';
+
+  wrap.innerHTML = `<article class="card wire-card">
+    <div class="wire-top"></div>
+    <div class="p-4 wire-head">
+      <div class="flex items-center gap-2 mb-2.5 flex-wrap">
+        <span class="pill pill-gold">${esc(slot.label || 'From the Desk')}</span>
+        ${post.category ? `<span class="pill pill-cyan">${esc(post.category)}</span>` : ''}
+        <span class="kicker text-[var(--dim)] ml-auto">${esc(published)}</span>
+      </div>
+      <h2 class="wire-title">${esc(post.title)}</h2>
+      ${post.excerpt ? `<p class="wire-dek">${esc(post.excerpt)}</p>` : ''}
+      ${wireMatchLine(view, slot)}
+      ${cachedNote}
+      <div class="wire-body mt-3.5" data-collapsed="${collapsed}" id="deskWireBody">${view.html}</div>
+      <div class="flex items-center gap-2 mt-3 pt-3 border-t border-[var(--line)] flex-wrap">
+        <button type="button" class="wire-action" data-wire-toggle="1"
+          aria-expanded="${wireExpanded ? 'true' : 'false'}" aria-controls="deskWireBody">${esc(toggleLabel)}</button>
+        <a class="wire-action" href="${esc(snapshot.readerUrl)}" target="_blank" rel="noopener noreferrer"
+          data-wire-external="1">Open on the web ›</a>
+        <span class="kicker text-[var(--dim)] ml-auto">${esc(post.author || 'FSN Desk')}</span>
+      </div>
+    </div>
+  </article>`;
+  wrap.hidden = false;
+}
+
+/* Expand / collapse, and the one external link. Delegated because the card is
+   rewritten on every repaint, so a bound listener would not survive it. */
+document.addEventListener('click', (e)=>{
+  const toggle = e.target.closest && e.target.closest('[data-wire-toggle]');
+  if(toggle){
+    e.preventDefault();
+    wireExpanded = !wireExpanded;
+    safeRun('deskWire:toggle', renderDeskWire);
+    return;
+  }
+  const external = e.target.closest && e.target.closest('[data-wire-external]');
+  if(external){
+    let handled = false;
+    try{
+      handled = FSNLinks.openExternal(external.getAttribute('href') || '');
+    }catch(err){
+      console.error('[FSNArticles] the desk wire link handler failed for ' +
+        (external.getAttribute('href') || '(no href)') + '; leaving the anchor to navigate on its own.', err);
+      return;
+    }
+    if(handled) e.preventDefault();
+  }
+});
+
 function renderNews(){
+  /* The wire card is painted first and independently of everything below it:
+     the desk's own stream can be empty, unavailable or mid-failure and the
+     day's published article still has to show. Guarded so the reverse is also
+     true — a wire failure degrades to a hidden slot, never to the desk's
+     "hit a snag" screen. */
+  safeRun('deskWire', renderDeskWire, ()=>{
+    const wireWrap = $('deskWireWrap');
+    if(wireWrap){ wireWrap.hidden = true; wireWrap.innerHTML = ''; }
+  });
+
   const week = effectiveWeek();
   const viewedYearNews = parseInt(($('seasonYear').value || '').trim(), 10) || uiActiveSeasonYear();
   const newsLabel = isPreseasonWeek1(week, viewedYearNews) ? 'PRESEASON' : 'WEEK ' + week;
@@ -29083,6 +30117,9 @@ FSNBridge.register({
   renderRecordBook,
   renderNews,
   renderHomeStories,
+  /* FSNArticles (block 1) repaints the wire card through this the moment a
+     fetch settles, without knowing anything about this closure. */
+  renderDeskWire,
   currentLeagueWeek,
   uiActiveSeasonYear,
 });
