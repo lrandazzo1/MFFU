@@ -165,6 +165,12 @@ window.FSNBoot = (function(){
    TOKENS — athletic broadcast palette
 ============================================================ */
 :root{
+  /* Force native form controls (option lists, date/time popovers, scrollbar
+     accents) into their dark palette so the OS-rendered dropdown that opens
+     when a <select> is tapped matches the app's ink surface instead of
+     flashing a system-default white sheet. Every screen in this app is
+     dark; there is no light variant. */
+  color-scheme:dark;
   --ink:#080a0e;
   --panel:#12161f;
   --panel-2:#181e2a;
@@ -1503,10 +1509,17 @@ html[data-fsn-boot="loading"] #tickerBar{ visibility:hidden; }
 .record-book-season-empty{ padding:14px 15px 16px; color:var(--dim); font-size:10.5px; line-height:1.55; }
 
 /* Rivalry manager selectors — avatar preview beside each dropdown. */
-.rival-select{ position:relative; display:flex; align-items:center; gap:8px; }
+.rival-select{ position:relative; display:flex; align-items:center; gap:8px; min-width:0; }
 .rival-select-crest{ flex:none; display:flex; }
 .rival-select-crest .logo,.rival-select-crest .mono-badge{ width:26px; height:26px; border-radius:8px; }
-.rival-select .field{ flex:1; min-width:0; }
+/* Selects inside the H2H picker sit in a 2-column grid, so the raw pixel
+   width of "Alex Rakowicz" (plus a 26px crest and 8px gap) overruns the
+   column. Locking `flex:1 1 0`, `width:0`, and `min-width:0` forces the
+   flex item to shrink below its intrinsic content width; ellipsis (set
+   globally on `select.field` above) then handles the clip. Slightly
+   trimmed padding-right keeps room for the caret without stealing text
+   space in the narrower grid column. */
+.rival-select .field{ flex:1 1 0; width:0; min-width:0; padding-right:30px; background-position:right 10px center; }
 /* Most-Played Rivalries rows — clickable affordance + hover state. */
 .rival-row{ transition:border-color .16s ease, background .16s ease, transform .1s ease; }
 .rival-row:hover{ border-color:var(--line-2); background:#0e131c; }
@@ -2096,6 +2109,74 @@ html[data-fsn-boot="loading"] #tickerBar{ visibility:hidden; }
   background-repeat:no-repeat; background-position:right 12px center; background-size:16px;
 }
 .field-select:focus{ border-color:var(--cyan); box-shadow:0 0 0 3px rgba(0,224,255,.14); }
+
+/* ---------- UNIVERSAL DARK-MODE DROPDOWN ----------
+   Every native <select> in the app — whether authored as `.field`,
+   `.field-select`, a `.season-quick` child, or bare — presents as one
+   cohesive dark pill with a cyan-tinted chevron, a dark option sheet,
+   and clean ellipsis truncation on the visible label.
+
+   Placed AFTER `.field-select{}` above so its longer `padding` and
+   `background-size` overrides beat the base rule in the cascade — this
+   is the reason "Alex Rakowicz" clipped before: the base rule reserved
+   only 12px of right padding, so the chevron overlapped the last few
+   letters of any longer manager name. Everything here is pure CSS; no
+   generator or handler is touched. */
+select.field,
+select.field-select,
+.field-select,
+.season-quick select{
+  appearance:none; -webkit-appearance:none; -moz-appearance:none;
+  color-scheme:dark;
+  background-color:#0b0f16;
+  color:#fff;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2300e0ff' stroke-width='2.4' stroke-linecap='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;
+  background-position:right 12px center;
+  background-size:14px;
+  /* Reserve a chevron gutter wide enough that a long value ("Alex
+     Rakowicz") is clipped by ellipsis, never by the caret glyph. */
+  padding-right:36px;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  overflow:hidden;
+  cursor:pointer;
+  min-width:0;
+}
+select.field:hover,
+select.field-select:hover,
+.field-select:hover,
+.season-quick select:hover{ border-color:var(--line-2); }
+select.field:focus-visible,
+select.field-select:focus-visible,
+.field-select:focus-visible,
+.season-quick select:focus-visible{
+  border-color:var(--cyan); box-shadow:0 0 0 3px rgba(0,224,255,.14);
+}
+/* Some browsers (older Chromium, Firefox on Linux/Android) render the
+   OS popover using the <option>'s own colors regardless of
+   `color-scheme`, so paint the sheet explicitly. Anton reads poorly at
+   13px in a native list; the Oswald/system stack keeps it legible. */
+select.field option,
+select.field-select option,
+.field-select option,
+.season-quick select option,
+select option{
+  background-color:#0b0f16;
+  color:#f5f7fb;
+  font-family:'Oswald','JetBrains Mono',system-ui,-apple-system,sans-serif;
+}
+select.field option:checked,
+select.field-select option:checked,
+.field-select option:checked,
+.season-quick select option:checked,
+select option:checked{
+  background-color:#12161f;
+  color:var(--cyan);
+}
+select.field:disabled,
+select.field-select:disabled,
+.field-select:disabled{ opacity:.55; cursor:not-allowed; }
 
 @media (prefers-reduced-motion:reduce){
   #reader[data-open="true"] #readerBody{ animation:none; }
