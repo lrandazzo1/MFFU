@@ -1990,6 +1990,24 @@ html[data-fsn-boot="loading"] #tickerBar{ visibility:hidden; }
 .icon-btn svg{ width:20px; height:20px; stroke-width:2; fill:none; stroke:currentColor;
   stroke-linecap:round; stroke-linejoin:round; }
 
+/* Header-level share affordance. Sits opposite the close button so the
+   reader gets two calm entry points — a pill up top and the full CTA at
+   the bottom — without duplicating icons on either side. */
+.reader-share-pill{
+  flex:none; display:inline-flex; align-items:center; gap:6px;
+  padding:6px 12px; border-radius:999px;
+  background:linear-gradient(100deg,rgba(255,196,0,.18),rgba(255,196,0,.05));
+  border:1px solid rgba(255,196,0,.5); color:var(--gold);
+  font-family:'Oswald',sans-serif; font-size:10.5px; font-weight:700;
+  letter-spacing:.14em; text-transform:uppercase; white-space:nowrap;
+  transition:transform .12s ease, opacity .12s ease;
+}
+.reader-share-pill svg{
+  width:12px; height:12px; flex:none; fill:none; stroke:currentColor;
+  stroke-width:2; stroke-linecap:round; stroke-linejoin:round;
+}
+.reader-share-pill:active{ transform:scale(.97); }
+
 /* ---------- ARTICLE TYPOGRAPHY ---------- */
 .headline{
   font-family:'Anton',Impact,sans-serif;
@@ -3932,10 +3950,14 @@ body.fsn-dd-lock{ overflow:hidden; }
       <svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"></path></svg>
     </button>
     <div class="kicker text-[var(--cyan)] flex-1 truncate">FSN News Desk</div>
-    <!-- Header sharing icons intentionally removed: the article body renders a
-         single "Download Share Card" CTA, which fans out to the native share
-         sheet on mobile and a download on desktop. Keeping icon-duplicates in
-         the header produced competing entry points for the same action. -->
+    <!-- Header "Share the Story" pill routes to the same [data-reader-export]
+         handler as the bottom "Download Share Card" CTA — one action, two
+         entry points (a top pill, a full-width CTA at the bottom) with no
+         duplicate icon column between them. -->
+    <button type="button" class="reader-share-pill" data-reader-export aria-label="Share the story">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="12" r="2.4"></circle><circle cx="18" cy="6" r="2.4"></circle><circle cx="18" cy="18" r="2.4"></circle><path d="M8 10.8L16 7"></path><path d="M8 13.2L16 17"></path></svg>
+      Share the Story
+    </button>
   </div>
   <div id="readerBody"></div>
 </div>
@@ -29274,7 +29296,10 @@ $('franchiseModalBody').addEventListener('scroll', ()=>{ if(dossierInfoAnchor) c
 window.addEventListener('resize', ()=>{ if(dossierInfoAnchor) positionDossierInfo(); });
 $('franchiseScreenshotBtn').addEventListener('click', toggleFranchiseScreenshot);
 $('franchiseLinkBtn').addEventListener('click', copyFranchiseDossierLink);
-$('readerBody').addEventListener('click', (e)=>{
+/* Delegated on #reader (not #readerBody) so the header "Share the Story"
+   pill in #readerBar routes to the same handler as the bottom
+   "Download Share Card" CTA — one action, two entry points. */
+$('reader').addEventListener('click', (e)=>{
   if(e.target.closest('[data-reader-export]')) exportArticleCard();
   if(e.target.closest('[data-reader-delete]')) deleteCommunityArticle();
 });
