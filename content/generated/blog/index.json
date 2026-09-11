@@ -1,0 +1,24 @@
+{
+  "generatedAt": "2026-09-11T14:21:27.045Z",
+  "count": 2,
+  "posts": [
+    {
+      "title": "Waiver wire risers for week two",
+      "slug": "waiver-wire-risers-week-2",
+      "publishDate": "2026-09-11",
+      "category": "Waiver Wire",
+      "excerpt": "Three names worth a real bid before Wednesday. Two backfields cracked open, and one slot receiver just became a target hog.",
+      "author": "FSN Desk",
+      "entityCount": 3
+    },
+    {
+      "title": "Trade deadline watch, the buyers and the sellers",
+      "slug": "trade-deadline-watch",
+      "publishDate": "2026-09-08",
+      "category": "Analysis",
+      "excerpt": "Three contenders should be buying now, before prices climb. Two rebuilds should be selling veterans while the names still carry weight.",
+      "author": "FSN Desk",
+      "entityCount": 3
+    }
+  ]
+}
