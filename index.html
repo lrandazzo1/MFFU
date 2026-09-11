@@ -344,21 +344,29 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
   pointer-events:none;
 }
 .ticker-track{
-  display:flex; align-items:center; gap:0;
+  display:flex; align-items:center; flex-wrap:nowrap; gap:0;
   width:max-content; flex-shrink:0;
   white-space:nowrap; will-change:transform;
   animation:tickerScroll var(--ticker-duration, 42s) linear infinite;
 }
 @keyframes tickerScroll{ from{ transform:translate3d(0,0,0);} to{ transform:translate3d(-50%,0,0);} }
+/* The crawl is a single-line marquee. `white-space:nowrap` on .ticker-track
+   normally cascades, but a few analytics views (FSN Index / Advanced) re-flow
+   the shell and, on narrow viewports, an inline-flex ticker item can allow its
+   text nodes to break onto a second line — which pushes the fixed-height bar
+   into a two-line layout. Lock nowrap explicitly on every level of the item so
+   long team names truncate cleanly at the fade instead of wrapping. */
 .ticker-item{
-  display:inline-flex; flex-shrink:0; align-items:center; gap:7px;
-  padding:0 15px; font-size:11.5px; letter-spacing:.06em;
+  display:inline-flex; flex-shrink:0; flex-wrap:nowrap; align-items:center; gap:7px;
+  padding:0 15px; font-size:11.5px; letter-spacing:.06em; line-height:1;
+  white-space:nowrap;
   border-right:1px solid rgba(255,255,255,.07);
 }
-.ticker-item .tk-team{ font-weight:600; color:#e9edf4; text-transform:uppercase; }
-.ticker-item .tk-score{ font-family:'JetBrains Mono',monospace; font-weight:700; color:var(--cyan); }
+.ticker-item > *{ white-space:nowrap; flex-shrink:0; overflow:hidden; text-overflow:ellipsis; }
+.ticker-item .tk-team{ font-weight:600; color:#e9edf4; text-transform:uppercase; white-space:nowrap; max-width:220px; }
+.ticker-item .tk-score{ font-family:'JetBrains Mono',monospace; font-weight:700; color:var(--cyan); white-space:nowrap; }
 .ticker-item .tk-win{ color:var(--gold); }
-.ticker-item .tk-tag{ color:var(--red); font-weight:700; letter-spacing:.14em; font-size:9.5px; }
+.ticker-item .tk-tag{ color:var(--red); font-weight:700; letter-spacing:.14em; font-size:9.5px; white-space:nowrap; }
 
 /* ---------- BOTTOM TAB BAR ---------- */
 #tabBar{
