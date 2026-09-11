@@ -29,8 +29,13 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const SRC_DIR = path.join(ROOT, 'content', 'blog');
-const OUT_DIR = path.join(ROOT, 'content', 'generated', 'blog');
+// The blog is served on the root domain (fantasysportsnetwork.app) by the
+// `fsn-landing` Vercel project, whose deploy root is `landing/`. Source lives
+// in landing/content/blog and the compiled payload lands in
+// landing/content/generated/blog so the landing deploy serves it directly at
+// /content/generated/blog/**.
+const SRC_DIR = path.join(ROOT, 'landing', 'content', 'blog');
+const OUT_DIR = path.join(ROOT, 'landing', 'content', 'generated', 'blog');
 const POSTS_DIR = path.join(OUT_DIR, 'posts');
 
 const CHECK_ONLY = process.argv.includes('--check');
