@@ -102,6 +102,28 @@ npm run build:blog     # compile source -> landing/content/generated/blog/
 npm run check:blog     # verify the payload is fresh and punctuation is clean
 ```
 
+## Automated Sleeper recap pipeline
+
+`scripts/generate-editorial.mjs` fetches one week's real matchup data from the
+public Sleeper API (`https://api.sleeper.app/v1/...`) and writes a source
+article in this directory, in the exact format described above. It never
+invents a score, a manager, or a stat line: every name and number in the
+output comes straight from the Sleeper response for the league and week you
+give it, and it fails loudly rather than padding a gap with generic copy.
+
+```bash
+SLEEPER_LEAGUE_ID=<your league id> npm run generate:editorial   # write a new recap
+npm run build:blog                                               # compile it
+npm run check:editorial                                          # network-free self-test
+```
+
+There is no default league id configured anywhere in this repo (the in-app
+league data comes from ESPN, not Sleeper), so the script requires
+`SLEEPER_LEAGUE_ID` (or `--league <id>`) explicitly and refuses to guess one.
+`npm run check:editorial` verifies the fetch, matchup pairing, entity
+extraction, and punctuation contract against local fixture data, so it runs
+without network access and without a real league id.
+
 `landing/content/generated/blog/` is produced by the build. Do not hand edit it.
 It is committed so the `fsn-landing` deploy (which runs no build step) serves it
 as static files.
