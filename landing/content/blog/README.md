@@ -62,6 +62,32 @@ app parse to map stories onto active league rosters. Each entry:
 - `sleeperPlayerId` (optional): the Sleeper `player_id` string. The pipeline
   also accepts `player_id` as an alias and normalizes it to a string.
 
+**Every entity must be named in the copy.** The "Players in this story" tray
+only lists players whose exact display name actually appears in the `title` or
+`body` (headings count). The build drops any orphaned or ghost entity that is
+never mentioned in the prose and warns about it, so the tray can never surface
+a player the reader never reads about. List a player as an entity only if you
+also write their name into the article.
+
+## Waiver Wire realism rules
+
+Articles with `category: Waiver Wire` follow a stricter generation contract, so
+the recommendations stay believable on a standard 12-team wire:
+
+- Feature **true low-owned targets, direct injury replacements, or viable
+  streaming options** only. These are players genuinely available on most
+  standard wires.
+- **Never recommend a consensus-owned roster anchor** (a universally drafted
+  starter such as a locked-in RB1/WR1 or elite TE/QB). They are never on the
+  wire, so recommending one as a claim is a build error. The blocked list of
+  anchors lives in `scripts/build-blog.mjs` (`WAIVER_ANCHOR_BLOCKLIST`); extend
+  it as the ownership consensus shifts week to week.
+- Frame each add against roster ownership or a consensus baseline (why the
+  player is available and what changed), not against season-long pedigree.
+
+The build fails loudly if a Waiver Wire story features an anchor, so an
+unrealistic waiver claim never ships.
+
 ## Punctuation contract
 
 No em dashes. Anywhere. Not in titles, metadata, or body copy. Break clauses
