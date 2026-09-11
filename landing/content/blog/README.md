@@ -1,9 +1,13 @@
 # FSN Blog content
 
-Drop article source files into this directory. The ingestion pipeline
-(`scripts/build-blog.mjs`) reads them and compiles the deploy payload into
-`content/generated/blog/`. The public pages at `/blog` and `/blog/<slug>` fetch
-that generated payload at runtime.
+Drop article source files into this directory (`landing/content/blog/`). The
+ingestion pipeline (`scripts/build-blog.mjs`, run from the repo root) reads them
+and compiles the deploy payload into `landing/content/generated/blog/`.
+
+The blog is served on the root domain (`fantasysportsnetwork.app`) by the
+`fsn-landing` Vercel project, whose deploy root is `landing/`. The public pages
+at `/blog` and `/blog/<slug>` fetch that generated payload at runtime from
+`/content/generated/blog/`.
 
 ## Two supported formats
 
@@ -68,8 +72,10 @@ fine for ranges and joins.
 ## Build
 
 ```bash
-npm run build:blog     # compile source -> content/generated/blog/
+npm run build:blog     # compile source -> landing/content/generated/blog/
 npm run check:blog     # verify the payload is fresh and punctuation is clean
 ```
 
-`content/generated/blog/` is produced by the build. Do not hand edit it.
+`landing/content/generated/blog/` is produced by the build. Do not hand edit it.
+It is committed so the `fsn-landing` deploy (which runs no build step) serves it
+as static files.

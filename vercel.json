@@ -1,11 +1,12 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
-  "buildCommand": "node scripts/build-blog.mjs",
+  "buildCommand": "",
   "outputDirectory": ".",
-  "rewrites": [
-    { "source": "/blog", "destination": "/blog/index.html" },
-    { "source": "/blog/:slug", "destination": "/blog/reader.html" }
+  "redirects": [
+    { "source": "/blog", "destination": "https://fantasysportsnetwork.app/blog", "permanent": true },
+    { "source": "/blog/:slug", "destination": "https://fantasysportsnetwork.app/blog/:slug", "permanent": true },
+    { "source": "/content/generated/blog/:path*", "destination": "https://fantasysportsnetwork.app/content/generated/blog/:path*", "permanent": true }
   ],
   "headers": [
     {

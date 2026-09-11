@@ -5,6 +5,10 @@
   "outputDirectory": ".",
   "cleanUrls": true,
   "trailingSlash": false,
+  "rewrites": [
+    { "source": "/blog", "destination": "/blog/index.html" },
+    { "source": "/blog/:slug", "destination": "/blog/reader.html" }
+  ],
   "headers": [
     {
       "source": "/.well-known/apple-app-site-association",
