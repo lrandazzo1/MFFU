@@ -30,6 +30,8 @@
     "check:news": "node scripts/news-library-check.mjs",
     "check:applinks": "node scripts/check-applinks.mjs",
     "check:deeplinks": "node scripts/deeplink-check.mjs",
+    "build:blog": "node scripts/build-blog.mjs",
+    "check:blog": "node scripts/build-blog.mjs --check",
     "verify": "npm run check:scope && npm run check:matchup-previews && npm run test:wire && npm run check:wire && npm run test:triggers && npm run audit:notifications && npm run check:render && npm run check:switch && npm run check:ticker && npm run check:desktop-scroll && npm run check:desk-sync && npm run check:boot && npm run check:apibase && npm run check:links && npm run check:claims && npm run check:news && npm run check:applinks && npm run check:deeplinks",
     "audit:notifications": "node scripts/audit-notifications.mjs",
     "assets:source": "node scripts/build-brand-assets.mjs",

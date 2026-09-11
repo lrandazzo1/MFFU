@@ -1,8 +1,12 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
-  "buildCommand": "",
+  "buildCommand": "node scripts/build-blog.mjs",
   "outputDirectory": ".",
+  "rewrites": [
+    { "source": "/blog", "destination": "/blog/index.html" },
+    { "source": "/blog/:slug", "destination": "/blog/reader.html" }
+  ],
   "headers": [
     {
       "source": "/.well-known/apple-app-site-association",
