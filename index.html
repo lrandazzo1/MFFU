@@ -1509,8 +1509,8 @@ html[data-fsn-boot="loading"] #tickerBar{ visibility:hidden; }
 .record-book-season-empty{ padding:14px 15px 16px; color:var(--dim); font-size:10.5px; line-height:1.55; }
 
 /* Rivalry manager selectors — avatar preview beside each dropdown. */
-.rival-select{ position:relative; display:flex; align-items:center; gap:8px; min-width:0; }
-.rival-select-crest{ flex:none; display:flex; }
+.rival-select{ position:relative; display:flex; align-items:center; gap:6px; min-width:0; }
+.rival-select-crest{ flex:none; display:flex; align-items:center; }
 .rival-select-crest .logo,.rival-select-crest .mono-badge{ width:26px; height:26px; border-radius:8px; }
 /* Selects inside the H2H picker sit in a 2-column grid, so the raw pixel
    width of "Alex Rakowicz" (plus a 26px crest and 8px gap) overruns the
@@ -2231,7 +2231,28 @@ select.field-select:disabled,
 
 /* Context box matching for selects that were styled via the `select` element
    selector (these never carried a class the trigger could inherit). */
-.rival-select .fsn-dd-trigger{ flex:1 1 0; width:0; min-width:0; padding-right:12px; font-size:12.5px; }
+/* Rivalries Manager A/B pills. The two selectors share a narrow 2-column grid,
+   so a full name ("Conor Morrisroe", "Ryan Grady") cannot fit on one line
+   beside the crest — the old `white-space:nowrap` label clipped it to an
+   ellipsis mid-name. Here the label is allowed to WRAP onto a second line
+   (the CSS analogue of iOS `numberOfLines={2}`) inside a fixed-height pill, so
+   the whole name stays legible; only a name too long for two lines clamps.
+   `min-height` keeps both pills the same height whether one line or two, and
+   the trigger stretches to fill its grid cell so the A and B pills always
+   align. WebKit-safe, which is what the iOS (Capacitor) webview runs. */
+.rival-select .fsn-dd-trigger{
+  flex:1 1 0; width:0; min-width:0;
+  align-self:stretch;
+  padding:7px 10px; font-size:12px;
+  min-height:46px; align-items:center;
+}
+.rival-select .fsn-dd-label{
+  white-space:normal; overflow:hidden; text-overflow:clip;
+  line-height:1.15; word-break:break-word; overflow-wrap:anywhere;
+  display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2;
+}
+/* The caret must never eat into the name's width; pin it small and flush. */
+.rival-select .fsn-dd-caret{ width:12px; height:12px; }
 .season-quick .fsn-dd-trigger{
   width:100%; height:100%; min-width:0; border:0; border-radius:0; background:transparent;
   color:#fff; font-family:'JetBrains Mono',monospace; font-size:11.5px; font-weight:800;
