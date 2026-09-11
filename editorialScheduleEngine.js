@@ -35,6 +35,56 @@
   var DAY  = 24 * HOUR;
 
   /* --------------------------------------------------------------------------
+     WEEKLY CADENCE — the formal, locked publishing calendar
+
+     This is the single authoritative statement of "what publishes on which
+     weekday," keyed by JS day-of-week (0 = Sunday … 6 = Saturday). Everything
+     else in this file (the kickoff-anchored CADENCE offsets below, the News
+     Desk SLOTS map in index.html) is an *implementation* that must stay in
+     agreement with this contract; this object is the contract itself.
+
+     Two days are deliberately dark: Monday is the recovery / stat-correction
+     window (finalized scores settle Tuesday morning) and Saturday is the calm
+     before the Sunday slate. A dark day is `publishes:false` with an empty
+     desks list, not a missing key, so a caller can render the whole week
+     including its quiet days without special-casing gaps.
+
+     Fixed by design and read-only at runtime: it is closed over by the IIFE and
+     exposed only through the query helpers below, so application code can read
+     the schedule but can never mutate it out from under the desks.
+  -------------------------------------------------------------------------- */
+  var WEEKLY_CADENCE = {
+    0: { day:'SUNDAY',    publishes:true,  slot:'gameday',   cadence:'PREGAME',
+         label:'PREGAME PREVIEW',
+         summary:'Pregame Preview — matchups, win probabilities, key storylines.',
+         desks:['Matchup Previews', 'Win Probabilities', 'Key Storylines'] },
+    1: { day:'MONDAY',    publishes:false, slot:null,        cadence:'DARK',
+         label:'RECOVERY',
+         summary:'No new desk — recovery and stat-correction window.',
+         desks:[] },
+    2: { day:'TUESDAY',   publishes:true,  slot:'recap',     cadence:'RECAP',
+         label:'GAME RECAPS & HIGHS/LOWS',
+         summary:'Game Recaps & Highs/Lows — finalized stats, luck differentials, top performances.',
+         desks:['Game Recaps', 'Highs & Lows', 'Luck Differentials'] },
+    3: { day:'WEDNESDAY', publishes:true,  slot:'waivers',   cadence:'WAIVERS',
+         label:'WAIVERS',
+         summary:'Waivers / FAAB — top targets and roster moves.',
+         desks:['Transaction Wire', 'Waiver Targets', 'Roster Moves'] },
+    4: { day:'THURSDAY',  publishes:true,  slot:'primer',    cadence:'TNF',
+         label:'TNF PREVIEW',
+         summary:'Thursday Night Football Preview — quick-hitting opening matchup breakdown.',
+         desks:['TNF Preview', 'Opening Matchup Breakdown'] },
+    5: { day:'FRIDAY',    publishes:true,  slot:'injury',    cadence:'INJURY',
+         label:'INJURY WIRE',
+         summary:'Injury Reports & Last-Minute Roster Watch — practice reports and game-day tags.',
+         desks:['Injury Wire', 'Practice Reports', 'Last-Minute Roster Watch'] },
+    6: { day:'SATURDAY',  publishes:false, slot:null,        cadence:'DARK',
+         label:'CALM',
+         summary:'No new desk — the calm before the storm.',
+         desks:[] },
+  };
+
+  /* --------------------------------------------------------------------------
      CADENCE MAP
 
      Keyed by the News Desk's existing slot names so a caller can ask "when
@@ -95,17 +145,18 @@
       desks: ['Matchup Pressures', 'Rivalry Spotlights', 'Preview Desk'],
     },
 
-    /* Matchupday / Active Window — injury wires and breaking lineup shifts.
-       Two calendar days after this week's kickoff (Thu + 2 = Sat) covers the
-       standard Sunday-slate week; a Sat opener shifts the injury wire to
-       Monday, which is the correct behaviour for that slate. */
+    /* Injury Reports & Last-Minute Roster Watch — practice reports and
+       game-day tags. One calendar day after this week's kickoff (Thu + 1 = Fri)
+       lands the wire on the locked Friday cadence, the real-world moment final
+       practice designations and game-day tags are published; a non-standard
+       Sat opener shifts it forward to Sunday, still ahead of that slate. */
     injury: {
-      offsetDays: 2,
+      offsetDays: 1,
       hour: 11,
-      cadence: 'MATCHUPDAY',
-      dayHint: 'SATURDAY / SUNDAY',
+      cadence: 'INJURY',
+      dayHint: 'FRIDAY',
       label: 'INJURY WIRE',
-      desks: ['Injury Wire', 'Breaking Lineup Shifts'],
+      desks: ['Injury Wire', 'Practice Reports', 'Last-Minute Roster Watch'],
     },
 
     /* Post-slate long-form finals — Sunday night full-slate recap and the
@@ -210,6 +261,50 @@
   function desksFor(slotName){
     var c = CADENCE[slotName];
     return c && Array.isArray(c.desks) ? c.desks.slice() : [];
+  }
+
+  /* --------------------------------------------------------------------------
+     WEEKLY-CADENCE QUERY API
+
+     These read the locked WEEKLY_CADENCE contract. They return defensive copies
+     (never the live objects) so a caller cannot mutate the published schedule.
+
+       weeklyCadence()      — the full 7-day calendar, Sunday→Saturday.
+       cadenceForDay(dow)   — one day's entry, or null for an out-of-range day.
+       publishesOn(dow)     — boolean: does a desk ship on this weekday?
+       activeCadenceDays()  — only the days that publish, in weekday order.
+  -------------------------------------------------------------------------- */
+  function cloneCadenceEntry(entry){
+    if(!entry) return null;
+    return {
+      day: entry.day,
+      publishes: !!entry.publishes,
+      slot: entry.slot || null,
+      cadence: entry.cadence,
+      label: entry.label,
+      summary: entry.summary,
+      desks: Array.isArray(entry.desks) ? entry.desks.slice() : [],
+    };
+  }
+  function normalizeDow(dow){
+    var n = parseInt(dow, 10);
+    return (n >= 0 && n <= 6) ? n : null;
+  }
+  function weeklyCadence(){
+    var out = [];
+    for(var d = 0; d <= 6; d++) out.push(cloneCadenceEntry(WEEKLY_CADENCE[d]));
+    return out;
+  }
+  function cadenceForDay(dow){
+    var n = normalizeDow(dow);
+    return n == null ? null : cloneCadenceEntry(WEEKLY_CADENCE[n]);
+  }
+  function publishesOn(dow){
+    var n = normalizeDow(dow);
+    return n == null ? false : !!(WEEKLY_CADENCE[n] && WEEKLY_CADENCE[n].publishes);
+  }
+  function activeCadenceDays(){
+    return weeklyCadence().filter(function(entry){ return entry && entry.publishes; });
   }
 
   /* --------------------------------------------------------------------------
@@ -321,6 +416,10 @@
     releaseAt: releaseAt,
     computeWeeklySchedule: computeWeeklySchedule,
     currentCadencePhase: currentCadencePhase,
+    weeklyCadence: weeklyCadence,
+    cadenceForDay: cadenceForDay,
+    publishesOn: publishesOn,
+    activeCadenceDays: activeCadenceDays,
     slots: SLOT_ORDER.slice(),
   };
 

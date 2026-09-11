@@ -2215,7 +2215,17 @@ select.field-select:disabled,
 
 /* The native <select>, kept for state but pulled out of layout and view. */
 .fsn-dd-native{
-  position:absolute !important; width:1px; height:1px; padding:0; margin:-1px;
+  /* Visually-hidden accessibility fallback: the visible control is the
+     `.fsn-dd-trigger` pill, and this native <select> only exists for the
+     platform picker and screen readers. Its dimensions carry `!important`
+     because context selectors like `.season-quick select { width:100% }` are
+     more specific than this class and, without the guard, stretched the
+     absolutely-positioned select to the full bar width — its right edge then
+     ran 16px past the padded screen and armed a whole-page horizontal pan.
+     Clamped to 1px here so a hidden fallback can never contribute layout width
+     in ANY container (season picker, rivalry pills, bare selects). */
+  position:absolute !important; width:1px !important; height:1px !important;
+  max-width:1px !important; min-width:0 !important; padding:0; margin:-1px;
   overflow:hidden; clip:rect(0 0 0 0); clip-path:inset(50%);
   white-space:nowrap; border:0; opacity:0; pointer-events:none;
 }
@@ -14869,7 +14879,7 @@ const SLOTS = {
   recap:    { dow:2, hour:9,  day:7, label:'RECAP',          topic:'power'    },  // Tuesday morning
   waivers:  { dow:3, hour:9,  day:1, label:'WAIVERS',        topic:'waivers'  },  // Wednesday run
   primer:   { dow:4, hour:17, day:2, label:'MATCHUPS',       topic:'matchups' },  // Thursday, pre-TNF
-  injury:   { dow:6, hour:11, day:4, label:'INJURY WIRE',    topic:'breaking' },  // Saturday
+  injury:   { dow:5, hour:11, day:3, label:'INJURY WIRE',    topic:'breaking' },  // Friday injury reports & roster watch
 };
 
 const TOPICS = [
@@ -21243,6 +21253,10 @@ function renderSeasonStandings(){
     }
 
     const streak=normalizedStandingsStreak(rawStreak);
+    // Suppress the streak tag for single-game runs (W1/L1) and for any Week 1
+    // table: one game is not a "streak", so the indicator only earns its place
+    // once a team has stacked two or more consecutive results.
+    const showStreak=week>1 && streak.length>=2;
     const streakClass=streak.result==="W" ? "analytics-good" : (streak.result==="L" ? "analytics-bad" : "analytics-muted");
     const games=Math.max(0,row.wins+row.losses+row.ties);
     const ppg=games ? row.pf/games : 0;
@@ -21265,8 +21279,8 @@ function renderSeasonStandings(){
       '</div>'+
       '<div class="standings-stats-grid">'+
         '<div class="standings-stat">'+
-          '<span class="standings-stat-label">Record / WStreak</span>'+
-          '<span class="standings-stat-value"><strong>'+esc(row.recordLabel)+'</strong> <span class="'+streakClass+'">· '+esc(streak.label)+'</span></span>'+
+          '<span class="standings-stat-label">'+(showStreak ? 'Record / WStreak' : 'Record')+'</span>'+
+          '<span class="standings-stat-value"><strong>'+esc(row.recordLabel)+'</strong>'+(showStreak ? ' <span class="'+streakClass+'">· '+esc(streak.label)+'</span>' : '')+'</span>'+
         '</div>'+
         '<div class="standings-stat">'+
           '<span class="standings-stat-label">PF</span>'+
