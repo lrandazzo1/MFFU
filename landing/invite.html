@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Join on Fantasy Sports Network</title>
+
+<!-- ============================================================
+     INVITE / SHARE LANDING — the mobile-first page a shared link opens,
+     served at /invite by landing/vercel.json (cleanUrls). This is the
+     page linked from the app's share sheet and from any URL of the shape
+       https://www.fantasysportsnetwork.app/invite?league=LEAGUE_ID
+       https://www.fantasysportsnetwork.app/invite?ref=CODE
+
+     It is intentionally NOT the marketing homepage (landing/index.html)
+     and NOT the full app (app.fantasysportsnetwork.app). Both of those
+     render heavy layouts that make a phone browser stutter on first
+     paint. This page is one screen, one message, one CTA — the App Store
+     — plus a personalised invite card when a league id is on the URL.
+
+     No third-party scripts. No app data. Nothing that could regress the
+     app or the marketing site. The League ID printed on the card is the
+     ONLY dynamic thing on the page, and it is sanitised and written with
+     textContent, never innerHTML.
+============================================================ -->
+<meta name="description" content="You've been invited to join a league on Fantasy Sports Network — the ultimate analytical home for your fantasy league. Download the iOS app.">
+<meta name="theme-color" content="#080a0e">
+<meta name="robots" content="index,follow">
+<link rel="canonical" href="https://www.fantasysportsnetwork.app/invite">
+
+<!-- Open Graph / Twitter card — the same rich preview the marketing
+     homepage carries, so a shared invite link unfurls with the FSN
+     broadcast graphic in iMessage, Slack, X, etc. -->
+<meta property="og:site_name" content="Fantasy Sports Network">
+<meta property="og:title" content="You've been invited to Fantasy Sports Network">
+<meta property="og:description" content="The ultimate analytical home for your fantasy league. Download the iOS app.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://www.fantasysportsnetwork.app/invite">
+<meta property="og:image" content="https://www.fantasysportsnetwork.app/assets/og-image.png">
+<meta property="og:image:secure_url" content="https://www.fantasysportsnetwork.app/assets/og-image.png">
+<meta property="og:image:type" content="image/png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Fantasy Sports Network — your league's broadcast desk.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="You've been invited to Fantasy Sports Network">
+<meta name="twitter:description" content="The ultimate analytical home for your fantasy league. Download the iOS app.">
+<meta name="twitter:image" content="https://www.fantasysportsnetwork.app/assets/og-image.png">
+<meta name="twitter:image:alt" content="Fantasy Sports Network — your league's broadcast desk.">
+
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns=&#39;http://www.w3.org/2000/svg&#39; viewBox=&#39;0 0 180 180&#39;%3E%3Crect width=&#39;180&#39; height=&#39;180&#39; fill=&#39;%23080a0e&#39;/%3E%3Ctext x=&#39;90&#39; y=&#39;118&#39; font-family=&#39;Helvetica,Arial&#39; font-size=&#39;78&#39; font-weight=&#39;bold&#39; fill=&#39;%2300e0ff&#39; text-anchor=&#39;middle&#39;%3EFSN%3C/text%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=&#39;http://www.w3.org/2000/svg&#39; viewBox=&#39;0 0 64 64&#39;%3E%3Crect width=&#39;64&#39; height=&#39;64&#39; fill=&#39;%23080a0e&#39;/%3E%3Ctext x=&#39;32&#39; y=&#39;43&#39; font-family=&#39;Helvetica,Arial&#39; font-size=&#39;27&#39; font-weight=&#39;bold&#39; fill=&#39;%2300e0ff&#39; text-anchor=&#39;middle&#39;%3EFSN%3C/text%3E%3C/svg%3E">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Oswald:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700;800&display=swap" rel="stylesheet">
+
+<style>
+/* ============================================================
+   TOKENS — mirror landing/index.html so /invite reads as the same
+   product. Kept inline so the page is one static file with no
+   external CSS dependency.
+============================================================ */
+:root{
+  --ink:#080a0e;
+  --panel:#12161f;
+  --panel-2:#181e2a;
+  --line:rgba(255,255,255,.08);
+  --line-2:rgba(255,255,255,.14);
+  --cyan:#00e0ff;
+  --gold:#ffc400;
+  --red:#ff2d55;
+  --green:#39ff8c;
+  --off:#c7cdd8;
+  --dim:#7c8698;
+}
+
+*{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; margin:0; padding:0; }
+html{ scroll-behavior:smooth; }
+body{
+  background:var(--ink);
+  color:#fff;
+  font-family:'Oswald',system-ui,-apple-system,sans-serif;
+  line-height:1.5;
+  min-height:100vh;
+  min-height:100dvh;
+  -webkit-font-smoothing:antialiased;
+  padding:16px;
+  padding-block:24px;
+  display:flex;
+  flex-direction:column;
+}
+
+.font-display{ font-family:'Anton',Impact,sans-serif; letter-spacing:.01em; }
+.mono{ font-family:'JetBrains Mono',ui-monospace,monospace; }
+
+a{ color:inherit; text-decoration:none; }
+
+/* One-column phone layout: everything sits inside a single 480px
+   column that grows on tablets/desktop but never sprawls. */
+.shell{
+  width:100%;
+  max-width:480px;
+  margin:0 auto;
+  display:flex;
+  flex-direction:column;
+  gap:24px;
+  flex:1;
+}
+
+/* ---------- brand row ---------- */
+.brand{
+  display:inline-flex;
+  align-items:center;
+  gap:10px;
+  align-self:flex-start;
+}
+.brand-badge{
+  font-family:'Anton',sans-serif;
+  font-size:20px;
+  color:var(--ink);
+  background:var(--cyan);
+  padding:3px 9px;
+  border-radius:6px;
+  line-height:1;
+}
+.brand-name{
+  font-family:'Anton',sans-serif;
+  font-size:15px;
+  letter-spacing:.06em;
+  color:var(--off);
+  text-transform:uppercase;
+}
+.brand-name span{ color:var(--cyan); }
+
+/* ---------- hero ---------- */
+.hero{
+  position:relative;
+  background:
+    radial-gradient(140% 90% at 20% 0%, rgba(0,224,255,.14), transparent 60%),
+    radial-gradient(140% 90% at 100% 20%, rgba(255,45,85,.10), transparent 62%),
+    var(--panel);
+  border:1px solid var(--line);
+  border-radius:20px;
+  padding:28px 22px 32px;
+  overflow:hidden;
+}
+.eyebrow{
+  display:inline-flex; align-items:center; gap:9px;
+  font-family:'JetBrains Mono',monospace; font-weight:700; font-size:11px;
+  letter-spacing:.18em; text-transform:uppercase; color:var(--cyan);
+  border:1px solid var(--line-2); border-radius:999px; padding:6px 12px;
+  background:rgba(0,224,255,.05);
+}
+.live-dot{
+  width:7px; height:7px; border-radius:50%; background:var(--red);
+  box-shadow:0 0 0 0 rgba(255,45,85,.6);
+  animation:pulse 1.8s infinite;
+}
+@keyframes pulse{
+  0%{ box-shadow:0 0 0 0 rgba(255,45,85,.55); }
+  70%{ box-shadow:0 0 0 8px rgba(255,45,85,0); }
+  100%{ box-shadow:0 0 0 0 rgba(255,45,85,0); }
+}
+
+h1.hero-title{
+  font-family:'Anton',sans-serif;
+  line-height:.94;
+  font-size:clamp(38px, 10vw, 56px);
+  margin:18px 0 0;
+  text-transform:uppercase;
+}
+h1.hero-title .accent{ color:var(--cyan); }
+
+.hero-sub{
+  color:var(--off);
+  font-size:clamp(15px, 4vw, 18px);
+  font-weight:300;
+  margin:14px 0 0;
+}
+
+/* ---------- invite card (only rendered when a league ID is passed) ---------- */
+.invite-card{
+  border:1px solid rgba(0,224,255,.28);
+  background:linear-gradient(180deg, rgba(0,224,255,.08), rgba(0,224,255,.02));
+  border-radius:16px;
+  padding:18px 18px 20px;
+}
+.invite-card .kicker{
+  font-family:'JetBrains Mono',monospace;
+  font-size:11px;
+  letter-spacing:.18em;
+  text-transform:uppercase;
+  color:var(--cyan);
+}
+.invite-card .msg{
+  font-family:'Anton',sans-serif;
+  font-size:22px;
+  text-transform:uppercase;
+  letter-spacing:.01em;
+  margin-top:8px;
+  color:#fff;
+}
+.invite-card .id-row{
+  margin-top:14px;
+  display:flex;
+  align-items:center;
+  gap:10px;
+  background:rgba(0,0,0,.38);
+  border:1px solid var(--line-2);
+  border-radius:10px;
+  padding:12px 14px;
+}
+.invite-card .id-label{
+  font-family:'JetBrains Mono',monospace;
+  font-size:11px;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+  color:var(--dim);
+}
+.invite-card .id-value{
+  font-family:'JetBrains Mono',monospace;
+  font-weight:700;
+  font-size:15px;
+  color:var(--cyan);
+  word-break:break-all;
+  overflow-wrap:anywhere;
+  flex:1;
+  min-width:0;
+}
+.invite-card .fine{
+  color:var(--dim);
+  font-size:13px;
+  font-weight:300;
+  margin-top:12px;
+}
+
+/* ---------- CTA stack ---------- */
+.cta-stack{
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+}
+.cta-fine{
+  color:var(--dim);
+  font-size:12.5px;
+  font-family:'JetBrains Mono',monospace;
+  letter-spacing:.02em;
+  text-align:center;
+}
+.cta-fine b{ color:var(--off); font-weight:500; }
+
+/* App Store pill — matches Apple's badge conventions (black pill,
+   white glyph + wordmark) but rendered in-page as HTML so it scales
+   cleanly with the layout and honours the rest of the type system. */
+.appstore-btn{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:12px;
+  width:100%;
+  padding:14px 22px;
+  border-radius:14px;
+  background:#fff;
+  color:#000;
+  border:1px solid #fff;
+  font-family:'Oswald',sans-serif;
+  font-weight:600;
+  transition:transform .12s ease, box-shadow .12s ease, background .12s ease;
+  box-shadow:0 10px 34px rgba(0,224,255,.16);
+}
+.appstore-btn:hover{ box-shadow:0 12px 40px rgba(0,224,255,.28); }
+.appstore-btn:active{ transform:translateY(1px); }
+.appstore-btn svg{ width:26px; height:26px; flex:none; }
+.appstore-btn .lines{
+  display:flex;
+  flex-direction:column;
+  align-items:flex-start;
+  line-height:1;
+}
+.appstore-btn .top{
+  font-size:11px;
+  letter-spacing:.05em;
+  text-transform:uppercase;
+  color:#333;
+  font-weight:500;
+}
+.appstore-btn .bottom{
+  font-family:'Anton',sans-serif;
+  font-size:20px;
+  letter-spacing:.02em;
+  color:#000;
+  margin-top:3px;
+}
+
+.web-btn{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:9px;
+  width:100%;
+  padding:13px 22px;
+  border-radius:12px;
+  background:transparent;
+  color:#fff;
+  border:1px solid var(--line-2);
+  font-family:'Oswald',sans-serif;
+  font-weight:600;
+  font-size:14px;
+  letter-spacing:.04em;
+  text-transform:uppercase;
+  transition:border-color .12s ease, color .12s ease;
+}
+.web-btn:hover{ border-color:var(--cyan); color:var(--cyan); }
+
+/* ---------- features strip (only shows when NO invite card, so the
+   generic download view still has some substance below the fold) ---------- */
+.features{
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0,1fr));
+  gap:10px;
+}
+.feature{
+  border:1px solid var(--line);
+  background:var(--panel);
+  border-radius:14px;
+  padding:14px;
+}
+.feature .ico{ font-size:20px; }
+.feature h3{
+  font-family:'Anton',sans-serif;
+  font-size:15px;
+  letter-spacing:.02em;
+  text-transform:uppercase;
+  margin-top:8px;
+}
+.feature p{
+  color:var(--dim);
+  font-size:12.5px;
+  font-weight:300;
+  margin-top:4px;
+  line-height:1.45;
+}
+
+/* ---------- footer ---------- */
+.foot{
+  margin-top:auto;
+  padding-top:20px;
+  color:var(--dim);
+  font-size:12px;
+  letter-spacing:.02em;
+  text-align:center;
+  font-family:'JetBrains Mono',monospace;
+}
+.foot a{ color:var(--off); text-decoration:underline; text-decoration-color:var(--line-2); }
+.foot a:hover{ color:var(--cyan); }
+
+/* Every dynamic node is hidden by default and revealed by the boot
+   script. That way a reader who lands with JS disabled sees the
+   generic download view instead of a half-populated one. */
+[hidden]{ display:none !important; }
+</style>
+</head>
+<body>
+
+<div class="shell">
+
+  <a class="brand" href="https://www.fantasysportsnetwork.app/" aria-label="Fantasy Sports Network home">
+    <span class="brand-badge">FSN</span>
+    <span class="brand-name">FANTASY <span>SPORTS NETWORK</span></span>
+  </a>
+
+  <!-- ============================================================
+       HERO — the constant top of the page. Same words for every
+       reader whether or not a league id came in on the URL.
+  ============================================================ -->
+  <section class="hero">
+    <span class="eyebrow"><span class="live-dot"></span> LIVE FOR THE 2026 SEASON</span>
+    <h1 class="hero-title">Fantasy <span class="accent">Sports Network</span></h1>
+    <p class="hero-sub">The ultimate analytical home for your fantasy league.</p>
+  </section>
+
+  <!-- ============================================================
+       INVITE CARD — hidden by default, unhidden by the boot script
+       ONLY when a league id (or ref code) was on the query string.
+       The League ID text node is stamped with textContent so a
+       hostile URL cannot inject markup into the page.
+  ============================================================ -->
+  <section id="inviteCard" class="invite-card" hidden aria-live="polite">
+    <div class="kicker" id="inviteKicker">You've been invited</div>
+    <div class="msg" id="inviteMsg">You've been invited to view League ID:</div>
+    <div class="id-row">
+      <span class="id-label" id="inviteIdLabel">League ID</span>
+      <span class="id-value" id="inviteIdValue">—</span>
+    </div>
+    <p class="fine">Download the app below and connect this league in one tap — your invite is remembered.</p>
+  </section>
+
+  <!-- ============================================================
+       CTA STACK — App Store first, then a lightweight fallback to
+       the web app for readers on Android / desktop.
+  ============================================================ -->
+  <div class="cta-stack">
+    <!-- APP STORE URL — replace id0000000000 with the numeric App
+         Store ID once the iOS build is live in the store. The URL
+         format is stable, so the button still renders correctly
+         beforehand; it just resolves to the App Store's generic
+         search when the ID is a placeholder. -->
+    <a
+      class="appstore-btn"
+      id="appstoreCta"
+      href="https://apps.apple.com/us/app/fantasy-sports-network/id0000000000"
+      target="_blank"
+      rel="noopener"
+      aria-label="Download Fantasy Sports Network on the App Store"
+    >
+      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <path d="M17.05 12.54c-.03-3.02 2.47-4.48 2.58-4.55-1.41-2.06-3.6-2.34-4.38-2.37-1.86-.19-3.63 1.1-4.58 1.1-.95 0-2.4-1.07-3.94-1.04-2.02.03-3.89 1.18-4.93 2.98-2.1 3.64-.54 9.04 1.51 12 .99 1.45 2.17 3.07 3.72 3.02 1.5-.06 2.06-.97 3.87-.97s2.32.97 3.9.94c1.62-.03 2.63-1.47 3.62-2.93 1.14-1.68 1.61-3.31 1.63-3.4-.04-.02-3.12-1.2-3.15-4.76z"/>
+        <path d="M14.4 4.66c.82-1 1.38-2.39 1.23-3.78-1.19.05-2.63.8-3.48 1.79-.76.88-1.44 2.3-1.26 3.66 1.33.1 2.68-.68 3.51-1.67z"/>
+      </svg>
+      <span class="lines">
+        <span class="top">Download on the</span>
+        <span class="bottom">App Store</span>
+      </span>
+    </a>
+
+    <a
+      class="web-btn"
+      id="webAppCta"
+      href="https://app.fantasysportsnetwork.app/"
+    >Or open FSN in your browser</a>
+
+    <p class="cta-fine">Free for the <b>2026 season</b> · No credit card</p>
+  </div>
+
+  <!-- ============================================================
+       FEATURES — a small under-fold reminder for readers who arrive
+       WITHOUT an invite. Hidden when the invite card is shown so the
+       invited reader's screen stays focused on the download CTA.
+  ============================================================ -->
+  <section id="featuresStrip" class="features">
+    <div class="feature">
+      <div class="ico">📊</div>
+      <h3>Live matchups</h3>
+      <p>Every week's board pulled straight from your league.</p>
+    </div>
+    <div class="feature">
+      <div class="ico">📰</div>
+      <h3>News desk</h3>
+      <p>Recaps and storylines written around your rosters.</p>
+    </div>
+    <div class="feature">
+      <div class="ico">🏆</div>
+      <h3>Record book</h3>
+      <p>Two decades of league history, sorted and searchable.</p>
+    </div>
+    <div class="feature">
+      <div class="ico">🧮</div>
+      <h3>Analytics</h3>
+      <p>Six models reading your season live.</p>
+    </div>
+  </section>
+
+  <footer class="foot">
+    <a href="https://www.fantasysportsnetwork.app/">fantasysportsnetwork.app</a>
+    &nbsp;·&nbsp;
+    <a href="/support">Support</a>
+    &nbsp;·&nbsp;
+    <a href="/privacy">Privacy</a>
+  </footer>
+
+</div>
+
+<!-- ============================================================
+     BOOT — parses the URL, renders the invite card if a league id
+     (or a ref code) was passed. Vanilla JS in an IIFE, no globals,
+     no third-party scripts. Wrapped in try/catch so a URL parse
+     failure or missing DOM node degrades to the generic download
+     view instead of a blank screen.
+
+     Query parameter contract:
+       ?league=<id>   OR   ?leagueId=<id>   OR   ?leagueID=<id>
+       ?ref=<code>    OR   ?invite=<code>
+
+     Values are read raw from the URL and then constrained to
+     [A-Za-z0-9._-] and 64 chars. Anything else is rejected —
+     league ids across ESPN/Sleeper/Yahoo are all in that shape,
+     and the constraint keeps hostile input from ever reaching the
+     DOM. The value is written with textContent so even a value
+     that passed the constraint could never inject markup.
+============================================================ -->
+<script>
+(function(){
+  'use strict';
+
+  var LEAGUE_KEYS = ['league', 'leagueId', 'leagueID', 'league_id'];
+  var REF_KEYS    = ['ref', 'invite', 'inviteCode'];
+  var VALUE_MAX   = 64;
+  var VALUE_RE    = /^[A-Za-z0-9._-]+$/;
+
+  function safeParam(keys){
+    try{
+      var params = new URLSearchParams(window.location.search);
+      for (var i = 0; i < keys.length; i++){
+        var raw = params.get(keys[i]);
+        if (!raw) continue;
+        raw = raw.trim();
+        if (!raw) continue;
+        if (raw.length > VALUE_MAX) continue;
+        if (!VALUE_RE.test(raw)) continue;
+        return raw;
+      }
+    }catch(err){
+      console.warn('[invite] query parse failed', err);
+    }
+    return null;
+  }
+
+  function render(){
+    var league = safeParam(LEAGUE_KEYS);
+    var ref    = safeParam(REF_KEYS);
+    var invite = league || ref;
+    if (!invite) return; // generic download view stays as-is
+
+    try{
+      var card    = document.getElementById('inviteCard');
+      var msg     = document.getElementById('inviteMsg');
+      var idLabel = document.getElementById('inviteIdLabel');
+      var idValue = document.getElementById('inviteIdValue');
+      var strip   = document.getElementById('featuresStrip');
+      if (!card || !msg || !idLabel || !idValue) return;
+
+      if (league){
+        msg.textContent = "You've been invited to view League ID:";
+        idLabel.textContent = 'League ID';
+      } else {
+        msg.textContent = "You've been invited to Fantasy Sports Network:";
+        idLabel.textContent = 'Invite code';
+      }
+      idValue.textContent = invite;
+      card.hidden = false;
+
+      // The under-fold features strip only exists to give the generic
+      // download view some substance. Once an invite is on screen it
+      // pulls focus away from the CTA — hide it.
+      if (strip) strip.hidden = true;
+
+      // Forward the invite onto both CTAs so the app / web app can
+      // pick the league up on first launch. The App Store URL cannot
+      // carry a query string usefully (the App Store strips it), but
+      // the web-app CTA can, and the browser also stores the current
+      // URL in the referrer for post-install attribution.
+      var web = document.getElementById('webAppCta');
+      if (web){
+        try{
+          var url = new URL(web.href);
+          if (league) url.searchParams.set('league', league);
+          if (ref)    url.searchParams.set('ref', ref);
+          web.href = url.toString();
+        }catch(err){
+          console.warn('[invite] failed to decorate web CTA href', err);
+        }
+      }
+    }catch(err){
+      console.error('[invite] render failed', err);
+    }
+  }
+
+  if (document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', render, { once:true });
+  } else {
+    render();
+  }
+})();
+</script>
+
+</body>
+</html>
