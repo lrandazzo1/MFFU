@@ -2946,6 +2946,59 @@ body.fsn-dd-lock{ overflow:hidden; }
 .cloud-status[data-state="syncing"] .cloud-dot{ background:var(--cyan); box-shadow:0 0 9px rgba(0,224,255,.65); }
 .cloud-status[data-state="error"] .cloud-dot{ background:var(--red); box-shadow:0 0 9px rgba(255,45,85,.65); }
 
+/* Desk header league switcher. The <h1> league name is the button surface —
+   tapping it opens a saved-league picker so switching leagues no longer
+   requires jumping to Setup. Styling stays inside the app's dark + cyan
+   accent palette, with the caret only appearing when there is somewhere
+   to switch to. */
+.desk-league-picker{ position:relative; }
+.desk-league-trigger{
+  display:flex; align-items:baseline; gap:8px;
+  width:100%; padding:0; background:transparent; border:0; color:inherit;
+  text-align:left; cursor:pointer; min-width:0;
+}
+.desk-league-trigger:focus-visible{ outline:2px solid var(--cyan); outline-offset:4px; border-radius:4px; }
+.desk-league-trigger #homeLeagueName{ flex:1 1 auto; min-width:0; }
+.desk-league-caret{
+  flex:none; font-size:14px; line-height:1; color:var(--cyan);
+  transform:translateY(-2px); transition:transform .15s ease;
+  display:none;
+}
+.desk-league-picker[data-has-choices="true"] .desk-league-caret{ display:inline; }
+.desk-league-picker[data-open="true"] .desk-league-caret{ transform:translateY(-2px) rotate(180deg); }
+.desk-league-picker:not([data-has-choices="true"]) .desk-league-trigger{ cursor:default; }
+.desk-league-menu{
+  position:absolute; z-index:40; top:100%; left:0; margin-top:8px;
+  min-width:min(320px, 92vw); max-width:min(420px, 96vw);
+  background:#05080d; border:1px solid rgba(0,224,255,.35);
+  border-radius:10px; box-shadow:0 18px 44px rgba(0,0,0,.55), 0 0 0 1px rgba(0,224,255,.08);
+  padding:6px; overflow:hidden;
+}
+.desk-league-option{
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+  width:100%; padding:9px 11px; border-radius:7px;
+  background:transparent; border:0; color:var(--off);
+  font-size:12.5px; font-weight:600; text-align:left; cursor:pointer;
+  line-height:1.25;
+}
+.desk-league-option:hover, .desk-league-option:focus-visible{
+  background:rgba(0,224,255,.10); color:var(--cyan); outline:none;
+}
+.desk-league-option[aria-selected="true"]{
+  background:rgba(0,224,255,.14); color:var(--cyan);
+}
+.desk-league-option .desk-league-option-name{
+  flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.desk-league-option .desk-league-option-tag{
+  flex:none; font-family:'JetBrains Mono',monospace; font-size:9.5px; letter-spacing:.10em;
+  text-transform:uppercase; color:var(--dim);
+}
+.desk-league-option[aria-selected="true"] .desk-league-option-tag{ color:var(--cyan); }
+.desk-league-menu-empty{
+  padding:10px 11px; font-size:11.5px; color:var(--dim); line-height:1.4;
+}
+
 </style>
 <style>*, ::before, ::after{--tw-border-spacing-x:0;--tw-border-spacing-y:0;--tw-translate-x:0;--tw-translate-y:0;--tw-rotate:0;--tw-skew-x:0;--tw-skew-y:0;--tw-scale-x:1;--tw-scale-y:1;--tw-pan-x: ;--tw-pan-y: ;--tw-pinch-zoom: ;--tw-scroll-snap-strictness:proximity;--tw-gradient-from-position: ;--tw-gradient-via-position: ;--tw-gradient-to-position: ;--tw-ordinal: ;--tw-slashed-zero: ;--tw-numeric-figure: ;--tw-numeric-spacing: ;--tw-numeric-fraction: ;--tw-ring-inset: ;--tw-ring-offset-width:0px;--tw-ring-offset-color:#fff;--tw-ring-color:rgb(59 130 246 / 0.5);--tw-ring-offset-shadow:0 0 #0000;--tw-ring-shadow:0 0 #0000;--tw-shadow:0 0 #0000;--tw-shadow-colored:0 0 #0000;--tw-blur: ;--tw-brightness: ;--tw-contrast: ;--tw-grayscale: ;--tw-hue-rotate: ;--tw-invert: ;--tw-saturate: ;--tw-sepia: ;--tw-drop-shadow: ;--tw-backdrop-blur: ;--tw-backdrop-brightness: ;--tw-backdrop-contrast: ;--tw-backdrop-grayscale: ;--tw-backdrop-hue-rotate: ;--tw-backdrop-invert: ;--tw-backdrop-opacity: ;--tw-backdrop-saturate: ;--tw-backdrop-sepia: ;--tw-contain-size: ;--tw-contain-layout: ;--tw-contain-paint: ;--tw-contain-style: }::backdrop{--tw-border-spacing-x:0;--tw-border-spacing-y:0;--tw-translate-x:0;--tw-translate-y:0;--tw-rotate:0;--tw-skew-x:0;--tw-skew-y:0;--tw-scale-x:1;--tw-scale-y:1;--tw-pan-x: ;--tw-pan-y: ;--tw-pinch-zoom: ;--tw-scroll-snap-strictness:proximity;--tw-gradient-from-position: ;--tw-gradient-via-position: ;--tw-gradient-to-position: ;--tw-ordinal: ;--tw-slashed-zero: ;--tw-numeric-figure: ;--tw-numeric-spacing: ;--tw-numeric-fraction: ;--tw-ring-inset: ;--tw-ring-offset-width:0px;--tw-ring-offset-color:#fff;--tw-ring-color:rgb(59 130 246 / 0.5);--tw-ring-offset-shadow:0 0 #0000;--tw-ring-shadow:0 0 #0000;--tw-shadow:0 0 #0000;--tw-shadow-colored:0 0 #0000;--tw-blur: ;--tw-brightness: ;--tw-contrast: ;--tw-grayscale: ;--tw-hue-rotate: ;--tw-invert: ;--tw-saturate: ;--tw-sepia: ;--tw-drop-shadow: ;--tw-backdrop-blur: ;--tw-backdrop-brightness: ;--tw-backdrop-contrast: ;--tw-backdrop-grayscale: ;--tw-backdrop-hue-rotate: ;--tw-backdrop-invert: ;--tw-backdrop-opacity: ;--tw-backdrop-saturate: ;--tw-backdrop-sepia: ;--tw-contain-size: ;--tw-contain-layout: ;--tw-contain-paint: ;--tw-contain-style: }/* ! tailwindcss v3.4.17 | MIT License | https://tailwindcss.com */*,::after,::before{box-sizing:border-box;border-width:0;border-style:solid;border-color:#e5e7eb}::after,::before{--tw-content:''}:host,html{line-height:1.5;-webkit-text-size-adjust:100%;-moz-tab-size:4;tab-size:4;font-family:ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";font-feature-settings:normal;font-variation-settings:normal;-webkit-tap-highlight-color:transparent}body{margin:0;line-height:inherit}hr{height:0;color:inherit;border-top-width:1px}abbr:where([title]){-webkit-text-decoration:underline dotted;text-decoration:underline dotted}h1,h2,h3,h4,h5,h6{font-size:inherit;font-weight:inherit}a{color:inherit;text-decoration:inherit}b,strong{font-weight:bolder}code,kbd,pre,samp{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;font-feature-settings:normal;font-variation-settings:normal;font-size:1em}small{font-size:80%}sub,sup{font-size:75%;line-height:0;position:relative;vertical-align:baseline}sub{bottom:-.25em}sup{top:-.5em}table{text-indent:0;border-color:inherit;border-collapse:collapse}button,input,optgroup,select,textarea{font-family:inherit;font-feature-settings:inherit;font-variation-settings:inherit;font-size:100%;font-weight:inherit;line-height:inherit;letter-spacing:inherit;color:inherit;margin:0;padding:0}button,select{text-transform:none}button,input:where([type=button]),input:where([type=reset]),input:where([type=submit]){-webkit-appearance:button;background-color:transparent;background-image:none}:-moz-focusring{outline:auto}:-moz-ui-invalid{box-shadow:none}progress{vertical-align:baseline}::-webkit-inner-spin-button,::-webkit-outer-spin-button{height:auto}[type=search]{-webkit-appearance:textfield;outline-offset:-2px}::-webkit-search-decoration{-webkit-appearance:none}::-webkit-file-upload-button{-webkit-appearance:button;font:inherit}summary{display:list-item}blockquote,dd,dl,figure,h1,h2,h3,h4,h5,h6,hr,p,pre{margin:0}fieldset{margin:0;padding:0}legend{padding:0}menu,ol,ul{list-style:none;margin:0;padding:0}dialog{padding:0}textarea{resize:vertical}input::placeholder,textarea::placeholder{opacity:1;color:#9ca3af}[role=button],button{cursor:pointer}:disabled{cursor:default}audio,canvas,embed,iframe,img,object,svg,video{display:block;vertical-align:middle}img,video{max-width:100%;height:auto}[hidden]:where(:not([hidden=until-found])){display:none}.relative{position:relative}.my-2\.5{margin-top:0.625rem;margin-bottom:0.625rem}.mb-2{margin-bottom:0.5rem}.mb-3{margin-bottom:0.75rem}.mb-4{margin-bottom:1rem}.ml-auto{margin-left:auto}.mt-1{margin-top:0.25rem}.mt-1\.5{margin-top:0.375rem}.mt-2{margin-top:0.5rem}.mt-3{margin-top:0.75rem}.mt-4{margin-top:1rem}.mt-5{margin-top:1.25rem}.mt-0\.5{margin-top:0.125rem}.mt-2\.5{margin-top:0.625rem}.mb-2\.5{margin-bottom:0.625rem}.mb-3\.5{margin-bottom:0.875rem}.mt-3\.5{margin-top:0.875rem}.mb-1\.5{margin-bottom:0.375rem}.block{display:block}.flex{display:flex}.grid{display:grid}.hidden{display:none}.h-px{height:1px}.w-9{width:2.25rem}.w-full{width:100%}.min-w-0{min-width:0px}.flex-1{flex:1 1 0%}.flex-none{flex:none}.grid-cols-3{grid-template-columns:repeat(3, minmax(0, 1fr))}.grid-cols-2{grid-template-columns:repeat(2, minmax(0, 1fr))}.flex-wrap{flex-wrap:wrap}.items-start{align-items:flex-start}.items-center{align-items:center}.justify-between{justify-content:space-between}.gap-2{gap:0.5rem}.gap-2\.5{gap:0.625rem}.gap-3{gap:0.75rem}.gap-1\.5{gap:0.375rem}.gap-4{gap:1rem}.space-y-2 > :not([hidden]) ~ :not([hidden]){--tw-space-y-reverse:0;margin-top:calc(0.5rem * calc(1 - var(--tw-space-y-reverse)));margin-bottom:calc(0.5rem * var(--tw-space-y-reverse))}.space-y-3 > :not([hidden]) ~ :not([hidden]){--tw-space-y-reverse:0;margin-top:calc(0.75rem * calc(1 - var(--tw-space-y-reverse)));margin-bottom:calc(0.75rem * var(--tw-space-y-reverse))}.space-y-4 > :not([hidden]) ~ :not([hidden]){--tw-space-y-reverse:0;margin-top:calc(1rem * calc(1 - var(--tw-space-y-reverse)));margin-bottom:calc(1rem * var(--tw-space-y-reverse))}.space-y-0 > :not([hidden]) ~ :not([hidden]){--tw-space-y-reverse:0;margin-top:calc(0px * calc(1 - var(--tw-space-y-reverse)));margin-bottom:calc(0px * var(--tw-space-y-reverse))}.space-y-1\.5 > :not([hidden]) ~ :not([hidden]){--tw-space-y-reverse:0;margin-top:calc(0.375rem * calc(1 - var(--tw-space-y-reverse)));margin-bottom:calc(0.375rem * var(--tw-space-y-reverse))}.overflow-x-auto{overflow-x:auto}.truncate{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.break-all{word-break:break-all}.rounded-lg{border-radius:0.5rem}.border{border-width:1px}.border-t{border-top-width:1px}.border-\[rgba\(57\2c 255\2c 140\2c \.28\)\]{border-color:rgba(57,255,140,.28)}.border-\[var\(--line\)\]{border-color:var(--line)}.bg-\[\#0b0f16\]{--tw-bg-opacity:1;background-color:rgb(11 15 22 / var(--tw-bg-opacity, 1))}.bg-\[rgba\(57\2c 255\2c 140\2c \.07\)\]{background-color:rgba(57,255,140,.07)}.bg-\[var\(--line\)\]{background-color:var(--line)}.p-2\.5{padding:0.625rem}.p-3{padding:0.75rem}.p-4{padding:1rem}.p-6{padding:1.5rem}.px-4{padding-left:1rem;padding-right:1rem}.py-2{padding-top:0.5rem;padding-bottom:0.5rem}.px-3\.5{padding-left:0.875rem;padding-right:0.875rem}.py-2\.5{padding-top:0.625rem;padding-bottom:0.625rem}.py-4{padding-top:1rem;padding-bottom:1rem}.px-1{padding-left:0.25rem;padding-right:0.25rem}.px-2{padding-left:0.5rem;padding-right:0.5rem}.px-3{padding-left:0.75rem;padding-right:0.75rem}.pb-1{padding-bottom:0.25rem}.pb-3{padding-bottom:0.75rem}.pt-4{padding-top:1rem}.pt-3{padding-top:0.75rem}.pl-5{padding-left:1.25rem}.pr-4{padding-right:1rem}.text-left{text-align:left}.text-center{text-align:center}.text-right{text-align:right}.font-mono{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace}.text-\[10\.5px\]{font-size:10.5px}.text-\[10px\]{font-size:10px}.text-\[11\.5px\]{font-size:11.5px}.text-\[12px\]{font-size:12px}.text-\[13px\]{font-size:13px}.text-\[21px\]{font-size:21px}.text-\[27px\]{font-size:27px}.text-\[30px\]{font-size:30px}.text-\[11px\]{font-size:11px}.text-\[15px\]{font-size:15px}.text-\[16px\]{font-size:16px}.text-\[17px\]{font-size:17px}.text-\[25px\]{font-size:25px}.text-\[9px\]{font-size:9px}.text-\[12\.5px\]{font-size:12.5px}.text-\[13\.5px\]{font-size:13.5px}.text-\[20px\]{font-size:20px}.text-\[9\.5px\]{font-size:9.5px}.text-\[26px\]{font-size:26px}.font-bold{font-weight:700}.font-semibold{font-weight:600}.font-extrabold{font-weight:800}.normal-case{text-transform:none}.leading-none{line-height:1}.leading-relaxed{line-height:1.625}.leading-tight{line-height:1.25}.tracking-normal{letter-spacing:0em}.tracking-wide{letter-spacing:0.025em}.tracking-widest{letter-spacing:0.1em}.text-\[\#232c3b\]{--tw-text-opacity:1;color:rgb(35 44 59 / var(--tw-text-opacity, 1))}.text-\[var\(--cyan\)\]{color:var(--cyan)}.text-\[var\(--dim\)\]{color:var(--dim)}.text-\[var\(--gold\)\]{color:var(--gold)}.text-\[var\(--green\)\]{color:var(--green)}.text-\[var\(--off\)\]{color:var(--off)}.text-\[var\(--red\)\]{color:var(--red)}.text-\[\#2b3546\]{--tw-text-opacity:1;color:rgb(43 53 70 / var(--tw-text-opacity, 1))}.text-\[\#39424f\]{--tw-text-opacity:1;color:rgb(57 66 79 / var(--tw-text-opacity, 1))}.text-\[\#5d6879\]{--tw-text-opacity:1;color:rgb(93 104 121 / var(--tw-text-opacity, 1))}.underline{-webkit-text-decoration-line:underline;text-decoration-line:underline}.decoration-dotted{-webkit-text-decoration-style:dotted;text-decoration-style:dotted}</style></head>
 <body>
@@ -2993,9 +3046,13 @@ body.fsn-dd-lock{ overflow:hidden; }
     <div class="screen-shell max-w-6xl mx-auto w-full px-4 sm:px-6">
     <header class="px-4 pt-4 pb-3">
       <div class="flex items-start justify-between gap-3">
-        <div class="min-w-0">
+        <div class="min-w-0 desk-league-picker" id="deskLeaguePicker">
           <div class="kicker text-[var(--cyan)]">Fantasy Sports Network</div>
-          <h1 class="font-display text-[27px] leading-none mt-1.5 truncate" id="homeLeagueName">THE DESK</h1>
+          <button type="button" id="deskLeagueTrigger" class="desk-league-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="deskLeagueMenu">
+            <h1 class="font-display text-[27px] leading-none mt-1.5 truncate" id="homeLeagueName">THE DESK</h1>
+            <span class="desk-league-caret" aria-hidden="true">▾</span>
+          </button>
+          <div class="desk-league-menu" id="deskLeagueMenu" role="listbox" aria-labelledby="deskLeagueTrigger" hidden></div>
           <div class="text-[10.5px] text-[var(--dim)] mt-1.5 font-mono tabular truncate" id="homeLeagueMeta"></div>
         </div>
         <div class="text-right">
@@ -9210,8 +9267,18 @@ function sideTotal(sideMatchup){
 }
 
 /* Group one week's flat matchup array (one row per roster) into head-to-head
-   games and emit ESPN-shaped schedule entries. */
-function scheduleForWeek(weekMatchups, week, isPlayoff, slots, playerIndex){
+   games and emit ESPN-shaped schedule entries.
+
+   `isWeekFinal` is the OFFICIAL "this week is in the books" signal — the
+   caller derives it from Sleeper's league status and the current NFL week,
+   NOT from whether points have posted. A live Sunday game with a single
+   scored player already reports non-zero starter points, so keying the
+   winner off "points on the board" (what this used to do) flipped active
+   games to HOME/AWAY the moment kickoff arrived and — per the
+   scheduleGameFinal() contract at the top of block 1 — cascaded into
+   records incrementing, active-streak badges lighting, and the matchup
+   card locking to FINAL long before the platform closed the week. */
+function scheduleForWeek(weekMatchups, week, isPlayoff, isWeekFinal, slots, playerIndex){
   if(!Array.isArray(weekMatchups) || !weekMatchups.length) return [];
   const byMatchup = {};
   weekMatchups.forEach(m=>{
@@ -9223,9 +9290,13 @@ function scheduleForWeek(weekMatchups, week, isPlayoff, slots, playerIndex){
     const pair = byMatchup[key];
     const a = pair[0], b = pair[1] || null;   // byes have a single side
     const aPts = sideTotal(a), bPts = b ? sideTotal(b) : 0;
-    const played = (aPts > 0) || (bPts > 0);
     let winner = 'UNDECIDED';
-    if(played && b){
+    /* Only stamp a winner once the week is finalized. During an active week
+       the score fields still carry live totals for the matchup card, but
+       `winner` stays UNDECIDED so scheduleGameFinal() correctly reports the
+       game as in-progress and downstream records / streaks / standings do
+       not lock in early. */
+    if(isWeekFinal && b){
       winner = aPts > bPts ? 'HOME' : (bPts > aPts ? 'AWAY' : 'TIE');
     }
     games.push({
@@ -9308,11 +9379,21 @@ async function buildSeason(leagueId, playerIndex, opts){
       .catch(()=> null)
   ));
 
+  /* A completed Sleeper league (status === 'complete') has every week in the
+     books. For a live season, the current NFL week (options.activeWeek) is
+     the one still in progress — Sleeper only advances state.week/leg after
+     the platform's Tuesday finalization — so ONLY strictly earlier weeks
+     count as final. This mirrors ESPN's `winner === 'UNDECIDED'` contract
+     the scheduleGameFinal() helper reads. */
+  const seasonComplete = String(league.status) === 'complete';
+  const activeWeek = Number(options.activeWeek) || 0;
+  const isWeekFinal = (w)=> seasonComplete || (activeWeek > 0 && w < activeWeek);
+
   let schedule = [];
   weekResults.forEach((wm, idx)=>{
     const week = weekNumbers[idx];
     const isPlayoff = week >= playoffStart;
-    schedule = schedule.concat(scheduleForWeek(wm, week, isPlayoff, slots, playerIndex));
+    schedule = schedule.concat(scheduleForWeek(wm, week, isPlayoff, isWeekFinal(week), slots, playerIndex));
   });
 
   return {
@@ -21420,6 +21501,7 @@ function renderHome(){
     $('homeLeagueMeta').textContent = 'Connect a league to get started';
     $('homeWeekPill').textContent = 'CONNECT LEAGUE';
     $('homeSeasonLabel').textContent = '';
+    try{ refreshDeskLeaguePicker(); }catch(err){ console.warn('[Home] desk league picker refresh failed', err); }
     return;
   }
 
@@ -21445,6 +21527,7 @@ function renderHome(){
   const homeLabel = isPreseasonWeek1(week, viewedYearHome) ? 'PRESEASON' : 'WEEK ' + week;
   $('homeWeekPill').textContent = homeLabel;
   $('homeSeasonLabel').textContent = (d.seasonId || d.season || $('seasonYear').value || '') + ' SEASON';
+  try{ refreshDeskLeaguePicker(); }catch(err){ console.warn('[Home] desk league picker refresh failed', err); }
 
   /* ---- league pulse ----
      Real points only. A week with nothing on the board reports —, because a
@@ -25840,6 +25923,7 @@ function registerSavedLeague(id, provider){
   FSNStore.setJSON(SAVED_LEAGUES_KEY, list.slice(0,20));
   snapshotActiveLeague();
   renderLeagueSwitcher();
+  try{ refreshDeskLeaguePicker(); }catch(err){ console.warn('[LeagueSwitch] desk picker refresh after register failed', err); }
 }
 function renderLeagueSwitcher(){
   const select = $('leagueSwitcher'), status = $('leagueSwitcherStatus'), forget = $('forgetLeagueBtn');
@@ -26395,6 +26479,85 @@ async function switchSavedLeague(value){
     }
   }
 }
+/* ---- Desk header league switcher ----
+   The Desk's <h1> league title doubles as the trigger for a saved-league
+   dropdown. Refreshed on every renderHome() pass so the current league is
+   marked selected and newly-saved leagues appear without needing to visit
+   Setup. Reuses switchSavedLeague() so the swap goes through the exact same
+   curtain + mount-gate path the Setup selector already uses. */
+function refreshDeskLeaguePicker(){
+  const picker = $('deskLeaguePicker'), trigger = $('deskLeagueTrigger'), menu = $('deskLeagueMenu');
+  if(!picker || !trigger || !menu) return;
+  const list = savedLeagues().filter(x=> FSNRelease.supportsProvider(x.provider));
+  const activeId = (($('leagueIdInput') && $('leagueIdInput').value) || '').trim();
+  const activeKey = leagueCacheKey(ui.provider, activeId);
+  const hasChoices = list.length > 1 || (list.length === 1 && leagueCacheKey(list[0].provider, list[0].id) !== activeKey);
+  picker.setAttribute('data-has-choices', hasChoices ? 'true' : 'false');
+  trigger.setAttribute('aria-expanded', picker.getAttribute('data-open') === 'true' ? 'true' : 'false');
+  trigger.disabled = !hasChoices;
+  if(!hasChoices){
+    menu.innerHTML = '';
+    closeDeskLeagueMenu();
+    return;
+  }
+  menu.innerHTML = list.map(x=>{
+    const key = leagueCacheKey(x.provider, x.id);
+    const selected = key === activeKey;
+    return '<button type="button" role="option" class="desk-league-option" '
+      + 'data-value="' + esc(key) + '" aria-selected="' + (selected ? 'true' : 'false') + '">'
+      + '<span class="desk-league-option-name">' + esc(x.name || (x.provider.toUpperCase() + ' · ' + x.id)) + '</span>'
+      + '<span class="desk-league-option-tag">' + esc(String(x.provider).toUpperCase()) + '</span>'
+      + '</button>';
+  }).join('');
+}
+function openDeskLeagueMenu(){
+  const picker = $('deskLeaguePicker'), trigger = $('deskLeagueTrigger'), menu = $('deskLeagueMenu');
+  if(!picker || !trigger || !menu) return;
+  if(picker.getAttribute('data-has-choices') !== 'true') return;
+  picker.setAttribute('data-open', 'true');
+  trigger.setAttribute('aria-expanded', 'true');
+  menu.hidden = false;
+}
+function closeDeskLeagueMenu(){
+  const picker = $('deskLeaguePicker'), trigger = $('deskLeagueTrigger'), menu = $('deskLeagueMenu');
+  if(!picker || !trigger || !menu) return;
+  picker.setAttribute('data-open', 'false');
+  trigger.setAttribute('aria-expanded', 'false');
+  menu.hidden = true;
+}
+if($('deskLeagueTrigger')){
+  $('deskLeagueTrigger').addEventListener('click', e=>{
+    e.preventDefault();
+    const picker = $('deskLeaguePicker');
+    if(!picker) return;
+    if(picker.getAttribute('data-open') === 'true') closeDeskLeagueMenu();
+    else { refreshDeskLeaguePicker(); openDeskLeagueMenu(); }
+  });
+}
+if($('deskLeagueMenu')){
+  $('deskLeagueMenu').addEventListener('click', e=>{
+    const btn = e.target.closest && e.target.closest('.desk-league-option');
+    if(!btn) return;
+    const value = btn.getAttribute('data-value') || '';
+    closeDeskLeagueMenu();
+    if(!value) return;
+    switchSavedLeague(value).catch(err=>{
+      console.error('[DeskLeaguePicker] switchSavedLeague failed for ' + value, err);
+    });
+  });
+}
+document.addEventListener('click', e=>{
+  const picker = $('deskLeaguePicker');
+  if(!picker || picker.getAttribute('data-open') !== 'true') return;
+  if(picker.contains(e.target)) return;
+  closeDeskLeagueMenu();
+});
+document.addEventListener('keydown', e=>{
+  if(e.key !== 'Escape') return;
+  const picker = $('deskLeaguePicker');
+  if(picker && picker.getAttribute('data-open') === 'true') closeDeskLeagueMenu();
+});
+
 if($('leagueSwitcher')) $('leagueSwitcher').addEventListener('change', e=>switchSavedLeague(e.target.value));
 if($('forgetLeagueBtn')) $('forgetLeagueBtn').addEventListener('click', ()=>{
   const value = $('leagueSwitcher').value;
