@@ -102,27 +102,38 @@ npm run build:blog     # compile source -> landing/content/generated/blog/
 npm run check:blog     # verify the payload is fresh and punctuation is clean
 ```
 
-## Automated Sleeper recap pipeline
+## Editorial compiler
 
-`scripts/generate-editorial.mjs` fetches one week's real matchup data from the
-public Sleeper API (`https://api.sleeper.app/v1/...`) and writes a source
-article in this directory, in the exact format described above. It never
-invents a score, a manager, or a stat line: every name and number in the
-output comes straight from the Sleeper response for the league and week you
-give it, and it fails loudly rather than padding a gap with generic copy.
+`scripts/generate-editorial.mjs` compiles structured editorial source files
+(the same schema described above, `.md`, `.mdx`, or `.json`) from
+`content/editorial/` into this directory. Editors drop new articles into the
+source directory and the compiler writes normalized copies here that
+`scripts/build-blog.mjs` then picks up like any hand-authored article. It
+does not fetch anything from the outside world, does not require a league
+id, and has no CLI flag requirements.
 
 ```bash
-SLEEPER_LEAGUE_ID=<your league id> npm run generate:editorial   # write a new recap
-npm run build:blog                                               # compile it
-npm run check:editorial                                          # network-free self-test
+npm run generate:editorial                       # compile content/editorial/ -> here
+npm run generate:editorial -- --source drafts/   # or read from a different dir
+npm run build:blog                               # compile this dir into the deploy payload
+npm run check:editorial                          # offline self-test of the compiler
 ```
 
-There is no default league id configured anywhere in this repo (the in-app
-league data comes from ESPN, not Sleeper), so the script requires
-`SLEEPER_LEAGUE_ID` (or `--league <id>`) explicitly and refuses to guess one.
-`npm run check:editorial` verifies the fetch, matchup pairing, entity
-extraction, and punctuation contract against local fixture data, so it runs
-without network access and without a real league id.
+The compiler enforces the same content guardrails as `build-blog.mjs` and
+fails loudly before writing anything if a source file violates one, so a bad
+source file never lands in this directory. Rules enforced:
+
+- **No em dashes** anywhere in user-facing fields.
+- **Every listed entity must appear verbatim in the title or body**
+  (case-insensitive, markdown emphasis stripped). Ghost entities abort the
+  compile rather than being silently dropped.
+- **Slugs must be lowercase kebab-case** (letters, digits, hyphens).
+- Required frontmatter fields (`title`, `slug`, `publishDate`, `category`,
+  `excerpt`) must be present, and `publishDate` must be a parseable date.
+
+`npm run check:editorial` runs the full compiler pipeline against in-memory
+fixtures and verifies each guardrail, so it stays green with no network
+access and no external service.
 
 `landing/content/generated/blog/` is produced by the build. Do not hand edit it.
 It is committed so the `fsn-landing` deploy (which runs no build step) serves it
