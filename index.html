@@ -3932,6 +3932,40 @@ function normalizedLeagueProvider(provider){
   return provider === 'sleeper' || provider === 'yahoo' ? provider : 'espn';
 }
 
+/* Has a scheduled game been OFFICIALLY finalized by the platform?
+
+   Shared across blocks (FSNIntel records/streaks in block 3, the News Desk
+   streak reads in blocks 4/5), so per rule 1 it lives at global scope here —
+   never inside an engine IIFE.
+
+   ESPN stamps every schedule entry with a `winner` — 'HOME' / 'AWAY' / 'TIE'
+   once a matchup period settles at the platform's Tuesday finalization, and
+   holds it at 'UNDECIDED' from before kickoff all the way through live play.
+   That stamp, NOT the presence of a running score, is the only trustworthy
+   "this week is in the books" signal. Reading a live partial total as a
+   completed result is exactly what promotes a team to 1-0 on a Sunday
+   afternoon and lights an active-streak badge before a single game has locked
+   — the premature mid-week update this guard exists to suppress.
+
+   During an active week (Wednesday kickoff through Tuesday finalization) every
+   game reports 'UNDECIDED', so records and streaks correctly hold at the prior
+   finalized week until the platform closes the current one.
+
+   A payload that carries no winner field at all (some legacy archive rows) has
+   no finalization stamp to honour, so completion falls back to the caller's
+   long-standing "has it been scored?" read, leaving historical behaviour
+   unchanged. */
+function scheduleGameFinal(game){
+  if(!game || !game.home || !game.away) return false;
+  const winner = game.winner;
+  if(winner != null && String(winner).trim() !== ''){
+    return String(winner).toUpperCase() !== 'UNDECIDED';
+  }
+  const hs = Number(game.home.totalPoints || 0);
+  const as = Number(game.away.totalPoints || 0);
+  return hs > 0 || as > 0;
+}
+
 /* ============================================================
    GLOBAL SCOPE — GUARDED DEVICE STORAGE (FSNStore)
 
@@ -8846,12 +8880,7 @@ function getRecordAsOfWeek(teamId, week){
     // every regular-season game for the selected week is final and scored, the
     // record can include that week's result. This prevents future weeks from
     // leaking ESPN's full-season record back into September cards.
-    const includeSelectedWeek = weekGames.length > 0 && weekGames.every(g=>{
-      const hs = Number(g.home && g.home.totalPoints || 0);
-      const as = Number(g.away && g.away.totalPoints || 0);
-      const decided = !!g.winner && String(g.winner).toUpperCase() !== 'UNDECIDED';
-      return (hs > 0 || as > 0) && decided;
-    });
+    const includeSelectedWeek = weekGames.length > 0 && weekGames.every(g=> scheduleGameFinal(g));
 
     let wins = 0, losses = 0, ties = 0;
     sched.forEach(g=>{
@@ -8859,6 +8888,10 @@ function getRecordAsOfWeek(teamId, week){
       const wk = Number(g.matchupPeriodId) || 0;
       if(!wk || wk > targetWeek) return;
       if(wk === targetWeek && !includeSelectedWeek) return;
+      // Only a platform-finalized game counts. A live, still-UNDECIDED game
+      // must never advance a record mid-week, even on a prior week that has
+      // somehow not settled.
+      if(!scheduleGameFinal(g)) return;
 
       const homeId = g.home.teamId, awayId = g.away.teamId;
       const isHome = String(homeId) === String(teamId);
@@ -8893,6 +8926,9 @@ function getStreakAsOfWeek(teamId, week){
       const isHome = String(game.home.teamId) === String(teamId);
       const isAway = String(game.away.teamId) === String(teamId);
       if(!isHome && !isAway) return;
+      // A live, still-UNDECIDED game cannot extend or start a streak: an
+      // active-streak badge must wait for the platform to finalize the week.
+      if(!scheduleGameFinal(game)) return;
       const homeScore = Number(game.home.totalPoints || 0);
       const awayScore = Number(game.away.totalPoints || 0);
       if(homeScore <= 0 && awayScore <= 0) return;
@@ -8928,6 +8964,9 @@ function standingsThrough(week){
       if(week && wk > week) return;
       const home = g.home, away = g.away;
       if(!home || !away) return;
+      // Standings lock in only on platform-finalized games. A live,
+      // still-UNDECIDED matchup must not increment wins/losses mid-week.
+      if(!scheduleGameFinal(g)) return;
       const hs = Number(home.totalPoints || 0);
       const as = Number(away.totalPoints || 0);
       if(hs <= 0 && as <= 0) return;                    // not played yet
@@ -12537,6 +12576,9 @@ function teamStreakThrough(teamId, throughWeek){
     const isHome = String(game.home.teamId) === String(teamId);
     const isAway = String(game.away.teamId) === String(teamId);
     if(!isHome && !isAway) return;
+    // Live, still-UNDECIDED games do not count toward a streak until the
+    // platform finalizes the week.
+    if(!scheduleGameFinal(game)) return;
     const hs = Number(game.home.totalPoints || 0), as = Number(game.away.totalPoints || 0);
     if(hs <= 0 && as <= 0) return;
     results.push({
