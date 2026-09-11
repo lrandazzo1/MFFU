@@ -55,6 +55,28 @@ const CHECK_ONLY = process.argv.includes('--check');
 const BANNED_CHARS = /[—―]/;
 const REQUIRED_META = ['title', 'slug', 'publishDate', 'category', 'excerpt'];
 
+// Normalize a string for name matching: strip markdown emphasis/backticks,
+// collapse whitespace (names split across a wrapped line still match), lowercase.
+const normName = (s) => String(s == null ? '' : s)
+  .replace(/[*_`~]/g, '')
+  .replace(/\s+/g, ' ')
+  .trim()
+  .toLowerCase();
+
+// Consensus-owned roster anchors: locked-in starters and universally drafted
+// players who are never legitimate standard 12-team waiver claims. Waiver Wire
+// stories must focus on true low-owned targets, direct injury replacements, or
+// viable streaming options instead. Matched case-insensitively by normalized
+// full name. Extend this list as the consensus baseline shifts week to week.
+const WAIVER_ANCHOR_BLOCKLIST = new Set([
+  'christian mccaffrey', 'bijan robinson', 'saquon barkley', 'jahmyr gibbs',
+  'jaylen warren', 'derrick henry', 'jonathan taylor', 'de\'von achane',
+  'justin jefferson', 'ja\'marr chase', 'ceedee lamb', 'amon-ra st. brown',
+  'jayden reed', 'a.j. brown', 'tyreek hill', 'puka nacua', 'nico collins',
+  'sam laporta', 'travis kelce', 'trey mcbride', 'george kittle',
+  'josh allen', 'lamar jackson', 'jalen hurts', 'patrick mahomes',
+]);
+
 const errors = [];
 const fail = (msg) => errors.push(msg);
 
@@ -215,6 +237,35 @@ function normalizeEntities(raw, file) {
   }).filter(Boolean);
 }
 
+// Ghost-entity guard: a player only belongs in the "Players in this story"
+// tray if their exact display name is actually mentioned in the article title
+// or body copy (headings included). Orphaned entity IDs that no reader ever
+// sees named in the prose are dropped so the tray maps only real mentions.
+function filterMentionedEntities(article, file) {
+  const haystack = normName(article.title + ' ' + article.body);
+  article.entities = (article.entities || []).filter((ent) => {
+    const nm = normName(ent.name);
+    if (nm && haystack.includes(nm)) return true;
+    console.warn(`[blog] ${file}: dropping ghost entity "${ent.name}" (not mentioned in the article body or headings).`);
+    return false;
+  });
+}
+
+// Waiver Wire realism guard: a Waiver Wire story may not recommend a
+// consensus-owned roster anchor (a universally drafted starter). These claims
+// are never available on a standard 12-team wire, so featuring one is a build
+// error. Waiver stories must feature true low-owned targets, direct injury
+// replacements, or viable streaming options. Runs after ghost filtering, so it
+// only inspects players the article actually features.
+function enforceWaiverConstraints(article, file) {
+  if (!/waiver/i.test(article.category || '')) return;
+  for (const ent of article.entities || []) {
+    if (WAIVER_ANCHOR_BLOCKLIST.has(normName(ent.name))) {
+      fail(`${file}: "${ent.name}" is a consensus-owned roster anchor and cannot be recommended as a waiver claim. Waiver Wire stories must feature true low-owned targets, direct injury replacements, or standard 12-team streaming options.`);
+    }
+  }
+}
+
 function scanForBannedPunctuation(article, file) {
   const fields = {
     title: article.title,
@@ -282,6 +333,8 @@ function loadFile(file) {
     fail(`${file}: publishDate "${article.publishDate}" is not a parseable date (use YYYY-MM-DD).`);
   }
 
+  filterMentionedEntities(article, file);
+  enforceWaiverConstraints(article, file);
   scanForBannedPunctuation(article, file);
   return article;
 }
