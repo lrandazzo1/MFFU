@@ -6,6 +6,9 @@ node_modules/
 *.log
 .DS_Store
 
+# Local cache for the Sleeper player index used by scripts/generate-editorial.mjs.
+scripts/.cache/
+
 # Capacitor generates the native project and staged payload on each build.
 # Only ios/ templates and handoff docs are source-controlled.
 ios/App/
