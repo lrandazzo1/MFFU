@@ -279,12 +279,17 @@ async function openApp(base, articlesOrigin) {
     const text = msg.text();
     if (/\[(FSN|NewsDesk|Standings|Matchups)/.test(text)) consoleErrors.push(text);
   });
-  await page.addInitScript((origin) => {
+  await page.addInitScript(({ origin, fixtures }) => {
     window.FSN_ARTICLES_ORIGIN = origin;
     window.__fsnWireInjected = false;
     try { window.localStorage.clear(); } catch (err) { /* private mode */ }
     try { window.localStorage.setItem('hasCompletedOnboarding', 'true'); } catch (err) { /* private mode */ }
-  }, articlesOrigin);
+    /* Fixture payload for the category-gate assertion below: it force-routes
+       each fixture through the wire by slug and inspects the resulting card,
+       so it needs the source bodies at hand. Serialized on the init side
+       because the assertion runs inside page.evaluate. */
+    window.__fsnFixturePayload = fixtures;
+  }, { origin: articlesOrigin, fixtures: fixturePayload().bySlug });
   await page.goto(base + '/', { waitUntil: 'load' });
   await page.waitForTimeout(1200);
   return { page, pageErrors, consoleErrors };
@@ -497,42 +502,26 @@ try {
     else fail('the dek is not a short paragraph (' + card.dek.length + ' chars): ' + card.dek);
     expect(card.dekBoth, false, 'the card paints one dek treatment, never both');
 
-    /* ---- HYPER-LOCAL COPY ----
-       Every fixture article names a player this league rosters, so the card
-       must lead with the league's own read on it and must NOT print the
-       national excerpt ("... for the app wire check.") at all. */
-    expect(card.dekIsLocal, true, 'the card leads with the hyper-local read, not the published excerpt');
-    if (/for the app wire check/i.test(card.dek)) {
-      fail('the national excerpt survived into the localized lede: ' + card.dek);
-    } else pass('the national excerpt is stripped out of the card copy');
-    if (/Manager [1-4]/.test(card.dek)) pass('the localized lede names a manager in this league');
-    else fail('the localized lede names no manager: ' + card.dek);
-    if (/Manager [1-4]\u2019s [A-Z]/.test(card.dek)) {
-      pass('the lede uses the "<Manager>\u2019s <Player>" ownership callout');
-    } else fail('the lede carries no ownership callout: ' + card.dek);
-
-    /* ---- THE DEEP DATA BLOCK ---- */
-    if (!card.deep) fail('no .deepstat block was appended to the wire card');
-    else {
-      expect(card.deep.insideAnchor, false, 'the deep data block sits outside the card anchor');
-      expect(card.deep.anchors, 0, 'the deep data block links out nowhere');
-      if (card.deep.players.length) {
-        pass('deep data names ' + card.deep.players.length + ' player(s): ' +
-          card.deep.players.map((p) => p.name).join(', '));
-      } else fail('the deep data block named no players');
-      const owned = card.deep.players.filter((p) => /Manager [1-4]/.test(p.who));
-      if (owned.length === card.deep.players.length) {
-        pass('every deep-data player is attributed to a manager in this league');
-      } else {
-        fail('a deep-data player carries no manager: ' +
-          JSON.stringify(card.deep.players.map((p) => p.who)));
-      }
-      const scored = card.deep.players.filter((p) => /\d+\.\d\s*PTS/.test(p.points));
-      if (scored.length) pass('deep data quotes real fantasy points: ' + scored[0].points);
-      else fail('no deep-data player carried fantasy points: ' +
-        JSON.stringify(card.deep.players.map((p) => p.points)));
-      if (card.deep.scores >= 1) pass('the live head-to-head score block rendered');
-      else fail('no live head-to-head score block rendered');
+    /* ---- COPY, GATED BY CATEGORY ----
+       The Local Read and the deep stat block are a From-the-Desk / Analysis
+       affordance. On any other category the card renders as a clean chip:
+       national excerpt, no localized lede, no stat block. The dedicated
+       Analysis-forcing scenario below asserts the retention behaviour; this
+       branch asserts the contract for whatever category today's slot picks. */
+    const todayCategory = (FIXTURE_POSTS.find((p) => p.slug === card.slug) || {}).category || '';
+    const todayIsAnalysis = todayCategory.trim().toLowerCase() === 'analysis';
+    if (todayIsAnalysis) {
+      expect(card.dekIsLocal, true, 'an Analysis card leads with the hyper-local read');
+      if (/Manager [1-4]\u2019s [A-Z]/.test(card.dek)) {
+        pass('the Analysis lede uses the "<Manager>\u2019s <Player>" ownership callout');
+      } else fail('the Analysis lede carries no ownership callout: ' + card.dek);
+      if (!card.deep) fail('no .deepstat block was appended to the Analysis wire card');
+      else pass('the Analysis card carries a deep data block');
+    } else {
+      expect(card.dekIsLocal, false, 'a non-Analysis card does NOT lead with the hyper-local read');
+      if (/for the app wire check/i.test(card.dek)) pass('the national excerpt is what today\'s non-Analysis card prints');
+      else fail('a non-Analysis card should print the national excerpt, got: ' + card.dek);
+      expect(card.deep, null, 'a non-Analysis card carries no deep data block');
     }
     expect(card.openCta, 'Open on the web ›', '"Open on the web" affordance is present in the footer');
     if (card.anchorHref && /\/blog\//.test(card.anchorHref)) pass('the whole card links to the blog: ' + card.anchorHref);
@@ -553,6 +542,106 @@ try {
     expect(card.eventAttrs, -1, 'event attributes stripped from the annotated HTML');
     expect(card.injected, false, 'nothing in the payload executed');
     expect(card.snag, false, '"hit a snag" on the News Desk');
+
+    /* ---- CATEGORY GATE: deterministic coverage of both branches ---------
+       Today's routed card only exercises one category per CI day. This block
+       force-routes each fixture into the wire by name and inspects the card
+       under both categories, so an Analysis regression cannot slip through a
+       week of Wednesday runs unnoticed.
+
+       The force-route is a targeted override of FSNArticles.current /
+       .annotated + a repaint through the same FSNBridge the engine uses. It
+       does not mutate the engine's stored state, and it is torn down at the
+       end of this block. */
+    for (const fixture of FIXTURE_POSTS) {
+      const inspect = await page.evaluate((slug) => {
+        const A = window.FSNArticles;
+        const wrap = document.getElementById('deskWireWrap');
+        if (!A || !wrap) return { present:false };
+        const originalCurrent = A.current;
+        const originalAnnotated = A.annotated;
+        const post = originalCurrent()._probeBySlug
+          ? null
+          : (function findPost(){
+              /* Fetch the payload the app already downloaded. */
+              const snap = originalCurrent();
+              /* Different slug: temporarily override state so renderDeskWire
+                 paints against the requested post. Rebuild the annotation from
+                 the real engine so match roles/context stay honest. */
+              const raw = window.__fsnFixturePayload[slug];
+              if (!raw) return null;
+              return {
+                slug: raw.slug, title: raw.title, category: raw.category,
+                excerpt: raw.excerpt, author: raw.author, publishDate: raw.publishDate,
+                entities: raw.entities, bodyHtml: raw.bodyHtml,
+              };
+            })();
+        if (!post) return { present:false, missing:true };
+        /* A minimally correct annotated() shape: sanitized html + the matches
+           the real ownership index resolves. */
+        const doc = new DOMParser().parseFromString(
+          '<div id="root">' + (post.bodyHtml || '') + '</div>', 'text/html');
+        const root = doc.getElementById('root');
+        const matches = [];
+        (post.entities || []).forEach((ent) => {
+          const owner = A.ownerOf(ent);
+          if (!owner) return;
+          matches.push({ name:ent.name, position:ent.position, owner:owner,
+            role:A.ownerRole(owner, A.readerContext()),
+            label:A.ownerLabel(owner), tag:A.ownerTagText(owner, A.readerContext()),
+            injected:false });
+        });
+        const view = { post, html:root.innerHTML, matches, unmatched:[], rostered:0, context:A.readerContext() };
+        const snap = {
+          status:'ready', slot:{id:'open', label:'From the Desk'},
+          post, dateKey:'2026-09-13', cached:false, fetchedAt:Date.now(),
+          reason:'', readerUrl:'/blog/' + post.slug,
+        };
+        A.current = () => snap;
+        A.annotated = () => view;
+        try {
+          window.FSNBridge.call('renderDeskWire');
+        } finally {
+          A.current = originalCurrent;
+          A.annotated = originalAnnotated;
+        }
+        const local = wrap.querySelector('.wire-dek-local');
+        const national = wrap.querySelector('.wire-dek-compact');
+        const deep = wrap.querySelector('.deepstat');
+        return {
+          present:true, hasLocal:!!local, hasNational:!!national, hasDeep:!!deep,
+          localText: local ? local.textContent.trim() : '',
+          matchCount: matches.length,
+        };
+      }, fixture.slug);
+
+      const isAnalysis = String(fixture.category || '').trim().toLowerCase() === 'analysis';
+      if (!inspect || !inspect.present) {
+        fail('category-gate: fixture ' + fixture.slug + ' could not be force-routed');
+        continue;
+      }
+      if (isAnalysis) {
+        if (inspect.hasLocal) pass('category-gate: Analysis fixture ' + fixture.slug + ' KEEPS the Local Read');
+        else fail('category-gate: Analysis fixture ' + fixture.slug + ' lost the Local Read');
+        if (inspect.hasDeep) pass('category-gate: Analysis fixture ' + fixture.slug + ' KEEPS the deep block');
+        else fail('category-gate: Analysis fixture ' + fixture.slug + ' lost the deep block');
+        if (inspect.matchCount > 0 && /Manager [1-4]\u2019s [A-Z]/.test(inspect.localText)) {
+          pass('category-gate: Analysis Local Read carries the ownership callout');
+        } else if (inspect.matchCount === 0) {
+          pass('category-gate: this Analysis fixture matched no rostered players; the Local Read cannot invent one');
+        } else {
+          fail('category-gate: Analysis Local Read is missing the callout: ' + inspect.localText);
+        }
+      } else {
+        expect(inspect.hasLocal, false,
+          'category-gate: ' + fixture.category + ' fixture ' + fixture.slug + ' does NOT carry the Local Read');
+        expect(inspect.hasDeep, false,
+          'category-gate: ' + fixture.category + ' fixture ' + fixture.slug + ' does NOT carry the deep block');
+        expect(inspect.hasNational, true,
+          'category-gate: ' + fixture.category + ' fixture ' + fixture.slug + ' prints the national excerpt');
+      }
+    }
+
     if (/^http:\/\/127\.0\.0\.1:\d+\/blog\//.test(card.readerUrl)) pass('reader URL points at the blog: ' + card.readerUrl);
     else fail('reader URL is wrong: ' + card.readerUrl);
   }

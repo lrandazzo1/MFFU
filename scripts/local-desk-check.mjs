@@ -31,16 +31,17 @@
          byte-identical sentence on a second call
 
      RENDER (block 6, in the real DOM)
-       - every timeline card carries the compact block, at the BOTTOM of the
-         card body and above the card's action row
-       - the reader carries the full block, AFTER the copy and AFTER the
-         By-the-Numbers box, and never inside it
-       - the block names managers, quotes fantasy points, prints per-category
-         stat chips and renders the live head-to-head
-       - no anchors, no hrefs, no external assets anywhere inside it
-       - no existing table structure is touched: .bn-table keeps its own
-         header/row shape and gains no nested section
+       - normal cards render CLEAN: no deep block, no Local Read on any
+         timeline row and no deep block or Local Read in any reader
+       - the existing components stay intact: the By-the-Numbers box keeps
+         its rows and .bn-table keeps its structure
        - zero uncaught page errors, zero tagged console errors, no "hit a snag"
+
+     (The retention behaviour — an Analysis-category wire card KEEPS the
+     Local Read and the deep block — lives in scripts/article-ingest-check.mjs,
+     which drives the wire against fixtures carrying every category. This
+     check owns the removal side: normal news cards render exactly as they
+     did before the Local Desk existed.)
 
    Exit code 0 means clean.
 ============================================================================ */
@@ -502,46 +503,31 @@ try {
   expect(engine.aheadAgain, engine.aheadLine, 'the game line is byte-identical on a second call');
 
   /* ======================================================================
-     2. THE TIMELINE — the compact block, at the bottom of every card.
+     2. THE TIMELINE — deterministic feed cards must NOT carry the block.
+
+     The Local Desk is a From-the-Desk / Analysis surface now. The timeline
+     is deterministic recaps, matchup primers, waiver fallout and power
+     rankings — normal news, not analysis. Hanging a "Local Read" and a
+     stat table off every one made the News screen a wall of numbers under
+     copy that already spoke in the league's voice. This section is the
+     mechanical guard for the split: every timeline card renders clean.
      ====================================================================== */
-  console.log('\n[2] The timeline: localized phrasing and the deep block at the bottom');
+  console.log('\n[2] The timeline: normal cards render clean, no deep block');
 
   await page.click('#tabBar .tab-btn[data-tab="news"]');
   await page.waitForTimeout(900);
 
   const feed = await page.evaluate(() => {
     const items = Array.prototype.slice.call(document.querySelectorAll('#timelineFeed .tl-item'));
-    const read = (item) => {
-      const body = item.querySelector('.tl-body');
-      const block = item.querySelector('.deepstat');
-      const foot = item.querySelector('.tl-foot');
-      if (!block || !body) return { hasBlock: false };
-      const kids = Array.prototype.slice.call(body.children);
-      return {
-        hasBlock: true,
-        compact: block.classList.contains('ds-compact'),
-        /* "cleanly at the bottom": below the copy, above the card's own
-           action row, and a direct child of the card body rather than
-           something smuggled into the headline group. */
-        directChild: block.parentElement === body,
-        beforeFoot: !!foot && kids.indexOf(block) < kids.indexOf(foot),
-        lastBeforeFoot: !!foot && kids.indexOf(block) === kids.indexOf(foot) - 1,
-        local: (block.querySelector('.ds-local') || {}).textContent || '',
-        players: Array.prototype.slice.call(block.querySelectorAll('.ds-player')).map((n) => ({
-          name: (n.querySelector('.ds-name') || {}).textContent || '',
-          who: (n.querySelector('.ds-who') || {}).textContent || '',
-          points: (n.querySelector('.ds-pts') || {}).textContent || '',
-          cats: Array.prototype.slice.call(n.querySelectorAll('.ds-cat')).map((c) => c.textContent.trim()),
-        })),
-        scoreStates: Array.prototype.slice.call(block.querySelectorAll('.ds-score .st')).map((n) => n.textContent.trim()),
-        scoreValues: Array.prototype.slice.call(block.querySelectorAll('.ds-score .sc')).map((n) => n.textContent.trim()),
-        anchors: block.querySelectorAll('a, [href], img, iframe').length,
-        html: block.outerHTML,
-      };
-    };
     return {
       cards: items.length,
-      blocks: items.map(read).filter((r) => r.hasBlock),
+      /* One count per card. Zero everywhere is what "clean" means: no
+         .deepstat anywhere in the timeline stream, whether at the bottom of
+         the card body or smuggled in under the head/foot. */
+      blocks: items.map((n) => n.querySelectorAll('.deepstat').length),
+      /* And the localized-lede tag from the wire's Local Read — which is a
+         desk-analysis affordance and must not leak into a timeline row. */
+      localReads: items.map((n) => n.querySelectorAll('.ds-local, .wire-dek-local').length),
       snag: /hit a snag/i.test(document.body.innerText),
     };
   });
@@ -549,126 +535,54 @@ try {
   if (feed.cards > 0) pass('the timeline painted ' + feed.cards + ' card(s)');
   else fail('the timeline painted no cards at all');
 
-  if (feed.blocks.length) pass(feed.blocks.length + ' of ' + feed.cards + ' timeline card(s) carry a deep data block');
-  else fail('no timeline card carried a deep data block');
-
-  const badCompact = feed.blocks.filter((b) => !b.compact);
-  expect(badCompact.length, 0, 'every timeline block uses the compact feed variant');
-  const notDirect = feed.blocks.filter((b) => !b.directChild);
-  expect(notDirect.length, 0, 'every timeline block is a direct child of the card body');
-  const misplaced = feed.blocks.filter((b) => !b.beforeFoot || !b.lastBeforeFoot);
-  expect(misplaced.length, 0, 'every timeline block sits at the bottom of the copy, directly above the action row');
-  const linked = feed.blocks.filter((b) => b.anchors > 0);
-  expect(linked.length, 0, 'no timeline block links out or loads an external asset');
-
-  const withLocal = feed.blocks.filter((b) => /Manager [1-4]’s /.test(b.local));
-  if (withLocal.length) {
-    pass(withLocal.length + ' timeline block(s) lead with a "<Manager>’s <Player>" callout, e.g. ' +
-      JSON.stringify(withLocal[0].local.replace('The Local Read', '').slice(0, 190)));
-  } else {
-    fail('no timeline block carried an ownership callout: ' +
-      JSON.stringify(feed.blocks.map((b) => b.local).slice(0, 4)));
-  }
-
-  const allPlayers = feed.blocks.flatMap((b) => b.players);
-  const attributed = allPlayers.filter((p) => /Manager [1-4]/.test(p.who));
-  if (allPlayers.length && attributed.length === allPlayers.length) {
-    pass('all ' + allPlayers.length + ' deep-data player row(s) name the manager who rosters them');
-  } else {
-    fail(attributed.length + ' of ' + allPlayers.length + ' deep-data player rows name a manager');
-  }
-
-  const scoring = allPlayers.filter((p) => /\d+\.\d\s*PTS/.test(p.points));
-  if (scoring.length) pass('deep-data rows quote real fantasy points, e.g. ' + scoring[0].points);
-  else fail('no deep-data row quoted fantasy points: ' + JSON.stringify(allPlayers.map((p) => p.points)));
-
-  const withCats = allPlayers.filter((p) => p.cats.length);
-  const catText = withCats.flatMap((p) => p.cats).join(' | ');
-  if (withCats.length) pass(withCats.length + ' deep-data row(s) print per-category splits: ' + catText.slice(0, 190));
-  else fail('no deep-data row printed a per-category split');
-  if (/RUSH YDS|REC YDS|PASS YDS/.test(catText)) pass('the splits include real yardage');
-  else fail('the splits include no yardage category: ' + catText);
-  if (/TD/.test(catText)) pass('the splits include touchdowns');
-  else fail('the splits include no touchdown category: ' + catText);
-
-  const states = feed.blocks.flatMap((b) => b.scoreStates);
-  if (states.length) pass('the live head-to-head rendered on ' + states.length + ' matchup(s): ' + JSON.stringify(states));
-  else fail('no live head-to-head rendered on any timeline card');
-  if (states.some((s) => /LIVE/.test(s))) pass('an open week is labelled LIVE on the card');
-  else fail('no card labelled the open week LIVE: ' + JSON.stringify(states));
-  const values = feed.blocks.flatMap((b) => b.scoreValues);
-  if (values.some((v) => v === '74.6' || v === '91.3' || v === '88.8' || v === '61.2')) {
-    pass('the head-to-head prints the real running scores: ' + JSON.stringify(values.slice(0, 6)));
-  } else {
-    fail('the head-to-head printed no recognizable running score: ' + JSON.stringify(values.slice(0, 8)));
-  }
-
+  const badCards = feed.blocks.filter((n) => n > 0).length;
+  expect(badCards, 0, 'no timeline card carries a deep data block');
+  const localOnFeed = feed.localReads.filter((n) => n > 0).length;
+  expect(localOnFeed, 0, 'no timeline card carries a "Local Read" lede');
   expect(feed.snag, false, '"hit a snag" anywhere on the News Desk');
 
-  /* Determinism in the DOM: a second paint of the same payload produces the
-     same block, byte for byte. */
-  await page.evaluate(() => window.__fsnRender());
-  await page.waitForTimeout(600);
-  const repaint = await page.evaluate(() => {
-    const block = document.querySelector('#timelineFeed .tl-item .deepstat');
-    return block ? block.outerHTML : '';
-  });
-  if (feed.blocks.length) {
-    expect(repaint, feed.blocks[0].html, 'a repaint produces a byte-identical deep data block');
-  }
-
   /* ======================================================================
-     3. THE READER — the full block, below the copy and below the tables.
-     ====================================================================== */
-  console.log('\n[3] The reader: the full block below the copy and the tables');
+     3. THE READER — the full block must NOT be appended to normal articles.
 
-  /* Every painted card, not just the first: the By-the-Numbers box differs by
-     story type and only some carry a data table, so walking the whole feed is
-     what actually proves the block lands below the tables rather than in the
-     middle of them. */
+     Every timeline card opens in the reader, and every reader ran the full
+     deep block below its By-the-Numbers box in the previous version. Same
+     reason as the feed: those are deterministic recaps and previews, not
+     analysis. The reader for a normal article now renders exactly as it did
+     before the Local Desk shipped — copy, quote, numbers box, nothing else.
+     ====================================================================== */
+  console.log('\n[3] The reader: normal articles render clean');
+
   const readReader = () => page.evaluate(() => {
     const open = document.querySelector('#reader[data-open="true"]');
     if (!open) return { open: false };
     const body = document.querySelector('#readerBody .article-body');
-    const block = document.querySelector('#readerBody .deepstat');
     if (!body) return { open: true, hasBody: false };
-    if (!block) return { open: true, hasBody: true, hasBlock: false };
-    const kids = Array.prototype.slice.call(body.children);
     const numbers = body.querySelector('.bynumbers');
     const table = body.querySelector('.bn-table');
     return {
       open: true,
       hasBody: true,
-      hasBlock: true,
-      compact: block.classList.contains('ds-compact'),
-      directChild: block.parentElement === body,
-      last: kids.indexOf(block) === kids.length - 1,
-      afterNumbers: !numbers || kids.indexOf(numbers) < kids.indexOf(block),
-      insideNumbers: !!block.closest('.bynumbers'),
-      numbersHasBlock: !!(numbers && numbers.querySelector('.deepstat')),
-      /* The existing table keeps its own shape: a By-the-Numbers table is
-         still a thead/tbody table with nothing of ours nested inside it. */
+      /* Zero is the contract. A .deepstat inside the article body — anywhere
+         inside it, whether beside or below the By-the-Numbers box — is a
+         Local Desk section leaking onto a normal article. */
+      blocks: body.querySelectorAll('.deepstat').length,
+      localReads: body.querySelectorAll('.ds-local').length,
+      /* The existing components stay intact: the numbers box keeps its rows
+         and the data table (when the story supplies one) keeps its shape. */
       numbersPresent: !!numbers,
       numbersRows: numbers ? numbers.querySelectorAll('.bn-row').length : -1,
       tablePresent: !!table,
       tableNested: !!(table && table.querySelector('.deepstat')),
       tableHeaders: table ? table.querySelectorAll('thead th').length : -1,
       tableRows: table ? table.querySelectorAll('tbody tr').length : -1,
-      local: (block.querySelector('.ds-local') || {}).textContent || '',
-      players: block.querySelectorAll('.ds-player').length,
-      cats: block.querySelectorAll('.ds-cat').length,
-      scores: block.querySelectorAll('.ds-score').length,
-      note: (block.querySelector('.ds-note') || {}).textContent || '',
-      anchors: block.querySelectorAll('a, [href], img, iframe').length,
     };
   });
 
   const cardCount = await page.evaluate(() =>
     document.querySelectorAll('#timelineFeed .tl-item .tl-card').length);
   let opened = 0;
-  let withBlock = 0;
-  let withTable = 0;
   let withNumbers = 0;
+  let withTable = 0;
   const readerFaults = [];
   for (let i = 0; i < cardCount; i++) {
     await page.evaluate((idx) => {
@@ -680,20 +594,9 @@ try {
     if (!r.open) { readerFaults.push('card ' + i + ': the reader did not open'); continue; }
     opened++;
     if (!r.hasBody) { readerFaults.push('card ' + i + ': the reader painted no article body'); }
-    else if (!r.hasBlock) { readerFaults.push('card ' + i + ': the reader painted no deep data block'); }
     else {
-      withBlock++;
-      if (r.compact) readerFaults.push('card ' + i + ': the reader used the compact feed variant');
-      if (!r.directChild) readerFaults.push('card ' + i + ': the block is not a direct child of the article body');
-      if (!r.last) readerFaults.push('card ' + i + ': the block is not the last thing in the article body');
-      if (!r.afterNumbers) readerFaults.push('card ' + i + ': the block sits ABOVE the By-the-Numbers box');
-      if (r.insideNumbers) readerFaults.push('card ' + i + ': the block is nested inside the By-the-Numbers box');
-      if (r.numbersHasBlock) readerFaults.push('card ' + i + ': the By-the-Numbers box gained one of ours');
-      if (r.anchors) readerFaults.push('card ' + i + ': the block carries ' + r.anchors + ' link(s) or external asset(s)');
-      if (!r.players) readerFaults.push('card ' + i + ': the block named no players');
-      if (!r.scores) readerFaults.push('card ' + i + ': the block printed no live head-to-head');
-      if (!/Manager [1-4]/.test(r.local)) readerFaults.push('card ' + i + ': the block leads with no manager callout');
-      if (!/box score|fantasy totals/i.test(r.note)) readerFaults.push('card ' + i + ': the block carries no provenance note');
+      if (r.blocks) readerFaults.push('card ' + i + ': ' + r.blocks + ' deep block(s) leaked into the article body');
+      if (r.localReads) readerFaults.push('card ' + i + ': a "Local Read" section leaked into the article body');
       if (r.numbersPresent) {
         withNumbers++;
         if (!(r.numbersRows > 0)) {
@@ -719,21 +622,14 @@ try {
   }
 
   expect(opened, cardCount, 'every timeline card opened its reader');
-  expect(withBlock, cardCount, 'every reader carried the full deep data block');
-  /* The By-the-Numbers box is the data table every deterministic story carries,
-     and it must come through this change untouched: same box, same rows, with
-     the new section strictly below it and nothing of ours nested inside.
-     `.bn-table` itself is only emitted by payloads that supply numbers.table,
-     which the deterministic generators do not, so it is asserted when present
-     rather than required. */
   if (withNumbers > 0) pass(withNumbers + ' of ' + cardCount +
     ' stories carry a By-the-Numbers box, and every one kept its rows');
   else fail('no story in the feed rendered a By-the-Numbers box, so the ' +
-    'table-preservation assertions never ran');
-  if (withTable > 0) pass(withTable + ' story/stories also carried a .bn-table, and it kept its structure');
+    'component-integrity assertions never ran');
+  if (withTable > 0) pass(withTable + ' story/stories carry a .bn-table, and it kept its structure');
   else pass('no story in this feed supplies numbers.table; .bn-table has nothing to preserve here');
-  if (!readerFaults.length) pass('every reader block sits below the copy and the tables, links out nowhere, ' +
-    'names a manager, quotes stats and prints the live head-to-head');
+  if (!readerFaults.length) pass('every reader renders clean — no Local Desk section, no Local Read, ' +
+    'and the existing components are untouched');
   else readerFaults.forEach(fail);
 
   /* ======================================================================
