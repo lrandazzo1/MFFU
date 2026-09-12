@@ -40,12 +40,12 @@ View signups in Supabase: **Table Editor → `waitlist_signups`**, or `select em
 
 ## Yahoo Fantasy Sports OAuth
 
-1. In the Yahoo Developer Network, create a web application with **Fantasy Sports — Read** permission. Set its callback URL to the exact production callback route, for example `https://app.fantasysportsnetwork.app/api/auth/yahoo?action=callback`.
+1. In the Yahoo Developer Network, create a web application with **Fantasy Sports — Read** permission. Set its callback URL to `https://app.fantasysportsnetwork.app/api/auth/yahoo/callback`.
 2. Run [`supabase/yahoo_oauth.sql`](supabase/yahoo_oauth.sql) in the Supabase SQL Editor. It creates the private `yahoo_oauth_tokens` and `yahoo_oauth_sessions` tables with RLS enabled and no browser policies.
 3. Add these server-only Vercel environment variables:
    - `YAHOO_CLIENT_ID` — the Yahoo app Client ID.
    - `YAHOO_CLIENT_SECRET` — the Yahoo app Client Secret.
-   - `YAHOO_REDIRECT_URI` — the exact callback URL registered with Yahoo, including `?action=callback` when used there.
+   - `YAHOO_REDIRECT_URI` — `https://app.fantasysportsnetwork.app/api/auth/yahoo/callback`, exactly matching the URL registered with Yahoo. The existing `/api/auth/yahoo?action=callback` URL remains supported for deployments still configured to use it.
    - `YAHOO_TOKEN_ENCRYPTION_KEY` — a stable 32-byte key, base64 or 64-character hex. Generate a base64 value with `openssl rand -base64 32`.
 4. Redeploy. The Setup screen's **Yahoo** tab sends the browser through `/api/auth/yahoo`; the callback stores AES-256-GCM token envelopes in Supabase and gives the browser only an opaque HttpOnly session cookie.
 
