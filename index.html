@@ -2179,6 +2179,114 @@ html[data-fsn-boot="loading"] #tickerBar{ visibility:hidden; }
 }
 .bn-table td:last-child{ font-size:9px; font-weight:800; letter-spacing:.08em; }
 
+/* ---------- THE LOCAL DESK BLOCK (deep stats + live head-to-head) ----------
+   Appended BELOW the copy and below the By-the-Numbers box on every card, so
+   nothing above it moves and no existing table structure is touched. Built
+   from flex rows rather than a <table> for exactly that reason: .bn-table has
+   its own stacked mobile treatment and this section must not inherit, extend
+   or compete with it. */
+.deepstat{
+  border:1px solid var(--line-2); border-radius:14px;
+  background:#090d14; overflow:hidden; margin:22px 0 0;
+}
+.ds-head{
+  display:flex; align-items:center; gap:8px;
+  padding:11px 14px; border-bottom:1px solid var(--line);
+  background:linear-gradient(90deg,rgba(255,196,0,.13),transparent 72%);
+}
+.ds-head h4{
+  margin:0; font-family:'Anton',sans-serif; font-size:12.5px;
+  letter-spacing:.1em; text-transform:uppercase; color:#fff;
+}
+.ds-head .ds-week{
+  margin-left:auto; flex:none; font-family:'JetBrains Mono',monospace;
+  font-size:8.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--dim);
+}
+.ds-local{
+  padding:12px 14px; border-bottom:1px solid var(--line);
+  font-size:12.5px; line-height:1.6; color:#e9edf4;
+  background:linear-gradient(90deg,rgba(255,196,0,.06),transparent 70%);
+}
+.ds-local .tag{
+  display:block; margin-bottom:5px; font-size:9px; font-weight:800;
+  letter-spacing:.16em; text-transform:uppercase; color:var(--gold);
+}
+.ds-player{ padding:10px 14px; border-bottom:1px dashed rgba(255,255,255,.07); }
+.ds-player:last-child{ border-bottom:0; }
+.ds-player-top{ display:flex; align-items:baseline; gap:8px; }
+.ds-name{
+  min-width:0; font-family:'Oswald',sans-serif; font-size:13px;
+  font-weight:600; color:#fff; overflow-wrap:anywhere;
+}
+.ds-name .meta{
+  margin-left:5px; font-family:'JetBrains Mono',monospace; font-size:8.5px;
+  letter-spacing:.08em; color:#657185; font-weight:400;
+}
+.ds-pts{
+  margin-left:auto; flex:none; font-family:'JetBrains Mono',monospace;
+  font-variant-numeric:tabular-nums; font-size:15px; font-weight:800; color:#fff;
+}
+.ds-pts .u{ margin-left:3px; font-size:8.5px; letter-spacing:.12em; color:var(--dim); font-weight:700; }
+.ds-who{ margin-top:4px; font-size:10.5px; line-height:1.45; color:var(--gold); }
+.ds-who .flag{ color:var(--red); font-weight:700; }
+.ds-who .bench{ color:var(--dim); }
+.ds-cats{ display:flex; flex-wrap:wrap; gap:5px; margin-top:8px; }
+.ds-cat{
+  display:inline-flex; align-items:baseline; gap:4px;
+  padding:3px 7px; border-radius:6px; border:1px solid var(--line); background:#0e1420;
+  font-family:'JetBrains Mono',monospace; font-variant-numeric:tabular-nums; font-size:9.5px;
+}
+.ds-cat b{ color:#fff; font-weight:800; }
+.ds-cat span{ color:#657185; letter-spacing:.08em; }
+.ds-cat.neg b{ color:var(--red); }
+.ds-scores{ padding:11px 14px; border-top:1px solid var(--line); background:#080c12; }
+.ds-score + .ds-score{ margin-top:9px; }
+.ds-score{ padding:9px 10px; border:1px solid var(--line); border-radius:10px; background:#0b1018; }
+.ds-score-head{
+  display:flex; align-items:center; gap:7px;
+  font-family:'JetBrains Mono',monospace; font-size:8.5px;
+  letter-spacing:.14em; text-transform:uppercase; color:var(--dim);
+}
+.ds-score-head .st{ margin-left:auto; flex:none; font-weight:800; color:var(--off); }
+.ds-score-head .st.live{ color:var(--red); }
+.ds-score-head .st.final{ color:var(--gold); }
+.ds-side{ display:flex; align-items:baseline; gap:8px; margin-top:7px; }
+.ds-side .who{
+  min-width:0; flex:1; font-family:'Oswald',sans-serif; font-size:12px; color:#cfd6e2;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.ds-side[data-lead="true"] .who{ color:#fff; font-weight:600; }
+.ds-side .pj{ flex:none; font-family:'JetBrains Mono',monospace; font-size:9px; color:#5d6879; }
+.ds-side .sc{
+  flex:none; font-family:'JetBrains Mono',monospace; font-variant-numeric:tabular-nums;
+  font-size:14px; font-weight:800; color:#fff;
+}
+.ds-score-foot{
+  margin-top:8px; padding-top:7px; border-top:1px dashed rgba(255,255,255,.07);
+  font-size:10.5px; line-height:1.45; color:var(--dim);
+}
+.ds-note{
+  padding:9px 14px; border-top:1px solid var(--line); background:#080c12;
+  font-size:10.5px; line-height:1.55; color:#5d6879;
+}
+
+/* The feed variant. Same markup, tighter metrics, because a timeline row is a
+   glance and the reader is a tap away from the full block. */
+.deepstat.ds-compact{ margin:11px 0 0; border-radius:11px; }
+.deepstat.ds-compact .ds-head{ padding:8px 11px; }
+.deepstat.ds-compact .ds-head h4{ font-size:10px; letter-spacing:.12em; }
+.deepstat.ds-compact .ds-local{ padding:9px 11px; font-size:11.5px; line-height:1.55; }
+.deepstat.ds-compact .ds-player{ padding:8px 11px; }
+.deepstat.ds-compact .ds-name{ font-size:12px; }
+.deepstat.ds-compact .ds-pts{ font-size:13px; }
+.deepstat.ds-compact .ds-scores{ padding:9px 11px; }
+.deepstat.ds-compact .ds-note{ padding:8px 11px; font-size:9.5px; }
+/* On the desk wire the block is a SIBLING of the card's anchor rather than a
+   child of it: a <section> of stat rows inside an <a> is invalid markup, and
+   the anchor has to stay the whole tap target. Tucked up against the card so
+   the two still read as one entry in the stream. */
+.wire-item > .deepstat{ margin-top:8px; }
+
 /* ---------- PROJECTED PLAYOFF BRACKET / SEED TIER BOARD ---------- */
 .playoff-board{ padding:12px; border-top:1px solid var(--line); background:#080c12; }
 .pb-tier{ padding:11px; border:1px solid var(--line); border-radius:12px; background:#0b1018; }
@@ -2550,6 +2658,22 @@ body.fsn-dd-lock{ overflow:hidden; }
   font-family:'Oswald',sans-serif; font-weight:300; font-size:12.5px;
   line-height:1.5; color:var(--off); margin:7px 0 0;
   display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden;
+}
+/* The localized lede. When an ingested item names a player somebody in this
+   league actually rosters, the card leads with the league's own read on it
+   instead of the published national blurb — brighter than the blurb it
+   replaces, because it is the reason the card is worth a tap. The clamp is
+   four lines rather than three: a sentence that names two managers and a
+   player needs the room, and it is still a fixed-height card. */
+.wire-dek-local{
+  font-family:'Oswald',sans-serif; font-weight:400; font-size:12.5px;
+  line-height:1.5; color:#e9edf4; margin:7px 0 0;
+  display:-webkit-box; -webkit-line-clamp:4; -webkit-box-orient:vertical; overflow:hidden;
+}
+.wire-dek-local .tag{
+  display:block; margin-bottom:3px; font-family:'JetBrains Mono',monospace;
+  font-size:8.5px; font-weight:700; letter-spacing:.16em;
+  text-transform:uppercase; color:var(--gold);
 }
 /* The roster context line: how this article touches the reader's team. Woven
    into the card copy so a rostered player is called out inline rather than in
@@ -9423,6 +9547,966 @@ window.FSNArticles = (function(){
     readerUrl,
     indexUrl,
     onChange(fn){ if(typeof fn === 'function') listeners.push(fn); return fn; },
+  };
+})();
+
+/* ============================================================
+   GLOBAL SCOPE — THE LOCAL DESK (FSNLocalDesk)
+
+   WHAT THIS IS. Everything the app puts in front of a reader used to speak in
+   one of two voices: the News Desk's own (which already knows the league), or
+   the voice of whatever national piece the blog ingested that morning — "here
+   are five waiver adds", written for nobody in particular. The second voice is
+   the problem. A reader does not need to be told that a backup running back is
+   now the starter; they need to be told that the backup running back is on
+   Dave's roster and that Dave is their Week 7 opponent.
+
+   This engine is the league's own analyst. It answers four questions about any
+   in-feed item, using only data already in memory:
+
+     1. WHO owns the players this item is about, and what is that manager
+        called. (ownerOfPlayer / managerOf)
+     2. WHAT did those players actually do this week — yardage, touchdowns,
+        receptions, and the fantasy points that came out of them.
+        (statLine / statCategories)
+     3. WHERE does the real-time battle stand right now — the live head-to-head
+        score for the matchup those players are scoring into. (liveScore)
+     4. HOW do you say that like somebody who is in the league. (benefitLine /
+        gameLine / localizeWire)
+
+   WHY IT LIVES HERE. Per CLAUDE.md rule 1, anything called across script
+   blocks is declared at global scope in the FIRST block. The News Desk paint
+   (block 6) is the only caller today, but the stat lines and the live score
+   context are useful to blocks 3 and 5 as well, and a helper that only half
+   the file can reach is exactly the shape of bug rule 1 exists to prevent.
+   Every table this engine needs is private to the IIFE; every function a
+   caller needs is on the returned object. Nothing is probed with `typeof`.
+
+   WHAT IT RETURNS. Plain data — numbers, strings, arrays. No HTML, no DOM, no
+   escaping. The renderer in block 6 escapes at the point of paint, which is
+   the only place that can know whether a value is going into text or into an
+   attribute.
+
+   RULE 2 / DETERMINISM. This engine is strictly additive. It does not read,
+   call, seed, or modify a single News Desk generator; it takes a finished
+   article object and reports facts about the league that article is already
+   about. The determinism contract holds for its own output too: no
+   Math.random(), no Date.now(), no network read, no model call. Every draw
+   comes from a seeded FNV-1a hash over stable archive coordinates
+   (leagueScopeToken + season + week + the item id), so a reader who reloads
+   gets the same sentence, and two readers of the same league see the same one.
+   The only clock-shaped input is the publishing slot the caller passes in,
+   which is the calendar day and is already the routing input by design.
+
+   HONESTY. Every number here is read, never inferred. A player whose provider
+   publishes no raw weekly split gets his fantasy points and no invented
+   yardage. A week with no kickoff yet reports PREGAME rather than a 0-0 "live"
+   score. A designation is whatever the platform actually stamped — this engine
+   never names an injury the payload does not name.
+============================================================ */
+window.FSNLocalDesk = (function(){
+  'use strict';
+
+  /* ---- 1. PRIVATE LOOKUP TABLES ---------------------------------------- */
+
+  /* Blocks 3, 4 and 5 each already carry their own copy of the first two, for
+     the same reason this block does: they are short factual maps rather than
+     shared behaviour, and a private copy cannot be broken by an edit made for
+     some other engine's benefit. Per rule 1 what gets shared is the FUNCTION,
+     which is on the returned object — not the table behind it. */
+  const POS_BY_ID = { 1:'QB', 2:'RB', 3:'WR', 4:'TE', 5:'K', 16:'D/ST' };
+  const BENCH_SLOT_IDS = { 20:true, 21:true };   // 20 = bench, 21 = IR
+  const PRO_TEAM_BY_ID = {
+    0:'FA',1:'ATL',2:'BUF',3:'CHI',4:'CIN',5:'CLE',6:'DAL',7:'DEN',8:'DET',9:'GB',10:'TEN',
+    11:'IND',12:'KC',13:'LV',14:'LAR',15:'MIA',16:'MIN',17:'NE',18:'NO',19:'NYG',20:'NYJ',
+    21:'PHI',22:'ARI',23:'PIT',24:'LAC',25:'SF',26:'SEA',27:'TB',28:'WSH',29:'CAR',30:'JAX',
+    33:'BAL',34:'HOU',
+  };
+
+  /* The designation the platform stamped, in the platform's own words. A
+     status this map does not carry is surfaced verbatim (lower-cased) rather
+     than dropped or guessed at — an unknown designation is still real news,
+     and inventing a diagnosis the payload does not carry is not an option. */
+  const DESIGNATION_LABEL = {
+    OUT:'ruled out', DOUBTFUL:'listed doubtful', QUESTIONABLE:'listed questionable',
+    INJURY_RESERVE:'placed on IR', SUSPENSION:'suspended', DAY_TO_DAY:'day-to-day',
+    PROBABLE:'listed probable',
+  };
+
+  /* ESPN publishes what a player actually DID in a week as a statId -> value
+     map hanging off the same stat record that carries appliedTotal. These are
+     the eleven ids the offensive box score is made of. Kickers and D/ST are
+     deliberately absent: their raw ids are scoring-rule dependent, and a
+     mislabelled "FG MADE" row is worse than printing the fantasy total on its
+     own, which is what those positions fall back to.
+
+     Order is print order. A category is only rendered when it is non-zero, so
+     a pure rusher never shows an empty PASS YDS row. */
+  const STAT_CATEGORIES = [
+    { id:'3',  label:'PASS YDS' },
+    { id:'4',  label:'PASS TD'  },
+    { id:'20', label:'INT', negative:true },
+    { id:'23', label:'CAR'      },
+    { id:'24', label:'RUSH YDS' },
+    { id:'25', label:'RUSH TD'  },
+    { id:'41', label:'TGT'      },
+    { id:'53', label:'REC'      },
+    { id:'42', label:'REC YDS'  },
+    { id:'43', label:'REC TD'   },
+    { id:'72', label:'FUM LOST', negative:true },
+  ];
+
+  /* Which television window an item's publishing slot is standing in. `when`
+     is the phrase the localized copy opens with.
+
+     These are the News Desk's own slot ids (block 4) and the article
+     ingestion slots (FSNArticles, above) in one table, because both surfaces
+     ask this engine the same question. The mapping is the publishing calendar,
+     not a guess: the injury wire runs Friday morning, so Thursday night is
+     "last night"; the primer runs Thursday afternoon, so TNF is "tonight". */
+  const WINDOW_BY_SLOT = {
+    /* News Desk slots (block 4) */
+    gameday:   { when:'Tonight in the Sunday window' },
+    primetime: { when:'Tonight in MNF'               },
+    recap:     { when:'Last night in MNF'            },
+    waivers:   { when:'On the wire this week'        },
+    primer:    { when:'Tonight in TNF'               },
+    injury:    { when:'Last night in TNF'            },
+    /* FSNArticles ingestion slots */
+    pregame:   { when:'Tonight in the Sunday window' },
+    waiver:    { when:'On the wire this week'        },
+    roster:    { when:'Last night in TNF'            },
+    open:      { when:'On this week’s board'    },
+  };
+
+  /* ---- 2. SMALL PRIVATE HELPERS ---------------------------------------- */
+
+  const n1 = (v)=> (Math.round((Number(v) || 0) * 10) / 10).toFixed(1);
+
+  function num(value){
+    if(value == null || value === '' || typeof value === 'boolean') return null;
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  }
+
+  /* FNV-1a. Mirrored from the News Desk's editorial matrix and from the share
+     copy in block 6 for the same reason both of those carry their own: the
+     blocks cannot see each other's declarations, and the hash has to agree
+     across them or two surfaces describing one league disagree about which
+     line they drew. */
+  function hash(str){
+    let h = 2166136261;
+    const s = String(str == null ? '' : str);
+    for(let i = 0; i < s.length; i++){ h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return h >>> 0;
+  }
+
+  /* Seeded draw. The seed is always built from stable archive coordinates, so
+     the same league/season/week/item always lands on the same line. */
+  function pick(pool, seed){
+    if(!Array.isArray(pool) || !pool.length) return '';
+    return pool[hash(seed) % pool.length];
+  }
+
+  /* Name normalization, matching FSNArticles' so the two surfaces agree about
+     whether "A.J. Brown" and "AJ Brown" are the same man. */
+  const NAME_SUFFIXES = /\s+(?:jr|sr|ii|iii|iv|v)$/;
+  function normalizeName(value){
+    const out = String(value == null ? '' : value)
+      .toLowerCase()
+      .replace(/[.'`’]/g, '')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    return out.replace(NAME_SUFFIXES, '').trim();
+  }
+
+  /* Letters and digits only. This is the form that makes the roster lookup a
+     dictionary hit rather than a fuzzy search. */
+  function compactName(value){
+    return normalizeName(value).replace(/[^a-z0-9]/g, '');
+  }
+
+  /* The desk writes in HTML. Subject detection reads prose, so tags come out
+     first — otherwise a player named inside a <b> is invisible to the scan and
+     a tag name can masquerade as copy. */
+  function plainText(html){
+    return String(html == null ? '' : html)
+      .replace(/<[^>]*>/g, ' ')
+      .replace(/&[a-z]+;|&#\d+;/gi, ' ');
+  }
+
+  function playerOf(entry){
+    const ppe = entry && entry.playerPoolEntry;
+    return (ppe && ppe.player) || (entry && entry.player) || null;
+  }
+
+  function rosterEntriesOf(side){
+    const roster = side && (side.rosterForCurrentScoringPeriod || side.rosterForMatchupPeriod);
+    return (roster && Array.isArray(roster.entries)) ? roster.entries : [];
+  }
+
+  /* ---- 3. RAW WEEKLY STATS -------------------------------------------- */
+
+  /* The stat record for what a player ACTUALLY did in one scoring period.
+     statSourceId 0 is actuals (1 is the forecast) and statSplitTypeId 1 marks
+     a single period rather than a season aggregate.
+
+     The week match is exact, and that matters more here than anywhere else in
+     the file: a player card carries every week of the season, so a loose match
+     would print Week 3's 140 rushing yards under a Week 11 headline. A record
+     carrying no scoringPeriodId is the single fallback, and only when the
+     exact-week pass found nothing. */
+  function rawWeekStats(player, week){
+    const stats = (player && Array.isArray(player.stats)) ? player.stats : [];
+    const wanted = num(week);
+    let undated = null;
+    for(let i = 0; i < stats.length; i++){
+      const row = stats[i];
+      if(!row || Number(row.statSourceId) !== 0) continue;
+      if(row.statSplitTypeId != null && Number(row.statSplitTypeId) !== 1) continue;
+      const map = row.stats;
+      if(!map || typeof map !== 'object') continue;
+      if(row.scoringPeriodId == null){ if(!undated) undated = map; continue; }
+      if(wanted == null || Number(row.scoringPeriodId) === wanted) return map;
+    }
+    return undated;
+  }
+
+  /* The fantasy points already on the board for one entry. The adapters
+     (Sleeper, the cloud mirror) publish appliedStatTotal directly; a raw ESPN
+     entry carries it too; the player card is the last resort. */
+  function entryPoints(entry, week){
+    const direct = num(entry && entry.appliedStatTotal);
+    if(direct != null) return direct;
+    const ppe = entry && entry.playerPoolEntry;
+    const pooled = num(ppe && ppe.appliedStatTotal);
+    if(pooled != null) return pooled;
+    const player = playerOf(entry);
+    const stats = (player && Array.isArray(player.stats)) ? player.stats : [];
+    const wanted = num(week);
+    for(let i = 0; i < stats.length; i++){
+      const row = stats[i];
+      if(!row || Number(row.statSourceId) !== 0) continue;
+      if(row.statSplitTypeId != null && Number(row.statSplitTypeId) !== 1) continue;
+      if(row.scoringPeriodId != null && wanted != null && Number(row.scoringPeriodId) !== wanted) continue;
+      const applied = num(row.appliedTotal);
+      if(applied != null) return applied;
+    }
+    return null;
+  }
+
+  /* Non-zero raw categories, in print order. An absent map (Sleeper, a legacy
+     archive row) returns an empty list and the caller prints the fantasy total
+     alone — which is honest, where a fabricated "0 REC YDS" would not be. */
+  function statCategories(map){
+    if(!map || typeof map !== 'object') return [];
+    const out = [];
+    for(let i = 0; i < STAT_CATEGORIES.length; i++){
+      const cat = STAT_CATEGORIES[i];
+      const value = num(map[cat.id]);
+      if(value == null) continue;
+      const rounded = Math.round(value);
+      if(!rounded) continue;
+      out.push({ label:cat.label, value:rounded, negative:!!cat.negative });
+    }
+    return out;
+  }
+
+  /* The one-line stat sentence, for copy rather than for a table row:
+     "18 car, 96 rush yds, 1 rush td". Empty when the provider published no
+     raw splits. */
+  function statSentence(cats){
+    if(!Array.isArray(cats) || !cats.length) return '';
+    return cats.map(c=> c.value + ' ' + c.label.toLowerCase()).join(', ');
+  }
+
+  /* ---- 4. THE WEEK-SCOPED ROSTER INDEX -------------------------------- */
+
+  /* Why week-scoped rather than "latest", which is what FSNArticles' ownership
+     index is: a story about Week 4 has to report Week 4's lineup and Week 4's
+     owner. A player traded in Week 6 belongs to the manager who started him in
+     the week the article is about, not to whoever holds him today. */
+
+  const rosterCache = new Map();
+  const ROSTER_CACHE_LIMIT = 8;
+
+  /* A signature that changes exactly when the answer could change: a different
+     league, a different season, or more roster entries in the payload. */
+  function rosterSignature(data, week){
+    const schedule = (data && Array.isArray(data.schedule)) ? data.schedule : [];
+    let entries = 0;
+    for(let i = 0; i < schedule.length; i++){
+      const game = schedule[i];
+      entries += rosterEntriesOf(game && game.home).length + rosterEntriesOf(game && game.away).length;
+    }
+    return leagueScopeToken() + '|' + String((data && data.seasonId) || '') + '|' +
+      (num(week) || 0) + '|' + schedule.length + '|' + entries;
+  }
+
+  function buildRoster(week){
+    const data = LeagueData.espnData;
+    const index = {
+      byName:Object.create(null), byTeam:Object.create(null),
+      rows:[], count:0, week:num(week) || 0,
+    };
+    if(!data || !Array.isArray(data.schedule) || !data.schedule.length) return index;
+
+    const teams = LeagueData.getTeams();
+    const teamById = Object.create(null);
+    teams.forEach(t=>{ if(t && t.id != null) teamById[String(t.id)] = t; });
+
+    /* Which week's lineups to actually read.
+
+       Normally the week asked for. But a week can legitimately carry no
+       lineups at all — a pre-week fetch, an upcoming week the provider has not
+       populated, an archive row that only stores totals — and reporting an
+       empty league for it would strip the deep block off every card in that
+       week. So the fallback is the LATEST week in the payload that does carry
+       lineups, which is the most recent thing actually known.
+
+       Never the earliest. Serving Week 1's box score under a Week 12 headline
+       is exactly the stale-number failure this engine's exact week match
+       exists to prevent, and it is no more acceptable coming from a fallback
+       than from a loose lookup. */
+    const requested = num(week);
+    const weekHasLineups = (wk)=> data.schedule.some(g=>
+      Number(g && g.matchupPeriodId) === wk &&
+      (rosterEntriesOf(g && g.home).length || rosterEntriesOf(g && g.away).length));
+    let wanted = (requested != null && weekHasLineups(requested)) ? requested : null;
+    if(wanted == null){
+      let latest = null;
+      for(let i = 0; i < data.schedule.length; i++){
+        const wk = Number(data.schedule[i] && data.schedule[i].matchupPeriodId) || 0;
+        if(!wk || (latest != null && wk <= latest)) continue;
+        if(weekHasLineups(wk)) latest = wk;
+      }
+      wanted = latest;
+    }
+    /* No week anywhere in the payload carries a lineup. An empty index is the
+       honest answer; every caller degrades to omitting its section. */
+    if(wanted == null) return index;
+
+    const absorb = (side, gameWeek)=>{
+      if(!side || side.teamId == null) return;
+      const teamKey = String(side.teamId);
+      const team = teamById[teamKey] || null;
+      const owner = {
+        teamId: teamKey,
+        teamName: (team && team.name) || ('Team ' + teamKey),
+        manager: (team && team.owner) || '',
+        abbrev: (team && team.abbrev) || '',
+        logo: (team && team.logo) || '',
+      };
+      const entries = rosterEntriesOf(side);
+      for(let e = 0; e < entries.length; e++){
+        const entry = entries[e];
+        const player = playerOf(entry);
+        if(!player) continue;
+        const name = String(player.fullName || player.name ||
+          [player.firstName, player.lastName].filter(Boolean).join(' ') || '').trim();
+        const key = compactName(name);
+        if(!key) continue;
+        /* First side wins on a duplicate and sides are walked in schedule
+           order, so the answer cannot flip between two repaints. */
+        if(index.byName[key]) continue;
+        const cats = statCategories(rawWeekStats(player, gameWeek));
+        const slotId = num(entry && entry.lineupSlotId);
+        const row = {
+          id: player.id != null ? player.id : null,
+          name: name,
+          key: key,
+          pos: POS_BY_ID[player.defaultPositionId] || '',
+          proTeam: PRO_TEAM_BY_ID[player.proTeamId] || '',
+          designation: String(player.injuryStatus || (player.injured ? 'QUESTIONABLE' : 'ACTIVE')).toUpperCase(),
+          bench: slotId != null ? !!BENCH_SLOT_IDS[slotId] : false,
+          points: entryPoints(entry, gameWeek),
+          cats: cats,
+          statLine: statSentence(cats),
+          week: gameWeek,
+          owner: owner,
+        };
+        index.byName[key] = row;
+        index.rows.push(row);
+        (index.byTeam[teamKey] || (index.byTeam[teamKey] = [])).push(row);
+        index.count++;
+      }
+    };
+
+    index.week = wanted;
+    for(let i = 0; i < data.schedule.length; i++){
+      const game = data.schedule[i];
+      const gameWeek = Number(game && game.matchupPeriodId) || 0;
+      if(gameWeek !== wanted) continue;
+      absorb(game && game.home, gameWeek);
+      absorb(game && game.away, gameWeek);
+    }
+    return index;
+  }
+
+  /* The week's roster, memoized. The cache is keyed on the week AND on the
+     payload signature, so a league switch or a fresh fetch can never serve one
+     league's lineup for another's. */
+  function roster(week){
+    const key = String(num(week) || 0);
+    const signature = rosterSignature(LeagueData.espnData, week);
+    const hit = rosterCache.get(key);
+    if(hit && hit.signature === signature) return hit.index;
+    let index;
+    try{
+      index = buildRoster(week);
+    }catch(err){
+      console.error('[LocalDesk] building the Week ' + (num(week) || 0) + ' roster index failed for scope ' +
+        leagueScopeToken() + '; localized copy and deep stat blocks are omitted for this paint.', err);
+      index = {
+        byName:Object.create(null), byTeam:Object.create(null),
+        rows:[], count:0, week:num(week) || 0,
+      };
+    }
+    if(rosterCache.size >= ROSTER_CACHE_LIMIT) rosterCache.clear();
+    rosterCache.set(key, { signature, index });
+    return index;
+  }
+
+  /* One player's full week, by name. Null when he is not rostered in this
+     league, which for a waiver piece is itself the useful answer. */
+  function statLine(name, week){
+    const key = compactName(name);
+    if(!key) return null;
+    return roster(week).byName[key] || null;
+  }
+
+  function ownerOfPlayer(name, week){
+    const row = statLine(name, week);
+    return row ? row.owner : null;
+  }
+
+  function managerOf(teamId){
+    if(teamId == null) return null;
+    let teams = [];
+    try{
+      teams = LeagueData.getTeams() || [];
+    }catch(err){
+      console.error('[LocalDesk] the team list could not be read while resolving the manager for team ' +
+        teamId + '.', err);
+      return null;
+    }
+    const key = String(teamId);
+    const team = teams.find(t=> t && String(t.id) === key) || null;
+    if(!team) return null;
+    return {
+      teamId: key,
+      teamName: team.name || ('Team ' + key),
+      manager: team.owner || '',
+      abbrev: team.abbrev || '',
+      logo: team.logo || '',
+    };
+  }
+
+  /* The team id behind whatever a card already knows about its subject: a raw
+     id, a franchise name, an abbreviation, or a manager's name. Every News Desk
+     card carries a crest (`{ name, logo }`) even when it carries no teamId, and
+     that crest name is the hook that lets a power-rankings or matchup-preview
+     card - which names teams rather than players - still report real lineups
+     and a real head-to-head. Exact matches only: a fuzzy team match would
+     attribute one manager's roster to another. */
+  function teamIdFor(value){
+    const raw = String(value == null ? '' : value).trim();
+    if(!raw) return null;
+    let teams = [];
+    try{
+      teams = LeagueData.getTeams() || [];
+    }catch(err){
+      console.error('[LocalDesk] the team list could not be read while resolving "' + raw + '".', err);
+      return null;
+    }
+    const byId = teams.find(t=> t && String(t.id) === raw);
+    if(byId) return String(byId.id);
+    const needle = normalizeName(raw);
+    if(!needle) return null;
+    const match = teams.find(t=> t && (
+      normalizeName(t.name) === needle ||
+      normalizeName(t.abbrev) === needle ||
+      normalizeName(t.owner) === needle));
+    return match ? String(match.id) : null;
+  }
+
+  /* How a manager is named in copy. The manager's own name when the league
+     publishes one, because that is what league-mates call each other; the
+     franchise name is the fallback, never a bare team id. */
+  function managerName(owner){
+    if(!owner) return '';
+    const manager = String(owner.manager || '').trim();
+    if(manager) return manager;
+    return String(owner.teamName || '').trim();
+  }
+
+  /* The possessive form the mandated phrasing is built on — "Dave's", but a
+     name already ending in s keeps the bare apostrophe. */
+  function possessive(name){
+    const label = String(name || '').trim();
+    if(!label) return '';
+    return /s$/i.test(label) ? label + '’' : label + '’s';
+  }
+
+  /* "Dave's Bijan Robinson" — the single most-used construction in this file,
+     and the whole point of the rewrite. */
+  function ownedPlayerPhrase(row){
+    if(!row) return '';
+    const mgr = possessive(managerName(row.owner));
+    return mgr ? (mgr + ' ' + row.name) : row.name;
+  }
+
+  /* ---- 5. THE LIVE HEAD-TO-HEAD -------------------------------------- */
+
+  /* Where the real-time battle stands, for the matchup a given team is in.
+
+     Routed through LeagueData.getWeekMatchups() rather than read off the
+     schedule directly, because that is where the corrected score sourcing
+     lives: ESPN holds totalPoints at 0 during a live week and streams the
+     running actual in totalPointsLive, and reading the wrong one is what puts
+     a 0.0 next to a manager who has 84 points on the board.
+
+     `state` is honest about all three cases. FINAL comes from the platform's
+     own finalization stamp (scheduleGameFinal, global to this block) and NOT
+     from the presence of a score — reading a live partial as a final is what
+     promotes a team to 1-0 on a Sunday afternoon. */
+  /* The week's scoreboard, memoized on the same payload signature the roster
+     index uses. The timeline paints twenty-odd cards in one pass and each one
+     asks for its own head-to-head; getWeekMatchups() re-derives the live
+     projection for every side on every call, so calling it per card is the
+     difference between a paint and a stall. */
+  const scoreboardCache = new Map();
+  const SCOREBOARD_CACHE_LIMIT = 8;
+
+  function weekScoreboard(week){
+    const key = String(num(week) || 0);
+    const signature = rosterSignature(LeagueData.espnData, week);
+    const hit = scoreboardCache.get(key);
+    if(hit && hit.signature === signature) return hit.games;
+    let games;
+    try{
+      games = LeagueData.getWeekMatchups(week) || [];
+    }catch(err){
+      console.error('[LocalDesk] the Week ' + (num(week) || 0) + ' scoreboard could not be read for scope ' +
+        leagueScopeToken() + '; live score blocks are omitted for this paint.', err);
+      games = [];
+    }
+    if(scoreboardCache.size >= SCOREBOARD_CACHE_LIMIT) scoreboardCache.clear();
+    scoreboardCache.set(key, { signature, games });
+    return games;
+  }
+
+  function liveScore(teamId, week){
+    if(teamId == null) return null;
+    const games = weekScoreboard(week);
+    if(!games.length) return null;
+    const key = String(teamId);
+    const game = games.find(g=> g &&
+      ((g.homeTeam && String(g.homeTeam.id) === key) || (g.awayTeam && String(g.awayTeam.id) === key)));
+    if(!game) return null;
+
+    const side = (team, scoreText, projectedText)=>({
+      teamId: team ? String(team.id) : '',
+      teamName: (team && team.name) || '',
+      manager: (team && team.owner) || '',
+      abbrev: (team && team.abbrev) || '',
+      logo: (team && team.logo) || '',
+      record: (team && team.record) || '',
+      score: num(scoreText) || 0,
+      projected: num(projectedText),
+    });
+
+    const home = side(game.homeTeam, game.homeActual, game.homeLiveProjected || game.homeProjected);
+    const away = side(game.awayTeam, game.awayActual, game.awayLiveProjected || game.awayProjected);
+    const final = scheduleGameFinal(game.raw);
+    const started = home.score > 0 || away.score > 0;
+    const state = final ? 'FINAL' : (started ? 'LIVE' : 'PREGAME');
+
+    const us = home.teamId === key ? home : away;
+    const them = us === home ? away : home;
+    const margin = Math.round((us.score - them.score) * 10) / 10;
+
+    return {
+      week: num(game.matchupPeriodId) || num(week) || 0,
+      state: state,
+      live: state === 'LIVE',
+      final: final,
+      started: started,
+      home: home,
+      away: away,
+      us: us,
+      them: them,
+      margin: margin,                        // signed, from `us`
+      leader: margin > 0 ? us : (margin < 0 ? them : null),
+      tied: margin === 0 && started,
+    };
+  }
+
+  /* ---- 6. WHO IS THIS ITEM ACTUALLY ABOUT? --------------------------- */
+
+  /* The players driving the narrative, found by reading the item's own prose
+     against this league's rosters.
+
+     The scan iterates the ROSTER (about two hundred names) and looks for each
+     in the text, not the other way round. That bounds the work, and it means a
+     common word can never be promoted to a player: the only things that can
+     match are men somebody in this league actually started or benched.
+
+     Ordering is by first mention, so the lead subject of the copy is the lead
+     subject of the data block. Deterministic: the same item against the same
+     payload always produces the same list in the same order. */
+  function subjectsOf(texts, week, limit){
+    const cap = num(limit) || 5;
+    const index = roster(week);
+    if(!index.count) return [];
+
+    const joined = (Array.isArray(texts) ? texts : [texts]).map(plainText).join(' | ');
+    const spaced = ' ' + normalizeName(joined) + ' ';
+    const compact = compactName(joined);
+    if(!compact) return [];
+
+    const found = [];
+    const rows = index.rows;
+    for(let i = 0; i < rows.length; i++){
+      const row = rows[i];
+      /* Word-boundary hit on the spaced form first — that is the exact,
+         false-positive-free match. The compact form is the fallback that lets
+         "A.J. Brown" in the copy find "AJ Brown" on the roster. */
+      let at = spaced.indexOf(' ' + normalizeName(row.name) + ' ');
+      if(at === -1){
+        const compactAt = compact.indexOf(row.key);
+        if(compactAt === -1) continue;
+        /* An offset into a different projection of the same string, so it is
+           used only for ORDERING and never for slicing. Scaled so the two
+           projections sort against each other consistently. */
+        at = Math.round(compactAt * (spaced.length / Math.max(1, compact.length)));
+      }
+      found.push({ at:at, row:row });
+    }
+    found.sort((a, b)=> (a.at - b.at) || (a.row.key < b.row.key ? -1 : 1));
+    return found.slice(0, cap).map(f=> f.row);
+  }
+
+  /* The text an article is made of, for the scan above. Headline, dek, body,
+     and the labels on its own By-the-Numbers rows — a generator often names
+     the player only in the stat block. */
+  function articleTexts(article){
+    if(!article) return [];
+    const out = [article.headline, article.dek];
+    if(Array.isArray(article.paragraphs)) out.push.apply(out, article.paragraphs);
+    const numbers = article.numbers;
+    if(numbers){
+      if(Array.isArray(numbers.rows)) numbers.rows.forEach(r=>{ if(r) out.push(r.label, r.note); });
+      if(numbers.table && Array.isArray(numbers.table.rows)){
+        numbers.table.rows.forEach(row=>{ if(Array.isArray(row)) out.push.apply(out, row); });
+      }
+    }
+    return out.filter(Boolean).map(String);
+  }
+
+  /* A team's top scorers in a week, starters only. This is the fallback
+     subject list for an item whose copy names no rostered player — a power
+     rankings piece, a standings note — so the data block still has something
+     real to say about the team the card is crested with. */
+  function topStartersFor(teamId, week, limit){
+    const cap = num(limit) || 3;
+    const rows = roster(week).byTeam[String(teamId)] || [];
+    return rows
+      .filter(r=> !r.bench && r.points != null)
+      .sort((a, b)=> (b.points - a.points) || (a.key < b.key ? -1 : 1))
+      .slice(0, cap);
+  }
+
+  /* Who actually gains from a player's absence: the rostered players who share
+     his NFL team. This is the honest answer to "who benefits", and it is the
+     one a national column cannot give — it is scoped to the rosters that
+     matter. Returns nothing rather than a guess when the payload carries no
+     pro team for the player. */
+  function beneficiariesOf(row, week, limit){
+    if(!row || !row.proTeam || row.proTeam === 'FA') return [];
+    const cap = num(limit) || 3;
+    return roster(week).rows
+      .filter(r=> r.key !== row.key && r.proTeam === row.proTeam)
+      .sort((a, b)=> ((b.points || 0) - (a.points || 0)) || (a.key < b.key ? -1 : 1))
+      .slice(0, cap);
+  }
+
+  /* ---- 7. THE COPY ---------------------------------------------------- */
+
+  /* Every line below is written from inside the league. The subject of a
+     sentence is a MANAGER, never "fantasy managers" or "the industry"; the
+     stakes are this week's head-to-head, never a national depth chart. That is
+     the whole specification: strip the filler, name the owner, quote the
+     number.
+
+     Pools exist only where a sentence needs rhythm across a long feed. Every
+     draw is seeded off stable coordinates, so the line never changes under a
+     reader who reloads. */
+
+  const BENEFIT_OPENERS = [
+    'here’s who actually benefits',
+    'here’s who actually gains',
+    'here’s where it actually lands in this league',
+  ];
+  const SOLO_BENEFIT_TAILS = [
+    'and nobody else in this league has a claim on it',
+    'and that is the whole list in this league',
+    'and no other roster here is positioned to take a share',
+  ];
+
+  /* The mandated injuries/waivers structure. Two beneficiaries when the league
+     has two, one when it has one, and the designation is always the one the
+     platform actually stamped. */
+  function benefitLine(trigger, beneficiaries, seed){
+    if(!trigger) return '';
+    const rows = (beneficiaries || []).filter(Boolean);
+    if(!rows.length) return '';
+    const status = String(trigger.designation || '').toUpperCase();
+    const designation = DESIGNATION_LABEL[status] ||
+      (status && status !== 'ACTIVE' ? status.toLowerCase().replace(/_/g, ' ') : '');
+    const head = possessive(trigger.name) + ' ' + (designation || 'status') +
+      ' — ' + pick(BENEFIT_OPENERS, seed + ':opener') + ':';
+    if(rows.length === 1){
+      return head + ' ' + ownedPlayerPhrase(rows[0]) + ' is the one who gets it, ' +
+        pick(SOLO_BENEFIT_TAILS, seed + ':solo') + '.';
+    }
+    return head + ' while people may think ' + ownedPlayerPhrase(rows[0]) +
+      ' benefits, that’s not the only thing; ' + ownedPlayerPhrase(rows[1]) + ' also benefits.';
+  }
+
+  /* The mandated live/recent-game structure. Which half of it gets used is
+     decided by the scoreboard, not by a pool: a manager who is ahead gets the
+     "giving them the lead" clause and a manager who is behind gets the honest
+     "still behind by X" one. */
+  function gameLine(row, score, slot, seed){
+    if(!row) return '';
+    const windowInfo = WINDOW_BY_SLOT[String(slot || '')] || null;
+    const when = windowInfo ? windowInfo.when : 'On this week’s board';
+    const points = row.points == null ? null : Math.round(row.points * 10) / 10;
+    const effort = points == null ? '' : n1(points) + ' fantasy points';
+    const detail = row.statLine ? ' on ' + row.statLine : '';
+    const owned = ownedPlayerPhrase(row);
+
+    /* No head-to-head to hang it on yet: still hyper-local, still names the
+       owner, just without a score clause the payload cannot support. */
+    if(!score || !score.us || !score.them || score.state === 'PREGAME'){
+      if(!points && !detail) return '';
+      return when + ', ' + owned + ' is the name that decides their week' +
+        (points ? ' — ' + effort + detail : ' —' + detail) + '.';
+    }
+
+    const opponent = managerName(score.them) || score.them.teamName || 'their opponent';
+    const verb = points != null && points >= 20 ? 'went off for ' + effort
+      : (effort ? 'put up ' + effort : 'is on the board');
+    const body = when + ', ' + owned + ' ' + verb + detail;
+
+    if(score.margin > 0){
+      return body + ', ' + (score.final ? 'handing them the win over ' : 'giving them the lead against ') +
+        opponent + '.';
+    }
+    if(score.margin < 0){
+      return body + ', leaving them ' + (score.final ? 'short of ' : 'still behind ') + opponent +
+        ' by ' + n1(Math.abs(score.margin)) + ' points despite ' + possessive(row.name) + ' effort.';
+    }
+    return body + ', and the matchup against ' + opponent + ' is dead level at ' +
+      n1(score.us.score) + '.';
+  }
+
+  /* ---- 8. THE PUBLIC PAYLOAD ------------------------------------------ */
+
+  /* Everything a card needs, for one item, in one call.
+
+     `subject` may be a News Desk article object (the timeline and the reader)
+     or a light descriptor built from an ingested news item (the desk wire):
+
+       { id, week, slot, season, topic, teamId, texts:[...], names:[...] }
+
+     Returns null when the league payload cannot support a single real number,
+     so the renderer omits the section outright rather than painting an empty
+     frame. */
+  function deepData(subject){
+    if(!subject) return null;
+
+    /* Resolve the week ONCE, through the roster index, and use that single
+       answer for the stat lines, the head-to-head and the printed label.
+
+       The subject's own week can point at a week the payload has no lineups
+       for (an upcoming week, a sparse archive row, or a wire item whose
+       context has not settled on a week yet), and roster() answers those with
+       the latest week it really knows. If the label and the scoreboard then
+       kept using the requested week, the section would print "Week 9" over a
+       Week 2 box score and no score at all - the header would be lying about
+       numbers that are themselves correct. One resolved week keeps every part
+       of the block describing the same week. */
+    const requestedWeek = num(subject.week) || num(subject.matchupPeriodId) || 0;
+    const week = roster(requestedWeek).week || requestedWeek;
+    const slot = String(subject.slot || '');
+    const texts = (Array.isArray(subject.texts) && subject.texts.length)
+      ? subject.texts
+      : articleTexts(subject);
+
+    /* Named subjects (an ingested item's matched entities) take precedence
+       over a prose scan, because the build script already resolved them. */
+    let players = [];
+    if(Array.isArray(subject.names) && subject.names.length){
+      const seen = Object.create(null);
+      subject.names.forEach(name=>{
+        const row = statLine(name, week);
+        if(!row || seen[row.key]) return;
+        seen[row.key] = true;
+        players.push(row);
+      });
+    }
+    if(!players.length) players = subjectsOf(texts, week, 5);
+
+    /* Nothing in the copy touched a roster. That is the normal case for a
+       power-rankings or matchup-preview card, which names teams rather than
+       players - so fall back to the real top scorers on BOTH sides of that
+       team's head-to-head. The reader then gets who is actually deciding the
+       matchup the card is about, which is the question those cards raise and
+       never answer. Still this league's own data, still read not inferred. */
+    const teamId = subject.teamId != null ? subject.teamId : teamIdFor(subject.crest);
+    if(!players.length && teamId != null){
+      players = topStartersFor(teamId, week, 2);
+      const game = liveScore(teamId, week);
+      const opponentId = game && game.them && game.them.teamId;
+      if(opponentId) players = players.concat(topStartersFor(opponentId, week, 2));
+    }
+    /* Keep the section honest: a player with neither points nor splits would
+       add a row of dashes and nothing else. */
+    players = players.filter(r=> r && (r.points != null || (r.cats && r.cats.length)));
+
+    /* One live-score card per distinct matchup the subjects are scoring into,
+       plus the item's own team when it is not already covered. Two at most —
+       a third is noise on a phone. */
+    const scores = [];
+    const seenGames = Object.create(null);
+    const addScore = (id)=>{
+      if(id == null || scores.length >= 2) return;
+      const score = liveScore(id, week);
+      if(!score) return;
+      const gameKey = [score.home.teamId, score.away.teamId].sort().join('v');
+      if(seenGames[gameKey]) return;
+      seenGames[gameKey] = true;
+      scores.push(score);
+    };
+    players.forEach(r=> addScore(r.owner && r.owner.teamId));
+    addScore(teamId);
+
+    if(!players.length && !scores.length) return null;
+
+    /* Which mandated phrasing fits, decided by what KIND of item this is
+       rather than by what happens to be on the roster. A waiver run, an injury
+       wire or a breaking item is a "who benefits" story and gets the benefits
+       structure; a recap, a primer, a power board or a matchup preview is a
+       "where does this leave the week" story and gets the game structure.
+
+       Routing on the item and not on the data matters in a long feed: reading
+       "X is ruled out, here's who benefits" off every card that happens to
+       crest a team with an injured starter is the national-column tic this
+       whole change exists to remove. */
+    const seed = leagueScopeToken() + '|' + (subject.season || '') + '|' + week + '|' +
+      (subject.id || slot || 'item');
+    const lead = players[0] || null;
+    const isWaiverish = slot === 'waivers' || slot === 'waiver' || slot === 'injury' ||
+      slot === 'roster' || subject.topic === 'waivers' || subject.topic === 'breaking';
+    const flagged = players.find(r=> r.designation && r.designation !== 'ACTIVE') || null;
+
+    let local = '';
+    try{
+      if(isWaiverish && flagged){
+        local = benefitLine(flagged, beneficiariesOf(flagged, week, 3), seed);
+      }
+      if(!local && isWaiverish && lead){
+        local = benefitLine(lead, beneficiariesOf(lead, week, 3).concat(players.slice(1)), seed);
+      }
+      if(!local && lead){
+        local = gameLine(lead, liveScore(lead.owner && lead.owner.teamId, week), slot, seed);
+      }
+    }catch(err){
+      console.error('[LocalDesk] localized copy failed for item ' + (subject.id || slot || 'unknown') +
+        ' in Week ' + week + '; the deep stat block still renders.', err);
+      local = '';
+    }
+
+    return {
+      week: week,
+      slot: slot,
+      local: local,
+      players: players,
+      scores: scores,
+      /* True when at least one subject's provider published raw splits, so the
+         renderer can say "fantasy points only" instead of looking broken. */
+      hasSplits: players.some(r=> r.cats && r.cats.length),
+      seed: seed,
+    };
+  }
+
+  /* The desk wire's localized lede. FSNArticles has already matched the
+     ingested item's entities against this league; this turns that match list
+     into the sentence an inside analyst would actually open with, and returns
+     '' when nothing in the piece touches the league — at which point the
+     caller keeps the published excerpt, because an honest national blurb beats
+     a manufactured local one. */
+  function localizeWire(view, slot, dateKey){
+    if(!view || !view.post) return '';
+    const post = view.post;
+    const matched = (view.matches || []).filter(m=> m && m.owner);
+    if(!matched.length) return '';
+
+    const week = num(view.context && view.context.currentWeek) || 0;
+    /* Thursday publishes ahead of TNF and Friday publishes after it, and the
+       roster slot covers both days — so the day the payload was routed on is
+       what decides the tense. It is a calendar day, which is already this
+       engine's only clock-shaped input. */
+    let effectiveSlot = String((slot && slot.id) || slot || '');
+    const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dateKey || ''));
+    if(effectiveSlot === 'roster' && parts){
+      const dow = new Date(Date.UTC(Number(parts[1]), Number(parts[2]) - 1, Number(parts[3]))).getUTCDay();
+      if(dow === 4) effectiveSlot = 'primer';    // Thursday, pre-kickoff
+    }
+
+    const data = deepData({
+      id: post.slug,
+      week: week,
+      slot: effectiveSlot,
+      season: post.publishDate || '',
+      names: matched.map(m=> m.name),
+      texts: [post.title, post.excerpt],
+    });
+    return (data && data.local) || '';
+  }
+
+  return {
+    /* copy */
+    localizeWire,
+    benefitLine,
+    gameLine,
+    possessive,
+    managerName,
+    ownedPlayerPhrase,
+    /* data */
+    deepData,
+    statLine,
+    statCategories,
+    statSentence,
+    liveScore,
+    ownerOfPlayer,
+    managerOf,
+    teamIdFor,
+    roster,
+    subjectsOf,
+    articleTexts,
+    topStartersFor,
+    beneficiariesOf,
+    /* seams */
+    normalizeName,
+    compactName,
+    hash,
+    DESIGNATION_LABEL,
+    WINDOW_BY_SLOT,
+    STAT_CATEGORIES,
   };
 })();
 </script>
@@ -28749,6 +29833,208 @@ function livePlayoffBracketHtml(board){
   </div>`;
 }
 
+/* ============================================================
+   THE LOCAL DESK BLOCK — deep stats and the live head-to-head
+
+   The section that hangs BELOW the copy and below the By-the-Numbers box on
+   every article and every timeline card. Three parts, in this order:
+
+     1. THE LOCAL READ — one sentence in the league's own voice, naming the
+        manager who owns the player the item is about. FSNLocalDesk (block 1)
+        writes it from the mandated phrasing structures; this layer only paints
+        it.
+     2. THE PLAYERS — for each player driving the narrative: the exact stats
+        (yardage, touchdowns, carries, receptions) and the fantasy points those
+        stats actually produced.
+     3. THE LIVE HEAD-TO-HEAD — where the real-time battle stands in the league
+        matchup those points are scoring into, so a manager can see the state
+        of their week without leaving the card.
+
+   WHY IT IS HERE AND NOT IN BLOCK 1. It needs this IIFE's closure — esc(),
+   n1(), effectiveWeek(), uiActiveSeasonYear(). The DATA all comes from
+   FSNLocalDesk, which is global in block 1 precisely so this renderer can
+   reach it; nothing in this function computes a number.
+
+   RULE 2. Strictly additive. It reads a finished article and appends a new
+   section beneath it. No headline, dek, paragraph, quote, seed, pool or
+   numbers row is read for anything other than finding which players the story
+   is about, and none is modified. An article that had no deep data yesterday
+   renders exactly as it did.
+
+   RULE 3. The whole thing is fenced. A throw anywhere inside is logged with
+   the article key and degrades to NO section — never to a half-painted frame,
+   and never to a "hit a snag" screen, because the card above it is already
+   complete without this.
+
+   NO OUTBOUND LINKS. Everything renders inline. There is no anchor, no href
+   and no external asset anywhere in this section by design.
+============================================================ */
+
+/* The descriptor FSNLocalDesk reads. Every field already exists on the article
+   — this only fills in the week and season an older card may have left null,
+   from the view the reader is actually looking at. */
+function localDeskSubject(a){
+  if(!a) return null;
+  return {
+    id: a.articleKey || a.id || '',
+    week: a.week != null ? a.week : effectiveWeek(),
+    season: a.season != null ? a.season : uiActiveSeasonYear(),
+    slot: a.slot || '',
+    topic: a.topic || '',
+    teamId: a.teamId != null ? a.teamId : null,
+    /* Every card carries a crest even when it carries no teamId, so this is
+       what lets a matchup-preview or power-rankings card resolve the team it
+       is about and report both lineups in that head-to-head. */
+    crest: (a.crest && a.crest.name) || '',
+    /* Read-only, and only so the engine can find which rostered players the
+       copy names. Nothing downstream writes back to any of them. */
+    headline: a.headline,
+    dek: a.dek,
+    paragraphs: a.paragraphs,
+    numbers: a.numbers,
+  };
+}
+
+function deepStatCatHtml(cat){
+  return `<span class="ds-cat${cat.negative ? ' neg' : ''}">` +
+    `<b>${esc(String(cat.value))}</b><span>${esc(cat.label)}</span></span>`;
+}
+
+/* One player row: who he is, who in THIS league owns him, what he did, and
+   what it was worth. A provider that publishes no raw splits yields no chips
+   and the fantasy total stands alone rather than showing invented zeroes. */
+function deepStatPlayerHtml(row){
+  const meta = [row.pos, row.proTeam].filter(Boolean).join(' · ');
+  const manager = FSNLocalDesk.managerName(row.owner);
+  const team = (row.owner && row.owner.teamName) || '';
+  const ownership = manager
+    ? (row.bench ? 'Benched by ' : 'Started by ') + manager + (team && team !== manager ? ' · ' + team : '')
+    : (row.bench ? 'On a bench in this league' : 'In a starting lineup in this league');
+  const status = String(row.designation || '').toUpperCase();
+  const flag = (status && status !== 'ACTIVE')
+    ? ` <span class="flag">${esc(String(FSNLocalDesk.DESIGNATION_LABEL[status] ||
+        status.toLowerCase().replace(/_/g, ' ')).toUpperCase())}</span>`
+    : '';
+  const points = row.points == null
+    ? '<span class="u">NO PTS</span>'
+    : `${n1(row.points)}<span class="u">PTS</span>`;
+
+  return `<div class="ds-player">
+    <div class="ds-player-top">
+      <span class="ds-name">${esc(row.name)}${meta ? `<span class="meta">${esc(meta)}</span>` : ''}</span>
+      <span class="ds-pts">${points}</span>
+    </div>
+    <div class="ds-who${row.bench ? ' bench' : ''}">${esc(ownership)}${flag}</div>
+    ${row.cats && row.cats.length ? `<div class="ds-cats">${row.cats.map(deepStatCatHtml).join('')}</div>` : ''}
+  </div>`;
+}
+
+/* The live game score context: the head-to-head these points are scoring
+   into. Labelled as the league matchup, because that is what it is — the app
+   has no NFL scoreboard feed and will not imply one. PREGAME is stated
+   outright rather than dressed up as a 0.0 - 0.0 "live" score. */
+function deepStatScoreHtml(score){
+  const stateLabel = score.final ? 'FINAL' : (score.live ? '● LIVE' : 'PREGAME');
+  const stateClass = score.final ? 'final' : (score.live ? 'live' : '');
+
+  const sideHtml = (side)=>{
+    const leading = !!(score.leader && score.leader.teamId === side.teamId);
+    const label = FSNLocalDesk.managerName(side) || side.teamName || '—';
+    const sub = side.teamName && side.teamName !== label ? ' · ' + side.teamName : '';
+    return `<div class="ds-side" data-lead="${leading ? 'true' : 'false'}">
+      <span class="who">${esc(label + sub)}</span>
+      ${side.projected != null ? `<span class="pj">PROJ ${n1(side.projected)}</span>` : ''}
+      <span class="sc">${n1(side.score)}</span>
+    </div>`;
+  };
+
+  let foot = '';
+  if(!score.started){
+    foot = 'Nothing on the board yet — kickoff is still ahead of this matchup.';
+  } else if(score.tied){
+    foot = 'Dead level at ' + n1(score.us.score) + '.';
+  } else if(score.leader){
+    const leaderName = FSNLocalDesk.managerName(score.leader) || score.leader.teamName || 'The leader';
+    foot = leaderName + (score.final ? ' won by ' : ' leads by ') +
+      n1(Math.abs(score.margin)) + ' points.';
+  }
+
+  return `<div class="ds-score">
+    <div class="ds-score-head">
+      <span>Week ${esc(String(score.week || ''))} · League Head-to-Head</span>
+      <span class="st ${stateClass}">${stateLabel}</span>
+    </div>
+    ${sideHtml(score.away)}
+    ${sideHtml(score.home)}
+    ${foot ? `<div class="ds-score-foot">${esc(foot)}</div>` : ''}
+  </div>`;
+}
+
+/* The block itself, from an already-computed FSNLocalDesk payload. Split from
+   deepStatBlockHtml() below because two different surfaces feed it: a News
+   Desk article (which describes itself) and an ingested news item from the
+   desk wire (which is described by its matched entities instead).
+
+   `variant` is 'compact' for a feed row — two players, one head-to-head, no
+   footnote — and anything else for the full reader. */
+function deepStatBlockFromData(data, variant, label){
+  const key = label || 'unknown item';
+  if(!data) return '';
+
+  const compact = variant === 'compact';
+  const players = compact ? data.players.slice(0, 2) : data.players;
+  const scores = compact ? data.scores.slice(0, 1) : data.scores;
+  if(!data.local && !players.length && !scores.length) return '';
+
+  try{
+    const localHtml = data.local
+      ? `<div class="ds-local"><span class="tag">The Local Read</span>${esc(data.local)}</div>`
+      : '';
+    const playersHtml = players.map(deepStatPlayerHtml).join('');
+    const scoresHtml = scores.length
+      ? `<div class="ds-scores">${scores.map(deepStatScoreHtml).join('')}</div>`
+      : '';
+    const note = (compact || !players.length) ? '' : (data.hasSplits
+      ? 'Yardage, touchdowns and fantasy points are read from this week’s box score. ' +
+        'Scores shown are the league head-to-head, not the NFL scoreboard.'
+      : 'This league’s provider publishes fantasy totals without raw box-score splits, ' +
+        'so per-category yardage is unavailable for this week. Scores shown are the league head-to-head.');
+
+    return `<section class="deepstat${compact ? ' ds-compact' : ''}">
+      <div class="ds-head">
+        <span style="width:3px;height:14px;border-radius:2px;background:var(--gold);display:inline-block"></span>
+        <h4>Deep Stats · The Local Desk</h4>
+        ${data.week ? `<span class="ds-week">Week ${esc(String(data.week))}</span>` : ''}
+      </div>
+      ${localHtml}
+      ${playersHtml}
+      ${scoresHtml}
+      ${note ? `<div class="ds-note">${esc(note)}</div>` : ''}
+    </section>`;
+  }catch(err){
+    console.error('[LocalDesk] painting the deep stat block failed for ' + key +
+      '; the card renders without it.', err);
+    return '';
+  }
+}
+
+/* The article/timeline entry point: build the descriptor, read the payload,
+   paint. A throw on either side is logged with the article key and degrades to
+   no section at all — the copy and the By-the-Numbers box above it are already
+   a complete card without this. */
+function deepStatBlockHtml(a, variant){
+  const key = (a && (a.articleKey || a.id)) || 'unknown article';
+  let data = null;
+  try{
+    data = FSNLocalDesk.deepData(localDeskSubject(a));
+  }catch(err){
+    console.error('[LocalDesk] the deep stat block failed for ' + key +
+      '; the card renders without it.', err);
+    return '';
+  }
+  return deepStatBlockFromData(data, variant, key);
+}
+
 function articleHtml(a){
   const c = toneVar(a.tone);
   const numbers = a.numbers ? `
@@ -28803,6 +30089,7 @@ function articleHtml(a){
     <div class="px-4 pt-5 article-body">
       ${body}${quoteFallback}
       ${numbers}
+      ${deepStatBlockHtml(a)}
     </div>
 
     <div class="px-4 pt-1">
@@ -29742,6 +31029,7 @@ function timelineCard(a){
           </div>
         </div>
         ${a.dek ? `<p class="tl-dek">${a.dek}</p>` : ''}
+        ${deepStatBlockHtml(a, 'compact')}
         <div class="tl-foot">
           <span class="byline truncate">${esc(a.byline)}</span>
           <span class="tl-read">Read ›</span>
@@ -29917,8 +31205,53 @@ function renderDeskWire(){
   const slotLabel = String(slot.label || 'From the Desk').toUpperCase();
   const categoryPill = post.category
     ? `<span class="sep">/</span><span>${esc(post.category)}</span>` : '';
+  /* ---- HYPER-LOCAL COPY ----
+     An ingested item arrives written for a national audience. Whenever it
+     names a player somebody in THIS league actually rosters, the card drops
+     the published blurb entirely and leads with the league's own read on it
+     instead — the manager who owns the player, what the player did, and where
+     that leaves their head-to-head. FSNLocalDesk (block 1) writes the
+     sentence; this only decides which of the two gets painted.
+
+     The published blurb survives exactly one case: an item that touches no
+     roster in this league. There is nothing local to say about it, and an
+     honest national summary beats a manufactured local one. */
+  let localLede = '';
+  try{
+    localLede = FSNLocalDesk.localizeWire(view, slot, snapshot.dateKey);
+  }catch(err){
+    console.error('[LocalDesk] localizing the desk wire item "' + (post.slug || post.title || 'untitled') +
+      '" failed; the card falls back to the published excerpt.', err);
+    localLede = '';
+  }
   const blurb = wireBlurb(post.excerpt);
-  const blurbHtml = blurb ? `<p class="wire-dek-compact">${esc(blurb)}</p>` : '';
+  const blurbHtml = localLede
+    ? `<p class="wire-dek-local"><span class="tag">The Local Read</span>${esc(localLede)}</p>`
+    : (blurb ? `<p class="wire-dek-compact">${esc(blurb)}</p>` : '');
+
+  /* The deep data block for an ingested item. Its subjects are the entities
+     FSNArticles already matched against the rosters, so the stat lines and the
+     live head-to-head describe the players the piece is actually about rather
+     than whoever the prose scan happens to find. */
+  let wireDeep = '';
+  try{
+    const matched = (view.matches || []).filter(m=> m && m.owner).map(m=> m.name);
+    if(matched.length){
+      wireDeep = deepStatBlockFromData(FSNLocalDesk.deepData({
+        id: post.slug || '',
+        week: (view.context && view.context.currentWeek) || effectiveWeek(),
+        season: post.publishDate || '',
+        slot: slot.id || '',
+        names: matched,
+        texts: [post.title, post.excerpt],
+      }), 'compact', 'desk wire item ' + (post.slug || 'untitled'));
+    }
+  }catch(err){
+    console.error('[LocalDesk] the deep stat block failed for desk wire item "' +
+      (post.slug || post.title || 'untitled') + '"; the card renders without it.', err);
+    wireDeep = '';
+  }
+
   const title = esc(post.title);
   const byline = esc(post.author || 'FSN Desk');
   const readerHref = esc(snapshot.readerUrl);
@@ -29952,6 +31285,7 @@ function renderDeskWire(){
         </div>
       </div>
     </a>
+    ${wireDeep}
   </div>`;
   wrap.hidden = false;
 }
