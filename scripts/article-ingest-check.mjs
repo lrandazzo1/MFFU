@@ -475,6 +475,71 @@ try {
   });
   expect(expanded, 'false', 'the body expands on tap');
 
+  /* ---- 6a. Reader-scoped annotation --------------------------------------
+     With no active team set, the tag reads generically ("owned by ...").
+     When the reader claims Team 1 (Alpha) — the team that rosters A.J. Brown
+     and Kenneth Walker — the same articles have to reframe those mentions as
+     "on your roster". When they claim Team 3 (Charlie), whose Week 2 opponent
+     is Team 1, the same players have to reframe as "your Week 2 opponent". */
+  const readerScoped = await page.evaluate(async () => {
+    const A = window.FSNArticles;
+
+    const collect = ()=>{
+      const view = A.annotated();
+      if(!view) return { tags:[], roles:[], context:null };
+      const wrap = document.getElementById('deskWireWrap');
+      const tags = wrap
+        ? Array.prototype.slice.call(wrap.querySelectorAll('.wire-own')).map(n=> n.textContent.trim())
+        : [];
+      const classes = wrap
+        ? Array.prototype.slice.call(wrap.querySelectorAll('.wire-own')).map(n=> n.className)
+        : [];
+      return {
+        tags, classes,
+        matches: (view.matches || []).map(m=>({ name:m.name, role:m.role, tag:m.tag })),
+        context: view.context || null,
+      };
+    };
+
+    const runFor = async (teamId)=>{
+      window.FSNStore.set('fsn_active_team_id', teamId);
+      A.refresh({ force:true });
+      // wait for repaint
+      await new Promise(r=> setTimeout(r, 300));
+      return collect();
+    };
+
+    return {
+      self: await runFor('1'),
+      opponent: await runFor('3'),
+      cleared: await runFor(''),
+    };
+  });
+
+  const selfReadsLikeYours = readerScoped.self.tags.some(t=> /on your roster/i.test(t));
+  if (selfReadsLikeYours) pass('reader on Team 1 sees "on your roster" tag: ' + JSON.stringify(readerScoped.self.tags));
+  else fail('reader on Team 1 did not see the personalized tag: ' + JSON.stringify(readerScoped.self.tags));
+
+  const selfHasClass = (readerScoped.self.classes || []).some(c=> /wire-own-self/.test(c));
+  if (selfHasClass) pass('reader-owned tag carries wire-own-self class');
+  else fail('reader-owned tag missing wire-own-self class: ' + JSON.stringify(readerScoped.self.classes));
+
+  const oppReadsAsOpp = readerScoped.opponent.tags.some(t=> /your week 2 opponent/i.test(t));
+  if (oppReadsAsOpp) pass('reader on Team 3 sees "your Week 2 opponent" tag: ' + JSON.stringify(readerScoped.opponent.tags));
+  else fail('reader on Team 3 did not see the opponent tag: ' + JSON.stringify(readerScoped.opponent.tags));
+
+  const oppHasClass = (readerScoped.opponent.classes || []).some(c=> /wire-own-opponent/.test(c));
+  if (oppHasClass) pass('opponent tag carries wire-own-opponent class');
+  else fail('opponent tag missing wire-own-opponent class: ' + JSON.stringify(readerScoped.opponent.classes));
+
+  const clearedReadsGeneric = readerScoped.cleared.tags.some(t=> /owned by/i.test(t));
+  if (clearedReadsGeneric) pass('cleared reader falls back to "owned by" tag: ' + JSON.stringify(readerScoped.cleared.tags));
+  else fail('cleared reader did not fall back to the neutral tag: ' + JSON.stringify(readerScoped.cleared.tags));
+
+  const contextExposed = readerScoped.self.context && readerScoped.self.context.activeTeamId === '1';
+  if (contextExposed) pass('annotated().context surfaces the reader\'s active team id');
+  else fail('annotated().context did not surface the reader team: ' + JSON.stringify(readerScoped.self.context));
+
   /* ---- 6b. The whole pipeline, every day of the week --------------------
      Everything above runs on whatever day this check happens to execute. Here
      the page clock is pinned to each of the next seven calendar days in turn
