@@ -2562,9 +2562,13 @@ body.fsn-dd-lock{ overflow:hidden; }
   letter-spacing:.12em; text-transform:uppercase; color:var(--gold);
 }
 .wire-context .lead.free{ color:var(--dim); }
+.wire-context .lead.self{ color:var(--cyan); }
+.wire-context .lead.opponent{ color:#ff7a7a; }
 .wire-context .player{ color:#fff; font-weight:500; }
 .wire-context .owner{ color:var(--gold); font-weight:400; }
 .wire-context .owner.free{ color:var(--dim); }
+.wire-context .owner.self{ color:var(--cyan); }
+.wire-context .owner.opponent{ color:#ff7a7a; }
 .wire-context .sep{ color:#2f3a4b; }
 .wire-foot-compact{
   display:flex; align-items:center; gap:8px; margin-top:11px; padding-top:9px;
@@ -2627,6 +2631,18 @@ body.fsn-dd-lock{ overflow:hidden; }
   letter-spacing:.1em; text-transform:uppercase; vertical-align:middle;
   color:var(--gold); border:1px solid rgba(255,196,0,.4); background:rgba(255,196,0,.08);
   white-space:nowrap;
+}
+/* Reader-scoped variants. "self" and "opponent" reframe the tag so a national
+   story reads like league news; "other" keeps the neutral gold pill. */
+.wire-own.wire-own-self{
+  color:var(--cyan);
+  border-color:rgba(0,224,255,.5);
+  background:rgba(0,224,255,.1);
+}
+.wire-own.wire-own-opponent{
+  color:#ff7a7a;
+  border-color:rgba(255,122,122,.5);
+  background:rgba(255,122,122,.1);
 }
 .wire-action{
   display:inline-flex; align-items:center; gap:6px; padding:5px 11px;
@@ -9070,6 +9086,93 @@ window.FSNArticles = (function(){
     return manager || team;
   }
 
+  /* The reader's own team profile key, mirrored from block 6's ACTIVE_TEAM_KEY
+     so this engine stays self-contained. If the two ever drift apart the
+     personalized framing degrades to the generic "owned by <manager>" tag —
+     never to an incorrect owner claim — but they should not drift because
+     both point at FSNStore's canonical key. */
+  const READER_ACTIVE_TEAM_KEY = 'fsn_active_team_id';
+
+  /* A reader-scoped view of the league: the team the reader has claimed as
+     their own (via the profile picker in block 6) plus the current-week
+     opponent for each team. Used to enrich the ownership tag so a piece about
+     a rostered player reads as league news — "on your roster", "your Week 5
+     opponent" — rather than a national headline that happens to name someone
+     the reader owns.
+
+     Cheap enough to recompute per paint: it walks the schedule once and reads
+     one localStorage key. Determinism holds because both inputs (the payload
+     and the reader's active-team choice) are already in memory. */
+  function readerContext(){
+    const data = LeagueData.espnData;
+    let activeTeamId = '';
+    try{
+      activeTeamId = String(FSNStore.get(READER_ACTIVE_TEAM_KEY) || '').trim();
+    }catch(err){
+      console.warn('[FSNArticles] reading the reader\'s active-team profile failed; ' +
+        'article annotations will use the generic ownership label.', err);
+      activeTeamId = '';
+    }
+    if(activeTeamId === 'guest') activeTeamId = '';
+
+    const status = (data && data.status) || {};
+    const rawWeek = status.currentMatchupPeriod || status.currentScoringPeriod ||
+                    (data && (data.currentMatchupPeriod || data.scoringPeriodId)) || 0;
+    const currentWeek = Number(rawWeek) || 0;
+
+    const opponentByTeamId = Object.create(null);
+    const schedule = (data && Array.isArray(data.schedule)) ? data.schedule : [];
+    if(currentWeek > 0){
+      for(let i = 0; i < schedule.length; i++){
+        const game = schedule[i];
+        const wk = Number(game && game.matchupPeriodId) || 0;
+        if(wk !== currentWeek) continue;
+        const home = game && game.home;
+        const away = game && game.away;
+        if(home && home.teamId != null && away && away.teamId != null){
+          opponentByTeamId[String(home.teamId)] = String(away.teamId);
+          opponentByTeamId[String(away.teamId)] = String(home.teamId);
+        }
+      }
+    }
+    return { activeTeamId, currentWeek, opponentByTeamId };
+  }
+
+  /* Classify one owner relative to the reader's active team. `self` = the
+     reader owns the player; `opponent` = the reader plays this manager in the
+     current scoring period; `other` = someone else in the league. Used both by
+     the injected in-copy tag and by the roster-context line above the card. */
+  function ownerRole(owner, context){
+    if(!owner || !context || !context.activeTeamId) return 'other';
+    const teamId = String(owner.teamId || '');
+    if(!teamId) return 'other';
+    if(teamId === context.activeTeamId) return 'self';
+    const opp = context.opponentByTeamId[context.activeTeamId] || '';
+    if(opp && teamId === opp) return 'opponent';
+    return 'other';
+  }
+
+  /* The short pill text injected next to the FIRST mention of a rostered
+     player. Different from ownerLabel() because the whole point of this
+     surface is that the reader sees themselves in the copy: their own player
+     gets "on your roster"; a player on this week's opponent's roster gets a
+     Week-N framing; anyone else keeps the neutral "owned by <manager>" tag. */
+  function ownerTagText(owner, context){
+    const label = ownerLabel(owner);
+    if(!label) return '';
+    const role = ownerRole(owner, context);
+    if(role === 'self') return 'on your roster';
+    if(role === 'opponent'){
+      const manager = String(owner.manager || owner.teamName || '').trim();
+      if(context && context.currentWeek > 0){
+        return manager ? ('your week ' + context.currentWeek + ' opponent · ' + manager)
+                       : ('your week ' + context.currentWeek + ' opponent');
+      }
+      return manager ? ('your opponent · ' + manager) : 'your opponent';
+    }
+    return 'owned by ' + label;
+  }
+
   /* ---- 6. ANNOTATION --------------------------------------------------- */
 
   /* The payload is first party, compiled by our own build script from copy we
@@ -9176,11 +9279,12 @@ window.FSNArticles = (function(){
      point: a name can never be matched inside a tag name or an attribute, and
      the markup the desk wrote around it (a <strong>, a link) is preserved
      exactly. Returns true when a tag was placed. */
-  function injectOwnership(root, doc, entity, owner){
+  function injectOwnership(root, doc, entity, owner, context){
     const needle = normalizeName(entity.name).replace(/[^a-z0-9]/g, '');
     if(!needle) return false;
-    const label = ownerLabel(owner);
-    if(!label) return false;
+    const tagText = ownerTagText(owner, context);
+    if(!tagText) return false;
+    const role = ownerRole(owner, context);
 
     const nodes = textNodesOf(root);
     for(let i = 0; i < nodes.length; i++){
@@ -9209,8 +9313,8 @@ window.FSNArticles = (function(){
         const parent = textNode.parentNode;
         if(!parent) break;
         const tag = doc.createElement('span');
-        tag.className = 'wire-own';
-        tag.textContent = 'owned by ' + label;
+        tag.className = 'wire-own' + (role && role !== 'other' ? ' wire-own-' + role : '');
+        tag.textContent = tagText;
         const after = textNode.splitText(rawEnd);
         parent.insertBefore(tag, after);
         return true;
@@ -9223,13 +9327,15 @@ window.FSNArticles = (function(){
 
   /* The reader-facing article: sanitized body, ownership injected, and the
      match list the card prints above the copy. Memoized on the slug plus the
-     roster signature, so switching leagues re-annotates and a plain repaint
-     does not. */
+     roster signature plus the reader's active team, so a manager who switches
+     the profile picker re-annotates while a plain repaint does not. */
   function annotated(){
     const snapshot = current();
     if(snapshot.status !== 'ready' || !snapshot.post) return null;
     const post = snapshot.post;
-    const signature = post.slug + '|' + ownershipSignature(LeagueData.espnData);
+    const context = readerContext();
+    const signature = post.slug + '|' + ownershipSignature(LeagueData.espnData) +
+      '|' + (context.activeTeamId || '-') + '|' + (context.currentWeek || 0);
     if(annotationMemo && annotationMemo.signature === signature) return annotationMemo.value;
 
     let value;
@@ -9241,21 +9347,79 @@ window.FSNArticles = (function(){
 
       const matches = [];
       const unmatched = [];
+      /* De-dup key so a name that appears both in `entities` and in the
+         supplemental body scan is not double-counted. Compact form (lowercase
+         alphanumeric) matches how the injector actually locates a mention. */
+      const seenNames = Object.create(null);
+      const remember = (name)=>{
+        const key = normalizeName(name).replace(/[^a-z0-9]/g, '');
+        if(!key) return false;
+        if(seenNames[key]) return true;
+        seenNames[key] = true;
+        return false;
+      };
+      const buildMatch = (name, position, owner, injected)=>({
+        name, position, owner,
+        label: ownerLabel(owner),
+        role: ownerRole(owner, context),
+        tag: ownerTagText(owner, context),
+        injected,
+      });
+
       for(let i = 0; i < post.entities.length; i++){
         const entity = post.entities[i];
+        if(remember(entity.name)) continue;
         const owner = ownerOf(entity);
         if(owner){
-          const injected = injectOwnership(root, doc, entity, owner);
-          matches.push({ name:entity.name, position:entity.position, owner, label:ownerLabel(owner), injected });
+          const injected = injectOwnership(root, doc, entity, owner, context);
+          matches.push(buildMatch(entity.name, entity.position, owner, injected));
         } else {
           unmatched.push({ name:entity.name, position:entity.position });
         }
       }
-      value = { post, html:root.innerHTML, matches, unmatched, rostered:ownership().count };
+
+      /* Supplemental scan. Some published posts carry a light `entities` array
+         (the build script tags what it recognized) but still name other
+         rostered players in the body — this pass catches those so the reader
+         sees a personalized annotation regardless of whether the build tagged
+         a given mention. Iterating rostered players (not the article text)
+         keeps the scan bounded to the league's ~200 names and reuses the same
+         word-boundary injector, so we cannot false-match a common word. */
+      const index = ownership();
+      const seenTeams = Object.create(null);
+      matches.forEach(m=>{ if(m.owner && m.owner.teamId) seenTeams[m.owner.teamId] = true; });
+      const rosterNames = Object.keys(index.byName || {}).sort();
+      for(let n = 0; n < rosterNames.length; n++){
+        const normalized = rosterNames[n];
+        const owner = index.byName[normalized];
+        if(!owner) continue;
+        /* Skip a player who is already tagged (their exact normalized name is
+           in seenNames). We still allow multiple hits from the same team so a
+           reader-owned team with two players named in the piece gets both
+           surfaced. */
+        const compactKey = normalized.replace(/[^a-z0-9]/g, '');
+        if(!compactKey || seenNames[compactKey]) continue;
+        const injected = injectOwnership(root, doc, { name:normalized }, owner, context);
+        if(!injected) continue;
+        seenNames[compactKey] = true;
+        matches.push(buildMatch(normalized, '', owner, true));
+      }
+
+      /* Sort matches so the personalized ones lead: the reader's own players
+         first, then their week-N opponent's, then everyone else. Ordering is
+         stable on injection order within each bucket, which itself is stable
+         (entities in payload order, then rostered names alphabetically). */
+      const roleRank = { self:0, opponent:1, other:2 };
+      matches.sort((a, b)=> (roleRank[a.role] || 2) - (roleRank[b.role] || 2));
+
+      value = {
+        post, html:root.innerHTML, matches, unmatched,
+        rostered:index.count, context,
+      };
     }catch(err){
       console.error('[FSNArticles] annotating "' + post.slug + '" for scope ' + leagueScopeToken() +
         ' failed; the card falls back to the excerpt only.', err);
-      value = { post, html:'', matches:[], unmatched:[], rostered:0 };
+      value = { post, html:'', matches:[], unmatched:[], rostered:0, context:readerContext() };
     }
     annotationMemo = { signature, value };
     return value;
@@ -9312,6 +9476,9 @@ window.FSNArticles = (function(){
     ownership,
     ownerOf,
     ownerLabel,
+    ownerRole,
+    ownerTagText,
+    readerContext,
     annotated,
     current,
     refresh,
@@ -29674,35 +29841,54 @@ function wirePublishLabel(dateKey){
 }
 
 /* The roster context line — how this article ties back to the reader's own
-   team. Rostered players lead so a mention that touches the reader's wire is
-   the first thing they see; the waiver slot also surfaces the free agents
-   named in the piece, which is the whole point of a waiver read. Empty when
-   nothing in the copy touches the league, so the card stays quiet. */
+   team. Reader-scoped buckets (your players, this week's opponent) lead so a
+   mention that touches the reader's own team is the first thing they see;
+   everyone else's rostered players are the next tier; and the waiver slot
+   also surfaces the free agents named in the piece, which is the whole point
+   of a waiver read. Empty when nothing in the copy touches the league, so
+   the card stays quiet. */
 function wireContextLine(view, slot){
   if(!view) return '';
-  const owned = (view.matches || []).filter(m=> m && m.owner);
+  const context = view.context || {};
+  const rostered = (view.matches || []).filter(m=> m && m.owner);
+  const mine = rostered.filter(m=> m.role === 'self');
+  const opponent = rostered.filter(m=> m.role === 'opponent');
+  const other = rostered.filter(m=> m.role === 'other');
   const free = view.unmatched || [];
   const isWaiver = slot && slot.id === 'waiver';
 
   const entryHtml = (name, label, cls)=>
     `<span><span class="player">${esc(name)}</span> <span class="owner${cls ? ' ' + cls : ''}">· ${esc(label)}</span></span>`;
 
+  const bucket = (leadText, rows, chipLabel, leadCls, chipCls, moreText)=>{
+    if(!rows.length) return '';
+    const cap = rows.slice(0, 3);
+    const chips = cap.map(m=> entryHtml(m.name, typeof chipLabel === 'function' ? chipLabel(m) : chipLabel, chipCls));
+    const remainder = rows.length - cap.length;
+    const list = chips.join('<span class="sep">·</span>');
+    const more = remainder > 0
+      ? `<span class="sep">·</span><span class="owner${chipCls ? ' ' + chipCls : ''}">+${remainder} ${esc(moreText)}</span>`
+      : '';
+    return `<span class="lead${leadCls ? ' ' + leadCls : ''}">${esc(leadText)}</span>${list}${more}`;
+  };
+
   const parts = [];
-  if(owned.length){
-    const cap = owned.slice(0, 3);
-    const chips = cap.map(m=> entryHtml(m.name, m.label));
-    const remainder = owned.length - cap.length;
-    const list = chips.join('<span class="sep">·</span>');
-    const more = remainder > 0 ? `<span class="sep">·</span><span class="owner">+${remainder} more on your wire</span>` : '';
-    parts.push(`<span class="lead">On your wire</span>${list}${more}`);
+  const selfBucket = bucket('On your roster', mine, 'your player', 'self', 'self', 'more on your roster');
+  if(selfBucket) parts.push(selfBucket);
+
+  const oppLead = context.currentWeek > 0
+    ? ('Week ' + context.currentWeek + ' opponent')
+    : 'Your opponent';
+  const oppBucket = bucket(oppLead, opponent, (m)=> m.label || 'opponent', 'opponent', 'opponent', 'more on their roster');
+  if(oppBucket) parts.push(oppBucket);
+
+  if(other.length){
+    const otherBucket = bucket('Around the league', other, (m)=> m.label || 'rostered', '', '', 'more on rosters');
+    if(otherBucket) parts.push(otherBucket);
   }
+
   if(isWaiver && free.length){
-    const cap = free.slice(0, 3);
-    const chips = cap.map(m=> entryHtml(m.name, 'free agent', 'free'));
-    const remainder = free.length - cap.length;
-    const list = chips.join('<span class="sep">·</span>');
-    const more = remainder > 0 ? `<span class="sep">·</span><span class="owner free">+${remainder} more available</span>` : '';
-    parts.push(`<span class="lead free">Available now</span>${list}${more}`);
+    parts.push(bucket('Available now', free.map(f=>({ name:f.name })), 'free agent', 'free', 'free', 'more available'));
   }
   if(!parts.length) return '';
   return `<div class="wire-context">${parts.join('<span class="sep" style="margin:0 4px">•</span>')}</div>`;
