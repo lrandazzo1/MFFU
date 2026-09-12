@@ -1,0 +1,40 @@
+{
+  "canvas": {
+    "width": 1284,
+    "height": 2778
+  },
+  "slides": [
+    {
+      "id": "power-index",
+      "source": "image_9.png",
+      "eyebrow": "DECISION SCIENCE · FSN POWER INDEX",
+      "headline": ["POWER RANKINGS", "BUILT ON PROOF."],
+      "supporting": "Schedule-neutral intelligence reveals who is actually built to win.",
+      "accent": "#ffca0a"
+    },
+    {
+      "id": "news-desk",
+      "source": "image_5.png",
+      "eyebrow": "THE WIRE · LIVE ALL SEASON",
+      "headline": ["YOUR LEAGUE.", "YOUR MEDIA NETWORK."],
+      "supporting": "Recaps, storylines and power moves—written around your league.",
+      "accent": "#ff375f"
+    },
+    {
+      "id": "franchise-legacy",
+      "source": "image_4.png",
+      "eyebrow": "THE RECORD BOOK · FRANCHISE DOSSIERS",
+      "headline": ["EVERY FRANCHISE", "HAS A LEGACY."],
+      "supporting": "Career records, titles and season-by-season history in one dossier.",
+      "accent": "#08d9f6"
+    },
+    {
+      "id": "rivalries",
+      "source": "image_16.png",
+      "eyebrow": "HEAD TO HEAD · ALL-TIME HISTORY",
+      "headline": ["TRACK EVERY", "RIVALRY."],
+      "supporting": "Every meeting, margin and score—preserved across seasons.",
+      "accent": "#08d9f6"
+    }
+  ]
+}
