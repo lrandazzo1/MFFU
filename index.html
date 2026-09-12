@@ -2958,7 +2958,18 @@ body.fsn-dd-lock{ overflow:hidden; }
   text-align:left; cursor:pointer; min-width:0;
 }
 .desk-league-trigger:focus-visible{ outline:2px solid var(--cyan); outline-offset:4px; border-radius:4px; }
-.desk-league-trigger #homeLeagueName{ flex:1 1 auto; min-width:0; }
+/* League title wraps to multiple lines instead of ellipsing so long names
+   (e.g. "Redemption Redemption Redemption Bar Mitzvah League") stay
+   readable. Break long single words as a last resort so a very long token
+   can't push the caret off-screen. Line-height loosens slightly when the
+   name wraps so descenders on the second line don't collide with the meta
+   row below. */
+.desk-league-trigger #homeLeagueName{
+  flex:1 1 auto; min-width:0;
+  white-space:normal; overflow:visible; text-overflow:clip;
+  overflow-wrap:anywhere; word-break:break-word;
+  line-height:1.08;
+}
 .desk-league-caret{
   flex:none; font-size:14px; line-height:1; color:var(--cyan);
   transform:translateY(-2px); transition:transform .15s ease;
@@ -3049,7 +3060,7 @@ body.fsn-dd-lock{ overflow:hidden; }
         <div class="min-w-0 desk-league-picker" id="deskLeaguePicker">
           <div class="kicker text-[var(--cyan)]">Fantasy Sports Network</div>
           <button type="button" id="deskLeagueTrigger" class="desk-league-trigger" aria-haspopup="listbox" aria-expanded="false" aria-controls="deskLeagueMenu">
-            <h1 class="font-display text-[27px] leading-none mt-1.5 truncate" id="homeLeagueName">THE DESK</h1>
+            <h1 class="font-display text-[27px] leading-none mt-1.5" id="homeLeagueName">THE DESK</h1>
             <span class="desk-league-caret" aria-hidden="true">▾</span>
           </button>
           <div class="desk-league-menu" id="deskLeagueMenu" role="listbox" aria-labelledby="deskLeagueTrigger" hidden></div>
