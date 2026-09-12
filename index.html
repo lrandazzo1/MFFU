@@ -10275,42 +10275,116 @@ window.FSNLocalDesk = (function(){
       ' benefits, that’s not the only thing; ' + ownedPlayerPhrase(rows[1]) + ' also benefits.';
   }
 
-  /* The mandated live/recent-game structure. Which half of it gets used is
-     decided by the scoreboard, not by a pool: a manager who is ahead gets the
-     "giving them the lead" clause and a manager who is behind gets the honest
-     "still behind by X" one. */
+  /* The mandated live/recent-game structure, as a deterministic state
+     machine. The prior line was one open template with three branches; a
+     reader in an unopened week saw "put up 0.0 fantasy points on" copy
+     that read as broken. This routes on the actual scoreboard state
+     before it writes a single word, so pre-game copy never mentions
+     points, a nail-biter never reads like a blowout, and a final is the
+     only place "the dust settled" appears.
+
+     The four canonical states A/B/C/D come from the PR spec verbatim. B
+     covers either side of a nail-biter symmetrically. C and D cover the
+     side that is winning (leading / won); C' and D' are the honest mirror
+     for the side that is losing (getting blown out / just lost), because
+     the Local Read leads with whichever player the article names and that
+     player may be on either roster. The moderate live-margin case
+     (10 < abs margin < 25) is not covered by the four canonical states —
+     it takes its own pair (BC-lead / BC-trail), scaled to sit between the
+     nail-biter and blowout voices rather than picked from a copy pool.
+
+     Determinism holds: one state resolves to exactly one template. No
+     pool draws, no seed reads. The `seed` argument is accepted for API
+     compatibility with the previous signature and deliberately unused. */
   function gameLine(row, score, slot, seed){
     if(!row) return '';
-    const windowInfo = WINDOW_BY_SLOT[String(slot || '')] || null;
-    const when = windowInfo ? windowInfo.when : 'On this week’s board';
-    const points = row.points == null ? null : Math.round(row.points * 10) / 10;
-    const effort = points == null ? '' : n1(points) + ' fantasy points';
-    const detail = row.statLine ? ' on ' + row.statLine : '';
+    void slot; void seed;
     const owned = ownedPlayerPhrase(row);
+    if(!owned) return '';
+    const player = row.name || 'their starter';
+    const points = row.points == null ? null : Math.round(row.points * 10) / 10;
+    const manager = managerName(row.owner) || (row.owner && row.owner.teamName) || 'the manager';
 
-    /* No head-to-head to hang it on yet: still hyper-local, still names the
-       owner, just without a score clause the payload cannot support. */
-    if(!score || !score.us || !score.them || score.state === 'PREGAME'){
-      if(!points && !detail) return '';
-      return when + ', ' + owned + ' is the name that decides their week' +
-        (points ? ' — ' + effort + detail : ' —' + detail) + '.';
+    /* State A: pre-game. Roster leverage, never points or ahead/behind. The
+       article's own week is the anchor; if the scoreboard is absent or
+       reports PREGAME, the matchup has not scored yet either way. */
+    const opponent = (score && score.them && (managerName(score.them) || score.them.teamName)) || 'their opponent';
+    if(!score || !score.us || !score.them || score.state === 'PREGAME' || score.started === false){
+      return manager + ' has ' + player +
+        ' locked into the starting lineup for this week’s clash against ' + opponent +
+        ', carrying heavy expectations as the focal point of their offensive build.';
     }
 
-    const opponent = managerName(score.them) || score.them.teamName || 'their opponent';
-    const verb = points != null && points >= 20 ? 'went off for ' + effort
-      : (effort ? 'put up ' + effort : 'is on the board');
-    const body = when + ', ' + owned + ' ' + verb + detail;
+    /* The player is on the article's `owner` side; `score.us` mirrors that.
+       A positive margin means the player's team leads; negative means it
+       trails. Absolute margin decides which magnitude bucket the state
+       falls into. */
+    const marginRaw = Number(score.margin) || 0;
+    const absMargin = Math.abs(marginRaw);
+    const marginText = n1(absMargin);
+    const pointsText = points == null ? '0.0' : n1(points);
 
-    if(score.margin > 0){
-      return body + ', ' + (score.final ? 'handing them the win over ' : 'giving them the lead against ') +
-        opponent + '.';
+    if(score.state === 'FINAL' || score.final === true){
+      /* State D: final. "When the dust settled" is the state's signature and
+         the ONLY line that opens with it, so the phrase is a reliable read
+         of "this matchup is in the books" in the feed. */
+      if(marginRaw > 0){
+        return 'When the dust settled, ' + manager + '’s reliance on ' + player +
+          ' proved to be the winning edge, sealing the head-to-head decision over ' + opponent + '.';
+      }
+      if(marginRaw < 0){
+        /* Mirror for the losing side, same opening register so the two read
+           as one state with two outcomes rather than as different sections. */
+        return 'When the dust settled, ' + player + '’s ' + pointsText + ' points weren’t enough to carry ' +
+          manager + ' past ' + opponent + ' — the head-to-head decision goes the other way.';
+      }
+      return 'When the dust settled, ' + manager + ' and ' + opponent +
+        ' finished dead level — ' + player + '’s ' + pointsText + ' points kept the tie honest at the wire.';
     }
-    if(score.margin < 0){
-      return body + ', leaving them ' + (score.final ? 'short of ' : 'still behind ') + opponent +
-        ' by ' + n1(Math.abs(score.margin)) + ' points despite ' + possessive(row.name) + ' effort.';
+
+    /* LIVE. Three bands, keyed on absolute margin.
+
+       - Nail-biter: abs margin ≤ 10 — tight, either direction.
+       - Moderate:   10 < abs margin < 25 — comfortable lead / closable
+         deficit; the state the PR spec does not name outright, filled in
+         so a 14-point cushion neither reads as a nail-biter nor as a
+         blowout.
+       - Blowout:    abs margin ≥ 25 — fireworks either way.
+     */
+
+    if(absMargin <= 10){
+      /* State B: symmetric. The line says nothing about which side leads,
+         because in a razor-thin battle both managers are one snap from the
+         other one's spot. */
+      return 'In a razor-thin battle, ' + manager + '’s ' + player +
+        ' has chipped in ' + pointsText +
+        ' points, keeping this tight against ' + opponent +
+        ' with every single possession hanging in the balance.';
     }
-    return body + ', and the matchup against ' + opponent + ' is dead level at ' +
-      n1(score.us.score) + '.';
+
+    if(absMargin >= 25){
+      if(marginRaw > 0){
+        /* State C: verbatim from the PR spec. */
+        return 'Absolute fireworks for ' + manager + ' today—' + player +
+          '’s massive ' + pointsText +
+          '-point outing has blown the doors off this matchup, putting ' + opponent + ' deep in a hole.';
+      }
+      /* State C' (mirror): the same magnitude, honest about the direction. */
+      return 'The gap is widening on ' + manager + '. ' + player + '’s ' + pointsText +
+        ' points haven’t been enough to slow ' + opponent +
+        '’s runaway margin — this one is going the wrong way in a hurry.';
+    }
+
+    /* Moderate range. Named lead vs. deficit, with the actual gap so the
+       reader knows exactly how much room is left. */
+    if(marginRaw > 0){
+      return manager + '’s ' + player + ' has put up ' + pointsText +
+        ' points and pushed the matchup out to a ' + marginText +
+        '-point cushion over ' + opponent + ' — comfortable, but the window is still open.';
+    }
+    return manager + '’s ' + player + ' has ' + pointsText +
+      ' points on the board, but the deficit against ' + opponent + ' has stretched to ' + marginText +
+      ' — closable, and only if the rest of the lineup answers.';
   }
 
   /* ---- 8. THE PUBLIC PAYLOAD ------------------------------------------ */

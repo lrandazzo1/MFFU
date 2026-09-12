@@ -401,10 +401,46 @@ try {
       /* Week 1 is finalized; week 2 is open. */
       liveAlpha: (() => { const s = D.liveScore(1, 2); return s && { state: s.state, us: s.us.score, them: s.them.score, margin: s.margin }; })(),
       finalAlpha: (() => { const s = D.liveScore(1, 1); return s && { state: s.state, us: s.us.score, them: s.them.score }; })(),
-      /* Both halves of the mandated live/recent-game structure. Alpha trails,
-         Charlie leads. */
-      behindLine: D.gameLine(bijan, D.liveScore(1, 2), 'injury', seed),
-      aheadLine: D.gameLine(london, D.liveScore(3, 2), 'recap', seed),
+      /* One game line per canonical state. Fixtures cover the natural cases;
+         the states without a natural fixture use a synthesized score object
+         so the state switch is exercised exhaustively rather than left to
+         whichever margin the fixture happens to fall into.
+
+         `us` and `them` are set to the actual manager on that side so the
+         template attributes the line to the right owner; only `score`,
+         `state`, `final`, `margin` and `started` drive routing. */
+      pregameA: D.gameLine(bijan, {
+        state: 'PREGAME', started: false, final: false, margin: 0,
+        us: { teamName: 'Alpha', manager: 'Manager 1', score: 0 },
+        them: { teamName: 'Bravo', manager: 'Manager 2', score: 0 },
+      }, 'primer', seed),
+      nailBiterB: D.gameLine(bijan, {
+        state: 'LIVE', started: true, final: false, margin: 3.4,
+        us: { teamName: 'Alpha', manager: 'Manager 1', score: 88.4 },
+        them: { teamName: 'Bravo', manager: 'Manager 2', score: 85.0 },
+      }, 'recap', seed),
+      moderateLead: D.gameLine(bijan, {
+        state: 'LIVE', started: true, final: false, margin: 14.1,
+        us: { teamName: 'Alpha', manager: 'Manager 1', score: 99.1 },
+        them: { teamName: 'Bravo', manager: 'Manager 2', score: 85.0 },
+      }, 'recap', seed),
+      moderateDeficit: D.gameLine(bijan, D.liveScore(1, 2), 'injury', seed),
+      blowoutLeadC: D.gameLine(london, D.liveScore(3, 2), 'recap', seed),
+      blowoutVictimC: D.gameLine(bijan, {
+        state: 'LIVE', started: true, final: false, margin: -31.2,
+        us: { teamName: 'Alpha', manager: 'Manager 1', score: 55.0 },
+        them: { teamName: 'Bravo', manager: 'Manager 2', score: 86.2 },
+      }, 'recap', seed),
+      finalWonD: D.gameLine(bijan, D.liveScore(1, 1), 'recap', seed),
+      finalLostDMirror: D.gameLine(allen, D.liveScore(2, 1), 'recap', seed),
+      finalTied: D.gameLine(bijan, {
+        state: 'FINAL', started: true, final: true, margin: 0,
+        us: { teamName: 'Alpha', manager: 'Manager 1', score: 100 },
+        them: { teamName: 'Bravo', manager: 'Manager 2', score: 100 },
+      }, 'recap', seed),
+      /* No-score edge cases the switch has to survive without saying
+         anything false. */
+      pregameNoScore: D.gameLine(bijan, null, 'primer', seed),
       /* The mandated injuries/waivers structure. */
       benefitLine: D.benefitLine(bijan, beneficiaries, seed),
       /* A week the payload has no lineups for at all (Week 9 here) must fall
@@ -419,9 +455,16 @@ try {
         const d = D.deepData({ id: 'label-probe', week: 9, slot: 'recap', crest: 'Alpha' });
         return d && d.week;
       })(),
-      /* Determinism: the same inputs, a second time. */
+      /* Determinism: the same inputs, a second time. One template per state,
+         no seed reads, so both calls must produce byte-identical output. */
       benefitAgain: D.benefitLine(bijan, D.beneficiariesOf(bijan, 2, 3), seed),
-      aheadAgain: D.gameLine(london, D.liveScore(3, 2), 'recap', seed),
+      pregameAgain: D.gameLine(bijan, {
+        state: 'PREGAME', started: false, final: false, margin: 0,
+        us: { teamName: 'Alpha', manager: 'Manager 1', score: 0 },
+        them: { teamName: 'Bravo', manager: 'Manager 2', score: 0 },
+      }, 'primer', seed),
+      blowoutAgain: D.gameLine(london, D.liveScore(3, 2), 'recap', seed),
+      finalWonAgain: D.gameLine(bijan, D.liveScore(1, 1), 'recap', seed),
     };
   });
 
@@ -475,22 +518,94 @@ try {
   contains(engine.benefitLine, 'Manager 1’s Kyle Pitts',
     'the second beneficiary is named as "<Manager>’s <Player>"');
 
-  /* ---- the mandated live/recent-game structure, both halves ---- */
-  contains(engine.aheadLine, 'Last night in MNF',
-    'the recap slot opens on the right television window');
-  contains(engine.aheadLine, 'Manager 3’s Drake London went off',
-    'a 20+ point performance reads as "went off"');
-  contains(engine.aheadLine, 'giving them the lead against Manager 4',
-    'a manager who is ahead gets the mandated "giving them the lead against" clause');
-  contains(engine.aheadLine, '127 rec yds',
-    'the ahead line quotes the real receiving yardage');
+  /* ---- the deterministic state machine (A / B / C / C' / D / D' / tie /
+                     moderate lead / moderate deficit / no-score) ----
 
-  contains(engine.behindLine, 'Last night in TNF',
-    'the injury slot opens on the right television window');
-  contains(engine.behindLine, 'leaving them still behind Manager 2 by 16.7 points',
-    'a manager who is behind gets the mandated "still behind by X points" clause');
-  contains(engine.behindLine, 'despite Bijan Robinson’s effort.',
-    'the behind line closes on the mandated "despite <Player>’s effort"');
+     The templates are prescriptive per the PR spec. Each state gets its own
+     opening and closing signature so a card can be identified by which
+     template rendered it — no state's line could plausibly have come out
+     of another state's branch. */
+
+  /* State A: pre-game. Never mentions points; never mentions ahead/behind.
+     This is the whole reason the state machine exists. */
+  expect(engine.pregameA,
+    'Manager 1 has Bijan Robinson locked into the starting lineup for this week’s clash against Manager 2, ' +
+    'carrying heavy expectations as the focal point of their offensive build.',
+    'State A (pre-game) line is verbatim from the spec, no points, no leverage clause');
+  /* The concern is fantasy-scoring signals, not the English word "point".
+     A pregame line must not carry a numeric point total ("14.6 points"), a
+     scoring verb ("put up", "went off"), or an ahead/behind clause. "Focal
+     point of their offensive build" is a roster-leverage phrase and stays. */
+  if (/\d+(?:\.\d+)?[\-\s]?points?\b/i.test(engine.pregameA) ||
+      /\b(?:ahead|behind|leads|trails|leading|trailing|deficit|cushion)\b/i.test(engine.pregameA) ||
+      /\b(?:put up|went off|chipped in)\b/i.test(engine.pregameA)) {
+    fail('State A leaked a live-scoring signal into the pre-game copy: ' + engine.pregameA);
+  } else pass('State A never quotes points or names a live-scoring direction');
+  /* Same routing when the article has no scoreboard at all: the pre-game
+     template still applies, because "nothing scored" is exactly what pre-game
+     covers. */
+  expect(engine.pregameNoScore,
+    'Manager 1 has Bijan Robinson locked into the starting lineup for this week’s clash against their opponent, ' +
+    'carrying heavy expectations as the focal point of their offensive build.',
+    'State A also renders when no scoreboard is attached');
+
+  /* State B: nail-biter, |margin| ≤ 10. Symmetric — the copy is deliberately
+     agnostic about which side is up 3.4. */
+  expect(engine.nailBiterB,
+    'In a razor-thin battle, Manager 1’s Bijan Robinson has chipped in 8.4 points, ' +
+    'keeping this tight against Manager 2 with every single possession hanging in the balance.',
+    'State B (nail-biter) line is verbatim from the spec');
+
+  /* State C: blowout, leading. London is on Charlie, which is up 27.6 on
+     Delta in the live fixture. Verbatim from the spec. */
+  expect(engine.blowoutLeadC,
+    'Absolute fireworks for Manager 3 today—Drake London’s massive 26.7-point outing has blown the ' +
+    'doors off this matchup, putting Manager 4 deep in a hole.',
+    'State C (blowout, leading) line is verbatim from the spec');
+
+  /* State C' (mirror): blowout, trailing. Same magnitude, honest direction. */
+  contains(engine.blowoutVictimC, 'The gap is widening on Manager 1',
+    'State C\' (blowout, trailing) opens on the widening gap for the player\'s manager');
+  contains(engine.blowoutVictimC, 'Manager 2’s runaway margin',
+    'State C\' names the opposing manager as the one running away');
+  contains(engine.blowoutVictimC, 'going the wrong way in a hurry',
+    'State C\' closes on the mirror signature phrase');
+
+  /* Moderate live margin — the range the four canonical states do not name.
+     Above the nail-biter, below the blowout: gets its own pair. */
+  contains(engine.moderateLead, 'pushed the matchup out to a 14.1-point cushion over Manager 2',
+    'moderate LEAD names the exact cushion and the opposing manager');
+  contains(engine.moderateLead, 'comfortable, but the window is still open',
+    'moderate LEAD closes on the "window is still open" signature');
+  contains(engine.moderateDeficit, 'deficit against Manager 2 has stretched to 16.7',
+    'moderate DEFICIT names the exact deficit and the opposing manager');
+  contains(engine.moderateDeficit, 'closable, and only if the rest of the lineup answers',
+    'moderate DEFICIT closes on the "rest of the lineup answers" signature');
+
+  /* State D: final, won. "When the dust settled" is the state's signature. */
+  expect(engine.finalWonD,
+    'When the dust settled, Manager 1’s reliance on Bijan Robinson proved to be the winning edge, ' +
+    'sealing the head-to-head decision over Manager 4.',
+    'State D (final, won) line is verbatim from the spec');
+
+  /* State D' (mirror): final, lost. Same "When the dust settled" opener so
+     the two read as one state with two outcomes. */
+  contains(engine.finalLostDMirror, 'When the dust settled, Josh Allen’s',
+    'State D\' opens with the same "When the dust settled" signature');
+  contains(engine.finalLostDMirror, 'weren’t enough to carry Manager 2 past Manager 3',
+    'State D\' names the losing manager and the opposing manager');
+  contains(engine.finalLostDMirror, 'the head-to-head decision goes the other way',
+    'State D\' closes on the mirror signature phrase');
+
+  /* Rare but real: a finalized matchup that ended level. Must not read as a
+     win or a loss for either side. */
+  contains(engine.finalTied, 'When the dust settled, Manager 1 and Manager 2 finished dead level',
+    'a finalized tie opens on the tie-specific signature');
+  contains(engine.finalTied, 'kept the tie honest at the wire',
+    'a finalized tie closes on the tie-specific signature');
+  if (/\bwinning\b|\bsealing\b|\bwrong way\b/i.test(engine.finalTied)) {
+    fail('the tied-final line leaked a decisive-outcome word: ' + engine.finalTied);
+  } else pass('the tied-final line uses no decisive-outcome language');
 
   /* ---- the no-lineup week ---- */
   expect(engine.emptyWeek && engine.emptyWeek.week, 2,
@@ -498,9 +613,22 @@ try {
   expect(engine.emptyWeekCook, 14.6, 'that fallback reports the latest real box score, not the first');
   expect(engine.emptyWeekDeepLabel, 2, 'the block labels the week it actually read, not the week it was asked for');
 
-  /* ---- determinism ---- */
+  /* ---- determinism ----
+     Each state resolves to exactly one template. A second call with the
+     same inputs must produce the same string, byte for byte. */
   expect(engine.benefitAgain, engine.benefitLine, 'the benefit line is byte-identical on a second call');
-  expect(engine.aheadAgain, engine.aheadLine, 'the game line is byte-identical on a second call');
+  expect(engine.pregameAgain, engine.pregameA, 'the State A line is byte-identical on a second call');
+  expect(engine.blowoutAgain, engine.blowoutLeadC, 'the State C line is byte-identical on a second call');
+  expect(engine.finalWonAgain, engine.finalWonD, 'the State D line is byte-identical on a second call');
+  /* Every state emits a distinct line, so a state cannot silently collapse
+     into another state's template through a shared substring. */
+  const stateLines = [
+    engine.pregameA, engine.nailBiterB, engine.moderateLead, engine.moderateDeficit,
+    engine.blowoutLeadC, engine.blowoutVictimC,
+    engine.finalWonD, engine.finalLostDMirror, engine.finalTied,
+  ];
+  expect(new Set(stateLines).size, stateLines.length,
+    'every routed state emits a distinct line');
 
   /* ======================================================================
      2. THE TIMELINE — deterministic feed cards must NOT carry the block.

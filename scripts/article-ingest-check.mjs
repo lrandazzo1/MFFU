@@ -625,8 +625,25 @@ try {
         else fail('category-gate: Analysis fixture ' + fixture.slug + ' lost the Local Read');
         if (inspect.hasDeep) pass('category-gate: Analysis fixture ' + fixture.slug + ' KEEPS the deep block');
         else fail('category-gate: Analysis fixture ' + fixture.slug + ' lost the deep block');
-        if (inspect.matchCount > 0 && /Manager [1-4]\u2019s [A-Z]/.test(inspect.localText)) {
-          pass('category-gate: Analysis Local Read carries the ownership callout');
+        /* The Local Read routes on scoreboard state (pre-game / nail-biter
+           / moderate / blowout / final), and each state names the manager
+           and the rostered player in a form specific to that state. The
+           assertion checks the WEAKER contract that both a Manager token
+           and the player's name appear in the line, which every state
+           emits; the exact per-state wording is under mechanical guard in
+           scripts/local-desk-check.mjs. */
+        const namesManager = /\bManager [1-4]\b/.test(inspect.localText);
+        /* A published entity name and the roster name can differ by
+           punctuation ("A.J. Brown" vs. "AJ Brown"), the same difference
+           FSNArticles normalizes on when it resolves ownership. Match the
+           two the same way for this assertion. */
+        const norm = (s) => String(s || '').toLowerCase()
+          .replace(/[.'`\u2019]/g, '').replace(/[^a-z0-9]+/g, '');
+        const flatLocal = norm(inspect.localText);
+        const playerNamed = (fixture.entities || []).some((ent) =>
+          ent && ent.name && flatLocal.includes(norm(ent.name)));
+        if (inspect.matchCount > 0 && namesManager && playerNamed) {
+          pass('category-gate: Analysis Local Read names a manager and a rostered player from this fixture');
         } else if (inspect.matchCount === 0) {
           pass('category-gate: this Analysis fixture matched no rostered players; the Local Read cannot invent one');
         } else {
