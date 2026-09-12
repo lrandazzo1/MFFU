@@ -403,6 +403,12 @@ module.exports = async function handler(req, res) {
       return res.status(upstream.status || 502).send(read.body);
     }
 
+    /* Machine-readable codes on every private-league refusal so the client can
+       open its Private League Auth modal for the correct case rather than
+       parsing the English sentence. SHARE_TOKEN_REQUIRED is the case above; the
+       two below distinguish "your own cookies were rejected" from "this league
+       is private and this browser sent nothing". */
+
     // A 2xx auth envelope is normalized to a 401 so the frontend's
     // private-league branch fires with an actionable message instead of
     // silently treating an inaccessible league as "no data".
@@ -410,7 +416,9 @@ module.exports = async function handler(req, res) {
       return res.status(401).json({
         error: authenticated
           ? 'ESPN rejected the private-league cookies. The espn_s2 / SWID values are likely invalid or expired — re-copy them from your logged-in ESPN browser and try again.'
-          : 'This ESPN league is private. Supply espn_s2 and SWID cookies (x-espn-s2 / x-espn-swid headers, or ESPN_S2 / ESPN_SWID env vars) so the relay can read it.',
+          : 'This ESPN league is private. Open the invite link a league-mate sent you, or paste your own espn_s2 and SWID cookies so the relay can read it.',
+        code: authenticated ? 'PRIVATE_LEAGUE_LOGIN_REJECTED' : 'PRIVATE_LEAGUE_ACCESS_REQUIRED',
+        league_id: leagueContextFromTarget(target).leagueId || null,
         espn: payload,
         auth: authenticated ? 'private' : 'public',
       });
@@ -423,7 +431,9 @@ module.exports = async function handler(req, res) {
       return res.status(upstream.status).json({
         error: authenticated
           ? 'ESPN rejected the private-league cookies (HTTP ' + upstream.status + '). The espn_s2 / SWID values are likely invalid or expired — re-copy them from your logged-in ESPN browser and try again.'
-          : 'ESPN denied the anonymous request (HTTP ' + upstream.status + '). Either this league is private — supply espn_s2 and SWID cookies so the relay can read it — or this season is not served on this endpoint.',
+          : 'ESPN denied the anonymous request (HTTP ' + upstream.status + '). Either this league is private — open the invite link a league-mate sent you or paste your own espn_s2 and SWID cookies — or this season is not served on this endpoint.',
+        code: authenticated ? 'PRIVATE_LEAGUE_LOGIN_REJECTED' : 'PRIVATE_LEAGUE_ACCESS_REQUIRED',
+        league_id: leagueContextFromTarget(target).leagueId || null,
         espn: payload,
         auth: authenticated ? 'private' : 'public',
       });

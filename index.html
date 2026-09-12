@@ -1368,6 +1368,79 @@ html[data-fsn-boot="loading"] #tickerBar{ visibility:hidden; }
 }
 .onboard-intro{ font-size:12.5px; line-height:1.6; color:var(--dim); margin:0 0 20px; }
 
+/* ---------- PRIVATE LEAGUE AUTH MODAL ---------- */
+#privateLeagueAuthModal{
+  position:fixed; inset:0; z-index:130;
+  background:var(--ink);
+  display:none; flex-direction:column;
+}
+#privateLeagueAuthModal[data-open="true"]{ display:flex; }
+#privateLeagueAuthModal[data-open="true"] .onboard-body{ animation:readerIn .26s cubic-bezier(.2,.7,.3,1) both; }
+.private-auth-hero{
+  display:flex; flex-direction:column; align-items:center; text-align:center;
+  gap:8px; padding:6px 0 18px;
+  border-bottom:1px solid var(--line); margin-bottom:18px;
+}
+.private-auth-badge{
+  width:52px; height:52px; border-radius:16px;
+  display:flex; align-items:center; justify-content:center;
+  font-size:24px;
+  background:linear-gradient(135deg,rgba(255,201,60,.18),rgba(0,224,255,.14));
+  border:1px solid rgba(255,201,60,.35);
+}
+.private-auth-headline{
+  font-family:'Anton',sans-serif; font-size:19px; letter-spacing:.03em;
+  text-transform:uppercase; color:#eef2f8; margin:0;
+}
+.private-auth-sub{
+  font-size:12.5px; line-height:1.55; color:var(--dim); margin:0;
+  max-width:440px;
+}
+.private-auth-option{
+  background:linear-gradient(160deg,var(--panel),#0d1119);
+  border:1px solid var(--line); border-radius:14px;
+  padding:14px 15px; margin-bottom:14px;
+}
+.private-auth-option-head{ display:flex; align-items:center; gap:10px; margin-bottom:12px; }
+.private-auth-badge-num{
+  flex:none; width:28px; height:28px; border-radius:9px;
+  display:flex; align-items:center; justify-content:center;
+  font-family:'Anton',sans-serif; font-size:14px; color:#03151c;
+  background:linear-gradient(120deg,var(--cyan),#00a6cc);
+}
+.private-auth-option-title{
+  font-family:'Anton',sans-serif; font-size:15px; letter-spacing:.03em;
+  text-transform:uppercase; color:#eef2f8; margin:0;
+}
+.private-auth-option-body p{
+  font-size:12.5px; line-height:1.55; color:var(--off); margin:0 0 10px;
+}
+.private-auth-row{
+  display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+}
+.private-auth-status{
+  font-size:11px; line-height:1.5; color:var(--dim); margin:8px 0 0;
+  min-height:14px;
+}
+.private-auth-status[data-tone="ok"]{ color:var(--green); }
+.private-auth-status[data-tone="error"]{ color:var(--red); }
+.private-auth-or{
+  position:relative; text-align:center; margin:6px 0 14px; height:14px;
+}
+.private-auth-or::before{
+  content:''; position:absolute; left:0; right:0; top:50%;
+  height:1px; background:var(--line);
+}
+.private-auth-or span{
+  position:relative; display:inline-block; padding:0 12px;
+  background:var(--ink); font-size:11px; letter-spacing:.15em;
+  color:var(--dim); font-weight:600;
+}
+.private-auth-footer{
+  font-size:11px; line-height:1.55; color:var(--dim);
+  margin:14px 0 0; text-align:center;
+}
+
 /* ---------- SPINNER ---------- */
 .spinner{
   width:16px; height:16px; border-radius:50%;
@@ -3828,6 +3901,100 @@ body.fsn-dd-lock{ overflow:hidden; }
     </div>
 
     <button type="button" id="onboardDoneBtn" class="btn-primary mt-4">GOT IT — BACK TO SETUP</button>
+  </div>
+</div>
+
+<!-- ============================================================
+     PRIVATE LEAGUE AUTH MODAL
+
+     Opened automatically when a fetch is blocked because ESPN needs
+     authentication we don't have — either the league's invite link is
+     missing (SHARE_TOKEN_REQUIRED) or a private league's cookies were
+     rejected/absent (PRIVATE_LEAGUE_ACCESS_REQUIRED /
+     PRIVATE_LEAGUE_LOGIN_REJECTED). Presents two clean, mutually-
+     exclusive paths — paste the invite link OR paste ESPN cookies —
+     instead of dumping raw HTTP 401/403 text into the Setup screen.
+
+     Kept intentionally additive: the underlying Setup fields
+     (#leagueIdInput, #espnS2Input, #espnSwidInput) are the source of
+     truth. The modal writes THROUGH to them so the reader can also see
+     and retry from the regular Setup flow.
+============================================================ -->
+<div id="privateLeagueAuthModal" data-open="false" role="dialog" aria-modal="true" aria-labelledby="privateLeagueAuthTitle">
+  <div class="onboard-bar">
+    <button class="icon-btn" id="privateLeagueAuthClose" aria-label="Close private league sign-in">
+      <svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"></path></svg>
+    </button>
+    <div class="kicker text-[var(--cyan)] flex-1 truncate" id="privateLeagueAuthTitle">Private League Sign-In</div>
+  </div>
+  <div class="onboard-body no-bar">
+    <div class="private-auth-hero">
+      <div class="private-auth-badge" aria-hidden="true">🔒</div>
+      <h2 class="private-auth-headline" id="privateLeagueAuthHeadline">This league is private on ESPN</h2>
+      <p class="private-auth-sub" id="privateLeagueAuthSub">Pick one of the two ways in below. You only need to do this once — the app remembers your choice on this device.</p>
+    </div>
+
+    <div class="private-auth-option">
+      <div class="private-auth-option-head">
+        <span class="private-auth-badge-num">1</span>
+        <h3 class="private-auth-option-title">I have an invite link</h3>
+      </div>
+      <div class="private-auth-option-body">
+        <p>A league-mate can press <strong style="color:var(--off)">Share</strong> in Setup and send you a link that carries the League ID and a share token. Paste the whole link here — nothing else is needed.</p>
+        <label class="label" for="privateLeagueAuthInviteInput" style="margin-bottom:6px">Paste your invite link</label>
+        <textarea id="privateLeagueAuthInviteInput" class="field" rows="2" autocomplete="off" spellcheck="false" placeholder="https://…/?id=123456789&token=…"></textarea>
+        <div class="private-auth-row mt-2">
+          <button type="button" id="privateLeagueAuthPasteInvite" class="btn-ghost flex-none" style="width:auto;padding:9px 14px;font-size:11.5px;">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:4px"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg>PASTE FROM CLIPBOARD
+          </button>
+          <button type="button" id="privateLeagueAuthUseInvite" class="btn-primary flex-none" style="width:auto;padding:9px 16px;font-size:12px;">USE INVITE LINK</button>
+        </div>
+        <p id="privateLeagueAuthInviteStatus" class="private-auth-status" aria-live="polite"></p>
+      </div>
+    </div>
+
+    <div class="private-auth-or"><span>OR</span></div>
+
+    <div class="private-auth-option">
+      <div class="private-auth-option-head">
+        <span class="private-auth-badge-num">2</span>
+        <h3 class="private-auth-option-title">Sign in with my own ESPN cookies</h3>
+      </div>
+      <div class="private-auth-option-body">
+        <p>Copy two harmless ID values (<span class="onboard-code">espn_s2</span> and <span class="onboard-code">SWID</span>) from a browser you're already logged in to ESPN on. They stay on this device and are only sent through the app's secure relay to ESPN.</p>
+        <label class="label" for="privateLeagueAuthS2Input" style="margin-bottom:6px">espn_s2 cookie</label>
+        <div class="cred-row">
+          <div class="cred-input-wrap">
+            <input id="privateLeagueAuthS2Input" class="field" type="password" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="AEB… (long value)">
+            <button type="button" class="cred-reveal" data-reveal="privateLeagueAuthS2Input" aria-label="Show or hide value">
+              <svg viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+            </button>
+          </div>
+          <button type="button" class="cred-paste" data-paste="privateLeagueAuthS2Input">
+            <svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg>Paste
+          </button>
+        </div>
+        <label class="label" for="privateLeagueAuthSwidInput" style="margin-bottom:6px;margin-top:10px">SWID cookie</label>
+        <div class="cred-row">
+          <div class="cred-input-wrap">
+            <input id="privateLeagueAuthSwidInput" class="field" type="password" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="{XXXXXXXX-XXXX-…}">
+            <button type="button" class="cred-reveal" data-reveal="privateLeagueAuthSwidInput" aria-label="Show or hide value">
+              <svg viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+            </button>
+          </div>
+          <button type="button" class="cred-paste" data-paste="privateLeagueAuthSwidInput">
+            <svg viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg>Paste
+          </button>
+        </div>
+        <div class="private-auth-row mt-3">
+          <button type="button" class="onboard-link" data-onboard-step="cookies" style="flex:1 1 auto;text-align:left;padding:0">Where do I find these values?</button>
+          <button type="button" id="privateLeagueAuthUseCookies" class="btn-primary flex-none" style="width:auto;padding:9px 16px;font-size:12px;">SAVE &amp; RETRY</button>
+        </div>
+        <p id="privateLeagueAuthCookiesStatus" class="private-auth-status" aria-live="polite"></p>
+      </div>
+    </div>
+
+    <p class="private-auth-footer">Not private after all? Close this and confirm your League ID — a public league loads without any of the above.</p>
   </div>
 </div>
 
@@ -6399,12 +6566,20 @@ async function espnRelayError(res, apiUrl){
   const err = new Error('HTTP ' + res.status + (detail ? ': ' + detail : '') + ' from ' + apiUrl);
   err.status = res.status;
   err.relayDetail = detail;
+  /* Machine-readable disposition — SHARE_TOKEN_REQUIRED, PRIVATE_LEAGUE_LOGIN_REJECTED,
+     PRIVATE_LEAGUE_ACCESS_REQUIRED — carried out of the JSON body so the fetch
+     path can open the Private League Auth modal for the right case instead of
+     parsing the English sentence out of relayDetail. Absent for a non-relay
+     error, and always a plain string when set. */
+  err.relayCode = payload && typeof payload.code === 'string' ? payload.code : '';
+  err.relayLeagueId = payload && payload.league_id != null ? String(payload.league_id) : '';
   err.espnPayload = payload && payload.espn ? payload.espn : null;
   /* Log the exact upstream payload once, loudly. On a private-league failure
      this is the only record of what ESPN actually said. */
   if(res.status === 401 || res.status === 403 || res.status === 404){
     console.error('[FSN] ESPN relay rejected ' + apiUrl + ' with HTTP ' + res.status +
-      (detail ? ' — ' + detail : ''), err.espnPayload || err);
+      (detail ? ' — ' + detail : '') + (err.relayCode ? ' [code=' + err.relayCode + ']' : ''),
+      err.espnPayload || err);
   }
   return err;
 }
@@ -25316,11 +25491,14 @@ async function fetchLeagueData(options){
       text = await response.text();
       if(!response.ok){
         /* The relay answers a 401/403/404 with { error:"<actionable sentence>",
-           espn:<upstream payload> }. That sentence is the only thing that
-           distinguishes "your cookies were rejected" from "your league is
-           empty", so lift it out rather than dumping the raw body into the
-           message — and log the upstream payload verbatim, which on a
-           private-league failure is the only record of what ESPN said. */
+           code:"<disposition>", espn:<upstream payload> }. That sentence is
+           the only thing that distinguishes "your cookies were rejected" from
+           "your league is empty", so lift it out rather than dumping the raw
+           body into the message — and log the upstream payload verbatim, which
+           on a private-league failure is the only record of what ESPN said.
+           The code (SHARE_TOKEN_REQUIRED / PRIVATE_LEAGUE_LOGIN_REJECTED /
+           PRIVATE_LEAGUE_ACCESS_REQUIRED) is what opens the Private League
+           Auth modal for the right case in the catch below. */
         let detail = '';
         let relayBody = null;
         try{
@@ -25329,11 +25507,15 @@ async function fetchLeagueData(options){
         }catch(parseErr){
           detail = String(text || '').replace(/\s+/g, ' ').trim().slice(0, 180);
         }
+        const relayCode = relayBody && typeof relayBody.code === 'string' ? relayBody.code : '';
         console.error('[ESPN live fetch] /api/espn returned HTTP ' + response.status +
-          (detail ? ' — ' + detail : ''), (relayBody && relayBody.espn) || text);
+          (detail ? ' — ' + detail : '') + (relayCode ? ' [code=' + relayCode + ']' : ''),
+          (relayBody && relayBody.espn) || text);
         const relayErr = new Error('HTTP ' + response.status + (detail ? ': ' + detail : ''));
         relayErr.status = response.status;
         relayErr.relayDetail = detail;
+        relayErr.relayCode = relayCode;
+        relayErr.relayLeagueId = relayBody && relayBody.league_id != null ? String(relayBody.league_id) : '';
         throw relayErr;
       }
     }catch(err){
@@ -25547,16 +25729,38 @@ async function fetchLeagueData(options){
       // Tailor the guidance to whether the user has already supplied cookies:
       // present-but-rejected almost always means an invalid or expired paste,
       // while none-set means this private league needs credentials at all.
-      // The relay attaches ESPN's own sentence to the error; keep it visible.
+      // The relay attaches ESPN's own sentence to the error; keep the concise
+      // status line but ALSO open the Private League Auth modal so the reader
+      // gets the two-path flow (invite link or cookies) rather than only text.
       const relayDetail = String((err && err.relayDetail) || '').trim();
-      if(credReport.state === 'ready'){
-        msg = 'ESPN rejected your saved private-league cookies (401/403). They are likely invalid or expired. Re-copy espn_s2 and SWID from your logged-in ESPN browser (see “How do I connect my league?” → Step 2) and paste them again.';
+      const relayCode = String((err && err.relayCode) || '').trim();
+      const isCookieRejection = relayCode === 'PRIVATE_LEAGUE_LOGIN_REJECTED' ||
+        (credReport.state === 'ready' && !relayCode);
+      if(relayCode === 'SHARE_TOKEN_REQUIRED'){
+        msg = 'This league is protected by a per-league invite link. Open the full link a league-mate sent you, or paste your own ESPN cookies to sign in.';
+      } else if(isCookieRejection){
+        msg = 'ESPN did not accept your saved cookies. Paste a fresh pair or use an invite link — the sign-in panel is open below.';
       } else if(credReport.state === 'partial'){
-        msg = 'ESPN denied the request (401/403) and only one cookie is saved — a private league needs BOTH espn_s2 and SWID. Add the missing value in Private League Access (see “How do I connect my league?” → Step 2), then try again.';
+        msg = 'This private league needs BOTH espn_s2 and SWID. Add the missing value, or open an invite link — the sign-in panel is open below.';
       } else {
-        msg = 'ESPN denied the request (401/403) — this league is private. Open “How do I connect my league?” → Step 2, paste your espn_s2 + SWID cookies into Private League Access, then fetch again.';
+        msg = 'This league is private on ESPN. Open the invite link a league-mate sent you, or paste your own ESPN cookies — the sign-in panel is open below.';
       }
       if(relayDetail && relayDetail.length < 240) msg += ' (ESPN relay: ' + relayDetail + ')';
+      /* Open the Private League Auth modal for every 401/403 that is really
+         about auth. Guarded with a try so the fallback text still lands if the
+         modal wiring is missing on an older build. */
+      try{
+        const reasonForModal = relayCode === 'SHARE_TOKEN_REQUIRED'
+          ? 'SHARE_TOKEN_REQUIRED'
+          : (isCookieRejection ? 'PRIVATE_LEAGUE_LOGIN_REJECTED' : 'PRIVATE_LEAGUE_ACCESS_REQUIRED');
+        openPrivateLeagueAuthModal({
+          leagueId: (err && err.relayLeagueId) || league,
+          reason: reasonForModal,
+        });
+      }catch(modalErr){
+        console.error('[ESPN live fetch] Could not open the Private League Auth modal; the reader ' +
+          'will see the fallback text on Setup instead.', modalErr);
+      }
     } else if(/\bHTTP 404\b/.test(message)){
       msg = credReport.state === 'ready'
         ? 'ESPN has no 2026 season at this League ID (HTTP 404). Your cookies are saved, so this is the ID or the season — confirm the league renewed for 2026 and that the ID matches the one in your ESPN league URL.'
@@ -27629,6 +27833,263 @@ document.querySelectorAll('[data-onboard-step]').forEach((button)=>{
 document.addEventListener('keydown', (event)=>{
   const modal = $('onboardModal');
   if(event.key === 'Escape' && modal && modal.dataset.open === 'true') closeOnboard();
+});
+
+
+/* ============================================================
+   PRIVATE LEAGUE AUTH MODAL — controller
+
+   Opens automatically when a fetch is blocked because ESPN needs
+   authentication we don't have. Two paths, side by side:
+     1. Paste the invite link — routes through parseLeagueInviteInput +
+        setLeagueShareToken so the same code that reads an invite off
+        the URL bar accepts one pasted here.
+     2. Paste ESPN cookies — writes through to the existing Setup fields
+        (#espnS2Input / #espnSwidInput), so the modal never becomes a
+        second source of truth for credentials.
+
+   Neither path invents its own fetch: both call fetchLeagueData(), the
+   same function the FETCH LEAGUE DATA button drives, so a retry from
+   here is indistinguishable from one from Setup.
+============================================================ */
+let privateLeagueAuthContext = null; // { leagueId, reason, retryOnSuccess:true }
+
+function setPrivateLeagueAuthStatus(elId, message, tone){
+  const el = $(elId);
+  if(!el){
+    console.warn('[Private League Auth] status element ' + elId + ' is missing; the reader will not see: ' + message);
+    return;
+  }
+  el.textContent = message || '';
+  if(tone) el.setAttribute('data-tone', tone);
+  else el.removeAttribute('data-tone');
+}
+
+function refreshPrivateLeagueAuthHeadline(){
+  const headline = $('privateLeagueAuthHeadline');
+  const sub = $('privateLeagueAuthSub');
+  const ctx = privateLeagueAuthContext || {};
+  if(headline){
+    if(ctx.reason === 'PRIVATE_LEAGUE_LOGIN_REJECTED'){
+      headline.textContent = 'ESPN did not accept those cookies';
+    } else if(ctx.reason === 'SHARE_TOKEN_REQUIRED'){
+      headline.textContent = 'Open your invite link';
+    } else {
+      headline.textContent = 'This league is private on ESPN';
+    }
+  }
+  if(sub){
+    if(ctx.reason === 'PRIVATE_LEAGUE_LOGIN_REJECTED'){
+      sub.textContent = 'Your saved cookies are likely expired. Paste a fresh pair below, or use an invite link from a league-mate — either path unlocks the league.';
+    } else if(ctx.reason === 'SHARE_TOKEN_REQUIRED'){
+      sub.textContent = 'A league-mate can press Share in Setup and send you a link. Paste it below, or sign in with your own ESPN cookies instead.';
+    } else {
+      sub.textContent = 'Pick one of the two ways in below. You only need to do this once — the app remembers your choice on this device.';
+    }
+  }
+}
+
+function openPrivateLeagueAuthModal(options){
+  const modal = $('privateLeagueAuthModal');
+  if(!modal){
+    console.warn('[Private League Auth] modal element is missing; cannot open.');
+    return;
+  }
+  privateLeagueAuthContext = {
+    leagueId: String((options && options.leagueId) || '').trim(),
+    reason: String((options && options.reason) || '') || 'PRIVATE_LEAGUE_ACCESS_REQUIRED',
+    retryOnSuccess: options && options.retryOnSuccess !== false,
+  };
+  refreshPrivateLeagueAuthHeadline();
+  // Prime the cookie fields with whatever the reader already has stored so
+  // "SAVE & RETRY" is one tap when the only real problem was that the previous
+  // fetch went out before the cookies were saved.
+  try{
+    const s2 = FSNStore.get('fsn.espn.s2.v1') || '';
+    const swid = FSNStore.get('fsn.espn.swid.v1') || '';
+    const s2Input = $('privateLeagueAuthS2Input');
+    const swidInput = $('privateLeagueAuthSwidInput');
+    if(s2Input && !s2Input.value) s2Input.value = s2;
+    if(swidInput && !swidInput.value) swidInput.value = swid;
+  }catch(err){
+    console.warn('[Private League Auth] Could not pre-fill the cookie inputs from storage.', err);
+  }
+  setPrivateLeagueAuthStatus('privateLeagueAuthInviteStatus', '', null);
+  setPrivateLeagueAuthStatus('privateLeagueAuthCookiesStatus', '', null);
+  modal.dataset.open = 'true';
+  try{ syncBodyScrollLock(); }catch(err){ console.warn('[Private League Auth] scroll lock unavailable', err); }
+  setTimeout(()=>{
+    const focusTarget = $('privateLeagueAuthInviteInput');
+    if(focusTarget){ try{ focusTarget.focus(); }catch(err){ /* ignore focus race */ } }
+  }, 0);
+}
+
+function closePrivateLeagueAuthModal(){
+  const modal = $('privateLeagueAuthModal');
+  if(!modal) return;
+  modal.dataset.open = 'false';
+  try{ syncBodyScrollLock(); }catch(err){ console.warn('[Private League Auth] scroll lock unavailable', err); }
+  privateLeagueAuthContext = null;
+}
+
+async function handlePrivateLeagueAuthInvite(){
+  const input = $('privateLeagueAuthInviteInput');
+  const raw = String((input && input.value) || '').trim();
+  if(!raw){
+    setPrivateLeagueAuthStatus('privateLeagueAuthInviteStatus', 'Paste the whole invite link first.', 'error');
+    return;
+  }
+  let parsed;
+  try{
+    parsed = parseLeagueInviteInput(raw);
+  }catch(err){
+    console.error('[Private League Auth] Could not parse the pasted invite link.', err);
+    setPrivateLeagueAuthStatus('privateLeagueAuthInviteStatus',
+      'That does not look like a valid invite link. Paste the whole https://… URL a league-mate sent you.', 'error');
+    return;
+  }
+  if(!parsed.leagueId){
+    setPrivateLeagueAuthStatus('privateLeagueAuthInviteStatus',
+      'No League ID found in that link. Paste the whole https://… URL a league-mate sent you.', 'error');
+    return;
+  }
+  if(!parsed.token){
+    setPrivateLeagueAuthStatus('privateLeagueAuthInviteStatus',
+      'That link carried the League ID but no share token. Ask a league-mate to re-send the full invite link.', 'error');
+    return;
+  }
+  if(!setLeagueShareToken(parsed.leagueId, parsed.token)){
+    setPrivateLeagueAuthStatus('privateLeagueAuthInviteStatus',
+      'Could not store that invite token on this device. Try again, or paste your own ESPN cookies instead.', 'error');
+    return;
+  }
+  const leagueField = $('leagueIdInput');
+  if(leagueField) leagueField.value = parsed.leagueId;
+  try{ savePrefs(); }catch(err){ console.warn('[Private League Auth] savePrefs after invite paste failed', err); }
+  setPrivateLeagueAuthStatus('privateLeagueAuthInviteStatus', 'Invite link accepted — loading the league…', 'ok');
+  try{ updateShareInviteUI(); }catch(err){ console.warn('[Private League Auth] updateShareInviteUI failed', err); }
+  try{
+    const ok = await fetchLeagueData({ leagueId: parsed.leagueId, silent:false, navigate:true });
+    if(ok){
+      closePrivateLeagueAuthModal();
+      toast('League loaded via invite link');
+    } else {
+      setPrivateLeagueAuthStatus('privateLeagueAuthInviteStatus',
+        'Invite token stored, but the league still would not load. See the message on Setup for details.', 'error');
+    }
+  }catch(err){
+    console.error('[Private League Auth] fetchLeagueData failed after invite paste', err);
+    setPrivateLeagueAuthStatus('privateLeagueAuthInviteStatus',
+      'Invite token stored, but the fetch failed: ' + String((err && err.message) || err), 'error');
+  }
+}
+
+async function handlePrivateLeagueAuthCookies(){
+  const s2Input = $('privateLeagueAuthS2Input');
+  const swidInput = $('privateLeagueAuthSwidInput');
+  const rawS2 = String((s2Input && s2Input.value) || '').trim();
+  const rawSwid = String((swidInput && swidInput.value) || '').trim();
+  if(!rawS2 || !rawSwid){
+    setPrivateLeagueAuthStatus('privateLeagueAuthCookiesStatus',
+      'Both values are required — ESPN authenticates on the pair.', 'error');
+    return;
+  }
+  const cleanS2 = sanitizeEspnCookieValue('s2', rawS2);
+  const cleanSwid = sanitizeEspnCookieValue('swid', rawSwid);
+  if(!cleanS2){
+    setPrivateLeagueAuthStatus('privateLeagueAuthCookiesStatus',
+      'The espn_s2 value does not look right — re-copy it from your logged-in ESPN browser.', 'error');
+    return;
+  }
+  if(!cleanSwid){
+    setPrivateLeagueAuthStatus('privateLeagueAuthCookiesStatus',
+      'The SWID value does not look right — re-copy it from your logged-in ESPN browser.', 'error');
+    return;
+  }
+  // Write through to the existing Setup fields so they stay the single source
+  // of truth. Their own `input` listeners persist to FSNStore.
+  try{
+    const setupS2 = $('espnS2Input');
+    const setupSwid = $('espnSwidInput');
+    if(setupS2){
+      setupS2.value = cleanS2;
+      setupS2.dispatchEvent(new Event('input', { bubbles:true }));
+    } else {
+      FSNStore.set('fsn.espn.s2.v1', cleanS2);
+    }
+    if(setupSwid){
+      setupSwid.value = cleanSwid;
+      setupSwid.dispatchEvent(new Event('input', { bubbles:true }));
+    } else {
+      FSNStore.set('fsn.espn.swid.v1', cleanSwid);
+    }
+  }catch(err){
+    console.error('[Private League Auth] Could not write cookies through to the Setup fields.', err);
+    setPrivateLeagueAuthStatus('privateLeagueAuthCookiesStatus',
+      'Could not save those cookies on this device. Try again, or paste them into Setup directly.', 'error');
+    return;
+  }
+  setPrivateLeagueAuthStatus('privateLeagueAuthCookiesStatus', 'Cookies saved — signing in with ESPN…', 'ok');
+  const targetLeague = (privateLeagueAuthContext && privateLeagueAuthContext.leagueId) ||
+    String(($('leagueIdInput') && $('leagueIdInput').value) || '').trim();
+  try{
+    const ok = await fetchLeagueData({ leagueId: targetLeague, silent:false, navigate:true });
+    if(ok){
+      closePrivateLeagueAuthModal();
+      toast('Signed in with your ESPN cookies');
+    } else {
+      setPrivateLeagueAuthStatus('privateLeagueAuthCookiesStatus',
+        'Cookies were saved, but the league still would not load. See the message on Setup for details.', 'error');
+    }
+  }catch(err){
+    console.error('[Private League Auth] fetchLeagueData failed after cookies paste', err);
+    setPrivateLeagueAuthStatus('privateLeagueAuthCookiesStatus',
+      'Cookies saved, but the fetch failed: ' + String((err && err.message) || err), 'error');
+  }
+}
+
+if($('privateLeagueAuthClose')){
+  $('privateLeagueAuthClose').addEventListener('click', closePrivateLeagueAuthModal);
+}
+if($('privateLeagueAuthUseInvite')){
+  $('privateLeagueAuthUseInvite').addEventListener('click', function(){
+    handlePrivateLeagueAuthInvite().catch(function(err){
+      console.error('[Private League Auth] invite handler threw', err);
+    });
+  });
+}
+if($('privateLeagueAuthUseCookies')){
+  $('privateLeagueAuthUseCookies').addEventListener('click', function(){
+    handlePrivateLeagueAuthCookies().catch(function(err){
+      console.error('[Private League Auth] cookies handler threw', err);
+    });
+  });
+}
+if($('privateLeagueAuthPasteInvite')){
+  $('privateLeagueAuthPasteInvite').addEventListener('click', async function(){
+    const target = $('privateLeagueAuthInviteInput');
+    if(!target) return;
+    try{
+      if(navigator.clipboard && navigator.clipboard.readText){
+        const text = await navigator.clipboard.readText();
+        target.value = String(text || '').trim();
+        target.focus();
+      } else {
+        target.focus();
+        toast('Long-press the field and choose Paste');
+      }
+    }catch(err){
+      console.warn('[Private League Auth] clipboard paste unavailable', err);
+      target.focus();
+      toast('Clipboard blocked — long-press the field and choose Paste');
+    }
+  });
+}
+document.addEventListener('keydown', function(event){
+  const modal = $('privateLeagueAuthModal');
+  if(event.key === 'Escape' && modal && modal.dataset.open === 'true'){
+    closePrivateLeagueAuthModal();
+  }
 });
 
 
