@@ -2490,6 +2490,106 @@ body.fsn-dd-lock{ overflow:hidden; }
 }
 .wire-dek{ font-size:12.5px; line-height:1.55; color:var(--off); margin:9px 0 0; }
 .wire-matchline{ font-size:11px; line-height:1.5; color:var(--dim); }
+
+/* ---- Compact wire card: the desk wire folded into the timeline stream so a
+   breaking or analysis article reads as one more entry in the feed, not a
+   dominant main attraction. Mirrors .tl-card shape and typography, and shares
+   the same 26px left-padded spine as the sibling .tl-wrap below, so the two
+   render as one continuous stream without a visual seam. ---- */
+#deskWireWrap.wire-compact{
+  padding-left:26px; position:relative; margin-bottom:0; padding-bottom:13px;
+}
+#deskWireWrap.wire-compact::before{
+  content:''; position:absolute; left:8px; top:6px; bottom:-6px; width:1px;
+  background:linear-gradient(180deg,var(--line-2),rgba(255,255,255,.06));
+}
+.wire-item{ position:relative; }
+.wire-item::before{
+  content:''; position:absolute; left:-22px; top:19px;
+  width:9px; height:9px; border-radius:50%;
+  background:var(--ink); border:2px solid var(--tl-accent,var(--gold));
+  box-shadow:0 0 10px var(--tl-accent,var(--gold));
+}
+.wire-card-compact{
+  width:100%; text-align:left; display:block; border-radius:15px; overflow:hidden;
+  background:linear-gradient(158deg,var(--panel-2),#0c111a);
+  border:1px solid var(--line-2);
+  box-shadow:0 8px 22px -16px rgba(0,0,0,.8);
+  position:relative; cursor:pointer;
+  -webkit-tap-highlight-color:transparent;
+}
+.wire-card-compact:hover{ border-color:rgba(255,255,255,.22); }
+.wire-card-compact:active{ transform:scale(.992); }
+.wire-card-compact .rail{
+  position:absolute; left:0; top:0; bottom:0; width:4px;
+  background:var(--tl-accent,var(--gold));
+}
+.wire-body-compact{ padding:15px 16px 15px 18px; }
+.wire-meta-compact{
+  display:flex; align-items:center; gap:7px; flex-wrap:wrap;
+  font-family:'JetBrains Mono',monospace; font-size:9.5px; font-weight:700;
+  letter-spacing:.1em; color:var(--dim); text-transform:uppercase;
+}
+.wire-meta-compact .when{ margin-left:auto; }
+.wire-head-compact{ display:flex; gap:11px; align-items:flex-start; margin-top:9px; }
+.wire-mark{
+  width:46px; height:46px; border-radius:11px; flex:none;
+  border:1px solid rgba(255,196,0,.4);
+  background:linear-gradient(150deg,rgba(255,196,0,.14),#141a26);
+  color:var(--gold);
+  display:flex; align-items:center; justify-content:center;
+  font-family:'Anton',sans-serif; font-size:15px; letter-spacing:.06em;
+}
+.wire-title-compact{
+  font-family:'Anton',Impact,sans-serif; font-size:16.5px; line-height:1.13;
+  text-transform:uppercase; color:#fff; margin:0;
+}
+.wire-dek-compact{
+  font-family:'Oswald',sans-serif; font-weight:300; font-size:12.5px;
+  line-height:1.5; color:var(--off); margin:7px 0 0;
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+}
+/* The roster context line: how this article touches the reader's team. Woven
+   into the card copy so a rostered player is called out inline rather than in
+   a separate chip block. */
+.wire-context{
+  display:flex; flex-wrap:wrap; align-items:baseline; gap:6px;
+  font-family:'Oswald',sans-serif; font-size:11.5px; line-height:1.45;
+  color:var(--off); margin:8px 0 0;
+}
+.wire-context .lead{
+  font-family:'JetBrains Mono',monospace; font-size:9.5px; font-weight:700;
+  letter-spacing:.12em; text-transform:uppercase; color:var(--gold);
+}
+.wire-context .lead.free{ color:var(--dim); }
+.wire-context .player{ color:#fff; font-weight:500; }
+.wire-context .owner{ color:var(--gold); font-weight:400; }
+.wire-context .owner.free{ color:var(--dim); }
+.wire-context .sep{ color:#2f3a4b; }
+.wire-foot-compact{
+  display:flex; align-items:center; gap:8px; margin-top:11px; padding-top:9px;
+  border-top:1px solid var(--line);
+}
+.wire-foot-compact .byline-compact{
+  font-family:'Oswald',sans-serif; font-size:11px; color:var(--dim);
+  min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.wire-foot-compact .wire-read{
+  margin-left:auto; font-size:10px; font-weight:700; letter-spacing:.16em;
+  text-transform:uppercase; color:var(--tl-accent,var(--gold));
+}
+/* The full article body: hidden by default, revealed inline when the card is
+   opened. Same sanitized markup rules as the reader below. */
+.wire-expand{
+  display:none; padding:0 16px 15px 18px;
+  border-top:1px solid var(--line);
+}
+.wire-card-compact[data-open="true"] .wire-expand{ display:block; }
+.wire-expand-inner{ padding-top:12px; }
+.wire-expand-actions{
+  display:flex; align-items:center; gap:8px; margin-top:12px; padding-top:11px;
+  border-top:1px solid var(--line); flex-wrap:wrap;
+}
 .wire-chip{
   display:inline-flex; align-items:center; gap:5px; white-space:nowrap;
   padding:3px 8px; border-radius:999px; font-size:10px; letter-spacing:.04em;
@@ -3322,11 +3422,6 @@ body.fsn-dd-lock{ overflow:hidden; }
 
     <p id="transactionWireStatus" class="px-4 text-xs text-[var(--dim)]" role="status" hidden></p>
 
-    <!-- THE DESK WIRE — today's published article, routed by the weekly
-         cadence and annotated with this league's rosters. Hidden whenever
-         FSNArticles has nothing for the slot, so the desk below stands alone. -->
-    <div class="px-4" id="deskWireWrap" hidden></div>
-
     <!-- LEAD STORY -->
     <div class="px-4" id="newsLeadWrap"></div>
 
@@ -3337,6 +3432,13 @@ body.fsn-dd-lock{ overflow:hidden; }
         <h2>The Timeline</h2>
         <span class="kicker text-[var(--dim)] ml-auto" id="timelineLive">● UPDATING</span>
       </div>
+      <!-- THE DESK WIRE — today's published article, routed by the weekly
+           cadence and annotated with this league's rosters. Rendered as the
+           first item in the timeline stream so a breaking or analysis piece
+           reads as one more entry in the feed, not a dominant main attraction.
+           Hidden whenever FSNArticles has nothing for the slot; the desk below
+           stands alone in that case. -->
+      <div id="deskWireWrap" hidden></div>
       <div class="tl-wrap" id="timelineFeed"></div>
     </div>
 
@@ -29571,37 +29673,50 @@ function wirePublishLabel(dateKey){
   return months[when.getUTCMonth()] + ' ' + when.getUTCDate();
 }
 
-/* The "who on your wire owns him" line. Matched players first, and for the
-   waiver slot the players NOBODY in this league rosters, which is the whole
-   point of a waiver piece. */
-function wireMatchLine(view, slot){
-  const owned = view.matches.filter(m=> m && m.owner);
+/* The roster context line — how this article ties back to the reader's own
+   team. Rostered players lead so a mention that touches the reader's wire is
+   the first thing they see; the waiver slot also surfaces the free agents
+   named in the piece, which is the whole point of a waiver read. Empty when
+   nothing in the copy touches the league, so the card stays quiet. */
+function wireContextLine(view, slot){
+  if(!view) return '';
+  const owned = (view.matches || []).filter(m=> m && m.owner);
   const free = view.unmatched || [];
-  const chips = [];
-  owned.forEach(m=>{
-    chips.push('<span class="wire-chip">' + esc(m.name) +
-      ' <span class="wire-chip-owner">' + esc(m.label) + '</span></span>');
-  });
-  if(slot && slot.id === 'waiver'){
-    free.forEach(m=>{
-      chips.push('<span class="wire-chip wire-chip-free">' + esc(m.name) + ' <span class="wire-chip-owner">free agent</span></span>');
-    });
+  const isWaiver = slot && slot.id === 'waiver';
+
+  const entryHtml = (name, label, cls)=>
+    `<span><span class="player">${esc(name)}</span> <span class="owner${cls ? ' ' + cls : ''}">· ${esc(label)}</span></span>`;
+
+  const parts = [];
+  if(owned.length){
+    const cap = owned.slice(0, 3);
+    const chips = cap.map(m=> entryHtml(m.name, m.label));
+    const remainder = owned.length - cap.length;
+    const list = chips.join('<span class="sep">·</span>');
+    const more = remainder > 0 ? `<span class="sep">·</span><span class="owner">+${remainder} more on your wire</span>` : '';
+    parts.push(`<span class="lead">On your wire</span>${list}${more}`);
   }
-  if(!chips.length) return '';
-  const heading = owned.length
-    ? 'Named in this article, on your wire'
-    : 'Named in this article, unrostered in your league';
-  return `<div class="mt-3 pt-3 border-t border-[var(--line)]">
-      <div class="kicker text-[var(--dim)]">${esc(heading)}</div>
-      <div class="flex flex-wrap gap-1.5 mt-2">${chips.join('')}</div>
-    </div>`;
+  if(isWaiver && free.length){
+    const cap = free.slice(0, 3);
+    const chips = cap.map(m=> entryHtml(m.name, 'free agent', 'free'));
+    const remainder = free.length - cap.length;
+    const list = chips.join('<span class="sep">·</span>');
+    const more = remainder > 0 ? `<span class="sep">·</span><span class="owner free">+${remainder} more available</span>` : '';
+    parts.push(`<span class="lead free">Available now</span>${list}${more}`);
+  }
+  if(!parts.length) return '';
+  return `<div class="wire-context">${parts.join('<span class="sep" style="margin:0 4px">•</span>')}</div>`;
 }
 
 function renderDeskWire(){
   const wrap = $('deskWireWrap');
   if(!wrap) return;
 
-  const hide = ()=>{ wrap.hidden = true; wrap.innerHTML = ''; };
+  const hide = ()=>{
+    wrap.hidden = true;
+    wrap.innerHTML = '';
+    wrap.classList.remove('wire-compact');
+  };
 
   const snapshot = FSNArticles.current();
   /* 'empty' (nothing published for today's slot) and 'offline' (the feed could
@@ -29615,49 +29730,76 @@ function renderDeskWire(){
   const post = view.post;
   const slot = snapshot.slot || {};
   const published = wirePublishLabel(post.publishDate);
-  const collapsed = wireExpanded ? 'false' : 'true';
-  const toggleLabel = wireExpanded ? 'Show less' : 'Read the full story';
+  const openState = wireExpanded ? 'true' : 'false';
   const cachedNote = snapshot.cached
     ? `<div class="text-[10.5px] text-[var(--dim)] mt-2">Saved copy. This device has not reached the desk since it downloaded this.</div>`
     : '';
+  const contextHtml = wireContextLine(view, slot);
+  const slotLabel = String(slot.label || 'From the Desk').toUpperCase();
+  const categoryPill = post.category
+    ? `<span class="sep">/</span><span>${esc(post.category)}</span>` : '';
+  const excerpt = post.excerpt ? esc(post.excerpt) : '';
+  const title = esc(post.title);
+  const byline = esc(post.author || 'FSN Desk');
+  const readerHref = esc(snapshot.readerUrl);
 
-  wrap.innerHTML = `<article class="card wire-card">
-    <div class="wire-top"></div>
-    <div class="p-4 wire-head">
-      <div class="flex items-center gap-2 mb-2.5 flex-wrap">
-        <span class="pill pill-gold">${esc(slot.label || 'From the Desk')}</span>
-        ${post.category ? `<span class="pill pill-cyan">${esc(post.category)}</span>` : ''}
-        <span class="kicker text-[var(--dim)] ml-auto">${esc(published)}</span>
+  /* The body is the same element the article-ingest check keys off (id and
+     data-collapsed): the tests document a real contract the reader UI depends
+     on — a body node that can be interrogated for its expand state — and the
+     compact rework keeps that contract even as the surrounding chrome shrinks
+     to a timeline card. */
+  const bodyCollapsed = wireExpanded ? 'false' : 'true';
+
+  wrap.classList.add('wire-compact');
+  wrap.innerHTML = `<div class="wire-item" style="--tl-accent:var(--gold)">
+    <article class="wire-card-compact" data-wire-toggle="1" data-open="${openState}"
+        role="button" tabindex="0" aria-expanded="${openState}" aria-controls="deskWireBody"
+        aria-label="Read: ${esc(String(post.title || '').replace(/<[^>]+>/g, ''))}">
+      <span class="rail"></span>
+      <div class="wire-body-compact">
+        <div class="wire-meta-compact">
+          <span>${esc(slotLabel)}</span>
+          ${categoryPill}
+          <span class="when">${esc(published)}</span>
+        </div>
+        <div class="wire-head-compact">
+          <div class="wire-mark">FSN</div>
+          <div class="min-w-0 flex-1">
+            <h3 class="wire-title wire-title-compact">${title}</h3>
+            ${excerpt ? `<p class="wire-dek-compact">${excerpt}</p>` : ''}
+            ${contextHtml}
+          </div>
+        </div>
+        <div class="wire-foot-compact">
+          <span class="byline-compact">${byline}</span>
+          <span class="wire-read">${wireExpanded ? 'Close ›' : 'Read ›'}</span>
+        </div>
       </div>
-      <h2 class="wire-title">${esc(post.title)}</h2>
-      ${post.excerpt ? `<p class="wire-dek">${esc(post.excerpt)}</p>` : ''}
-      ${wireMatchLine(view, slot)}
-      ${cachedNote}
-      <div class="wire-body mt-3.5" data-collapsed="${collapsed}" id="deskWireBody">${view.html}</div>
-      <div class="flex items-center gap-2 mt-3 pt-3 border-t border-[var(--line)] flex-wrap">
-        <button type="button" class="wire-action" data-wire-toggle="1"
-          aria-expanded="${wireExpanded ? 'true' : 'false'}" aria-controls="deskWireBody">${esc(toggleLabel)}</button>
-        <a class="wire-action" href="${esc(snapshot.readerUrl)}" target="_blank" rel="noopener noreferrer"
-          data-wire-external="1">Open on the web ›</a>
-        <span class="kicker text-[var(--dim)] ml-auto">${esc(post.author || 'FSN Desk')}</span>
+      <div class="wire-expand" id="deskWireBody" data-collapsed="${bodyCollapsed}">
+        <div class="wire-expand-inner">
+          <div class="wire-body">${view.html}</div>
+          ${cachedNote}
+          <div class="wire-expand-actions">
+            <a class="wire-action" href="${readerHref}" target="_blank" rel="noopener noreferrer"
+              data-wire-external="1">Open on the web ›</a>
+            <span class="kicker text-[var(--dim)] ml-auto">${byline}</span>
+          </div>
+        </div>
       </div>
-    </div>
-  </article>`;
+    </article>
+  </div>`;
   wrap.hidden = false;
 }
 
 /* Expand / collapse, and the one external link. Delegated because the card is
-   rewritten on every repaint, so a bound listener would not survive it. */
+   rewritten on every repaint, so a bound listener would not survive it. The
+   external link sits inside the toggle target now (the whole compact card is
+   clickable), so check it first — otherwise a tap on "Open on the web" would
+   also collapse the reveal it lives inside. */
 document.addEventListener('click', (e)=>{
-  const toggle = e.target.closest && e.target.closest('[data-wire-toggle]');
-  if(toggle){
-    e.preventDefault();
-    wireExpanded = !wireExpanded;
-    safeRun('deskWire:toggle', renderDeskWire);
-    return;
-  }
   const external = e.target.closest && e.target.closest('[data-wire-external]');
   if(external){
+    e.stopPropagation();
     let handled = false;
     try{
       handled = FSNLinks.openExternal(external.getAttribute('href') || '');
@@ -29667,7 +29809,26 @@ document.addEventListener('click', (e)=>{
       return;
     }
     if(handled) e.preventDefault();
+    return;
   }
+  const toggle = e.target.closest && e.target.closest('[data-wire-toggle]');
+  if(toggle){
+    e.preventDefault();
+    wireExpanded = !wireExpanded;
+    safeRun('deskWire:toggle', renderDeskWire);
+    return;
+  }
+});
+
+/* Keyboard toggle on the compact wire card — role="button" means Enter and
+   Space must open and close it too. */
+document.addEventListener('keydown', (e)=>{
+  if(e.key !== 'Enter' && e.key !== ' ') return;
+  const target = e.target && e.target.closest && e.target.closest('.wire-card-compact[data-wire-toggle]');
+  if(!target) return;
+  e.preventDefault();
+  wireExpanded = !wireExpanded;
+  safeRun('deskWire:toggle', renderDeskWire);
 });
 
 function renderNews(){
@@ -29711,16 +29872,32 @@ function renderNews(){
   $('timelineLive').textContent = anyLive ? '● LIVE' : '● UPDATING';
   $('timelineLive').style.color = anyLive ? 'var(--red)' : 'var(--dim)';
 
+  /* The wire card lives inside newsFeedWrap now (right above the timeline
+     spine), so an empty-timeline branch that hides the whole feed would also
+     bury today's article. Keep the section visible whenever the wire has
+     content and blank just the timeline body instead. */
+  const wireHasContent = !!(($('deskWireWrap') || {}).innerHTML || '').trim();
+
   if(!LeagueData.hasLive() && !all.length){
     $('newsLeadWrap').innerHTML = emptyState('NO LEAGUE DATA', 'Connect your ESPN league and the deterministic timeline fills with recaps, matchup history, waiver fallout, and power rankings.', 'setup');
-    $('newsFeedWrap').classList.add('hidden');
+    if(wireHasContent){
+      $('newsFeedWrap').classList.remove('hidden');
+      $('timelineFeed').innerHTML = '';
+    } else {
+      $('newsFeedWrap').classList.add('hidden');
+    }
     return;
   }
 
   // No pre-generated stories for this week/season at all → clean placeholder.
   if(!all.length){
     $('newsLeadWrap').innerHTML = newsPlaceholderCard(week, newsLabel);
-    $('newsFeedWrap').classList.add('hidden');
+    if(wireHasContent){
+      $('newsFeedWrap').classList.remove('hidden');
+      $('timelineFeed').innerHTML = '';
+    } else {
+      $('newsFeedWrap').classList.add('hidden');
+    }
     return;
   }
 
@@ -29733,7 +29910,12 @@ function renderNews(){
           ? 'No draft board in this payload. Re-fetch with the draft views once your league has drafted.'
           : 'Nothing on this desk yet for week ' + week + '. Stories unlock as the week unfolds.');
     $('newsLeadWrap').innerHTML = emptyState('NO COPY', msg, null);
-    $('newsFeedWrap').classList.add('hidden');
+    if(wireHasContent){
+      $('newsFeedWrap').classList.remove('hidden');
+      $('timelineFeed').innerHTML = '';
+    } else {
+      $('newsFeedWrap').classList.add('hidden');
+    }
     return;
   }
 
