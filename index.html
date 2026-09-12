@@ -6589,7 +6589,7 @@ function parseLeagueInviteInput(value){
   if(/^\d{1,20}$/.test(raw)) return { leagueId:raw, token:'' };
 
   const readParam = (name)=>{
-    const match = new RegExp('[?&#]' + name + '=([^&#\\s]+)').exec(raw);
+    const match = new RegExp('(?:^|[?&#])' + name + '=([^&#\\s\"<>]+)').exec(raw);
     if(!match) return '';
     try{ return decodeURIComponent(match[1]); }
     catch(err){
@@ -28307,7 +28307,13 @@ $('leagueIdInput').addEventListener('input', ()=>{
   /* Runs BEFORE savePrefs() so what gets persisted is the bare League ID, and
      before the cloud read below so the token is already on the device when
      /api/league is asked for the shared archive. */
-  absorbPastedLeagueInvite();
+  const rawInvite = $('leagueIdInput').value;
+  if(absorbPastedLeagueInvite()){
+    clearTimeout($('leagueIdInput')._cloudTimer);
+    handlePrivateLeagueAuthInvite(rawInvite).catch(err=>
+      console.error('[Private League Auth] League ID invite handler failed.', err));
+    return;
+  }
   savePrefs();
   refreshHistoryUrlLink();
   updateShareInviteUI();
@@ -29331,9 +29337,11 @@ function closePrivateLeagueAuthModal(){
   privateLeagueAuthContext = null;
 }
 
-async function handlePrivateLeagueAuthInvite(){
+let privateLeagueInviteLoading = false;
+async function handlePrivateLeagueAuthInvite(value){
+  if(privateLeagueInviteLoading) return;
   const input = $('privateLeagueAuthInviteInput');
-  const raw = String((input && input.value) || '').trim();
+  const raw = String(value == null ? ((input && input.value) || '') : value).trim();
   if(!raw){
     setPrivateLeagueAuthStatus('privateLeagueAuthInviteStatus', 'Paste the whole invite link first.', 'error');
     return;
@@ -29357,29 +29365,48 @@ async function handlePrivateLeagueAuthInvite(){
       'That link carried the League ID but no share token. Ask a league-mate to re-send the full invite link.', 'error');
     return;
   }
-  if(!setLeagueShareToken(parsed.leagueId, parsed.token)){
+  setLeagueShareToken(parsed.leagueId, parsed.token);
+  // FSNStore retains a session copy when persistent storage is unavailable.
+  if(getLeagueShareToken(parsed.leagueId) !== parsed.token){
     setPrivateLeagueAuthStatus('privateLeagueAuthInviteStatus',
       'Could not store that invite token on this device. Try again, or paste your own ESPN cookies instead.', 'error');
     return;
   }
-  const leagueField = $('leagueIdInput');
-  if(leagueField) leagueField.value = parsed.leagueId;
-  try{ savePrefs(); }catch(err){ console.warn('[Private League Auth] savePrefs after invite paste failed', err); }
-  setPrivateLeagueAuthStatus('privateLeagueAuthInviteStatus', 'Invite link accepted — loading the league…', 'ok');
-  try{ updateShareInviteUI(); }catch(err){ console.warn('[Private League Auth] updateShareInviteUI failed', err); }
+  privateLeagueInviteLoading = true;
+  const button = $('privateLeagueAuthUseInvite');
+  if(button) button.disabled = true;
   try{
+    const leagueField = $('leagueIdInput');
+    clearTimeout(leagueField._cloudTimer);
+    leagueField.value = parsed.leagueId;
+    // Retire any earlier unauthenticated read before retrying with the new token.
+    // Its late 401 must not discard the invite we just accepted.
+    ui.cloudHydrateSeq += 1;
+    ui.cloudHydrateInFlight = null;
+    // FSN share tokens authorize ESPN; do not retry through a previously selected provider.
+    setProvider('espn');
+    FSNStore.set(SAVED_LEAGUE_ID_KEY, parsed.leagueId);
+    savePrefs();
+    $('fetchStatus').style.color = 'var(--dim)';
+    $('fetchStatus').textContent = 'Invite link accepted — loading the league…';
+    setPrivateLeagueAuthStatus('privateLeagueAuthInviteStatus', 'Invite link accepted — loading the league…', 'ok');
+    updateShareInviteUI();
     const ok = await fetchLeagueData({ leagueId: parsed.leagueId, silent:false, navigate:true });
     if(ok){
+      setPrivateLeagueAuthStatus('privateLeagueAuthInviteStatus', '', null);
       closePrivateLeagueAuthModal();
       toast('League loaded via invite link');
     } else {
       setPrivateLeagueAuthStatus('privateLeagueAuthInviteStatus',
-        'Invite token stored, but the league still would not load. See the message on Setup for details.', 'error');
+        $('fetchStatus').textContent || 'The league could not be loaded. Please retry.', 'error');
     }
   }catch(err){
     console.error('[Private League Auth] fetchLeagueData failed after invite paste', err);
     setPrivateLeagueAuthStatus('privateLeagueAuthInviteStatus',
       'Invite token stored, but the fetch failed: ' + String((err && err.message) || err), 'error');
+  }finally{
+    privateLeagueInviteLoading = false;
+    if(button) button.disabled = false;
   }
 }
 
@@ -29457,6 +29484,18 @@ if($('privateLeagueAuthUseInvite')){
     });
   });
 }
+// A paste is a complete input action; typing partial IDs/tokens does not submit.
+if($('privateLeagueAuthInviteInput')){
+  $('privateLeagueAuthInviteInput').addEventListener('paste', function(){
+    setTimeout(()=>{
+      const parsed = parseLeagueInviteInput(this.value);
+      if(parsed.leagueId && parsed.token){
+        handlePrivateLeagueAuthInvite().catch(err=>
+          console.error('[Private League Auth] pasted invite handler failed.', err));
+      }
+    }, 0);
+  });
+}
 if($('privateLeagueAuthUseCookies')){
   $('privateLeagueAuthUseCookies').addEventListener('click', function(){
     handlePrivateLeagueAuthCookies().catch(function(err){
@@ -29473,6 +29512,7 @@ if($('privateLeagueAuthPasteInvite')){
         const text = await navigator.clipboard.readText();
         target.value = String(text || '').trim();
         target.focus();
+        await handlePrivateLeagueAuthInvite();
       } else {
         target.focus();
         toast('Long-press the field and choose Paste');

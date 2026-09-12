@@ -25,6 +25,7 @@
     "check:desktop-scroll": "node scripts/desktop-scroll-check.mjs",
     "check:desk-sync": "node scripts/desk-sync-check.mjs",
     "check:boot": "node scripts/boot-curtain-check.mjs",
+    "check:invite": "node scripts/invite-flow-check.mjs",
     "check:apibase": "node scripts/api-base-check.mjs",
     "check:links": "node scripts/legal-links-check.mjs",
     "check:claims": "node scripts/landing-claims-check.mjs",
@@ -36,7 +37,7 @@
     "check:blog": "node scripts/build-blog.mjs --check",
     "generate:editorial": "node scripts/generate-editorial.mjs",
     "check:editorial": "node scripts/generate-editorial.mjs --self-test",
-    "verify": "npm run check:scope && npm run check:matchup-previews && npm run test:wire && npm run check:wire && npm run test:triggers && npm run audit:notifications && npm run check:render && npm run check:localdesk && npm run check:switch && npm run check:ticker && npm run check:desktop-scroll && npm run check:desk-sync && npm run check:boot && npm run check:apibase && npm run check:links && npm run check:claims && npm run check:news && npm run check:articles && npm run check:applinks && npm run check:deeplinks && npm run check:editorial",
+    "verify": "npm run check:scope && npm run check:matchup-previews && npm run test:wire && npm run check:wire && npm run test:triggers && npm run audit:notifications && npm run check:render && npm run check:localdesk && npm run check:switch && npm run check:ticker && npm run check:desktop-scroll && npm run check:desk-sync && npm run check:boot && npm run check:invite && npm run check:apibase && npm run check:links && npm run check:claims && npm run check:news && npm run check:articles && npm run check:applinks && npm run check:deeplinks && npm run check:editorial",
     "audit:notifications": "node scripts/audit-notifications.mjs",
     "assets:source": "node scripts/build-brand-assets.mjs",
     "check:release": "npm run build:ios && node scripts/release-cleanup-check.mjs && node scripts/release-browser-check.mjs"
