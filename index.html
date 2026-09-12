@@ -16987,6 +16987,40 @@ function selectMarqueeGame(ctx){
     : ctx.games;
   if(!games || !games.length) return null;
 
+  /* 2026 season, Week 2 onward: rank by highest average FSN Power Index
+     between the two rosters, so the marquee highlights the league's heaviest
+     hitters instead of a top team drawing a bottom-feeder. Week 1 has no
+     FSN Index sample to read (fsnPowerIndex(0) returns an empty board), so
+     it keeps the legacy standings-rating pick. Historical seasons stay on
+     the legacy path — this is strictly additive for the live 2026 book. */
+  const useFsnIndex = viewedSeasonYear() === 2026 && Number(ctx.week) >= 2;
+  if(useFsnIndex){
+    let board = null;
+    try{
+      board = (window.FSNIntel && typeof FSNIntel.fsnPowerIndex === 'function')
+        ? (FSNIntel.fsnPowerIndex(ctx.week - 1) || [])
+        : [];
+    }catch(err){
+      console.error('[NewsDesk] Matchup of the Week FSN Index read failed for Week ' + ctx.week, err);
+      board = [];
+    }
+    if(board && board.length){
+      const indexOf = (team)=>{
+        if(!team) return 0;
+        const row = board.find(r=> r && r.team && r.team.id === team.id);
+        return row && Number.isFinite(row.index) ? row.index : 0;
+      };
+      /* Sum is proportional to the two-team average, so it ranks identically
+         while keeping the arithmetic cheap. */
+      const rankedByIndex = games.slice().sort((a,b)=>
+        (indexOf(b.homeTeam) + indexOf(b.awayTeam)) - (indexOf(a.homeTeam) + indexOf(a.awayTeam)));
+      if(rankedByIndex[0]) return rankedByIndex[0];
+    }
+    /* Board came back empty (data still hydrating, all teams pre-scoring):
+       fall through to the legacy standings-rating pick rather than returning
+       null and blanking the marquee card. */
+  }
+
   const table = FSNIntel.standingsThrough(ctx.week - 1);
   const ratingOf = (team)=>{
     const row = table.find(r=> r.team.id === team.id);
