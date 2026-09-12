@@ -2516,10 +2516,12 @@ body.fsn-dd-lock{ overflow:hidden; }
   border:1px solid var(--line-2);
   box-shadow:0 8px 22px -16px rgba(0,0,0,.8);
   position:relative; cursor:pointer;
+  color:inherit; text-decoration:none;
   -webkit-tap-highlight-color:transparent;
 }
 .wire-card-compact:hover{ border-color:rgba(255,255,255,.22); }
 .wire-card-compact:active{ transform:scale(.992); }
+.wire-card-compact:focus-visible{ outline:2px solid var(--cyan); outline-offset:2px; }
 .wire-card-compact .rail{
   position:absolute; left:0; top:0; bottom:0; width:4px;
   background:var(--tl-accent,var(--gold));
@@ -2547,7 +2549,7 @@ body.fsn-dd-lock{ overflow:hidden; }
 .wire-dek-compact{
   font-family:'Oswald',sans-serif; font-weight:300; font-size:12.5px;
   line-height:1.5; color:var(--off); margin:7px 0 0;
-  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;
+  display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden;
 }
 /* The roster context line: how this article touches the reader's team. Woven
    into the card copy so a rostered player is called out inline rather than in
@@ -2578,80 +2580,16 @@ body.fsn-dd-lock{ overflow:hidden; }
   font-family:'Oswald',sans-serif; font-size:11px; color:var(--dim);
   min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
 }
+.wire-foot-compact .wire-cached{
+  font-family:'JetBrains Mono',monospace; font-size:9.5px; font-weight:700;
+  letter-spacing:.1em; text-transform:uppercase; color:var(--dim);
+}
 .wire-foot-compact .wire-read{
   margin-left:auto; font-size:10px; font-weight:700; letter-spacing:.16em;
   text-transform:uppercase; color:var(--tl-accent,var(--gold));
+  display:inline-flex; align-items:center; gap:4px;
 }
-/* The full article body: hidden by default, revealed inline when the card is
-   opened. Same sanitized markup rules as the reader below. */
-.wire-expand{
-  display:none; padding:0 16px 15px 18px;
-  border-top:1px solid var(--line);
-}
-.wire-card-compact[data-open="true"] .wire-expand{ display:block; }
-.wire-expand-inner{ padding-top:12px; }
-.wire-expand-actions{
-  display:flex; align-items:center; gap:8px; margin-top:12px; padding-top:11px;
-  border-top:1px solid var(--line); flex-wrap:wrap;
-}
-.wire-chip{
-  display:inline-flex; align-items:center; gap:5px; white-space:nowrap;
-  padding:3px 8px; border-radius:999px; font-size:10px; letter-spacing:.04em;
-  border:1px solid rgba(0,224,255,.35); color:var(--cyan); background:rgba(0,224,255,.07);
-}
-.wire-chip .wire-chip-owner{ color:var(--off); letter-spacing:0; }
-.wire-chip.wire-chip-free{
-  border-color:rgba(255,255,255,.16); color:var(--dim); background:transparent;
-}
-/* The article body. Deliberately narrow in scope: only the tags the sanitizer
-   in FSNArticles lets through can appear here. */
-.wire-body{ font-size:13.5px; line-height:1.65; color:var(--off); }
-.wire-body p{ margin:0 0 11px; }
-.wire-body h2,.wire-body h3,.wire-body h4{
-  font-family:'Anton',sans-serif; font-size:13.5px; letter-spacing:.06em;
-  text-transform:uppercase; color:#fff; margin:16px 0 8px;
-}
-.wire-body ul,.wire-body ol{ margin:0 0 11px; padding-left:18px; }
-.wire-body li{ margin:0 0 5px; }
-.wire-body strong{ color:#fff; font-weight:600; }
-.wire-body a{ color:var(--cyan); text-decoration:underline; }
-.wire-body blockquote{
-  margin:0 0 11px; padding:9px 12px; border-left:2px solid var(--gold);
-  background:rgba(255,196,0,.05); color:var(--off); font-style:italic;
-}
-.wire-body[data-collapsed="true"]{
-  max-height:168px; overflow:hidden;
-  -webkit-mask-image:linear-gradient(180deg,#000 60%,transparent);
-  mask-image:linear-gradient(180deg,#000 60%,transparent);
-}
-/* The ownership tag injected into the copy at a player's first mention. */
-.wire-own{
-  display:inline-block; margin-left:5px; padding:1px 6px; border-radius:999px;
-  font-family:'Oswald',sans-serif; font-size:9.5px; font-weight:600;
-  letter-spacing:.1em; text-transform:uppercase; vertical-align:middle;
-  color:var(--gold); border:1px solid rgba(255,196,0,.4); background:rgba(255,196,0,.08);
-  white-space:nowrap;
-}
-/* Reader-scoped variants. "self" and "opponent" reframe the tag so a national
-   story reads like league news; "other" keeps the neutral gold pill. */
-.wire-own.wire-own-self{
-  color:var(--cyan);
-  border-color:rgba(0,224,255,.5);
-  background:rgba(0,224,255,.1);
-}
-.wire-own.wire-own-opponent{
-  color:#ff7a7a;
-  border-color:rgba(255,122,122,.5);
-  background:rgba(255,122,122,.1);
-}
-.wire-action{
-  display:inline-flex; align-items:center; gap:6px; padding:5px 11px;
-  border-radius:999px; border:1px solid var(--line-2); background:transparent;
-  font-family:'Oswald',sans-serif; font-size:10px; font-weight:600;
-  letter-spacing:.16em; text-transform:uppercase; color:var(--off); cursor:pointer;
-}
-.wire-action:hover{ border-color:rgba(0,224,255,.45); color:var(--cyan); }
-.wire-action:focus-visible{ outline:2px solid var(--cyan); outline-offset:2px; }
+.wire-card-compact:hover .wire-foot-compact .wire-read{ color:var(--cyan); }
 
 /* ============================================================
    TIMELINE STREAM — Bleacher Report-style chronological feed
@@ -29823,10 +29761,32 @@ function newsPlaceholderCard(week, newsLabel){
    desk renders exactly as it always has.
 ============================================================ */
 
-/* Collapsed by default: the card is a slot on a busy screen, not a reader.
-   Per-session and deliberately not persisted, so a returning reader always
-   gets the compact card back. */
-let wireExpanded = false;
+/* The wire card is a timeline entry, not an inline reader. Everything long-form
+   lives on the blog page the "Open on the web ›" affordance points at, so this
+   surface stays snappy and never dominates the News screen with a wall of text.
+   No per-session expand state, because there is no in-app expansion any more. */
+
+/* Trim the excerpt down to a short, punchy blurb. 3 sentences max, ~200 chars,
+   ending on the sentence rather than mid-clause. Kept small even when the
+   published excerpt runs long so the card fits one timeline row. */
+function wireBlurb(excerpt){
+  const raw = String(excerpt == null ? '' : excerpt).trim();
+  if(!raw) return '';
+  const sentences = raw.match(/[^.!?]+[.!?]+(?:\s|$)/g);
+  let out = '';
+  if(sentences && sentences.length){
+    for(let i = 0; i < sentences.length && i < 3; i++){
+      const candidate = (out + sentences[i]).trim();
+      if(candidate.length > 220) break;
+      out = candidate;
+    }
+    if(!out) out = sentences[0].trim();
+  } else {
+    out = raw;
+  }
+  if(out.length > 220) out = out.slice(0, 217).trimEnd() + '…';
+  return out;
+}
 
 function wirePublishLabel(dateKey){
   const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dateKey || ''));
@@ -29911,36 +29871,31 @@ function renderDeskWire(){
   if(!snapshot || snapshot.status !== 'ready' || !snapshot.post){ hide(); return; }
 
   const view = FSNArticles.annotated();
-  if(!view || !view.html){ hide(); return; }
+  /* Annotation runs for its match list (which powers wireContextLine); the
+     card no longer paints view.html inline, but a missing view still disables
+     the slot rather than showing a headline with no story behind it. */
+  if(!view || !view.post){ hide(); return; }
 
   const post = view.post;
   const slot = snapshot.slot || {};
   const published = wirePublishLabel(post.publishDate);
-  const openState = wireExpanded ? 'true' : 'false';
-  const cachedNote = snapshot.cached
-    ? `<div class="text-[10.5px] text-[var(--dim)] mt-2">Saved copy. This device has not reached the desk since it downloaded this.</div>`
-    : '';
   const contextHtml = wireContextLine(view, slot);
   const slotLabel = String(slot.label || 'From the Desk').toUpperCase();
   const categoryPill = post.category
     ? `<span class="sep">/</span><span>${esc(post.category)}</span>` : '';
-  const excerpt = post.excerpt ? esc(post.excerpt) : '';
+  const blurb = wireBlurb(post.excerpt);
+  const blurbHtml = blurb ? `<p class="wire-dek-compact">${esc(blurb)}</p>` : '';
   const title = esc(post.title);
   const byline = esc(post.author || 'FSN Desk');
   const readerHref = esc(snapshot.readerUrl);
-
-  /* The body is the same element the article-ingest check keys off (id and
-     data-collapsed): the tests document a real contract the reader UI depends
-     on — a body node that can be interrogated for its expand state — and the
-     compact rework keeps that contract even as the surrounding chrome shrinks
-     to a timeline card. */
-  const bodyCollapsed = wireExpanded ? 'false' : 'true';
+  const cachedNote = snapshot.cached
+    ? `<span class="wire-cached">Saved copy · offline</span>` : '';
 
   wrap.classList.add('wire-compact');
   wrap.innerHTML = `<div class="wire-item" style="--tl-accent:var(--gold)">
-    <article class="wire-card-compact" data-wire-toggle="1" data-open="${openState}"
-        role="button" tabindex="0" aria-expanded="${openState}" aria-controls="deskWireBody"
-        aria-label="Read: ${esc(String(post.title || '').replace(/<[^>]+>/g, ''))}">
+    <a class="wire-card-compact" href="${readerHref}" target="_blank" rel="noopener noreferrer"
+        data-wire-external="1"
+        aria-label="Open on the web: ${esc(String(post.title || '').replace(/<[^>]+>/g, ''))}">
       <span class="rail"></span>
       <div class="wire-body-compact">
         <div class="wire-meta-compact">
@@ -29952,69 +29907,37 @@ function renderDeskWire(){
           <div class="wire-mark">FSN</div>
           <div class="min-w-0 flex-1">
             <h3 class="wire-title wire-title-compact">${title}</h3>
-            ${excerpt ? `<p class="wire-dek-compact">${excerpt}</p>` : ''}
+            ${blurbHtml}
             ${contextHtml}
           </div>
         </div>
         <div class="wire-foot-compact">
           <span class="byline-compact">${byline}</span>
-          <span class="wire-read">${wireExpanded ? 'Close ›' : 'Read ›'}</span>
-        </div>
-      </div>
-      <div class="wire-expand" id="deskWireBody" data-collapsed="${bodyCollapsed}">
-        <div class="wire-expand-inner">
-          <div class="wire-body">${view.html}</div>
           ${cachedNote}
-          <div class="wire-expand-actions">
-            <a class="wire-action" href="${readerHref}" target="_blank" rel="noopener noreferrer"
-              data-wire-external="1">Open on the web ›</a>
-            <span class="kicker text-[var(--dim)] ml-auto">${byline}</span>
-          </div>
+          <span class="wire-read">Open on the web ›</span>
         </div>
       </div>
-    </article>
+    </a>
   </div>`;
   wrap.hidden = false;
 }
 
-/* Expand / collapse, and the one external link. Delegated because the card is
-   rewritten on every repaint, so a bound listener would not survive it. The
-   external link sits inside the toggle target now (the whole compact card is
-   clickable), so check it first — otherwise a tap on "Open on the web" would
-   also collapse the reveal it lives inside. */
+/* The whole card is a single external link. Delegated because renderDeskWire()
+   rewrites the card on every repaint, and the native anchor navigation is
+   still routed through FSNLinks.openExternal so the packaged app opens the
+   in-app browser instead of navigating away from the shell. */
 document.addEventListener('click', (e)=>{
-  const external = e.target.closest && e.target.closest('[data-wire-external]');
-  if(external){
-    e.stopPropagation();
-    let handled = false;
-    try{
-      handled = FSNLinks.openExternal(external.getAttribute('href') || '');
-    }catch(err){
-      console.error('[FSNArticles] the desk wire link handler failed for ' +
-        (external.getAttribute('href') || '(no href)') + '; leaving the anchor to navigate on its own.', err);
-      return;
-    }
-    if(handled) e.preventDefault();
+  const external = e.target.closest && e.target.closest('.wire-card-compact[data-wire-external]');
+  if(!external) return;
+  let handled = false;
+  try{
+    handled = FSNLinks.openExternal(external.getAttribute('href') || '');
+  }catch(err){
+    console.error('[FSNArticles] the desk wire link handler failed for ' +
+      (external.getAttribute('href') || '(no href)') + '; leaving the anchor to navigate on its own.', err);
     return;
   }
-  const toggle = e.target.closest && e.target.closest('[data-wire-toggle]');
-  if(toggle){
-    e.preventDefault();
-    wireExpanded = !wireExpanded;
-    safeRun('deskWire:toggle', renderDeskWire);
-    return;
-  }
-});
-
-/* Keyboard toggle on the compact wire card — role="button" means Enter and
-   Space must open and close it too. */
-document.addEventListener('keydown', (e)=>{
-  if(e.key !== 'Enter' && e.key !== ' ') return;
-  const target = e.target && e.target.closest && e.target.closest('.wire-card-compact[data-wire-toggle]');
-  if(!target) return;
-  e.preventDefault();
-  wireExpanded = !wireExpanded;
-  safeRun('deskWire:toggle', renderDeskWire);
+  if(handled) e.preventDefault();
 });
 
 function renderNews(){
