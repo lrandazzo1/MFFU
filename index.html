@@ -397,14 +397,20 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
   .tab-btn svg{ width:18px; height:18px; }
 }
 
-/* ---------- PLATFORM (ESPN / SLEEPER / YAHOO) TOGGLE ---------- */
+/* ---------- PLATFORM (ESPN / SLEEPER / YAHOO) TOGGLE ----------
+   Flex-wrap over the older 3-column grid so a third platform (Yahoo) can join
+   without squeezing "SLEEPER" past legibility on narrow phones. Each tab claims
+   an equal share (flex:1 1 0 with a minimum width), and if the row can't fit
+   all three side-by-side the last tab wraps to a second line instead of being
+   clipped off-screen. */
 .provider-toggle{
-  display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px;
+  display:flex; flex-wrap:wrap; gap:6px;
   padding:4px; border:1px solid var(--line); border-radius:11px; background:#0b0f16;
 }
 .provider-tab{
   appearance:none; border:1px solid transparent; border-radius:8px;
   padding:9px 10px; min-height:40px;
+  flex:1 1 0; min-width:78px;
   display:flex; align-items:center; justify-content:center; text-align:center;
   font-family:'JetBrains Mono',ui-monospace,monospace; font-size:12px; font-weight:800;
   letter-spacing:.06em; text-transform:uppercase; color:var(--dim);
