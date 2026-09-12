@@ -412,7 +412,15 @@ try {
     const state = window.FSNArticles.current();
     const view = window.FSNArticles.annotated();
     const anchor = wrap.querySelector('.wire-card-compact');
-    const dek = wrap.querySelector('.wire-dek-compact');
+    /* Two mutually exclusive dek treatments now. `.wire-dek-local` is the
+       hyper-local lede FSNLocalDesk writes when the item names a player
+       somebody in this league rosters; `.wire-dek-compact` is the compressed
+       national excerpt, which survives only when nothing in the piece touches
+       a roster here. Exactly one may be present. */
+    const localDek = wrap.querySelector('.wire-dek-local');
+    const nationalDek = wrap.querySelector('.wire-dek-compact');
+    const dek = localDek || nationalDek;
+    const deepBlock = wrap.querySelector('.deepstat');
     const openCta = wrap.querySelector('.wire-foot-compact .wire-read');
     const bodyDoc = new DOMParser().parseFromString(
       '<div>' + ((view && view.html) || '') + '</div>', 'text/html');
@@ -428,6 +436,25 @@ try {
       slug: state.post && state.post.slug,
       title: (wrap.querySelector('.wire-title') || {}).textContent || '',
       dek: dek ? dek.textContent.trim() : '',
+      dekIsLocal: !!localDek,
+      dekBoth: !!(localDek && nationalDek),
+      /* The deep data section: the localized read, the per-player stat chips
+         and the live head-to-head, appended below the card. */
+      deep: deepBlock ? {
+        players: Array.prototype.slice.call(deepBlock.querySelectorAll('.ds-player'))
+          .map((n) => ({
+            name: (n.querySelector('.ds-name') || {}).textContent || '',
+            who: (n.querySelector('.ds-who') || {}).textContent || '',
+            points: (n.querySelector('.ds-pts') || {}).textContent || '',
+            cats: Array.prototype.slice.call(n.querySelectorAll('.ds-cat')).map((c) => c.textContent.trim()),
+          })),
+        scores: deepBlock.querySelectorAll('.ds-score').length,
+        anchors: deepBlock.querySelectorAll('a, [href]').length,
+        /* The block must live OUTSIDE the card's anchor: a <section> of stat
+           rows inside an <a> is invalid markup, and the anchor has to stay the
+           tap target. */
+        insideAnchor: !!deepBlock.closest('.wire-card-compact'),
+      } : null,
       openCta: openCta ? openCta.textContent.trim() : '',
       anchorHref: anchor ? anchor.getAttribute('href') : '',
       anchorTarget: anchor ? anchor.getAttribute('target') : '',
@@ -466,8 +493,47 @@ try {
     /* The card is a compact timeline entry, not an inline reader. It must not
        paint the full article body anywhere on the News Desk. */
     expect(card.hasInlineExpand, false, 'no inline body / expand section is rendered');
-    if (card.dek.length && card.dek.length <= 240) pass('dek is a short blurb (' + card.dek.length + ' chars): ' + card.dek);
-    else fail('dek is not compressed to a short blurb (' + card.dek.length + ' chars): ' + card.dek);
+    if (card.dek.length && card.dek.length <= 320) pass('the dek is one short paragraph (' + card.dek.length + ' chars): ' + card.dek);
+    else fail('the dek is not a short paragraph (' + card.dek.length + ' chars): ' + card.dek);
+    expect(card.dekBoth, false, 'the card paints one dek treatment, never both');
+
+    /* ---- HYPER-LOCAL COPY ----
+       Every fixture article names a player this league rosters, so the card
+       must lead with the league's own read on it and must NOT print the
+       national excerpt ("... for the app wire check.") at all. */
+    expect(card.dekIsLocal, true, 'the card leads with the hyper-local read, not the published excerpt');
+    if (/for the app wire check/i.test(card.dek)) {
+      fail('the national excerpt survived into the localized lede: ' + card.dek);
+    } else pass('the national excerpt is stripped out of the card copy');
+    if (/Manager [1-4]/.test(card.dek)) pass('the localized lede names a manager in this league');
+    else fail('the localized lede names no manager: ' + card.dek);
+    if (/Manager [1-4]\u2019s [A-Z]/.test(card.dek)) {
+      pass('the lede uses the "<Manager>\u2019s <Player>" ownership callout');
+    } else fail('the lede carries no ownership callout: ' + card.dek);
+
+    /* ---- THE DEEP DATA BLOCK ---- */
+    if (!card.deep) fail('no .deepstat block was appended to the wire card');
+    else {
+      expect(card.deep.insideAnchor, false, 'the deep data block sits outside the card anchor');
+      expect(card.deep.anchors, 0, 'the deep data block links out nowhere');
+      if (card.deep.players.length) {
+        pass('deep data names ' + card.deep.players.length + ' player(s): ' +
+          card.deep.players.map((p) => p.name).join(', '));
+      } else fail('the deep data block named no players');
+      const owned = card.deep.players.filter((p) => /Manager [1-4]/.test(p.who));
+      if (owned.length === card.deep.players.length) {
+        pass('every deep-data player is attributed to a manager in this league');
+      } else {
+        fail('a deep-data player carries no manager: ' +
+          JSON.stringify(card.deep.players.map((p) => p.who)));
+      }
+      const scored = card.deep.players.filter((p) => /\d+\.\d\s*PTS/.test(p.points));
+      if (scored.length) pass('deep data quotes real fantasy points: ' + scored[0].points);
+      else fail('no deep-data player carried fantasy points: ' +
+        JSON.stringify(card.deep.players.map((p) => p.points)));
+      if (card.deep.scores >= 1) pass('the live head-to-head score block rendered');
+      else fail('no live head-to-head score block rendered');
+    }
     expect(card.openCta, 'Open on the web ›', '"Open on the web" affordance is present in the footer');
     if (card.anchorHref && /\/blog\//.test(card.anchorHref)) pass('the whole card links to the blog: ' + card.anchorHref);
     else fail('the card is not an outbound link to the blog: ' + card.anchorHref);
