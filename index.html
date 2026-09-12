@@ -3598,7 +3598,7 @@ body.fsn-dd-lock{ overflow:hidden; }
             </div>
           </div>
           <!-- FSN_WEB_ONLY_END -->
-          <div>
+          <div id="leagueIdGroup">
             <div class="flex items-center justify-between gap-2">
               <label id="leagueIdLabel" class="label" for="leagueIdInput" style="margin-bottom:0">League ID</label>
               <button type="button" class="onboard-link" data-onboard-step="league">Where do I find this?</button>
@@ -3608,7 +3608,7 @@ body.fsn-dd-lock{ overflow:hidden; }
                  whole invite link here is the only way a fresh install can pick
                  up the share token that unlocks the league's past seasons.
                  See absorbPastedLeagueInvite(). -->
-            <p class="text-[10.5px] text-[var(--dim)] leading-relaxed mt-1.5">Got an invite link from a league-mate? Paste the whole link here — the League ID and its share token are read straight out of it.</p>
+            <p id="leagueIdInviteHint" class="text-[10.5px] text-[var(--dim)] leading-relaxed mt-1.5">Got an invite link from a league-mate? Paste the whole link here — the League ID and its share token are read straight out of it.</p>
           </div>
           <span id="seasonYear" hidden aria-hidden="true"></span>
           <span id="weekNum" hidden aria-hidden="true"></span>
@@ -3623,7 +3623,7 @@ body.fsn-dd-lock{ overflow:hidden; }
                demoting the green "connected" line above it. -->
           <p id="espnArchiveNotice" class="text-[11.5px] leading-relaxed hidden" style="color:var(--gold);margin-top:6px" role="status" aria-live="polite"></p>
           <button id="historyUnlockToggle" type="button" class="pill pill-cyan w-full justify-center" aria-expanded="false" aria-controls="historyUploadPanel">OPTIONAL · LOAD ARCHIVE JSON</button>
-          <p class="text-[10.5px] text-[var(--dim)] leading-relaxed">Historical seasons are optional and only needed for the full Record Book archive.</p>
+          <p id="historyUnlockHint" class="text-[10.5px] text-[var(--dim)] leading-relaxed">Historical seasons are optional and only needed for the full Record Book archive.</p>
         </div>
       </div>
 
@@ -27270,6 +27270,20 @@ function setProvider(provider){
   if(privateCard) privateCard.style.display = next === 'espn' ? '' : 'none';
   const yahooPanel = $('yahooAuthPanel');
   if(yahooPanel) yahooPanel.classList.toggle('hidden', next !== 'yahoo');
+  // Yahoo uses OAuth handshakes, not typed league IDs. The Yahoo Account panel
+  // and its post-login picker drive the selection, so the raw ID input and the
+  // invite-link hint are hidden while Yahoo is active — clicking Yahoo already
+  // funnels the user to /api/auth/yahoo when their session is missing.
+  const leagueIdGroup = $('leagueIdGroup');
+  if(leagueIdGroup) leagueIdGroup.style.display = next === 'yahoo' ? 'none' : '';
+  const inviteHint = $('leagueIdInviteHint');
+  if(inviteHint) inviteHint.style.display = next === 'yahoo' ? 'none' : '';
+  const archiveToggle = $('historyUnlockToggle');
+  if(archiveToggle) archiveToggle.style.display = next === 'yahoo' ? 'none' : '';
+  const archiveHint = $('historyUnlockHint');
+  if(archiveHint) archiveHint.style.display = next === 'yahoo' ? 'none' : '';
+  const fetchBtn = $('fetchBtn');
+  if(fetchBtn) fetchBtn.style.display = next === 'yahoo' ? 'none' : '';
   if($('fetchLabel')) $('fetchLabel').textContent = next === 'yahoo' ? 'LOAD YAHOO LEAGUE' : 'FETCH LEAGUE DATA';
   const status = $('fetchStatus');
   if(status && ui.sourceMode !== 'live'){
