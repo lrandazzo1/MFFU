@@ -348,6 +348,63 @@ module.exports = async function handler(req, res) {
       }
     }
 
+    /* ---- INVITE-TOKEN FALLBACK ----
+       ESPN refused the read while carrying the READER'S OWN espn_s2 / SWID pair.
+       That verdict is real for a reader who is trying to authenticate AS
+       themselves — but the same request also presented a per-league share token,
+       which is the whole point of the invite link: it authorises this browser
+       to borrow the league's stored ESPN session without ever having been in
+       the league.
+       The previous ordering (request > league-store > deployment-env) meant a
+       reader who had stale or unrelated cookies from a previous league in their
+       localStorage got those cookies attached first, ESPN refused them, and the
+       relay returned PRIVATE_LEAGUE_LOGIN_REJECTED even though the invite link
+       they had just clicked would have worked. The modal that opens on that
+       verdict then said "Invite token stored, but the league still would not
+       load," because the token that was in fact stored was never actually
+       tried.
+       Retry with the token-authorized stored session, exactly as the
+       deployment-env branch above retries anonymously. The token still has to
+       match a token stored for THIS league (resolveStoredLeagueAccess is the
+       H-1 gate); nothing here can lend credentials the reader did not already
+       prove they may hold. */
+    if (read.refused && creds.mode === 'private' && creds.pair.source === 'request' && shareToken) {
+      const context = leagueContextFromTarget(target);
+      if (context.leagueId) {
+        try {
+          const access = await resolveStoredLeagueAccess(context.leagueId, context.seasonYear, shareToken);
+          if (access.status === 'ok') {
+            const storedPair = credentialPair('league-store', access.cookies.swid, access.cookies.espn_s2);
+            if (storedPair.complete) {
+              console.warn('[api/espn] ESPN refused ' + target.pathname + ' while carrying the reader\'s own ' +
+                'espn_s2 / SWID (HTTP ' + read.upstream.status + '), but the request also presented a share ' +
+                'token that matches this league\'s stored session. Retrying with the token-authorized cookies ' +
+                'so a stale reader-supplied pair does not block an otherwise-valid invite link.');
+              const retry = await readEspnUpstream(target.toString(), storedPair.header);
+              if (!retry.refused) {
+                read = retry;
+                creds = { mode: 'private', pair: storedPair, rejected: creds.rejected, storedDenied: null };
+              } else {
+                console.warn('[api/espn] The token-authorized retry of ' + target.pathname +
+                  ' was refused too (HTTP ' + retry.upstream.status + '); ESPN will not serve this league ' +
+                  'with the stored session either. Returning the reader-cookie verdict unchanged.');
+              }
+            } else {
+              console.warn('[api/espn] Share token matched league ' + context.leagueId + ' but the stored ' +
+                'cookie envelope did not decrypt into a complete SWID + espn_s2 pair; leaving the reader ' +
+                'cookie verdict in place.');
+            }
+          } else if (access.status === 'unauthorized') {
+            console.warn('[api/espn] The share token supplied alongside the rejected reader cookies did not ' +
+              'match league ' + context.leagueId + ' — ' + access.reason + '. Not retrying.');
+          }
+        } catch (fallbackError) {
+          console.error('[api/espn] Token-authorized fallback lookup threw for league ' + context.leagueId +
+            '; leaving the reader-cookie refusal in place.', fallbackError);
+        }
+      }
+    }
+
     const upstream = read.upstream;
     const payload = read.payload;
     // Whether the response ESPN actually returned was authenticated. Every
