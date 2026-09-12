@@ -18,10 +18,13 @@
      3. entities match this league's rosters by Sleeper id AND by name, through
         the punctuation and suffix variance between a desk's copy and a
         provider's roster
-     4. the ownership tag is injected once, at the first mention, without
-        disturbing the markup around it
+     4. the ownership tag is injected once into the annotated HTML, at the
+        first mention, without disturbing the markup around it — the compact
+        card does not paint that HTML inline, but the annotator still runs
+        so the wire-context strip and any future consumer can key off it
      5. the body sanitizer drops script/style/iframe and every event attribute
-     6. the card paints on the News Desk with no page error and no "hit a snag"
+     6. the compact card paints on the News Desk with no page error, no "hit
+        a snag", no inline expand section, and links out to the blog
      7. an unreachable feed disables the slot and leaves the News Desk intact
 
    Exit code 0 means clean.
@@ -406,9 +409,17 @@ try {
   const card = await page.evaluate(() => {
     const wrap = document.getElementById('deskWireWrap');
     if (!wrap) return { present: false };
-    const body = document.getElementById('deskWireBody');
-    const tags = Array.prototype.slice.call(wrap.querySelectorAll('.wire-own')).map((n) => n.textContent.trim());
     const state = window.FSNArticles.current();
+    const view = window.FSNArticles.annotated();
+    const anchor = wrap.querySelector('.wire-card-compact');
+    const dek = wrap.querySelector('.wire-dek-compact');
+    const openCta = wrap.querySelector('.wire-foot-compact .wire-read');
+    const bodyDoc = new DOMParser().parseFromString(
+      '<div>' + ((view && view.html) || '') + '</div>', 'text/html');
+    const bodyEl = bodyDoc.body.firstElementChild;
+    const tags = bodyEl
+      ? Array.prototype.slice.call(bodyEl.querySelectorAll('.wire-own')).map((n) => n.textContent.trim())
+      : [];
     return {
       present: true,
       hidden: wrap.hidden,
@@ -416,12 +427,16 @@ try {
       slot: state.slot && state.slot.id,
       slug: state.post && state.post.slug,
       title: (wrap.querySelector('.wire-title') || {}).textContent || '',
+      dek: dek ? dek.textContent.trim() : '',
+      openCta: openCta ? openCta.textContent.trim() : '',
+      anchorHref: anchor ? anchor.getAttribute('href') : '',
+      anchorTarget: anchor ? anchor.getAttribute('target') : '',
+      hasInlineExpand: !!wrap.querySelector('.wire-expand, .wire-body'),
       tags,
-      matchCount: (window.FSNArticles.annotated() || { matches: [] }).matches.length,
-      collapsed: body ? body.getAttribute('data-collapsed') : null,
-      bodyHtml: body ? body.innerHTML : '',
-      scriptCount: body ? body.querySelectorAll('script, style, iframe, object, embed').length : -1,
-      eventAttrs: body ? body.innerHTML.indexOf('onclick') : -1,
+      matchCount: (view && view.matches) ? view.matches.length : 0,
+      annotatedHtml: (view && view.html) || '',
+      scriptCount: bodyEl ? bodyEl.querySelectorAll('script, style, iframe, object, embed').length : -1,
+      eventAttrs: bodyEl ? bodyEl.innerHTML.indexOf('onclick') : -1,
       injected: window.__fsnWireInjected === true,
       readerUrl: state.readerUrl,
       snag: /hit a snag/i.test(document.querySelector('.screen[data-screen="news"]').innerText),
@@ -448,32 +463,33 @@ try {
     expect(card.slug, EXPECTED_BY_SLOT[todaySlot], "today's routed article");
     if (card.title.trim()) pass('headline rendered: ' + card.title.trim());
     else fail('no headline rendered');
-    if (card.tags.length) pass('ownership injected into the copy: ' + JSON.stringify(card.tags));
-    else fail('no ownership tag was injected into the copy');
-    const wrongOwner = card.tags.filter((t) => !/owned by Manager \d|owned by (Alpha|Bravo|Charlie|Delta)/.test(t));
-    if (!wrongOwner.length) pass('every ownership tag names a manager in this league');
+    /* The card is a compact timeline entry, not an inline reader. It must not
+       paint the full article body anywhere on the News Desk. */
+    expect(card.hasInlineExpand, false, 'no inline body / expand section is rendered');
+    if (card.dek.length && card.dek.length <= 240) pass('dek is a short blurb (' + card.dek.length + ' chars): ' + card.dek);
+    else fail('dek is not compressed to a short blurb (' + card.dek.length + ' chars): ' + card.dek);
+    expect(card.openCta, 'Open on the web ›', '"Open on the web" affordance is present in the footer');
+    if (card.anchorHref && /\/blog\//.test(card.anchorHref)) pass('the whole card links to the blog: ' + card.anchorHref);
+    else fail('the card is not an outbound link to the blog: ' + card.anchorHref);
+    expect(card.anchorTarget, '_blank', 'card link opens in a new context');
+    /* Annotation still runs — its tags live in view.html even though the card
+       does not paint them inline any more. That preserves the personalized
+       framing for wireContextLine and any other future consumer of the
+       annotated HTML. */
+    if (card.tags.length) pass('annotator still injects ownership tags into view.html: ' + JSON.stringify(card.tags));
+    else fail('annotator produced no ownership tags in view.html');
+    const wrongOwner = card.tags.filter((t) => !/on your roster|your (week \d+ )?opponent|owned by Manager \d|owned by (Alpha|Bravo|Charlie|Delta)/i.test(t));
+    if (!wrongOwner.length) pass('every ownership tag names a role or a manager in this league');
     else fail('an ownership tag names something else: ' + JSON.stringify(wrongOwner));
-    /* One tag per matched player, at the first mention only. The recap fixture
-       names its player twice on purpose, so a second tag would show up here. */
-    expect(card.tags.length, card.matchCount, 'ownership tags placed vs. players matched');
-    expect(new Set(card.tags).size, card.tags.length, 'no duplicate ownership tags');
-    expect(card.collapsed, 'true', 'the body starts collapsed');
-    expect(card.scriptCount, 0, 'script/style/iframe nodes stripped from the body');
-    expect(card.eventAttrs, -1, 'event attributes stripped from the body');
+    expect(card.tags.length, card.matchCount, 'annotator tags placed vs. matches');
+    expect(new Set(card.tags).size, card.tags.length, 'no duplicate ownership tags in the annotated HTML');
+    expect(card.scriptCount, 0, 'script/style/iframe nodes stripped from the annotated HTML');
+    expect(card.eventAttrs, -1, 'event attributes stripped from the annotated HTML');
     expect(card.injected, false, 'nothing in the payload executed');
     expect(card.snag, false, '"hit a snag" on the News Desk');
     if (/^http:\/\/127\.0\.0\.1:\d+\/blog\//.test(card.readerUrl)) pass('reader URL points at the blog: ' + card.readerUrl);
     else fail('reader URL is wrong: ' + card.readerUrl);
   }
-
-  /* The expand control actually expands. */
-  await page.click('[data-wire-toggle]');
-  await page.waitForTimeout(300);
-  const expanded = await page.evaluate(() => {
-    const body = document.getElementById('deskWireBody');
-    return body ? body.getAttribute('data-collapsed') : null;
-  });
-  expect(expanded, 'false', 'the body expands on tap');
 
   /* ---- 6a. Reader-scoped annotation --------------------------------------
      With no active team set, the tag reads generically ("owned by ...").
@@ -486,18 +502,13 @@ try {
 
     const collect = ()=>{
       const view = A.annotated();
-      if(!view) return { tags:[], roles:[], context:null };
+      if(!view) return { matches:[], context:null, contextHtml:'' };
       const wrap = document.getElementById('deskWireWrap');
-      const tags = wrap
-        ? Array.prototype.slice.call(wrap.querySelectorAll('.wire-own')).map(n=> n.textContent.trim())
-        : [];
-      const classes = wrap
-        ? Array.prototype.slice.call(wrap.querySelectorAll('.wire-own')).map(n=> n.className)
-        : [];
+      const contextEl = wrap ? wrap.querySelector('.wire-context') : null;
       return {
-        tags, classes,
-        matches: (view.matches || []).map(m=>({ name:m.name, role:m.role, tag:m.tag })),
+        matches: (view.matches || []).map(m=>({ name:m.name, role:m.role, tag:m.tag, label:m.label })),
         context: view.context || null,
+        contextHtml: contextEl ? contextEl.innerHTML : '',
       };
     };
 
@@ -516,25 +527,25 @@ try {
     };
   });
 
-  const selfReadsLikeYours = readerScoped.self.tags.some(t=> /on your roster/i.test(t));
-  if (selfReadsLikeYours) pass('reader on Team 1 sees "on your roster" tag: ' + JSON.stringify(readerScoped.self.tags));
-  else fail('reader on Team 1 did not see the personalized tag: ' + JSON.stringify(readerScoped.self.tags));
+  const selfHasTag = readerScoped.self.matches.some(m=> m.role === 'self' && /on your roster/i.test(m.tag || ''));
+  if (selfHasTag) pass('reader on Team 1 sees "on your roster" tag in annotated matches');
+  else fail('reader on Team 1 did not see the personalized tag: ' + JSON.stringify(readerScoped.self.matches));
 
-  const selfHasClass = (readerScoped.self.classes || []).some(c=> /wire-own-self/.test(c));
-  if (selfHasClass) pass('reader-owned tag carries wire-own-self class');
-  else fail('reader-owned tag missing wire-own-self class: ' + JSON.stringify(readerScoped.self.classes));
+  const selfInContext = /On your roster/.test(readerScoped.self.contextHtml || '');
+  if (selfInContext) pass('reader-owned player surfaces in the wire-context strip');
+  else fail('reader-owned player missing from wire-context: ' + readerScoped.self.contextHtml);
 
-  const oppReadsAsOpp = readerScoped.opponent.tags.some(t=> /your week 2 opponent/i.test(t));
-  if (oppReadsAsOpp) pass('reader on Team 3 sees "your Week 2 opponent" tag: ' + JSON.stringify(readerScoped.opponent.tags));
-  else fail('reader on Team 3 did not see the opponent tag: ' + JSON.stringify(readerScoped.opponent.tags));
+  const oppHasTag = readerScoped.opponent.matches.some(m=> m.role === 'opponent' && /your week 2 opponent/i.test(m.tag || ''));
+  if (oppHasTag) pass('reader on Team 3 sees "your Week 2 opponent" tag in annotated matches');
+  else fail('reader on Team 3 did not see the opponent tag: ' + JSON.stringify(readerScoped.opponent.matches));
 
-  const oppHasClass = (readerScoped.opponent.classes || []).some(c=> /wire-own-opponent/.test(c));
-  if (oppHasClass) pass('opponent tag carries wire-own-opponent class');
-  else fail('opponent tag missing wire-own-opponent class: ' + JSON.stringify(readerScoped.opponent.classes));
+  const oppInContext = /Week 2 opponent/i.test(readerScoped.opponent.contextHtml || '');
+  if (oppInContext) pass('opponent player surfaces in the wire-context strip with Week-N framing');
+  else fail('opponent player missing from wire-context: ' + readerScoped.opponent.contextHtml);
 
-  const clearedReadsGeneric = readerScoped.cleared.tags.some(t=> /owned by/i.test(t));
-  if (clearedReadsGeneric) pass('cleared reader falls back to "owned by" tag: ' + JSON.stringify(readerScoped.cleared.tags));
-  else fail('cleared reader did not fall back to the neutral tag: ' + JSON.stringify(readerScoped.cleared.tags));
+  const clearedIsNeutral = readerScoped.cleared.matches.every(m=> m.role === 'other' && /owned by/i.test(m.tag || ''));
+  if (clearedIsNeutral) pass('cleared reader falls back to "owned by" tag for every match');
+  else fail('cleared reader did not fall back to the neutral tag: ' + JSON.stringify(readerScoped.cleared.matches));
 
   const contextExposed = readerScoped.self.context && readerScoped.self.context.activeTeamId === '1';
   if (contextExposed) pass('annotated().context surfaces the reader\'s active team id');
@@ -562,11 +573,17 @@ try {
       const wrap = document.getElementById('deskWireWrap');
       const state = window.FSNArticles.current();
       const view = window.FSNArticles.annotated();
-      const tags = Array.prototype.slice.call(wrap.querySelectorAll('.wire-own')).map((n) => n.textContent.trim());
+      const bodyDoc = new DOMParser().parseFromString(
+        '<div>' + ((view && view.html) || '') + '</div>', 'text/html');
+      const bodyEl = bodyDoc.body.firstElementChild;
+      const tags = bodyEl
+        ? Array.prototype.slice.call(bodyEl.querySelectorAll('.wire-own')).map((n) => n.textContent.trim())
+        : [];
       return {
         hidden: wrap.hidden,
         slot: state.slot && state.slot.id,
         slug: state.post && state.post.slug,
+        hasInlineExpand: !!wrap.querySelector('.wire-expand, .wire-body'),
         tags,
         matches: view ? view.matches.length : -1,
       };
@@ -575,7 +592,8 @@ try {
     if (row.hidden) fail(DAY_NAMES[day] + ': the card was hidden with a live feed');
     else if (row.slot !== slotId) fail(DAY_NAMES[day] + ': routed to slot ' + row.slot + ', expected ' + slotId);
     else if (row.slug !== wantedSlug) fail(DAY_NAMES[day] + ': routed to ' + row.slug + ', expected ' + wantedSlug);
-    else if (!row.tags.length) fail(DAY_NAMES[day] + ': no ownership tag on ' + row.slug);
+    else if (row.hasInlineExpand) fail(DAY_NAMES[day] + ': the compact card is rendering an inline body / expand section');
+    else if (!row.tags.length) fail(DAY_NAMES[day] + ': no ownership tag in annotated view.html for ' + row.slug);
     else if (row.tags.length !== row.matches) fail(DAY_NAMES[day] + ': ' + row.tags.length + ' tags for ' + row.matches + ' matches');
     else if (new Set(row.tags).size !== row.tags.length) fail(DAY_NAMES[day] + ': duplicate ownership tags');
     else pass(DAY_NAMES[day] + ' -> ' + slotId + ' -> ' + row.slug + ' ' + JSON.stringify(row.tags));
