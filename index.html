@@ -29870,31 +29870,6 @@ function livePlayoffBracketHtml(board){
    and no external asset anywhere in this section by design.
 ============================================================ */
 
-/* The descriptor FSNLocalDesk reads. Every field already exists on the article
-   — this only fills in the week and season an older card may have left null,
-   from the view the reader is actually looking at. */
-function localDeskSubject(a){
-  if(!a) return null;
-  return {
-    id: a.articleKey || a.id || '',
-    week: a.week != null ? a.week : effectiveWeek(),
-    season: a.season != null ? a.season : uiActiveSeasonYear(),
-    slot: a.slot || '',
-    topic: a.topic || '',
-    teamId: a.teamId != null ? a.teamId : null,
-    /* Every card carries a crest even when it carries no teamId, so this is
-       what lets a matchup-preview or power-rankings card resolve the team it
-       is about and report both lineups in that head-to-head. */
-    crest: (a.crest && a.crest.name) || '',
-    /* Read-only, and only so the engine can find which rostered players the
-       copy names. Nothing downstream writes back to any of them. */
-    headline: a.headline,
-    dek: a.dek,
-    paragraphs: a.paragraphs,
-    numbers: a.numbers,
-  };
-}
-
 function deepStatCatHtml(cat){
   return `<span class="ds-cat${cat.negative ? ' neg' : ''}">` +
     `<b>${esc(String(cat.value))}</b><span>${esc(cat.label)}</span></span>`;
@@ -29970,13 +29945,19 @@ function deepStatScoreHtml(score){
   </div>`;
 }
 
-/* The block itself, from an already-computed FSNLocalDesk payload. Split from
-   deepStatBlockHtml() below because two different surfaces feed it: a News
-   Desk article (which describes itself) and an ingested news item from the
-   desk wire (which is described by its matched entities instead).
+/* Paint an already-computed FSNLocalDesk payload as the Deep Stats section.
 
-   `variant` is 'compact' for a feed row — two players, one head-to-head, no
-   footnote — and anything else for the full reader. */
+   The section is a From-the-Desk / Analysis affordance now: the only caller
+   is renderDeskWire, and only on `post.category === 'Analysis'`. The normal
+   article reader and every deterministic timeline card render WITHOUT this
+   section — that is the whole point of the split, and re-adding a call from
+   articleHtml or timelineCard would put the "Local Read" back on ordinary
+   news copy where the previous scope-check ripped it out.
+
+   `variant` is 'compact' for the wire card in the feed — two players, one
+   head-to-head, no provenance footnote. The full variant (more players, the
+   note beneath) is kept for a future in-app Analysis reader; it is not wired
+   to any current surface. */
 function deepStatBlockFromData(data, variant, label){
   const key = label || 'unknown item';
   if(!data) return '';
@@ -30016,23 +29997,6 @@ function deepStatBlockFromData(data, variant, label){
       '; the card renders without it.', err);
     return '';
   }
-}
-
-/* The article/timeline entry point: build the descriptor, read the payload,
-   paint. A throw on either side is logged with the article key and degrades to
-   no section at all — the copy and the By-the-Numbers box above it are already
-   a complete card without this. */
-function deepStatBlockHtml(a, variant){
-  const key = (a && (a.articleKey || a.id)) || 'unknown article';
-  let data = null;
-  try{
-    data = FSNLocalDesk.deepData(localDeskSubject(a));
-  }catch(err){
-    console.error('[LocalDesk] the deep stat block failed for ' + key +
-      '; the card renders without it.', err);
-    return '';
-  }
-  return deepStatBlockFromData(data, variant, key);
 }
 
 function articleHtml(a){
@@ -30089,7 +30053,6 @@ function articleHtml(a){
     <div class="px-4 pt-5 article-body">
       ${body}${quoteFallback}
       ${numbers}
-      ${deepStatBlockHtml(a)}
     </div>
 
     <div class="px-4 pt-1">
@@ -31029,7 +30992,6 @@ function timelineCard(a){
           </div>
         </div>
         ${a.dek ? `<p class="tl-dek">${a.dek}</p>` : ''}
-        ${deepStatBlockHtml(a, 'compact')}
         <div class="tl-foot">
           <span class="byline truncate">${esc(a.byline)}</span>
           <span class="tl-read">Read ›</span>
@@ -31213,43 +31175,52 @@ function renderDeskWire(){
      that leaves their head-to-head. FSNLocalDesk (block 1) writes the
      sentence; this only decides which of the two gets painted.
 
-     The published blurb survives exactly one case: an item that touches no
-     roster in this league. There is nothing local to say about it, and an
-     honest national summary beats a manufactured local one. */
+     The desk's editorial category decides whether the piece is a From-the-
+     Desk analysis or a wire-style news item, and only the analysis line
+     carries the localized read. Every other category — a waiver run, an
+     injury note, a national syndication — keeps its published blurb, because
+     an analyst's voice layered on top of a national list makes both sides
+     feel manufactured. Compared case-insensitively so 'analysis' or
+     ' Analysis ' cannot be silently dropped from the treatment. */
+  const isAnalysis = String(post.category || '').trim().toLowerCase() === 'analysis';
   let localLede = '';
-  try{
-    localLede = FSNLocalDesk.localizeWire(view, slot, snapshot.dateKey);
-  }catch(err){
-    console.error('[LocalDesk] localizing the desk wire item "' + (post.slug || post.title || 'untitled') +
-      '" failed; the card falls back to the published excerpt.', err);
-    localLede = '';
+  if(isAnalysis){
+    try{
+      localLede = FSNLocalDesk.localizeWire(view, slot, snapshot.dateKey);
+    }catch(err){
+      console.error('[LocalDesk] localizing the desk analysis item "' + (post.slug || post.title || 'untitled') +
+        '" failed; the card falls back to the published excerpt.', err);
+      localLede = '';
+    }
   }
   const blurb = wireBlurb(post.excerpt);
   const blurbHtml = localLede
     ? `<p class="wire-dek-local"><span class="tag">The Local Read</span>${esc(localLede)}</p>`
     : (blurb ? `<p class="wire-dek-compact">${esc(blurb)}</p>` : '');
 
-  /* The deep data block for an ingested item. Its subjects are the entities
-     FSNArticles already matched against the rosters, so the stat lines and the
-     live head-to-head describe the players the piece is actually about rather
-     than whoever the prose scan happens to find. */
+  /* The deep data block rides the same category gate. On an Analysis card it
+     hangs below the excerpt with the stat lines and the head-to-head; on
+     anything else the wire stays a clean chip so the News screen is not a
+     wall of numbers under a waiver-list item. */
   let wireDeep = '';
-  try{
-    const matched = (view.matches || []).filter(m=> m && m.owner).map(m=> m.name);
-    if(matched.length){
-      wireDeep = deepStatBlockFromData(FSNLocalDesk.deepData({
-        id: post.slug || '',
-        week: (view.context && view.context.currentWeek) || effectiveWeek(),
-        season: post.publishDate || '',
-        slot: slot.id || '',
-        names: matched,
-        texts: [post.title, post.excerpt],
-      }), 'compact', 'desk wire item ' + (post.slug || 'untitled'));
+  if(isAnalysis){
+    try{
+      const matched = (view.matches || []).filter(m=> m && m.owner).map(m=> m.name);
+      if(matched.length){
+        wireDeep = deepStatBlockFromData(FSNLocalDesk.deepData({
+          id: post.slug || '',
+          week: (view.context && view.context.currentWeek) || effectiveWeek(),
+          season: post.publishDate || '',
+          slot: slot.id || '',
+          names: matched,
+          texts: [post.title, post.excerpt],
+        }), 'compact', 'desk analysis item ' + (post.slug || 'untitled'));
+      }
+    }catch(err){
+      console.error('[LocalDesk] the deep stat block failed for desk analysis item "' +
+        (post.slug || post.title || 'untitled') + '"; the card renders without it.', err);
+      wireDeep = '';
     }
-  }catch(err){
-    console.error('[LocalDesk] the deep stat block failed for desk wire item "' +
-      (post.slug || post.title || 'untitled') + '"; the card renders without it.', err);
-    wireDeep = '';
   }
 
   const title = esc(post.title);
