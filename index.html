@@ -10323,12 +10323,23 @@ window.FSNLocalDesk = (function(){
     const absMargin = Math.abs(marginRaw);
     const marginText = n1(absMargin);
     const pointsText = points == null ? '0.0' : n1(points);
+    /* A scoreless (or negative) outing cannot have extended a lead, blown
+       open a cushion, or "proved to be the winning edge" — the player did
+       not contribute the points that built the margin. When the article's
+       named player finished at or below zero, route the winning-side and
+       leading-side templates to honest mirrors that credit the rest of the
+       lineup instead of the bench line the article is about. */
+    const scored = points != null && points > 0;
 
     if(score.state === 'FINAL' || score.final === true){
       /* State D: final. "When the dust settled" is the state's signature and
          the ONLY line that opens with it, so the phrase is a reliable read
          of "this matchup is in the books" in the feed. */
       if(marginRaw > 0){
+        if(!scored){
+          return 'When the dust settled, ' + player + ' finished with ' + pointsText +
+            ' points — the rest of ' + manager + '’s lineup carried the head-to-head decision over ' + opponent + '.';
+        }
         return 'When the dust settled, ' + manager + '’s reliance on ' + player +
           ' proved to be the winning edge, sealing the head-to-head decision over ' + opponent + '.';
       }
@@ -10356,6 +10367,11 @@ window.FSNLocalDesk = (function(){
       /* State B: symmetric. The line says nothing about which side leads,
          because in a razor-thin battle both managers are one snap from the
          other one's spot. */
+      if(!scored){
+        return 'In a razor-thin battle, ' + manager + '’s ' + player +
+          ' hasn’t put a point on the board, and the rest of the lineup is keeping this tight against ' + opponent +
+          ' with every single possession hanging in the balance.';
+      }
       return 'In a razor-thin battle, ' + manager + '’s ' + player +
         ' has chipped in ' + pointsText +
         ' points, keeping this tight against ' + opponent +
@@ -10364,7 +10380,14 @@ window.FSNLocalDesk = (function(){
 
     if(absMargin >= 25){
       if(marginRaw > 0){
-        /* State C: verbatim from the PR spec. */
+        /* State C: verbatim from the PR spec — but only when the player
+           actually put a scoring outing on the board. A scoreless line
+           cannot have "blown the doors off" anything; credit the lineup. */
+        if(!scored){
+          return 'Absolute fireworks for ' + manager + ' today—' + player +
+            ' hasn’t put a point on the board, but the rest of the lineup has blown the doors off this matchup, putting ' +
+            opponent + ' deep in a hole.';
+        }
         return 'Absolute fireworks for ' + manager + ' today—' + player +
           '’s massive ' + pointsText +
           '-point outing has blown the doors off this matchup, putting ' + opponent + ' deep in a hole.';
@@ -10376,8 +10399,14 @@ window.FSNLocalDesk = (function(){
     }
 
     /* Moderate range. Named lead vs. deficit, with the actual gap so the
-       reader knows exactly how much room is left. */
+       reader knows exactly how much room is left. A scoreless player on the
+       leading side did not "push the matchup out" — the cushion was built
+       around them, and the copy has to say so. */
     if(marginRaw > 0){
+      if(!scored){
+        return manager + '’s ' + player + ' hasn’t put a point on the board, but the rest of the lineup has built a ' +
+          marginText + '-point cushion over ' + opponent + ' — comfortable, but the window is still open.';
+      }
       return manager + '’s ' + player + ' has put up ' + pointsText +
         ' points and pushed the matchup out to a ' + marginText +
         '-point cushion over ' + opponent + ' — comfortable, but the window is still open.';
