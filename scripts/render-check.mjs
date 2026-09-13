@@ -69,7 +69,7 @@ function startServer(options) {
           apns: false,
           web: !!opts.configured,
           vapidPublicKey: opts.vapidPublicKey || '',
-          groups: ['monday', 'tuesday', 'friday'],
+          groups: ['tuesday', 'wednesday', 'thursday', 'friday'],
         }));
         return;
       }

@@ -243,8 +243,9 @@ async function invoke({ method = 'GET', url = '/api/notifications-dispatch', hea
 }
 
 /* A device that IS due for the Tuesday game_recap alert at the pinned
-   instant. Prefs are stated in the new { monday, tuesday, friday } shape so
-   the trigger engine's groupEnabled check finds explicit consent. */
+   instant. Prefs are stated in the current { tuesday, wednesday, thursday,
+   friday } shape so the trigger engine's groupEnabled check finds explicit
+   consent. */
 function dueDevice(overrides) {
   return Object.assign({
     device_id: 'a'.repeat(64),
@@ -254,7 +255,7 @@ function dueDevice(overrides) {
     league_id: '123456',
     team_id: '1',
     timezone: 'America/New_York',
-    prefs: { monday: true, tuesday: true, friday: true },
+    prefs: { tuesday: true, wednesday: true, thursday: true, friday: true },
     season_year: 2026,
     week: 1,
     first_kickoff_ms: null,
@@ -705,8 +706,8 @@ console.log('-- 6. Selftest mode --');
 
   // --- a named trigger is honoured
   scenario('selftest named trigger', null, { devices: [iosDevice()] });
-  res = await invoke({ url: '/api/notifications-dispatch?selftest=' + DEVICE + '&trigger=big_performers', headers: auth });
-  check('a named trigger is used', res.body.notification.trigger, 'big_performers');
+  res = await invoke({ url: '/api/notifications-dispatch?selftest=' + DEVICE + '&trigger=waiver_pivot', headers: auth });
+  check('a named trigger is used', res.body.notification.trigger, 'waiver_pivot');
 
   // --- no transport for that platform: a clear 503, not a silent success
   res = await selftest(DEVICE, { devices: [iosDevice()] }, { transports: { apns: false } });
