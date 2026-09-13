@@ -31420,6 +31420,32 @@ function renderDeskWire(){
     wrap.classList.remove('wire-compact');
   };
 
+  /* SEASON/WEEK CONTEXT GATE.
+     The desk wire fetches whatever the live blog feed is publishing right
+     now — real-world NFL injury reports, waiver runs, matchup previews all
+     dated to today. That reads as league news for the CURRENT season and
+     week, so painting it into a historical view (a 2019 Week 1 retro read
+     in 2026) misrepresents 2026 real-world content as 2019 league coverage.
+     Suppress the wire whenever the viewer has stepped off the live season
+     or live week — the deterministic timeline below already covers those
+     views with copy that is scoped to the exact season and week. */
+  try{
+    const viewed = Number(($('seasonYear').value || '').trim()) || 0;
+    const active = (typeof NewsDesk !== 'undefined' && typeof NewsDesk.activeSeasonYear === 'function')
+      ? Number(NewsDesk.activeSeasonYear())
+      : (typeof uiActiveSeasonYear === 'function' ? Number(uiActiveSeasonYear()) : 0);
+    if(viewed && active && viewed !== active){ hide(); return; }
+    if(LeagueData.hasLive()){
+      const viewedWeek = Number(effectiveWeek()) || 0;
+      const liveWeek = Number(currentLeagueWeek()) || 0;
+      if(viewedWeek && liveWeek && viewedWeek !== liveWeek){ hide(); return; }
+    }
+  }catch(err){
+    console.warn('[FSNArticles] desk-wire season/week gate failed; leaving the wire hidden to avoid leaking live coverage into a historical view.', err);
+    hide();
+    return;
+  }
+
   const snapshot = FSNArticles.current();
   /* 'empty' (nothing published for today's slot) and 'offline' (the feed could
      not be read and no cached copy applies) are both ordinary, expected states
