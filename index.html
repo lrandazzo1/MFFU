@@ -3781,7 +3781,7 @@ body.fsn-dd-lock{ overflow:hidden; }
       <div class="card p-4" id="notifyCard">
         <div class="section-head"><span class="bar" style="background:var(--gold)"></span><h2>Push Alerts</h2></div>
         <p class="text-[11.5px] text-[var(--dim)] leading-relaxed mb-3">
-          When alerts are available for this device, choose weekly waiver, matchup and lineup reminders. Alerts are optional; your league desk works with them turned off.
+          When alerts are available for this device, choose your weekly big-performer breakdown, game recap, and Friday matchup preview. Alerts are optional; your league desk works with them turned off, and Sunday stays quiet.
         </p>
 
         <label class="notify-row" for="notifyMaster" id="notifyMasterRow">
@@ -3798,42 +3798,42 @@ body.fsn-dd-lock{ overflow:hidden; }
         <div class="notify-rationale hidden" id="notifyRationale">
           <div class="notify-rationale-title">Before your phone asks</div>
           <ul class="notify-rationale-list">
-            <li><b>Tuesday</b> — waivers cleared, plus the recap and re-cut power index.</li>
-            <li><b>Thursday</b> — ahead of the week's opening kickoff, so nobody starts a locked player.</li>
-            <li><b>Sunday</b> — a morning lineup check and a nudge when the slate goes live.</li>
+            <li><b>Monday</b> — the breakdown of the weekend's big performers.</li>
+            <li><b>Tuesday</b> — game recaps and the re-cut power index.</li>
+            <li><b>Friday</b> — Thursday-Night takeaways plus your weekend matchup preview.</li>
           </ul>
           <button id="notifyEnableBtn" type="button" class="btn-primary" style="padding:12px;font-size:13px">
             <span id="notifyEnableSpinner" class="spinner hidden"></span>
             <span id="notifyEnableLabel">TURN ON ALERTS</span>
           </button>
           <p class="text-[10px] text-[var(--dim)] leading-relaxed mt-2" style="margin-bottom:0">
-            Your device will ask for permission once. Decline and nothing breaks — the rest of the app works exactly the same.
+            Your device will ask for permission once. Decline and nothing breaks — the rest of the app works exactly the same. Sunday stays silent; the Desk is meant to be checked live while the slate is running.
           </p>
         </div>
 
         <div class="notify-groups" id="notifyGroups" hidden>
+          <label class="notify-row" for="notifyMonday">
+            <span class="notify-row-text">
+              <span class="notify-row-title">Monday · Big Performers</span>
+              <span class="notify-row-sub">The morning-after breakdown of the weekend's standouts, sits, and league-wide highs.</span>
+            </span>
+            <input type="checkbox" id="notifyMonday" data-notify-group="monday">
+            <span class="notify-switch" aria-hidden="true"></span>
+          </label>
           <label class="notify-row" for="notifyTuesday">
             <span class="notify-row-text">
-              <span class="notify-row-title">Tuesday · Waivers &amp; Recap</span>
-              <span class="notify-row-sub">Waiver results in the morning, or the post-mortem and power index later in the day.</span>
+              <span class="notify-row-title">Tuesday · Game Recaps</span>
+              <span class="notify-row-sub">Every league game recapped and the power index re-cut.</span>
             </span>
             <input type="checkbox" id="notifyTuesday" data-notify-group="tuesday">
             <span class="notify-switch" aria-hidden="true"></span>
           </label>
-          <label class="notify-row" for="notifyThursday">
+          <label class="notify-row" for="notifyFriday">
             <span class="notify-row-text">
-              <span class="notify-row-title">Thursday · Lineup Lock</span>
-              <span class="notify-row-sub">Ahead of the week's opening kickoff, whichever day it falls on.</span>
+              <span class="notify-row-title">Friday · TNF &amp; Matchup Preview</span>
+              <span class="notify-row-sub">Thursday-Night takeaways plus a preview of your league's Sunday matchups.</span>
             </span>
-            <input type="checkbox" id="notifyThursday" data-notify-group="thursday">
-            <span class="notify-switch" aria-hidden="true"></span>
-          </label>
-          <label class="notify-row" for="notifySunday">
-            <span class="notify-row-text">
-              <span class="notify-row-title">Sunday · Lineup &amp; Game Day</span>
-              <span class="notify-row-sub">A morning lineup check, or a game day pulse once the slate is live.</span>
-            </span>
-            <input type="checkbox" id="notifySunday" data-notify-group="sunday">
+            <input type="checkbox" id="notifyFriday" data-notify-group="friday">
             <span class="notify-switch" aria-hidden="true"></span>
           </label>
         </div>
@@ -28871,7 +28871,7 @@ try{
    Flipping the master switch on does not prompt — it reveals the rationale
    panel, and the reader decides from there.
 ============================================================ */
-const NOTIFY_GROUP_INPUTS = ['notifyTuesday', 'notifyThursday', 'notifySunday'];
+const NOTIFY_GROUP_INPUTS = ['notifyMonday', 'notifyTuesday', 'notifyFriday'];
 
 /* notificationService.js is a separate <script src>, so unlike a cross-block
    helper it can be genuinely absent — a 404, a blocked request, a stripped

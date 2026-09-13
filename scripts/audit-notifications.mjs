@@ -242,7 +242,9 @@ async function invoke({ method = 'GET', url = '/api/notifications-dispatch', hea
   return res;
 }
 
-/* A device that IS due for the Tuesday waiver alert at the pinned instant. */
+/* A device that IS due for the Tuesday game_recap alert at the pinned
+   instant. Prefs are stated in the new { monday, tuesday, friday } shape so
+   the trigger engine's groupEnabled check finds explicit consent. */
 function dueDevice(overrides) {
   return Object.assign({
     device_id: 'a'.repeat(64),
@@ -252,7 +254,7 @@ function dueDevice(overrides) {
     league_id: '123456',
     team_id: '1',
     timezone: 'America/New_York',
-    prefs: { tuesday: true, thursday: true, sunday: true },
+    prefs: { monday: true, tuesday: true, friday: true },
     season_year: 2026,
     week: 1,
     first_kickoff_ms: null,
@@ -351,8 +353,8 @@ console.log('-- 2. Dry-run safety --');
 {
   const auth = { authorization: 'Bearer ' + SECRET };
   /* Pinned to the cron's own instant: Tuesday 2026-09-08 16:00Z, which is
-     12:00 in New York and therefore inside the waiver band, so there is
-     genuinely something to send. */
+     12:00 in New York and therefore inside the Tuesday game-recap band, so
+     there is genuinely something to send. */
   const CRON_RUN_TUESDAY = Date.UTC(2026, 8, 8, 16, 0, 0);
   const realNow = Date.now;
 
@@ -383,7 +385,7 @@ console.log('-- 2. Dry-run safety --');
   checkTrue('dry run still READ the devices table', calls.dbReads.includes('notification_devices'));
   checkTrue('dry run still SCANNED the send ledger', calls.dbReads.includes('notification_sends'));
   checkTrue('dry run reports what would have sent', !!(res.body && res.body.plan && res.body.plan.length === 1));
-  check('dry run names the trigger', res.body.plan[0].trigger, 'waiver_wire');
+  check('dry run names the trigger', res.body.plan[0].trigger, 'game_recap');
 
   // --- dry run when the runtime did NOT pre-parse the query string
   scenario('dry run, req.query absent', null, { devices: [dueDevice()] });
@@ -397,7 +399,7 @@ console.log('-- 2. Dry-run safety --');
   // --- the ledger must still suppress in a dry run, or the plan lies
   scenario('dry run respects the ledger', null, {
     devices: [dueDevice()],
-    ledger: [{ device_id: 'a'.repeat(64), trigger_id: 'waiver_wire', season_year: 2026, week: 1 }],
+    ledger: [{ device_id: 'a'.repeat(64), trigger_id: 'game_recap', season_year: 2026, week: 1 }],
   });
   Date.now = () => CRON_RUN_TUESDAY;
   res = await invoke({ url: '/api/notifications-dispatch?dry=1', headers: auth });
@@ -703,8 +705,8 @@ console.log('-- 6. Selftest mode --');
 
   // --- a named trigger is honoured
   scenario('selftest named trigger', null, { devices: [iosDevice()] });
-  res = await invoke({ url: '/api/notifications-dispatch?selftest=' + DEVICE + '&trigger=waiver_wire', headers: auth });
-  check('a named trigger is used', res.body.notification.trigger, 'waiver_wire');
+  res = await invoke({ url: '/api/notifications-dispatch?selftest=' + DEVICE + '&trigger=big_performers', headers: auth });
+  check('a named trigger is used', res.body.notification.trigger, 'big_performers');
 
   // --- no transport for that platform: a clear 503, not a silent success
   res = await selftest(DEVICE, { devices: [iosDevice()] }, { transports: { apns: false } });

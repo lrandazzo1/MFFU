@@ -461,7 +461,7 @@ async function handler(req, res) {
      on one. See the header. */
   const selftestDeviceId = selftestTarget(req);
   if (selftestDeviceId) {
-    const triggerId = queryParam(req, 'trigger').trim() || 'sunday_lineup';
+    const triggerId = queryParam(req, 'trigger').trim() || 'game_recap';
     await runSelftest(supabase, res, selftestDeviceId, triggerId, { apns: apnsReady, web: webReady });
     return;
   }
