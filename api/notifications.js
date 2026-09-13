@@ -28,14 +28,14 @@
 const crypto = require('crypto');
 const { createClient } = require('@supabase/supabase-js');
 const engine = require('../lib/notifications/triggers');
-const { PREF_GROUPS, normalizeTimeZone } = engine;
+const { PREF_GROUPS, normalizeTimeZone, migrateLegacyPrefs } = engine;
 const apns = require('../lib/notifications/apns');
 const webpush = require('../lib/notifications/webpush');
 
 const REGISTER_MAX_BODY_BYTES = 32 * 1024;
 const SELFTEST_MAX_BODY_BYTES = 4 * 1024;
 const SELFTEST_COOLDOWN_MS = 30 * 1000;
-const SELFTEST_DEFAULT_TRIGGER = 'sunday_lineup';
+const SELFTEST_DEFAULT_TRIGGER = 'game_recap';
 
 /* Same origin set both retired routes used. The Capacitor binary serves the
    app from capacitor://localhost and sends either that or a null Origin, so
@@ -124,12 +124,16 @@ function cleanInt(value, min, max) {
 
 /* Only the three known groups, only real booleans. An unknown key from a
    future or tampered client is dropped rather than stored, so the table can
-   never accumulate a preference the trigger engine does not understand. */
+   never accumulate a preference the trigger engine does not understand.
+
+   A body from an older client still speaks the retired
+   { tuesday, thursday, sunday } shape. migrateLegacyPrefs carries the
+   surviving consent forward — thursday-was-on becomes friday-is-on, because
+   the Friday briefing replaces the retired Thursday lineup-lock trigger —
+   and never auto-opts a reader into the NEW Monday moment they never saw a
+   switch for. */
 function cleanPrefs(value) {
-  const source = (value && typeof value === 'object') ? value : {};
-  const out = {};
-  for (const group of PREF_GROUPS) out[group] = source[group] === true;
-  return out;
+  return migrateLegacyPrefs(value);
 }
 
 function cleanApnsToken(value) {
@@ -280,6 +284,41 @@ async function handleRegister(req, res) {
       ' (platform ' + platform + ')', error);
     res.status(500).json({ error: 'REGISTER_FAILED', detail: error.message });
     return;
+  }
+
+  /* Profile-scoped preference sync.
+
+     The trigger engine reads consent from `notification_devices.prefs`, and
+     that row is per push address — so by default a reader who turned Tuesday
+     off on their phone would still get it on their tablet. When the caller
+     names both a leagueId and a teamId (the reader's chosen team on this
+     league) we treat that pair as the "profile" and cascade this device's
+     prefs to every sibling row registered against the same profile, so the
+     three toggles are effectively one setting per user across all their live
+     devices.
+
+     Deliberately scoped:
+       * Only when BOTH leagueId and teamId are set — a device without a
+         chosen profile has nothing to sync against.
+       * Never touches disabled rows (they represent dead push addresses; a
+         re-register from that device restores them from scratch).
+       * Never touches the row we just upserted (the primary key filter would
+         no-op anyway, but stating it makes the sweep debuggable).
+
+     Best-effort: a failure here logs and continues rather than 500-ing the
+     caller. The caller's OWN row is already saved. */
+  if (row.league_id && row.team_id) {
+    const { error: syncError } = await supabase
+      .from('notification_devices')
+      .update({ prefs })
+      .eq('league_id', row.league_id)
+      .eq('team_id', row.team_id)
+      .is('disabled_at', null)
+      .neq('device_id', deviceId);
+    if (syncError) {
+      console.warn('[FSNPush] could not cascade prefs to sibling devices for profile ' +
+        row.league_id + '/' + row.team_id + '; the caller\'s own row is saved.', syncError);
+    }
   }
 
   res.status(200).json({ ok: true, deviceId, prefs, timezone });

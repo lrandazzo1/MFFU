@@ -19,30 +19,28 @@ device per run.
 
 ## What gets sent
 
-Five alerts across three reader-facing switches. Each fires at most once per
-device per fantasy week, and a device receives **at most one per day**, because
-there is one delivery instant per day.
+Three alerts across three reader-facing switches, one per weekday. Each fires
+at most once per device per fantasy week, and a device receives **at most one
+per day**, because there is one delivery instant per day. **Sunday is
+deliberately silent** — the Desk is meant to be checked live while the slate
+is running, not buzzed by a redundant push.
 
 Neither APNs nor Web Push accepts a "deliver at" time, so an alert lands when
 the run sends it. The cadence is therefore expressed as a **local-hour band**:
-each alert owns a stretch of its weekday, and the daily run delivers whichever
-alert belongs at the hour the run lands on in *that device's* timezone.
+each alert owns the whole deliverable window on its weekday, and the daily
+run delivers it wherever the run lands inside that window in *that device's*
+timezone.
 
 | Switch | Alert | Local band on the device's clock | Who that is, at 16:00 UTC |
 |---|---|---|---|
-| **Tuesday** | Waiver wire results | Tue 06:00 – 13:59 | Honolulu 06:00 · LA 09:00 · Chicago 11:00 · NY 12:00 |
-| **Tuesday** | Recap + power index drop | Tue 14:00 – 22:59 | London 17:00 · Berlin 18:00 |
-| **Thursday** | Lineup lock warning | the last daily run before the week's real opening kickoff | whole league, same run |
-| **Sunday** | Morning lineup check | Sun 06:00 – 11:59 | Honolulu 06:00 · LA 09:00 · Chicago 11:00 |
-| **Sunday** | Game day pulse | Sun 12:00 – 22:59 | NY 12:00 · London 17:00 |
+| **Monday** | Big-performer breakdown | Mon 06:00 – 22:00 | Honolulu 06:00 · LA 09:00 · NY 12:00 · London 17:00 |
+| **Tuesday** | Game recap + power index drop | Tue 06:00 – 22:00 | Honolulu 06:00 · LA 09:00 · NY 12:00 · London 17:00 |
+| **Friday** | TNF breakdown + weekend matchup preview | Fri 06:00 – 22:00 | Honolulu 06:00 · LA 09:00 · NY 12:00 · London 17:00 |
 
-So one UTC instant produces a *different, correct* alert per timezone rather
-than the same alert at five wrong local times.
-
-The Thursday alert is anchored to the real opening kickoff — read from the
-daily schedule pull — and fires on the last daily run that still precedes it. A
-week whose opener is Saturday warns on Saturday's run; a week with **no** game
-inside the next day stays silent rather than crying lock three days early.
+So one UTC instant delivers the correct alert for the correct weekday in
+every served timezone, and the cron's other four weekdays (Wed / Thu / Sat /
+Sun) return "nothing due" — the invocation still runs so the season/week feed
+stays warm, but nothing goes out.
 
 ### What a once-a-day schedule costs, stated plainly
 
@@ -51,12 +49,12 @@ inside the next day stays silent rather than crying lock three days early.
   22:00 local. Tokyo sees 01:00 and is skipped. The dispatcher counts these as
   `outsideDailyWindow` in its dry run so the silence is diagnosable rather than
   mysterious.
-- **The lock warning is hours of notice, not two hours.** It is the last run
-  before kickoff, which for a Thursday-night game and a 16:00 UTC cron is about
-  eight hours.
 - **A missed run is not re-offered the same day.** The next chance is the next
-  run, and by then the alert's band has usually passed. The ledger makes that
-  safe rather than duplicated.
+  run, and by then the day's alert has passed and the ledger will suppress a
+  same-week retry. That is the trade for at-most-once delivery.
+- **Wed / Thu / Sat / Sun runs return "nothing due".** The invocation still
+  fires so the season/week feed stays warm and the health check has fresh data,
+  but no push goes out on those weekdays under this cadence.
 
 Moving the cron's UTC hour moves which timezones are served. The bands are hours
 wide on purpose: Hobby-plan crons are only guaranteed to fire *within the hour*
@@ -65,11 +63,13 @@ forty minutes.
 
 ## The daily data pull
 
-`lib/notifications/schedule-feed.js` reads the season year, the week number and
-the week's opening kickoff from ESPN's **public, credential-free** NFL
-scoreboard. None of those facts are per-league, so they are pulled **once for
-the whole install base** — not per league, not per device — and cached in
-`public.notification_schedule`. A thousand registered devices still cost one GET.
+`lib/notifications/schedule-feed.js` reads the season year and week number
+from ESPN's **public, credential-free** NFL scoreboard (the week's opening
+kickoff is still stamped into the cache for future use, but the revised
+cadence no longer anchors any trigger to it). None of those facts are
+per-league, so they are pulled **once for the whole install base** — not per
+league, not per device — and cached in `public.notification_schedule`. A
+thousand registered devices still cost one GET.
 
 **The rate limit is enforced on the last attempt, not the last success.**
 `attempted_at` is stamped whether the pull succeeded or failed, so a throttled
@@ -298,8 +298,8 @@ curl -sS -H "Authorization: Bearer $CRON_SECRET" \
   "$DEPLOY/api/notifications-dispatch?selftest=$DEVICE" | jq
 ```
 
-Pick which alert's copy to send with `&trigger=` — one of `waiver_wire`,
-`weekly_recap`, `tnf_lock`, `sunday_lineup` (the default) or `gameday_pulse`.
+Pick which alert's copy to send with `&trigger=` — one of `big_performers`,
+`game_recap` (the default) or `tnf_matchup_preview`.
 The payload is byte-identical to the real alert; marking it as a test would
 answer a different question than the one being asked.
 
@@ -351,7 +351,7 @@ even when the test push itself succeeds. Re-registering from the app clears it.
     "disabledAt": null,          // non-null -> the daily cron is skipping this row
     "disabledReason": null
   },
-  "notification": { "trigger": "sunday_lineup", "title": "Set your lineup · Week 2", "body": "…" },
+  "notification": { "trigger": "game_recap", "title": "Game recap · Week 2", "body": "…" },
   "delivery": {
     "status": 200,               // 200 = Apple accepted it
     "apnsId": "…",               // Apple's own id for the push, for a support ticket
@@ -514,7 +514,7 @@ curl -H "Authorization: Bearer $CRON_SECRET" \
   "planTruncated": false,                        // `due` is always the real total
   "plan": [{
     "deviceId": "…", "platform": "web", "timezone": "America/New_York",
-    "trigger": "waiver_wire", "group": "tuesday",
+    "trigger": "game_recap", "group": "tuesday",
     "season": 2026, "week": 1,
     "localHour": 12,                             // where the run landed on their clock
     "idealHour": 9,                              // where the alert would rather be
@@ -539,9 +539,10 @@ needs verifying. A *live* run with no transport configured returns `503`.
 ```bash
 npm run verify              # everything below, in order
 npm run check:scope         # CLAUDE.md rule 1 — every identifier resolves
-npm run test:triggers       # 133 assertions: DST, local bands, kickoff anchoring,
-                            # the opt-in gate, determinism, and the pull's rate limiter
-npm run audit:notifications # 73 assertions: cron auth, dry-run safety, the daily
+npm run test:triggers       # 220 assertions: DST, local bands, the opt-in gate,
+                            # legacy pref migration, determinism, and the pull's
+                            # rate limiter
+npm run audit:notifications # 109 assertions: cron auth, dry-run safety, the daily
                             # pull's request count, cron shape, doc sync
 npm run check:render        # Chromium: all six screens, zero errors, opt-in contract
 ```

@@ -69,7 +69,7 @@ function startServer(options) {
           apns: false,
           web: !!opts.configured,
           vapidPublicKey: opts.vapidPublicKey || '',
-          groups: ['tuesday', 'thursday', 'sunday'],
+          groups: ['monday', 'tuesday', 'friday'],
         }));
         return;
       }
@@ -401,7 +401,7 @@ try {
     } else pass('server accepts the subscription shape');
 
     const cleaned = register.default.cleanPrefs(payload.prefs);
-    const groups = ['tuesday', 'thursday', 'sunday'];
+    const groups = engine.default.PREF_GROUPS;
     if (groups.some((g) => typeof cleaned[g] !== 'boolean')) {
       fail('preferences did not survive the server cleaner: ' + JSON.stringify(cleaned));
     } else pass('preferences survive the server cleaner: ' + JSON.stringify(cleaned));
