@@ -1,5 +1,9 @@
 // Run with: node --test scripts/yahoo-callback-check.cjs
-// Exercise both real route modules with Yahoo and Supabase isolated at the boundary.
+// Exercise the OAuth route module with Yahoo and Supabase isolated at the
+// boundary. The Yahoo redirect URL /api/auth/yahoo/callback is served by a
+// vercel.json rewrite to /api/auth/yahoo?action=callback rather than its own
+// file, so the "callback" harness below invokes the same handler with the
+// action override the rewrite applies at the edge.
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
 const { readFileSync } = require('node:fs');
@@ -40,9 +44,14 @@ function harness({ rejectToken = false, failStorage = false } = {}) {
     return module.exports;
   }
   const auth = load('api/auth/yahoo.js', name => name === '@supabase/supabase-js' ? { createClient: () => client } : require(name));
-  const callback = load('api/auth/yahoo/callback.js', name => {
-    assert.equal(name, '../yahoo.js'); return auth;
-  });
+  // The retired api/auth/yahoo/callback.js used to force ?action=callback
+  // before handing the request to the shared OAuth module. The vercel.json
+  // rewrite now does the same thing at the edge, so the callback harness
+  // wraps the OAuth handler with the identical override.
+  const callback = async function callback(req, res) {
+    req.query = { ...req.query, action: 'callback' };
+    return auth(req, res);
+  };
   async function invoke(handler, query, cookie = '', method = 'GET') {
     const res = {
       headers: {}, statusCode: 200,

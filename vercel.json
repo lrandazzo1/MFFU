@@ -11,7 +11,9 @@
   "rewrites": [
     { "source": "/api/league-sync", "destination": "/api/league" },
     { "source": "/api/notifications-register", "destination": "/api/notifications?action=register" },
-    { "source": "/api/notifications-selftest", "destination": "/api/notifications?action=selftest" }
+    { "source": "/api/notifications-selftest", "destination": "/api/notifications?action=selftest" },
+    { "source": "/api/transaction-wire-dispatch", "destination": "/api/transaction-wire?action=dispatch" },
+    { "source": "/api/auth/yahoo/callback", "destination": "/api/auth/yahoo?action=callback" }
   ],
   "headers": [
     {
