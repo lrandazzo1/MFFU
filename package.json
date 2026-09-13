@@ -7,6 +7,7 @@
   },
   "scripts": {
     "build": "npm run build:ios",
+    "screenshots:appstore": "node scripts/generate-app-store-screenshots.mjs",
     "build:ios": "node scripts/build-ios.mjs",
     "ios:assets": "npm run assets:source && capacitor-assets generate --ios --assetPath assets && node scripts/check-ios-assets.mjs",
     "ios:sync": "npm run build:ios && npx cap sync ios && npm run ios:assets && npm run ios:minos && npm run ios:applinks && cd ios/App && pod install",
