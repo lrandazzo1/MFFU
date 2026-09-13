@@ -3583,13 +3583,10 @@ body.fsn-dd-lock{ overflow:hidden; }
             <div class="provider-toggle" role="tablist" aria-label="Fantasy platform">
               <button type="button" id="providerEspn" class="provider-tab is-active" role="tab" aria-selected="true" data-provider="espn">ESPN</button>
               <button type="button" id="providerSleeper" class="provider-tab" role="tab" aria-selected="false" data-provider="sleeper">Sleeper</button>
-              <!-- FSN_WEB_ONLY_START -->
-              <button type="button" id="providerYahoo" class="provider-tab" role="tab" aria-selected="false" data-provider="yahoo" data-web-only>Yahoo</button>
-              <!-- FSN_WEB_ONLY_END -->
+              <button type="button" id="providerYahoo" class="provider-tab" role="tab" aria-selected="false" data-provider="yahoo">Yahoo</button>
             </div>
           </div>
-          <!-- FSN_WEB_ONLY_START -->
-          <div id="yahooAuthPanel" class="card p-3 hidden" style="background:#0b0f16" data-web-only>
+          <div id="yahooAuthPanel" class="card p-3 hidden" style="background:#0b0f16">
             <div class="flex items-center justify-between gap-3">
               <div class="min-w-0 flex-1">
                 <div class="label" style="margin-bottom:3px">Yahoo Account</div>
@@ -3603,7 +3600,6 @@ body.fsn-dd-lock{ overflow:hidden; }
               <select id="yahooLeagueSelect" class="field" aria-label="Choose a Yahoo fantasy football league"></select>
             </div>
           </div>
-          <!-- FSN_WEB_ONLY_END -->
           <div id="leagueIdGroup">
             <div class="flex items-center justify-between gap-2">
               <label id="leagueIdLabel" class="label" for="leagueIdInput" style="margin-bottom:0">League ID</label>
@@ -4909,12 +4905,12 @@ window.FSNRelease = (function(){
   function isIOS(){
     return document.documentElement.getAttribute('data-fsn-release') === 'ios' || FSNApi.isNativeShell();
   }
-  function supportsProvider(provider){ return provider !== 'yahoo' || !isIOS(); }
-  if(isIOS()){
-    document.querySelectorAll('[data-web-only]').forEach(el=> el.remove());
-  } else if($('ftuProviders')){
-    $('ftuProviders').textContent = 'ESPN, Sleeper or Yahoo';
-  }
+  /* Yahoo now renders on every release. The OAuth handshake is still cookie-
+     scoped to the deployment origin, so the native shell routes the login
+     through a Safari sheet (see startYahooLogin) — but the button, the OAuth
+     panel and the setup wiring are shared between web and iOS. */
+  function supportsProvider(){ return true; }
+  if($('ftuProviders')) $('ftuProviders').textContent = 'ESPN, Sleeper or Yahoo';
   return { isIOS, supportsProvider };
 })();
 
@@ -27306,9 +27302,12 @@ function setProvider(provider){
 if($('providerEspn')) $('providerEspn').addEventListener('click', ()=>{ setProvider('espn'); savePrefs(); });
 if($('providerSleeper')) $('providerSleeper').addEventListener('click', ()=>{ setProvider('sleeper'); savePrefs(); });
 if($('providerYahoo')) $('providerYahoo').addEventListener('click', async ()=>{
-  if(!FSNRelease.supportsProvider('yahoo')) return showUnavailableProvider();
   setProvider('yahoo');
   savePrefs();
+  // In the native shell, /api/auth/yahoo is cookie-scoped to the deployment
+  // origin and never sees the Capacitor webview's requests, so we skip the
+  // cross-origin status probe and hand the button straight to Safari.
+  if(FSNRelease.isIOS()){ showYahooNativeStatus(); return; }
   const connected = await refreshYahooAuthStatus();
   if(connected === false) startYahooLogin();
 });
@@ -27316,18 +27315,53 @@ if($('providerYahoo')) $('providerYahoo').addEventListener('click', async ()=>{
 function yahooReturnPath(){
   return window.location.pathname + '?goto=setup&platform=yahoo';
 }
-function startYahooLogin(){
-  if(!FSNRelease.supportsProvider('yahoo')) return showUnavailableProvider();
-  const returnTo = yahooReturnPath();
-  // Web-only OAuth stays on this deployment so its session cookie is available.
-  window.location.assign(FSNApi.resolve('/api/auth/yahoo?action=start&return_to=' +
-    encodeURIComponent(returnTo)));
+function yahooStartUrl(){
+  const returnTo = FSNRelease.isIOS() ? '/?goto=setup&platform=yahoo' : yahooReturnPath();
+  return FSNApi.resolve('/api/auth/yahoo?action=start&return_to=' + encodeURIComponent(returnTo));
 }
-async function refreshYahooAuthStatus(){
-  if(!FSNRelease.supportsProvider('yahoo')) return false;
+/* iOS-only status copy for the OAuth panel. The cross-origin cookie is
+   unreachable from the app webview, so instead of a live "Connected" pill we
+   tell the user exactly where the handshake happens and reuse the same LOG IN
+   button to open Safari. */
+function showYahooNativeStatus(){
   const status = $('yahooAuthStatus');
   const login = $('yahooLoginBtn');
   const logout = $('yahooDisconnectBtn');
+  if(status){
+    status.innerHTML = 'Yahoo login opens in Safari — after signing in, come back to FSN and pick your league below.';
+  }
+  if(login){
+    login.classList.remove('hidden');
+    login.textContent = 'LOG IN WITH YAHOO';
+  }
+  if(logout) logout.classList.add('hidden');
+}
+function startYahooLogin(){
+  const url = yahooStartUrl();
+  if(!url) return;
+  // On the native shell, the OAuth handshake has to complete on the deployment
+  // origin so its Set-Cookie sticks. Handing the URL to FSNLinks.openExternal
+  // pops a Safari sheet with a Done button back into FSN, matching the same
+  // pattern the reader-view links already use.
+  if(FSNRelease.isIOS()){
+    const opened = FSNLinks && typeof FSNLinks.openExternal === 'function' && FSNLinks.openExternal(url);
+    if(!opened){
+      console.error('[Yahoo OAuth UI] native browser refused ' + url);
+      const status = $('yahooAuthStatus');
+      if(status) status.textContent = 'Safari is unavailable — open ' + url + ' manually to sign in with Yahoo.';
+    }
+    return;
+  }
+  window.location.assign(url);
+}
+async function refreshYahooAuthStatus(){
+  const status = $('yahooAuthStatus');
+  const login = $('yahooLoginBtn');
+  const logout = $('yahooDisconnectBtn');
+  // In the native shell the status probe would be a cross-origin fetch to the
+  // deployment, which /api/auth/yahoo does not answer with CORS headers. Fall
+  // back to the Safari-first copy instead of surfacing a permanent error.
+  if(FSNRelease.isIOS()){ showYahooNativeStatus(); return null; }
   if(status) status.textContent = 'Checking Yahoo login…';
   try{
     const response = await FSNNet.fetch('/api/auth/yahoo?action=status', {
