@@ -3840,6 +3840,19 @@ body.fsn-dd-lock{ overflow:hidden; }
 
         <p class="notify-status" id="notifyStatus" role="status" aria-live="polite"></p>
         <button id="notifyRetryOff" type="button" class="btn-ghost mt-2" hidden>RETRY TURNING OFF ALERTS</button>
+
+        <!-- Debug test trigger. Visible only after this device has registered,
+             so the button is meaningless before there is a token to send to.
+             Fires one real notification via /api/notifications-selftest; the
+             endpoint writes no ledger row and does not consume the reader's
+             real weekly alert. -->
+        <div id="notifyDebugRow" class="notify-groups" hidden style="margin-top:8px">
+          <button id="notifyDebugBtn" type="button" class="btn-ghost" style="padding:10px;font-size:12px;width:100%">
+            <span id="notifyDebugSpinner" class="spinner hidden"></span>
+            <span id="notifyDebugLabel">SEND A TEST ALERT TO THIS DEVICE</span>
+          </button>
+          <p class="notify-status" id="notifyDebugStatus" role="status" aria-live="polite" style="margin-top:6px"></p>
+        </div>
       </div>
 
       <!-- PRIVACY & DATA — hosted-policy links + local storage erasure.
@@ -28922,8 +28935,19 @@ function renderNotifySettings(snap){
   const rationale = $('notifyRationale');
   const groups = $('notifyGroups');
   const retryOff = $('notifyRetryOff');
+  const debugRow = $('notifyDebugRow');
+  const debugBtn = $('notifyDebugBtn');
   if(!master || !rationale || !groups) return;
   if(retryOff) retryOff.hidden = true;
+  /* The debug trigger reveals only after a device is registered — before
+     that there is no push address for the button to target, and showing a
+     dead control would just confuse a reader. Repainted from the same
+     snapshot as every other row so a lifecycle change flips it in step. */
+  if(debugRow){
+    const canTest = !!(snap.optedIn && snap.registered && snap.deviceId);
+    debugRow.hidden = !canTest;
+    if(debugBtn) debugBtn.disabled = !canTest || !!snap.busy;
+  }
 
   const service = notifyService();
   if(!service){
@@ -29101,6 +29125,73 @@ function bindNotifySettings(){
         console.error('[FSNPush] could not save the alert preferences', err));
     });
   });
+
+  /* Debug test trigger. Fires one real notification via a route separate
+     from the cron dispatcher — the dispatcher's own ?selftest= mode is
+     CRON_SECRET-gated and cannot ship credentials to the client, so this
+     button POSTs the deviceId (which the device holds) instead. The endpoint
+     writes no ledger row and stamps no last_sent_at, so pressing it mid-week
+     cannot consume that device's real alert. */
+  const debugBtn = $('notifyDebugBtn');
+  if(debugBtn){
+    debugBtn.addEventListener('click', ()=>{
+      const snap = service.state();
+      const deviceId = snap && snap.deviceId ? String(snap.deviceId) : '';
+      const spinner = $('notifyDebugSpinner');
+      const label = $('notifyDebugLabel');
+      const status = $('notifyDebugStatus');
+      const setStatus = (text, tone)=>{
+        if(!status) return;
+        status.textContent = text || '';
+        if(tone) status.setAttribute('data-tone', tone);
+        else status.removeAttribute('data-tone');
+      };
+      if(!deviceId){
+        setStatus('This device has not registered yet. Turn alerts on first.', 'error');
+        return;
+      }
+      debugBtn.disabled = true;
+      if(spinner) spinner.classList.remove('hidden');
+      if(label) label.textContent = 'SENDING…';
+      setStatus('Sending a test alert to this device…', null);
+
+      const endpoint = (window.FSNApi && typeof window.FSNApi.resolve === 'function')
+        ? window.FSNApi.resolve('/api/notifications-selftest')
+        : '/api/notifications-selftest';
+
+      fetch(endpoint, {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json', Accept:'application/json' },
+        body: JSON.stringify({ deviceId }),
+      }).then(response=> response.json().then(data=>({ response, data })))
+        .then(({ response, data })=>{
+          if(response.ok && data && data.ok){
+            const status = data.delivery && data.delivery.status;
+            setStatus('Sent · provider responded ' + (status || '200') +
+              '. If nothing arrives, check notification permissions and Focus mode.', 'ok');
+          }else if(response.status === 429){
+            setStatus('Just sent one — wait a few seconds and try again.', 'warn');
+          }else if(response.status === 403){
+            setStatus('This device is not registered on the server. Turn alerts off and back on to re-register.', 'error');
+          }else if(response.status === 503){
+            setStatus('Push transport is not configured on this deployment.', 'error');
+          }else{
+            const reason = (data && data.delivery && data.delivery.reason) || (data && data.error) || ('HTTP ' + response.status);
+            setStatus('The provider rejected the test: ' + reason + '.', 'error');
+            console.error('[FSNPush] test alert rejected', data);
+          }
+        })
+        .catch(err=>{
+          console.error('[FSNPush] test alert request failed', err);
+          setStatus('Could not reach the test endpoint. Check your connection and retry.', 'error');
+        })
+        .then(()=>{
+          if(spinner) spinner.classList.add('hidden');
+          if(label) label.textContent = 'SEND A TEST ALERT TO THIS DEVICE';
+          debugBtn.disabled = false;
+        });
+    });
+  }
 
   /* One subscription drives every repaint of the card. */
   service.subscribe(renderNotifySettings);

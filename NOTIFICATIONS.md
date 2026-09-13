@@ -251,6 +251,34 @@ Running this by hand is safe with respect to the upstream: the feed's rate
 limiter means a second invocation on the same day makes **no** outbound request
 and serves the cached week.
 
+## The in-app debug button
+
+The Setup screen shows a **SEND A TEST ALERT TO THIS DEVICE** button beneath
+the three engagement switches once the device has registered — the same
+lifecycle gate that hides the switches themselves before an opt-in. It POSTs
+this device's own `deviceId` to `/api/notifications-selftest`, which fires
+one real notification straight to the device that asked for it and reports
+the provider's verbatim answer.
+
+```
+POST /api/notifications-selftest   { deviceId }   ->   { ok, delivery, ... }
+```
+
+The endpoint exists separately from `/api/notifications-dispatch?selftest=`
+because that mode is `CRON_SECRET`-gated and a secret cannot ship to the
+client. Instead this route authorizes on the deviceId itself: the id is the
+SHA-256 of the push address, so only the device that registered — and
+Supabase — hold it. A request whose id does not resolve to a row is refused
+with a 403, and a per-device 30-second cooldown (stamped in a new
+`notification_devices.last_test_at` column) rate-limits the button against
+a leaked id.
+
+Everything the dispatcher's own selftest mode promises applies here too: no
+ledger row is written, `last_sent_at` is untouched, the schedule pull is
+not spent, and a rejected send does not retire the device row.
+`last_test_at` is a separate column from `last_sent_at` for exactly that
+reason.
+
 ## Force-firing one device (`?selftest=`)
 
 The section above triggers the *cadence*: it delivers whatever each device is
