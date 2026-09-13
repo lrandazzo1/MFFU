@@ -6460,7 +6460,7 @@ function sanitizeEspnCookieValue(kind, raw){
    The browser cannot set a cross-site Cookie header itself — the relay
    (api/espn.js) builds the real one from the x-espn-* headers this page sends.
    This is the client-side statement of that same contract: it is what the
-   verification harness diffs against api/espn-cookies.js to prove the two
+   verification harness diffs against lib/espn-cookies.js to prove the two
    sides cannot drift apart, and what any future same-origin cookie transport
    would use. */
 function buildEspnCookieHeader(creds){
@@ -29155,9 +29155,12 @@ function bindNotifySettings(){
       if(label) label.textContent = 'SENDING…';
       setStatus('Sending a test alert to this device…', null);
 
+      /* Consolidated notifications endpoint (selftest action). The retired
+         /api/notifications-selftest path stays live as a vercel.json rewrite
+         for older TestFlight builds and cached web bundles. */
       const endpoint = (window.FSNApi && typeof window.FSNApi.resolve === 'function')
-        ? window.FSNApi.resolve('/api/notifications-selftest')
-        : '/api/notifications-selftest';
+        ? window.FSNApi.resolve('/api/notifications?action=selftest')
+        : '/api/notifications?action=selftest';
 
       fetch(endpoint, {
         method:'POST',

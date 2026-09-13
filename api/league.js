@@ -38,7 +38,7 @@
 ============================================================ */
 
 const crypto = require('crypto');
-const { sanitizeCookieValue, buildEspnCookieHeader } = require('./espn-cookies');
+const { sanitizeCookieValue, buildEspnCookieHeader } = require('../lib/espn-cookies');
 const { createClient } = require('@supabase/supabase-js');
 
 const MAX_BODY_BYTES = 8 * 1024 * 1024;

@@ -51,7 +51,7 @@ function startServer(options) {
   return new Promise((resolve) => {
     const server = createServer((req, res) => {
       const url = new URL(req.url, 'http://localhost');
-      if (url.pathname === '/api/notifications-register') {
+      if (url.pathname === '/api/notifications-register' || url.pathname === '/api/notifications') {
         if (req.method === 'POST') {
           let body = '';
           req.on('data', (c) => { body += c; });
@@ -380,12 +380,12 @@ try {
 
   /* ---- 6. The registration payload must satisfy the real server validators */
   if (!posts.length) {
-    fail('the client never POSTed a registration to /api/notifications-register');
+    fail('the client never POSTed a registration to /api/notifications');
   } else {
     const payload = posts[posts.length - 1];
     pass('client registered with platform=' + payload.platform + ', tz=' + payload.timezone);
 
-    const register = await import('../api/notifications-register.js');
+    const register = await import('../api/notifications.js');
     const engine = await import('../lib/notifications/triggers.js');
 
     if (payload.platform !== 'web') fail('expected platform "web" in this runtime, got ' + payload.platform);

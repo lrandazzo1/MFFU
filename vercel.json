@@ -8,6 +8,11 @@
     { "source": "/blog/:slug", "destination": "https://fantasysportsnetwork.app/blog/:slug", "permanent": true },
     { "source": "/content/generated/blog/:path*", "destination": "https://fantasysportsnetwork.app/content/generated/blog/:path*", "permanent": true }
   ],
+  "rewrites": [
+    { "source": "/api/league-sync", "destination": "/api/league" },
+    { "source": "/api/notifications-register", "destination": "/api/notifications?action=register" },
+    { "source": "/api/notifications-selftest", "destination": "/api/notifications?action=selftest" }
+  ],
   "headers": [
     {
       "source": "/.well-known/apple-app-site-association",

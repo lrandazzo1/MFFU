@@ -516,7 +516,7 @@ console.log('-- 4. Documentation sync --');
   const doc = readFileSync(join(root, 'NOTIFICATIONS.md'), 'utf8');
 
   const notificationSources = [
-    'api/notifications-dispatch.js', 'api/notifications-register.js',
+    'api/notifications-dispatch.js', 'api/notifications.js',
     'lib/notifications/triggers.js', 'lib/notifications/apns.js', 'lib/notifications/webpush.js',
     'lib/notifications/schedule-feed.js',
   ].map((rel) => readFileSync(join(root, rel), 'utf8')).join('\n');
@@ -539,12 +539,21 @@ console.log('-- 4. Documentation sync --');
   check('every env var the code reads is documented', undocumented, []);
   check('every env var documented is actually read', stale, []);
 
-  /* The route path in the docs must be the route that exists on disk. A
-     health-check command that 404s is worse than no command. */
+  /* The route path in the docs must be the route that exists on disk OR one
+     that a vercel.json rewrite forwards to a real handler. A health-check
+     command that 404s is worse than no command. Two retired paths —
+     /api/notifications-register and /api/notifications-selftest — were
+     consolidated into /api/notifications and now reach it via rewrite. */
   const pathsInDoc = [...doc.matchAll(/\/api\/(notifications-[a-z-]+)/g)].map((m) => m[1]);
   const unique = [...new Set(pathsInDoc)].sort();
   const { existsSync } = await import('node:fs');
-  const missing = unique.filter((p) => !existsSync(join(root, 'api', p + '.js')));
+  const vercelConfig = JSON.parse(readFileSync(join(root, 'vercel.json'), 'utf8'));
+  const rewriteSources = new Set((vercelConfig.rewrites || []).map((r) => String(r.source || '')));
+  const missing = unique.filter((p) => {
+    if (existsSync(join(root, 'api', p + '.js'))) return false;
+    if (rewriteSources.has('/api/' + p)) return false;
+    return true;
+  });
   check('every /api/ path named in the docs exists', missing, []);
   checkTrue('the docs document the dry-run health check', /dry=1/.test(doc));
   checkTrue('the docs document the bearer token for external schedulers',

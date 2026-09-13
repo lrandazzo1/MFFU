@@ -131,7 +131,7 @@ function startServer() {
   return new Promise((resolve) => {
     const server = createServer((req, res) => {
       const url = new URL(req.url, 'http://localhost');
-      if (url.pathname === '/api/notifications-register') {
+      if ((url.pathname === '/api/notifications-register' || url.pathname === '/api/notifications')) {
         res.writeHead(200, { 'content-type': 'application/json' });
         res.end(JSON.stringify({ configured: false }));
         return;
