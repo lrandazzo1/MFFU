@@ -66,6 +66,12 @@ create table if not exists public.notification_devices (
   disabled_reason text,
 
   last_sent_at timestamptz,
+  -- Stamped by /api/notifications-selftest, the in-app debug trigger. Held
+  -- in a column of its own so a diagnostic never touches last_sent_at (which
+  -- would consume or suppress the reader's real weekly alert) and so the
+  -- 30-second cooldown survives a serverless cold start. Absent from every
+  -- other write path; the dispatcher does NOT read it.
+  last_test_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
 
@@ -78,6 +84,11 @@ create table if not exists public.notification_devices (
 
 alter table public.notification_devices enable row level security;
 -- Intentionally no policies: service-role routes only.
+
+-- Additive for existing installs: the create table above only fires on a
+-- fresh schema, so an established deployment needs the column bolted on.
+alter table public.notification_devices
+  add column if not exists last_test_at timestamptz;
 
 -- The dispatcher's one hot query: every live device, oldest-touched first.
 create index if not exists notification_devices_active_idx
