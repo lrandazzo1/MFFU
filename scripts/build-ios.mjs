@@ -43,12 +43,19 @@ for (const rel of files) {
   if(rel === 'index.html'){
     let html = readFileSync(src, 'utf8');
     if(!html.includes('data-fsn-release="web"')) throw new Error('Missing FSN release marker');
+    // The FSN_WEB_ONLY_* markers used to strip the Yahoo pill out of the iOS
+    // bundle. The Yahoo button and its OAuth panel now ship on iOS too — the
+    // native shell routes /api/auth/yahoo through a Safari sheet at runtime —
+    // so the markers should not exist any more. If they reappear it means
+    // someone reintroduced the web-only strip mechanism without updating this
+    // script; fail the build rather than silently cutting UI again.
     const starts = html.match(/<!-- FSN_WEB_ONLY_START -->/g) || [];
     const ends = html.match(/<!-- FSN_WEB_ONLY_END -->/g) || [];
-    if(starts.length !== 2 || starts.length !== ends.length) throw new Error('Unbalanced web-only UI markers');
-    html = html.replace('data-fsn-release="web"', 'data-fsn-release="ios"')
-      .replace(/<!-- FSN_WEB_ONLY_START -->[\s\S]*?<!-- FSN_WEB_ONLY_END -->/g, '');
-    if(/id="(?:providerYahoo|yahooAuthPanel)"/.test(html)) throw new Error('Web-only provider UI leaked into iOS');
+    if(starts.length !== 0 || ends.length !== 0) throw new Error('Unexpected web-only strip markers in index.html');
+    html = html.replace('data-fsn-release="web"', 'data-fsn-release="ios"');
+    if(!/id="providerYahoo"/.test(html) || !/id="yahooAuthPanel"/.test(html)){
+      throw new Error('Yahoo provider UI missing from the iOS bundle');
+    }
     writeFileSync(dst, html);
   } else {
     copyFileSync(src, dst);
