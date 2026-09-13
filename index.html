@@ -4478,6 +4478,32 @@ function scheduleGameFinal(game){
   return hs > 0 || as > 0;
 }
 
+/* Is the given week still LIVE — i.e. a regular-season matchup exists for it
+   that has not yet been officially finalized by the platform? Shared across
+   blocks (the analytics header in block 6, the FSN Index board and the
+   Season Analytics coverage flag in block 5), so per rule 1 it lives at
+   global scope.
+
+   A live week is any week in the loaded schedule that carries at least one
+   regular-season game where scheduleGameFinal() returns false. Playoff games
+   are excluded so a Toilet-Bowl week that has already finalized its
+   regular-season slate is not misreported as live. */
+function weekHasLiveGame(week){
+  const wk = Number(week) || 0;
+  if(!wk) return false;
+  const data = (typeof LeagueData !== 'undefined' && LeagueData) ? LeagueData.espnData : null;
+  const schedule = data && Array.isArray(data.schedule) ? data.schedule : [];
+  for(let i=0; i<schedule.length; i++){
+    const game = schedule[i];
+    if(!game || !game.home || !game.away) continue;
+    if(Number(game.matchupPeriodId) !== wk) continue;
+    const tier = String(game.playoffTierType || 'NONE').toUpperCase();
+    if(tier && tier !== 'NONE') continue;
+    if(!scheduleGameFinal(game)) return true;
+  }
+  return false;
+}
+
 /* ============================================================
    GLOBAL SCOPE — GUARDED DEVICE STORAGE (FSNStore)
 
@@ -11704,6 +11730,11 @@ function fsnPowerIndex(week){
       if(g.playoffTierType && String(g.playoffTierType).toUpperCase() !== 'NONE') return;
       const wk = Number(g.matchupPeriodId || 0);
       if(!wk || wk > targetWeek) return;
+      // Only a platform-finalized matchup can enter the FSN Index pillars. A
+      // live, still-UNDECIDED partial total must not seed all-play, PPG or
+      // consistency mid-week — the same contract standingsThrough(), records
+      // and streaks use in this block.
+      if(!scheduleGameFinal(g)) return;
       const hs = Number(g.home.totalPoints || 0), as = Number(g.away.totalPoints || 0);
       if(hs <= 0 && as <= 0) return;                       // unplayed
       (byWeek[wk] || (byWeek[wk] = [])).push(
@@ -20965,11 +20996,23 @@ function compute(selectedWeek){
   const byTeam = new Map(teams.map(team=> [String(team.id), blankRow(team)]));
   const weeks = new Map();
 
+  let liveWeekInProgress = false;
+  let liveThroughWeek = 0;
   schedule.filter(regularGame).forEach(game=>{
     const week = number(game && game.matchupPeriodId);
     const home = game && game.home;
     const away = game && game.away;
     if(!week || week > throughWeek || !home || !away) return;
+    // Only a platform-finalized matchup can lock into the season roll-ups. A
+    // live, still-UNDECIDED partial score must never advance Expected Wins,
+    // actual wins, margin index or lineup samples mid-week — the identical
+    // scheduleGameFinal() contract FSNIntel.standingsThrough already uses on
+    // this schedule. Live totals are the mid-week signal that seasons cards
+    // must not be treated as final.
+    if(!scheduleGameFinal(game)){
+      if(week === throughWeek){ liveWeekInProgress = true; liveThroughWeek = week; }
+      return;
+    }
     const homeScore = number(home.totalPoints);
     const awayScore = number(away.totalPoints);
     if(homeScore <= 0 && awayScore <= 0) return; // explicitly unplayed
@@ -21079,6 +21122,8 @@ function compute(selectedWeek){
     coverage:{
       scoredWeeks:weeks.size,
       lineupTeams:rows.filter(row=> row.lineupSamples > 0).length,
+      liveWeekInProgress,
+      liveThroughWeek,
       waiverClaims:(()=>{ try{ return (FSNIntel.transactions() || []).filter(tx=>{
         const week = number(tx && tx.week);
         return tx && tx.executed && tx.adds && tx.adds.length && week > 0 && week <= throughWeek;
@@ -24009,11 +24054,20 @@ function renderFsnIndex(){
     return;
   }
   if(!Array.isArray(table) || !table.length){
-    body.innerHTML = '<div class="analytics-empty">No scored matchups have posted yet — the FSN Power Index publishes once the first week is final.</div>';
+    let live = false;
+    try{ live = weekHasLiveGame(week); }
+    catch(err){ console.warn('[FSNIndex] live-week probe failed for Week ' + week, err); live = false; }
+    const emptyMsg = live
+      ? 'Week ' + week + ' is live — the FSN Power Index publishes once the platform finalizes every matchup. Partial totals are excluded so the board can never reflect an in-progress result.'
+      : 'No scored matchups have posted yet — the FSN Power Index publishes once the first week is final.';
+    body.innerHTML = '<div class="analytics-empty">' + emptyMsg + '</div>';
     return;
   }
 
   const fallbackOnly = table.every(r=> r && r.context && r.context.mode === 'sos');
+  let liveWeek = false;
+  try{ liveWeek = weekHasLiveGame(week); }
+  catch(err){ console.warn('[FSNIndex] live-week probe failed for Week ' + week, err); liveWeek = false; }
 
   const cards = table.map(function(row){
     let mark = '';
@@ -24053,13 +24107,18 @@ function renderFsnIndex(){
   const note = fallbackOnly
     ? '<div class="fsn-index-note">Bench-point detail is not exposed by this league’s data export, so the <b>Roster Context</b> pillar is powered by normalized Schedule Hardship (SOS) rather than optimal-start efficiency.</div>'
     : '';
+  const liveNote = liveWeek
+    ? '<div class="fsn-index-note">Week ' + week + ' is still live. The board is anchored to the last officially finalized week — Expected Wins, all-play and consistency will refresh once the platform locks Week ' + week + '.</div>'
+    : '';
+  const headSuffix = liveWeek ? ' · Week ' + week + ' Live' : ' · Week ' + week;
 
   body.innerHTML =
     '<div class="w-full max-w-full overflow-hidden" style="width:100%;max-width:100%;min-width:0;overflow:hidden;">'+
       '<div class="fsn-index-head-row">'+
-        '<span class="fsn-index-head-title">FSN Power Index · '+table.length+' Teams · Week '+week+'</span>'+
+        '<span class="fsn-index-head-title">FSN Power Index · '+table.length+' Teams'+headSuffix+'</span>'+
         '<button type="button" class="fsn-index-info-btn" id="fsnIndexInfoBtn" aria-label="How the FSN Power Index is calculated" aria-haspopup="dialog">i</button>'+
       '</div>'+
+      liveNote+
       note+
       '<div class="fsn-index-card-list" role="list" aria-label="FSN Power Index board">'+cards+'</div>'+
     '</div>';
@@ -24145,25 +24204,41 @@ function renderAnalytics(){
 
   const rows = model.rows || [];
   const scored = rows.filter(row=> row.games > 0 || row.scores.length > 0);
+  const liveWeek = !!(model.coverage && model.coverage.liveWeekInProgress);
   if(seasonPill) seasonPill.textContent = model.season + ' SEASON';
   if(updatedLabel) updatedLabel.textContent = model.coverage.scoredWeeks
-    ? `${model.coverage.scoredWeeks} SCORED WEEK${model.coverage.scoredWeeks===1?'':'S'} · THROUGH WEEK ${model.throughWeek}`
-    : 'PRESEASON · MODELS READY';
+    ? (liveWeek
+        ? `${model.coverage.scoredWeeks} SCORED WEEK${model.coverage.scoredWeeks===1?'':'S'} · WEEK ${model.throughWeek} LIVE`
+        : `${model.coverage.scoredWeeks} SCORED WEEK${model.coverage.scoredWeeks===1?'':'S'} · THROUGH WEEK ${model.throughWeek}`)
+    : (liveWeek
+        ? `WEEK ${model.throughWeek} LIVE · MODELS PENDING`
+        : 'PRESEASON · MODELS READY');
 
+  const liveChip = liveWeek
+    ? `<span class="analytics-status-chip"><b>Week ${model.throughWeek}</b> Live</span>`
+    : '';
   const status = `<div class="analytics-status">
     <span class="analytics-status-chip"><b>${rows.length}</b> Teams</span>
     <span class="analytics-status-chip"><b>${model.coverage.scoredWeeks}</b> Scored Weeks</span>
     <span class="analytics-status-chip"><b>Week ${model.throughWeek}</b> Through</span>
+    ${liveChip}
     <span class="analytics-status-chip"><b>${model.coverage.lineupTeams}</b> Lineup Feeds</span>
     <span class="analytics-status-chip"><b>${model.coverage.waiverClaims}</b> Executed Adds</span>
   </div>`;
 
   if(!model.coverage.scoredWeeks){
+    const emptyTitle = liveWeek ? `Week ${model.throughWeek} Is Live · Models Pending` : 'Models Armed · No Scores Yet';
+    const emptyBody  = liveWeek
+      ? `Season roll-ups lock in on Tuesday, once every Week ${model.throughWeek} matchup is officially final. Live partial totals are excluded so Expected Wins, Luck Δ, and the margin index can never reflect an in-progress result.`
+      : 'The schedule is connected, but zero-point and unplayed weeks are excluded. Every board will populate automatically after ESPN posts real scoring.';
+    const emptyNote = liveWeek
+      ? 'The Advanced board waits for the platform’s weekly finalization stamp — it never treats a live score as a decided result.'
+      : 'No 0.0 rows are treated as performance. The analytics feed is waiting for the first scored matchup.';
     body.innerHTML = status + `<div class="analytics-grid">${analyticsModel(
-      'LIVE','Models Armed · No Scores Yet',
-      'The schedule is connected, but zero-point and unplayed weeks are excluded. Every board will populate automatically after ESPN posts real scoring.',
+      'LIVE', emptyTitle,
+      emptyBody,
       'var(--cyan)',
-      '<div class="analytics-empty">No 0.0 rows are treated as performance. The analytics feed is waiting for the first scored matchup.</div>',
+      '<div class="analytics-empty">' + emptyNote + '</div>',
       true
     )}</div>`;
     return;
