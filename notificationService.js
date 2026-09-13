@@ -47,7 +47,11 @@
 (function () {
   'use strict';
 
-  var REGISTER_ENDPOINT = '/api/notifications-register';
+  /* Consolidated notifications endpoint. The retired /api/notifications-register
+     path is preserved as a vercel.json rewrite so older TestFlight builds and
+     cached web bundles continue to work, but new callers hit the single file
+     directly. Register is the default action, so no query string is needed. */
+  var REGISTER_ENDPOINT = '/api/notifications';
   var SERVICE_WORKER_PATH = '/sw.js';
 
   /* This file is a separate <script src> that runs BEFORE index.html's first

@@ -45,7 +45,7 @@ function startServer() {
     const server = createServer((req, res) => {
       const url = new URL(req.url, 'http://localhost');
 
-      if (url.pathname === '/api/notifications-register') {
+      if ((url.pathname === '/api/notifications-register' || url.pathname === '/api/notifications')) {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ configured: false, apns: false, web: false, groups: [] }));
         return;

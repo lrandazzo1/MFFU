@@ -138,7 +138,7 @@ function startServer(options) {
         res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
         res.end(JSON.stringify(body));
       };
-      if (url.pathname === '/api/notifications-register') {
+      if ((url.pathname === '/api/notifications-register' || url.pathname === '/api/notifications')) {
         json({ configured: false, apns: false, web: false, vapidPublicKey: '', groups: [] });
         return;
       }

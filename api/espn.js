@@ -14,8 +14,8 @@
 const { resolveStoredLeagueAccess } = require('./league');
 /* One sanitizer/serializer shared with api/league.js so the relay and the
    cookie-ingestion handler can never disagree about what a valid credential
-   looks like. See api/espn-cookies.js for the paste shapes it repairs. */
-const { buildEspnCookieHeader } = require('./espn-cookies');
+   looks like. See lib/espn-cookies.js for the paste shapes it repairs. */
+const { buildEspnCookieHeader } = require('../lib/espn-cookies');
 
 const ALLOWED_ESPN_HOSTS = new Set([
   'lm-api-reads.fantasy.espn.com',
