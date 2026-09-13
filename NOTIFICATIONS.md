@@ -19,11 +19,13 @@ device per run.
 
 ## What gets sent
 
-Three alerts across three reader-facing switches, one per weekday. Each fires
-at most once per device per fantasy week, and a device receives **at most one
-per day**, because there is one delivery instant per day. **Sunday is
-deliberately silent** — the Desk is meant to be checked live while the slate
-is running, not buzzed by a redundant push.
+Four alerts across four reader-facing switches, one per weekday from Tuesday
+through Friday. Each fires at most once per device per fantasy week, and a
+device receives **at most one per day**, because there is one delivery
+instant per day. **Sunday and Monday are deliberately silent** — those hours
+are already saturated by the incumbent fantasy apps, and a redundant push
+there is where readers reach for the settings screen. The mid-week stretch
+is the whitespace this stack targets.
 
 Neither APNs nor Web Push accepts a "deliver at" time, so an alert lands when
 the run sends it. The cadence is therefore expressed as a **local-hour band**:
@@ -33,13 +35,14 @@ timezone.
 
 | Switch | Alert | Local band on the device's clock | Who that is, at 16:00 UTC |
 |---|---|---|---|
-| **Monday** | Big-performer breakdown | Mon 06:00 – 22:00 | Honolulu 06:00 · LA 09:00 · NY 12:00 · London 17:00 |
-| **Tuesday** | Game recap + power index drop | Tue 06:00 – 22:00 | Honolulu 06:00 · LA 09:00 · NY 12:00 · London 17:00 |
-| **Friday** | TNF breakdown + weekend matchup preview | Fri 06:00 – 22:00 | Honolulu 06:00 · LA 09:00 · NY 12:00 · London 17:00 |
+| **Tuesday** | Game recap · post-mortem · power index | Tue 06:00 – 22:00 | Honolulu 06:00 · LA 09:00 · NY 12:00 · London 17:00 |
+| **Wednesday** | Waiver-wire results · strategic pivot | Wed 06:00 – 22:00 | Honolulu 06:00 · LA 09:00 · NY 12:00 · London 17:00 |
+| **Thursday** | Matchup prep ahead of Thursday-Night Football | Thu 06:00 – 22:00 | Honolulu 06:00 · LA 09:00 · NY 12:00 · London 17:00 |
+| **Friday** | Deep-dive analysis · weekend prep | Fri 06:00 – 22:00 | Honolulu 06:00 · LA 09:00 · NY 12:00 · London 17:00 |
 
 So one UTC instant delivers the correct alert for the correct weekday in
-every served timezone, and the cron's other four weekdays (Wed / Thu / Sat /
-Sun) return "nothing due" — the invocation still runs so the season/week feed
+every served timezone, and the cron's other three weekdays (Sat / Sun / Mon)
+return "nothing due" — the invocation still runs so the season/week feed
 stays warm, but nothing goes out.
 
 ### What a once-a-day schedule costs, stated plainly
@@ -52,8 +55,8 @@ stays warm, but nothing goes out.
 - **A missed run is not re-offered the same day.** The next chance is the next
   run, and by then the day's alert has passed and the ledger will suppress a
   same-week retry. That is the trade for at-most-once delivery.
-- **Wed / Thu / Sat / Sun runs return "nothing due".** The invocation still
-  fires so the season/week feed stays warm and the health check has fresh data,
+- **Sat / Sun / Mon runs return "nothing due".** The invocation still fires
+  so the season/week feed stays warm and the health check has fresh data,
   but no push goes out on those weekdays under this cadence.
 
 Moving the cron's UTC hour moves which timezones are served. The bands are hours
@@ -298,8 +301,8 @@ curl -sS -H "Authorization: Bearer $CRON_SECRET" \
   "$DEPLOY/api/notifications-dispatch?selftest=$DEVICE" | jq
 ```
 
-Pick which alert's copy to send with `&trigger=` — one of `big_performers`,
-`game_recap` (the default) or `tnf_matchup_preview`.
+Pick which alert's copy to send with `&trigger=` — one of `game_recap`
+(the default), `waiver_pivot`, `tnf_matchup_prep`, or `weekend_deepdive`.
 The payload is byte-identical to the real alert; marking it as a test would
 answer a different question than the one being asked.
 

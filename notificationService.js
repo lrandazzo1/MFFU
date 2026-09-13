@@ -85,18 +85,12 @@
   var DEVICE_KEY = 'fsn.notify.device.v1';
   var OPTIN_KEY = 'fsn.notify.optin.v1';
 
-  /* The three engagement windows. Must stay in step with PREF_GROUPS in
+  /* The four engagement windows. Must stay in step with PREF_GROUPS in
      lib/notifications/triggers.js — the server drops any key it does not
      recognise, so a mismatch shows up as a switch that silently never fires.
-     The revised cadence is one send per day on Monday, Tuesday, and Friday;
-     Sunday is deliberately silent. */
-  var GROUPS = ['monday', 'tuesday', 'friday'];
-  /* Legacy pref keys we still recognise when reading a row a previous build
-     wrote to this device's localStorage. Not the source of truth for saves —
-     the server owns migration on the write path — but the client also needs
-     to migrate before it re-registers, otherwise the very first re-register
-     of the day would send the old shape back to a server that discards it. */
-  var LEGACY_GROUPS = ['tuesday', 'thursday', 'sunday'];
+     The mid-week whitespace cadence is one send per day on Tue / Wed / Thu
+     / Fri; Sunday and Monday are deliberately silent. */
+  var GROUPS = ['tuesday', 'wednesday', 'thursday', 'friday'];
 
   /* A Capacitor registration event has no timeout of its own; without one a
      failed APNs handshake leaves enable() pending forever and the Setup toggle
@@ -155,41 +149,29 @@
   ========================================================================== */
 
   function defaultPrefs() {
-    /* All three days on by default. A reader who flips the master switch on
-       and taps TURN ON ALERTS has expressed consent to weekly alerts as a
-       category; making them then tick three boxes to receive anything is the
-       fastest way back to zero enrolments. Each day still has its own switch,
-       so a reader who wants only Tuesday can turn the other two off. */
-    return { monday: true, tuesday: true, friday: true };
+    /* All four mid-week days on by default. A reader who flips the master
+       switch on and taps TURN ON ALERTS has expressed consent to weekly
+       alerts as a category; making them then tick four boxes to receive
+       anything is the fastest way back to zero enrolments. Each day still
+       has its own switch, so a reader who only wants Tuesday can turn the
+       other three off. */
+    return { tuesday: true, wednesday: true, thursday: true, friday: true };
   }
 
   /* Read whatever shape the caller handed us and return the strict new one.
-     Explicit true wins over legacy inference; a legacy `thursday: true`
-     becomes `friday: true` because the Friday briefing replaces the retired
-     Thursday lineup-lock trigger; a `monday` value is preserved when present
-     but NEVER auto-opted-in from legacy data. This matches the server's
-     migrateLegacyPrefs so the two sides never drift. */
+     Only explicit === true is consent; any unrecognised or retired key is
+     dropped. The `wednesday` and `friday` groups exist in the new shape and
+     will be false for readers coming from any prior shape that did not carry
+     them; the client does NOT auto-opt them into a moment they never saw a
+     switch for. Matches the server's migrateLegacyPrefs so the two sides
+     never drift. */
   function normalizePrefs(value) {
     var source = (value && typeof value === 'object') ? value : {};
     var out = {};
     for (var i = 0; i < GROUPS.length; i++) {
       out[GROUPS[i]] = source[GROUPS[i]] === true;
     }
-    if (source.friday !== true && source.friday !== false && source.thursday === true) {
-      out.friday = true;
-    }
     return out;
-  }
-
-  /* True when the stored payload only carries the retired keys, so the reader
-     had valid consent under the old shape that we are about to migrate. Used
-     only to decide whether to eagerly re-register after boot so the server row
-     is rewritten in the new shape. */
-  function looksLikeLegacyPrefs(value) {
-    var source = (value && typeof value === 'object') ? value : {};
-    var hasNew = GROUPS.some(function (g) { return source[g] === true || source[g] === false; });
-    if (hasNew) return false;
-    return LEGACY_GROUPS.some(function (g) { return source[g] === true; });
   }
 
   function loadPrefs() {
