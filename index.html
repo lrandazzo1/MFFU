@@ -20226,6 +20226,34 @@ const PLAYOFF_SUPPRESSED_KINDS = {
 let streamCache = { key:null, list:null };
 LeagueData.subscribe(()=>{ streamCache = { key:null, list:null }; });
 
+/* Slot-boundary breadcrumb. releaseWindowToken() collapses "which slot went to
+   air most recently" into a single string that changes when the wire crosses
+   a scheduled release. Logging that transition here — additive, single-line,
+   read-only — makes the daily cadence observable in DevTools without touching
+   any generator. Keyed by fantasy week so a season-scrubbed reader still sees
+   each week's boundary once. */
+const slotBoundaryLog = new Map();
+function noteSlotBoundary(week, token){
+  if(!Number.isFinite(week) || week <= 0 || !token || token === 'static') return;
+  const key = String(week);
+  if(slotBoundaryLog.get(key) === token) return;
+  slotBoundaryLog.set(key, token);
+  try{
+    let dueSlot = null, dueAt = 0;
+    const now = Date.now();
+    Object.keys(SLOTS).forEach(name=>{
+      const at = slotReleaseAt(name, week, viewedSeasonYear());
+      if(at != null && at <= now && at > dueAt){ dueSlot = name; dueAt = at; }
+    });
+    if(dueSlot){
+      const slot = SLOTS[dueSlot];
+      console.info('[NewsDesk] slot boundary crossed · Week ' + week + ' · ' +
+        DAY_NAMES[slot.dow] + ' ' + String(slot.hour).padStart(2,'0') + ':00 · ' +
+        dueSlot + ' (' + slot.label + ')');
+    }
+  }catch(err){ console.warn('[NewsDesk] slot-boundary log failed for Week ' + week, err); }
+}
+
 /* The News Desk has no article table and may not mutate the verified Supabase
    schema. This scoped row store therefore provides the same deterministic
    upsert semantics in memory: one league/season/week/topic key is replaced on
@@ -20432,6 +20460,7 @@ function getTimelineStream(week){
      a slot boundary has to rebuild, or the day's scheduled drop would never
      reach the wire. */
   const releaseKey = releaseWindowToken(week);
+  noteSlotBoundary(Number(week), releaseKey);
   const key = leagueScopeToken() + '|' + String(viewedSeasonYear()) + ':' + String(week) + ':' + releaseKey + ':' + custom.map(a=> a.id).join(',');
   if(streamCache.key === key && streamCache.list){
     let cachedCtx = null;
@@ -22720,6 +22749,16 @@ function syncAutomaticSeasonStage(storeData){
   // the reader was already sitting on the old live head.
   const followsLiveHead = ui.week == null || parseInt(ui.week, 10) === previous;
   ui.currentWeek = resolved;
+  // Diagnostic breadcrumb: a real weekly rollover is a rare enough transition
+  // (once per Tuesday in-season) that a single console.info gives operators a
+  // durable audit trail that automatic rollover fired without any manual tap.
+  try{
+    console.info('[MFFU] weekly rollover · Week ' + previous + ' → Week ' + resolved +
+      ' (season ' + active + ')' + (followsLiveHead ? ' · advancing selected week' : ' · reader is off the live head'));
+    if(window.EditorialScheduleEngine && typeof window.EditorialScheduleEngine.diagnose === 'function'){
+      window.EditorialScheduleEngine.diagnose(active, resolved);
+    }
+  }catch(err){ console.error('[MFFU] rollover diagnostic failed', err); }
   if(followsLiveHead) selectWeek(resolved, {sync: ui.provider === 'espn'});
   else renderWeekScrubbers();
   return true;

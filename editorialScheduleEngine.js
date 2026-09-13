@@ -404,6 +404,115 @@
   }
 
   /* --------------------------------------------------------------------------
+     diagnose(seasonYear?, week?, now?)
+
+     A dependency-free self-check that a developer or automated auditor can call
+     from the browser console — window.EditorialScheduleEngine.diagnose() — to
+     verify the day-by-day publishing pipeline is wired correctly. It never
+     mutates state, only reads. Returns a plain object shaped like:
+
+       {
+         nowIso, todayDow, todayName,
+         todayEntry:      { day, publishes, slot, cadence, label, summary, desks },
+         weeklyCadence:   [ 7 entries, Sunday→Saturday ],
+         schedule:        [ chronological slot releases for the resolved week ],
+         cadencePhase:    'PRE-WEEK' | 'T-3' | 'T-2' | 'T-1' | 'MATCHUPDAY' | 'POST-SLATE',
+         seasonYear, week, firstKickoff, firstKickoffIso, nextRelease,
+       }
+
+     The same object is also emitted through console.table + console.group so
+     opening DevTools on a live session immediately shows which desk is due
+     today and where the current fantasy week sits inside its release cycle.
+  -------------------------------------------------------------------------- */
+  function diagnose(seasonYear, week, now){
+    var ref = (now instanceof Date) ? now : new Date(now || Date.now());
+    var nowMs = ref.getTime();
+    var todayDow = ref.getDay();
+    var todayEntry = cloneCadenceEntry(WEEKLY_CADENCE[todayDow]);
+    var cadence = weeklyCadence();
+
+    var espn = readLeagueEspnData();
+    var yearGuess = parseInt(seasonYear, 10);
+    if(!yearGuess && espn){ yearGuess = parseInt(espn.seasonId || espn.season, 10); }
+    if(!yearGuess) yearGuess = ref.getFullYear();
+
+    var weekGuess = parseInt(week, 10);
+    if(!(weekGuess > 0) && espn){
+      var status = espn.status || {};
+      weekGuess = parseInt(status.currentMatchupPeriod || espn.scoringPeriodId || espn.currentMatchupPeriod, 10) || 0;
+    }
+    if(!(weekGuess > 0)) weekGuess = 1;
+
+    var kickoff = firstGameTimestamp(yearGuess, weekGuess, espn);
+    var schedule = kickoff != null ? computeWeeklySchedule(kickoff) : [];
+    var phase = kickoff != null ? currentCadencePhase(kickoff, nowMs) : null;
+    var nextRelease = null;
+    for(var i = 0; i < schedule.length; i++){
+      var row = schedule[i];
+      if(row && row.at > nowMs){ nextRelease = row; break; }
+    }
+
+    var report = {
+      nowIso: ref.toISOString(),
+      todayDow: todayDow,
+      todayName: DAY_NAMES[todayDow],
+      todayEntry: todayEntry,
+      weeklyCadence: cadence,
+      seasonYear: yearGuess,
+      week: weekGuess,
+      firstKickoff: kickoff,
+      firstKickoffIso: kickoff != null ? new Date(kickoff).toISOString() : null,
+      cadencePhase: phase,
+      schedule: schedule,
+      nextRelease: nextRelease,
+    };
+
+    try{
+      if(typeof console !== 'undefined' && typeof console.group === 'function'){
+        console.group('[EditorialScheduleEngine] diagnose · Week ' + weekGuess + ' of ' + yearGuess);
+        console.log('Now:', report.nowIso, '· today is', report.todayName +
+          ' · publishes:', todayEntry && todayEntry.publishes,
+          '· label:', todayEntry && todayEntry.label);
+        console.log('Cadence phase for Week ' + weekGuess + ':', phase || 'unknown');
+        if(kickoff == null){
+          console.warn('No first-kickoff timestamp resolved from the loaded payload; falling back to the Tuesday-start-of-week math when consumers call slotReleaseAt().');
+        } else {
+          console.log('First kickoff:', report.firstKickoffIso);
+        }
+        if(typeof console.table === 'function'){
+          console.table(cadence.map(function(entry){
+            return {
+              day: entry.day, publishes: entry.publishes,
+              slot: entry.slot || '', label: entry.label,
+              desks: entry.desks.join(' · '),
+            };
+          }));
+          if(schedule.length){
+            console.table(schedule.map(function(row){
+              var d = new Date(row.at);
+              return {
+                slot: row.slot, cadence: row.cadence, label: row.label,
+                day: row.day, hour: row.hour,
+                releaseIso: d.toISOString(),
+                due: d.getTime() <= nowMs ? 'released' : 'pending',
+                desks: row.desks.join(' · '),
+              };
+            }));
+          }
+        }
+        if(nextRelease){
+          console.log('Next desk due:', nextRelease.slot, '· at', new Date(nextRelease.at).toISOString(),
+            '·', nextRelease.desks.join(', '));
+        }
+        console.groupEnd();
+      }
+    }catch(err){
+      try{ console.error('[EditorialScheduleEngine] diagnose console output failed', err); }catch(_){}
+    }
+    return report;
+  }
+
+  /* --------------------------------------------------------------------------
      Public API — everything above is closed over the CADENCE map by design,
      so a caller cannot accidentally mutate the release schedule from
      application code.
@@ -420,6 +529,7 @@
     cadenceForDay: cadenceForDay,
     publishesOn: publishesOn,
     activeCadenceDays: activeCadenceDays,
+    diagnose: diagnose,
     slots: SLOT_ORDER.slice(),
   };
 
