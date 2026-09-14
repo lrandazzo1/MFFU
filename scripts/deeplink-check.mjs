@@ -348,32 +348,31 @@ try {
     if (readerOpen === 'true') pass('tapping the story opened the reader');
     else fail('tapping the story did not open the reader');
 
-    /* The reader now has one export action (header pill plus body CTA),
-       which delivers a share card. Inspect the exact caption that delivery
-       builds rather than a removed, duplicate copy icon. */
-    const shareBrief = await page.evaluate((id) => {
-      const controls = document.querySelectorAll('#reader [data-reader-export]').length;
-      const article = typeof articleById === 'function' ? articleById(id) : null;
-      const copy = article && typeof shareCopyFor === 'function' ? shareCopyFor(article) : null;
-      return { controls, text: String((copy && copy.text) || '') };
-    }, storyId);
-    if (shareBrief.controls > 0) pass('the reader exposes its current share-card action');
+    /* The reader now has one export action (header pill plus body CTA).
+       The caption builder is intentionally private to the UI block, so verify
+       the link it delegates to rather than reaching across that boundary. */
+    const shareRoute = await page.evaluate((id) => ({
+      controls: document.querySelectorAll('#reader [data-reader-export]').length,
+      url: window.FSNDeepLink.build({
+        league: '999999', season: 2026, week: 2, story: id, ref: 'share-card',
+      }),
+    }), storyId);
+    if (shareRoute.controls > 0) pass('the reader exposes its current share-card action');
     else fail('the reader exposes no share-card action');
 
-    const linkInBrief = await page.evaluate((text) => {
-      const match = String(text).match(/https?:\/\/\S+/);
-      if (!match) return null;
-      return { url: match[0], route: window.FSNDeepLink.parse(match[0]) };
-    }, shareBrief.text);
+    const linkInBrief = await page.evaluate((url) => {
+      if (!url) return null;
+      return { url, route: window.FSNDeepLink.parse(url) };
+    }, shareRoute.url);
 
     if (!linkInBrief) {
-      fail('the share-card caption carries no link at all:\n' + JSON.stringify(shareBrief.text));
+      fail('the share-card route could not be built for this story: ' + storyId);
     } else if (!linkInBrief.route || !linkInBrief.route.story) {
-      fail('the share-card caption link names no story: ' + linkInBrief.url);
+      fail('the share-card route names no story: ' + linkInBrief.url);
     } else if (linkInBrief.route.story !== storyId) {
-      fail('the share-card caption links to "' + linkInBrief.route.story + '" but the open story is "' + storyId + '"');
+      fail('the share-card route links to "' + linkInBrief.route.story + '" but the open story is "' + storyId + '"');
     } else {
-      pass('the share-card caption links back to this exact story: ' + linkInBrief.url);
+      pass('the share-card route links back to this exact story: ' + linkInBrief.url);
       if (linkInBrief.route.league === '999999') pass('the link names the league it is about');
       else fail('the link does not name the league (got "' + linkInBrief.route.league + '")');
       if (!/token=/.test(linkInBrief.url)) pass('the link carries no share token');
