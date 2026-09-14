@@ -46,6 +46,10 @@ jobs:
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
 
+      - name: Resolve Chromium path
+        run: |
+          node --input-type=module -e "import { chromium } from 'playwright'; import { appendFileSync } from 'node:fs'; appendFileSync(process.env.GITHUB_ENV, 'FSN_CHROMIUM_PATH=' + chromium.executablePath() + '\n');"
+
       - name: Verify generated blog pipeline
         run: npm run check:blog-pipeline
 
@@ -56,7 +60,9 @@ jobs:
         run: npm run check:articles
 
       - name: Verify notification cadence
+        if: always()
         run: npm run test:triggers
 
       - name: Exercise notification dispatcher
+        if: always()
         run: npm run audit:notifications
