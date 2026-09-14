@@ -645,35 +645,60 @@ try {
   }
 
 
-  /* ---- 6.7b COMPLETED STARTER SLATE -----------------------------------
-     ESPN may hold winner at UNDECIDED while stat corrections are pending,
-     even after every NFL player game is final. The shared helper must close
-     the matchup in that state, which drives both the Head-to-Head badge and
-     the recap Local Read state. */
+  /* ---- 6.7b MATCHUP-LOCAL COMPLETION -------------------------------
+     The broad NFL week can remain live after this particular head-to-head has
+     no starter left in an active or upcoming game. The Local Read must close
+     that one matchup from its own rosters, without letting a live bench player
+     or another matchup in the same scoring period hold it open. */
   {
     const data = syntheticLeague();
-    const closedStarter = (id) => ({
-      lineupSlotId:0,
-      gameComplete:true,
-      playerPoolEntry:{ player:{ id:'closed-' + id, fullName:'Closed Starter ' + id, gameComplete:true } },
+    const starter = (id, status, slotId) => ({
+      lineupSlotId: slotId == null ? 0 : slotId,
+      playerPoolEntry:{ player:{
+        id:'status-' + id,
+        fullName:'Status Starter ' + id,
+        /* ESPN-shaped provider status rather than the synthetic gameComplete
+           shortcut: the completion helper must read actual roster state. */
+        proGameStatus:status,
+      } },
     });
-    data.schedule.filter((game) => game.matchupPeriodId === 2).forEach((game) => {
+    const weekTwo = data.schedule.filter((game) => game.matchupPeriodId === 2);
+    const localGame = weekTwo.find((game) => game.home.teamId === 1 || game.away.teamId === 1);
+    const unrelatedGame = weekTwo.find((game) => game !== localGame);
+    if (!localGame || !unrelatedGame) throw new Error('synthetic Week 2 needs a local and unrelated matchup');
+
+    [localGame, unrelatedGame].forEach((game) => {
       game.winner = 'UNDECIDED';
-      game.home.totalPoints = 112.1;
-      game.away.totalPoints = 104.7;
-      game.home.totalPointsLive = 112.1;
-      game.away.totalPointsLive = 104.7;
-      game.home.rosterForCurrentScoringPeriod = { entries:[closedStarter(game.id + '-h')] };
-      game.away.rosterForCurrentScoringPeriod = { entries:[closedStarter(game.id + '-a')] };
+      game.home.totalPointsLive = game.home.totalPoints;
+      game.away.totalPointsLive = game.away.totalPoints;
     });
+    /* Every scoring starter in Alpha's matchup is final or has no remaining
+       scoring opportunity. The scheduled bench player proves bench state is
+       excluded from a Local Read's matchup completion calculation. */
+    localGame.home.rosterForCurrentScoringPeriod = {
+      entries:[starter('alpha-a', 'FINAL'), starter('alpha-b', 'FINAL'), starter('alpha-bench', 'SCHEDULED', 20)],
+    };
+    localGame.away.rosterForCurrentScoringPeriod = {
+      entries:[starter('opp-a', 'COMPLETE'), starter('opp-b', 'BYE')],
+    };
+    /* Another matchup is still genuinely live, so a week-wide flag must stay
+       live even while the Local Read for team 1 becomes final. */
+    unrelatedGame.home.rosterForCurrentScoringPeriod = { entries:[starter('live-a', 'IN_PROGRESS')] };
+    unrelatedGame.away.rosterForCurrentScoringPeriod = { entries:[starter('live-b', 'SCHEDULED')] };
+
     await page.evaluate((payload) => window.LeagueData.setEspnData(payload), data);
     await page.click('#tabBar .tab-btn[data-tab="matchups"]');
     await page.waitForTimeout(300);
 
-    const closedBoard = await page.evaluate(() => {
+    const rosterState = await page.evaluate(() => {
       const games = window.LeagueData.getWeekMatchups(2) || [];
+      const local = games.find((game) => String(game.homeTeam.id) === '1' || String(game.awayTeam.id) === '1');
+      const other = games.find((game) => game !== local);
       return {
-        allRawFinal: games.length > 0 && games.every((game) => window.scheduleGameFinal(game.raw)),
+        localFinal: !!(local && window.scheduleGameFinal(local.raw)),
+        otherFinal: !!(other && window.scheduleGameFinal(other.raw)),
+        localRoster: local ? window.scheduleMatchupRosterStatus(local.raw) : null,
+        weekStillLive: window.weekHasLiveGame(2),
         localReadState: window.FSNLocalDesk.liveScore(1, 2)?.state || '',
         cards: Array.from(document.querySelectorAll('#matchupList .card')).map((card) => ({
           final: !!card.querySelector('.pill-final'),
@@ -682,17 +707,20 @@ try {
         })),
       };
     });
-    if (!closedBoard.allRawFinal) fail('completed-starter slate remained open in scheduleGameFinal()');
-    else pass('completed-starter slate resolves FINAL before the provider stamps a winner');
-    if (closedBoard.localReadState !== 'FINAL') {
-      fail('Local Read state did not inherit the completed matchup state: ' + closedBoard.localReadState);
-    } else pass('Local Read resolves FINAL from the same completed-starter state');
-    if (!closedBoard.cards.length || closedBoard.cards.some((card) => !card.final || card.live)) {
-      fail('Head-to-Head cards did not flip completed-starter matchups to FINAL: ' + JSON.stringify(closedBoard.cards));
-    } else pass('Head-to-Head cards show FINAL, never LIVE, for completed-starter matchups');
-    if (closedBoard.cards.some((card) => /Scores finalize Tuesday morning/i.test(card.text))) {
-      fail('final Head-to-Head cards retained the live correction notice: ' + JSON.stringify(closedBoard.cards));
-    } else pass('final Head-to-Head cards omit the live correction notice');
+    if (!rosterState.localFinal || rosterState.otherFinal || !rosterState.weekStillLive) {
+      fail('matchup-local completion leaked into the global week state: ' + JSON.stringify(rosterState));
+    } else pass('only the roster-complete matchup resolves FINAL while the NFL week remains live');
+    if (!rosterState.localRoster || rosterState.localRoster.remaining !== 0 ||
+        rosterState.localRoster.starters !== 4) {
+      fail('roster completion did not count only active starters: ' + JSON.stringify(rosterState.localRoster));
+    } else pass('roster completion excludes the live bench player and finds zero remaining starters');
+    if (rosterState.localReadState !== 'FINAL') {
+      fail('Local Read did not close its roster-complete matchup: ' + rosterState.localReadState);
+    } else pass('Local Read resolves FINAL from its own roster state, not the NFL-wide slate');
+    const localCard = rosterState.cards.find((card) => /Alpha/.test(card.text));
+    if (!localCard || !localCard.final || localCard.live) {
+      fail('the roster-complete Head-to-Head card did not show FINAL: ' + JSON.stringify(rosterState.cards));
+    } else pass('the roster-complete Head-to-Head card shows FINAL, never LIVE');
   }
 
   /* ---- 6.8 LIVE PROJECTION RECALCULATION --------------------------------
