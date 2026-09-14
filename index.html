@@ -3583,9 +3583,12 @@ body.fsn-dd-lock{ overflow:hidden; }
             <div class="provider-toggle" role="tablist" aria-label="Fantasy platform">
               <button type="button" id="providerEspn" class="provider-tab is-active" role="tab" aria-selected="true" data-provider="espn">ESPN</button>
               <button type="button" id="providerSleeper" class="provider-tab" role="tab" aria-selected="false" data-provider="sleeper">Sleeper</button>
+              <!-- FSN_WEB_ONLY_START -->
               <button type="button" id="providerYahoo" class="provider-tab" role="tab" aria-selected="false" data-provider="yahoo">Yahoo</button>
+              <!-- FSN_WEB_ONLY_END -->
             </div>
           </div>
+          <!-- FSN_WEB_ONLY_START -->
           <div id="yahooAuthPanel" class="card p-3 hidden" style="background:#0b0f16">
             <div class="flex items-center justify-between gap-3">
               <div class="min-w-0 flex-1">
@@ -3600,6 +3603,7 @@ body.fsn-dd-lock{ overflow:hidden; }
               <select id="yahooLeagueSelect" class="field" aria-label="Choose a Yahoo fantasy football league"></select>
             </div>
           </div>
+          <!-- FSN_WEB_ONLY_END -->
           <div id="leagueIdGroup">
             <div class="flex items-center justify-between gap-2">
               <label id="leagueIdLabel" class="label" for="leagueIdInput" style="margin-bottom:0">League ID</label>
