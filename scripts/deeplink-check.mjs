@@ -12,7 +12,7 @@
    It asserts:
      - FSNDeepLink parses and builds the same grammar (round-trip), and refuses
        a foreign host, a malformed article id and an out-of-range week
-     - a share card's copied brief carries a link naming the story it is about
+     - a share card's native-share brief carries a link naming the story it is about
      - the native arrival — @capacitor/app's appUrlOpen, the ONLY route into
        the packaged binary, which has no address bar — opens that article
      - a franchise dossier link opens the dossier
@@ -179,6 +179,14 @@ await page.addInitScript(() => {
 
   /* Capture what the app copies instead of writing to a real clipboard. */
   window.__fsnCopied = [];
+  window.__fsnShares = [];
+  /* Keep the share-card path deterministic and offline. The production
+     renderer is loaded from a CDN, but this harness is testing the payload
+     handed to the share sheet rather than raster fidelity. */
+  window.htmlToImage = {
+    getFontEmbedCSS() { return Promise.resolve(''); },
+    toPng() { return Promise.resolve('data:image/png;base64,iVBORw0KGgo='); },
+  };
   try {
     Object.defineProperty(navigator, 'clipboard', {
       configurable: true,
@@ -188,6 +196,14 @@ await page.addInitScript(() => {
           readText() { return Promise.resolve(''); },
         };
       },
+    });
+    Object.defineProperty(navigator, 'canShare', {
+      configurable: true,
+      value() { return true; },
+    });
+    Object.defineProperty(navigator, 'share', {
+      configurable: true,
+      value(payload) { window.__fsnShares.push(payload); return Promise.resolve(); },
     });
   } catch (err) { /* some builds seal navigator.clipboard; the execCommand fallback still runs */ }
 });
@@ -348,10 +364,10 @@ try {
     if (readerOpen === 'true') pass('tapping the story opened the reader');
     else fail('tapping the story did not open the reader');
 
-    await page.click('#readerCopy');
-    await page.waitForTimeout(400);
+    await page.click('#reader [data-reader-export]');
+    await page.waitForFunction(() => (window.__fsnShares || []).length > 0);
 
-    const copied = await page.evaluate(() => (window.__fsnCopied || [])[0] || '');
+    const copied = await page.evaluate(() => ((window.__fsnShares || [])[0] || {}).text || '');
     const linkInBrief = await page.evaluate((text) => {
       const match = String(text).match(/https?:\/\/\S+/);
       if (!match) return null;
