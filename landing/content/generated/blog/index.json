@@ -1,7 +1,16 @@
 {
-  "generatedAt": "2026-09-11T21:04:42.426Z",
-  "count": 3,
+  "generatedAt": "2026-09-14T14:19:08.156Z",
+  "count": 4,
   "posts": [
+    {
+      "title": "Week 1 delivered a scorigami, a rushing record, and two nail biters",
+      "slug": "nfl-week-1-recap-record-breaking-openers",
+      "publishDate": "2026-09-14",
+      "category": "Recap",
+      "excerpt": "Chicago and Baltimore turned their openers into highlight reels, Detroit needed overtime to hold off New Orleans, and two more games came down to the final minute. Here is what actually happened in Week 1, and what it means before you overreact to one week of box scores.",
+      "author": "FSN Desk",
+      "entityCount": 5
+    },
     {
       "title": "Jayden Higgins' torn ACL just reshaped the Texans' passing game",
       "slug": "texans-passing-game-after-higgins-acl-tear",
