@@ -645,6 +645,56 @@ try {
   }
 
 
+  /* ---- 6.7b COMPLETED STARTER SLATE -----------------------------------
+     ESPN may hold winner at UNDECIDED while stat corrections are pending,
+     even after every NFL player game is final. The shared helper must close
+     the matchup in that state, which drives both the Head-to-Head badge and
+     the recap Local Read state. */
+  {
+    const data = syntheticLeague();
+    const closedStarter = (id) => ({
+      lineupSlotId:0,
+      gameComplete:true,
+      playerPoolEntry:{ player:{ id:'closed-' + id, fullName:'Closed Starter ' + id, gameComplete:true } },
+    });
+    data.schedule.filter((game) => game.matchupPeriodId === 2).forEach((game) => {
+      game.winner = 'UNDECIDED';
+      game.home.totalPoints = 112.1;
+      game.away.totalPoints = 104.7;
+      game.home.totalPointsLive = 112.1;
+      game.away.totalPointsLive = 104.7;
+      game.home.rosterForCurrentScoringPeriod = { entries:[closedStarter(game.id + '-h')] };
+      game.away.rosterForCurrentScoringPeriod = { entries:[closedStarter(game.id + '-a')] };
+    });
+    await page.evaluate((payload) => window.LeagueData.setEspnData(payload), data);
+    await page.click('#tabBar .tab-btn[data-tab="matchups"]');
+    await page.waitForTimeout(300);
+
+    const closedBoard = await page.evaluate(() => {
+      const games = window.LeagueData.getWeekMatchups(2) || [];
+      return {
+        allRawFinal: games.length > 0 && games.every((game) => window.scheduleGameFinal(game.raw)),
+        localReadState: window.FSNLocalDesk.liveScore(1, 2)?.state || '',
+        cards: Array.from(document.querySelectorAll('#matchupList .card')).map((card) => ({
+          final: !!card.querySelector('.pill-final'),
+          live: !!card.querySelector('.pill-live'),
+          text: card.textContent.replace(/\s+/g, ' ').trim(),
+        })),
+      };
+    });
+    if (!closedBoard.allRawFinal) fail('completed-starter slate remained open in scheduleGameFinal()');
+    else pass('completed-starter slate resolves FINAL before the provider stamps a winner');
+    if (closedBoard.localReadState !== 'FINAL') {
+      fail('Local Read state did not inherit the completed matchup state: ' + closedBoard.localReadState);
+    } else pass('Local Read resolves FINAL from the same completed-starter state');
+    if (!closedBoard.cards.length || closedBoard.cards.some((card) => !card.final || card.live)) {
+      fail('Head-to-Head cards did not flip completed-starter matchups to FINAL: ' + JSON.stringify(closedBoard.cards));
+    } else pass('Head-to-Head cards show FINAL, never LIVE, for completed-starter matchups');
+    if (closedBoard.cards.some((card) => /Scores finalize Tuesday morning/i.test(card.text))) {
+      fail('final Head-to-Head cards retained the live correction notice: ' + JSON.stringify(closedBoard.cards));
+    } else pass('final Head-to-Head cards omit the live correction notice');
+  }
+
   /* ---- 6.8 LIVE PROJECTION RECALCULATION --------------------------------
      A team's projection has to move while the slate is being played. The board
      used to print `totalProjectedPoints`, which the provider computes before
