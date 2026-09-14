@@ -697,6 +697,7 @@ try {
       return {
         localFinal: !!(local && window.scheduleGameFinal(local.raw)),
         otherFinal: !!(other && window.scheduleGameFinal(other.raw)),
+        localNarrativeFinal: !!(local && window.scheduleMatchupNarrativeFinal(local.raw)),
         localRoster: local ? window.scheduleMatchupRosterStatus(local.raw) : null,
         weekStillLive: window.weekHasLiveGame(2),
         localReadState: window.FSNLocalDesk.liveScore(1, 2)?.state || '',
@@ -707,9 +708,9 @@ try {
         })),
       };
     });
-    if (!rosterState.localFinal || rosterState.otherFinal || !rosterState.weekStillLive) {
-      fail('matchup-local completion leaked into the global week state: ' + JSON.stringify(rosterState));
-    } else pass('only the roster-complete matchup resolves FINAL while the NFL week remains live');
+    if (rosterState.localFinal || rosterState.otherFinal || !rosterState.localNarrativeFinal || !rosterState.weekStillLive) {
+      fail('matchup-local completion leaked into the official week state: ' + JSON.stringify(rosterState));
+    } else pass('only the roster-complete matchup resolves FINAL in reader copy while the NFL week remains officially live');
     if (!rosterState.localRoster || rosterState.localRoster.remaining !== 0 ||
         rosterState.localRoster.starters !== 4) {
       fail('roster completion did not count only active starters: ' + JSON.stringify(rosterState.localRoster));
@@ -717,7 +718,7 @@ try {
     if (rosterState.localReadState !== 'FINAL') {
       fail('Local Read did not close its roster-complete matchup: ' + rosterState.localReadState);
     } else pass('Local Read resolves FINAL from its own roster state, not the NFL-wide slate');
-    const localCard = rosterState.cards.find((card) => /Alpha/.test(card.text));
+    const localCard = rosterState.cards.find((card) => /Alpha/i.test(card.text));
     if (!localCard || !localCard.final || localCard.live) {
       fail('the roster-complete Head-to-Head card did not show FINAL: ' + JSON.stringify(rosterState.cards));
     } else pass('the roster-complete Head-to-Head card shows FINAL, never LIVE');

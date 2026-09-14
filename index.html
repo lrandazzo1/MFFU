@@ -3583,9 +3583,12 @@ body.fsn-dd-lock{ overflow:hidden; }
             <div class="provider-toggle" role="tablist" aria-label="Fantasy platform">
               <button type="button" id="providerEspn" class="provider-tab is-active" role="tab" aria-selected="true" data-provider="espn">ESPN</button>
               <button type="button" id="providerSleeper" class="provider-tab" role="tab" aria-selected="false" data-provider="sleeper">Sleeper</button>
+              <!-- FSN_WEB_ONLY_START -->
               <button type="button" id="providerYahoo" class="provider-tab" role="tab" aria-selected="false" data-provider="yahoo">Yahoo</button>
+              <!-- FSN_WEB_ONLY_END -->
             </div>
           </div>
+          <!-- FSN_WEB_ONLY_START -->
           <div id="yahooAuthPanel" class="card p-3 hidden" style="background:#0b0f16">
             <div class="flex items-center justify-between gap-3">
               <div class="min-w-0 flex-1">
@@ -3600,6 +3603,7 @@ body.fsn-dd-lock{ overflow:hidden; }
               <select id="yahooLeagueSelect" class="field" aria-label="Choose a Yahoo fantasy football league"></select>
             </div>
           </div>
+          <!-- FSN_WEB_ONLY_END -->
           <div id="leagueIdGroup">
             <div class="flex items-center justify-between gap-2">
               <label id="leagueIdLabel" class="label" for="leagueIdInput" style="margin-bottom:0">League ID</label>
@@ -4573,13 +4577,18 @@ function scheduleGameFinal(game){
     return String(winner).toUpperCase() !== 'UNDECIDED';
   }
 
-  /* ESPN can hold a matchup winner at UNDECIDED while stat corrections are
-     pending. Do not wait for every NFL game in the week: close this specific
-     matchup as soon as both of its active lineups have no scoring game left. */
-  if(scheduleMatchupRosterStatus(game).complete) return true;
-
   const providerStatus = (game._yahoo && game._yahoo.status) || game.status || game.statusText || '';
   return typeof providerStatus === 'string' && SCHEDULE_FINAL_STATE_RE.test(providerStatus.trim());
+}
+
+/* Reader-facing completion has a narrower purpose than an official result.
+   ESPN may leave winner as UNDECIDED while stat corrections settle, even
+   though neither side in this particular matchup can score again. Let the
+   head-to-head card and recap narration close in that state, but never route
+   it through scheduleGameFinal(): standings, records, streaks and historical
+   analytics must continue to wait for the provider's official finalization. */
+function scheduleMatchupNarrativeFinal(game){
+  return scheduleGameFinal(game) || scheduleMatchupRosterStatus(game).complete;
 }
 
 /* Is the given week still LIVE — i.e. a regular-season matchup exists for it
@@ -5035,12 +5044,17 @@ window.FSNRelease = (function(){
   function isIOS(){
     return document.documentElement.getAttribute('data-fsn-release') === 'ios' || FSNApi.isNativeShell();
   }
-  /* Yahoo now renders on every release. The OAuth handshake is still cookie-
-     scoped to the deployment origin, so the native shell routes the login
-     through a Safari sheet (see startYahooLogin) — but the button, the OAuth
-     panel and the setup wiring are shared between web and iOS. */
-  function supportsProvider(){ return true; }
-  if($('ftuProviders')) $('ftuProviders').textContent = 'ESPN, Sleeper or Yahoo';
+  /* Yahoo's OAuth session is owned by the deployment-origin browser cookie.
+     A Capacitor webview cannot reuse that Safari cookie, so exposing Yahoo in
+     the packaged app would let a reader complete login and then strand them
+     without a hydration path. Keep the provider available on the web, and
+     only present iOS choices the native shell can actually load. */
+  function supportsProvider(provider){
+    return !isIOS() || String(provider || '').toLowerCase() !== 'yahoo';
+  }
+  if($('ftuProviders')) $('ftuProviders').textContent = isIOS()
+    ? 'ESPN or Sleeper'
+    : 'ESPN, Sleeper or Yahoo';
   return { isIOS, supportsProvider };
 })();
 
@@ -10199,10 +10213,11 @@ window.FSNLocalDesk = (function(){
      running actual in totalPointsLive, and reading the wrong one is what puts
      a 0.0 next to a manager who has 84 points on the board.
 
-     `state` is honest about all three cases. FINAL comes from the platform's
-     own finalization stamp (scheduleGameFinal, global to this block) and NOT
-     from the presence of a score — reading a live partial as a final is what
-     promotes a team to 1-0 on a Sunday afternoon. */
+     `state` is honest about all three cases. FINAL comes from an official
+     platform finalization or a lineup where every scoring starter is done —
+     never merely from points on the board. That keeps a live partial from
+     reading as a completed result while allowing a finished head-to-head to
+     use past-tense copy before the broader week is closed. */
   /* The week's scoreboard, memoized on the same payload signature the roster
      index uses. The timeline paints twenty-odd cards in one pass and each one
      asks for its own head-to-head; getWeekMatchups() re-derives the live
@@ -10251,7 +10266,7 @@ window.FSNLocalDesk = (function(){
 
     const home = side(game.homeTeam, game.homeActual, game.homeLiveProjected || game.homeProjected);
     const away = side(game.awayTeam, game.awayActual, game.awayLiveProjected || game.awayProjected);
-    const final = scheduleGameFinal(game.raw);
+    const final = scheduleMatchupNarrativeFinal(game.raw);
     const started = home.score > 0 || away.score > 0;
     const state = final ? 'FINAL' : (started ? 'LIVE' : 'PREGAME');
 
@@ -22419,14 +22434,13 @@ function emptyState(title, sub, gotoTab){
 /* A game is "live" when the scores are still moving — ESPN reports a winner
    of UNDECIDED and at least one side has points on the board. */
 function gameStatus(g){
-  /* Matchup cards, Local Read and the shared weekly coverage flag all resolve
-     completion through scheduleGameFinal(). Do not repeat the winner-only
-     heuristic here: an UNDECIDED scorecard whose NFL starters are all final is
-     closed for reader-facing purposes, while a nonzero early score is still
-     live. */
+  /* Matchup cards and Local Read use narrative completion: an UNDECIDED
+     scorecard whose scoring starters are all final is closed for the reader,
+     while the data engines continue to use scheduleGameFinal() for official
+     records and standings. */
   const hs = actualOf(g, 'home'), as = actualOf(g, 'away');
   const played = (hs != null && hs !== 0) || (as != null && as !== 0);
-  if(scheduleGameFinal(g && g.raw ? g.raw : g)) return 'final';
+  if(scheduleMatchupNarrativeFinal(g && g.raw ? g.raw : g)) return 'final';
   if(played) return 'live';
   return 'pre';
 }
