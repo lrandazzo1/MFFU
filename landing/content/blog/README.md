@@ -107,27 +107,31 @@ npm run build:blog     # compile source -> landing/content/generated/blog/
 npm run check:blog     # verify the payload is fresh and punctuation is clean
 ```
 
-## Automated Sleeper recap pipeline
+## Automated internet news pipeline
 
-`scripts/generate-editorial.mjs` fetches one week's real matchup data from the
-public Sleeper API (`https://api.sleeper.app/v1/...`) and writes a source
-article in this directory, in the exact format described above. It never
-invents a score, a manager, or a stat line: every name and number in the
-output comes straight from the Sleeper response for the league and week you
-give it, and it fails loudly rather than padding a gap with generic copy.
+`scripts/generate-editorial.mjs` reads public NFL RSS and Atom feeds and
+writes a source-attributed roundup in this directory. It is intentionally
+league-agnostic: it never reads a fantasy league id, roster, provider cookie,
+database row, or user profile. Feed descriptions are stripped of markup and
+trimmed; every item retains a link to the original report.
+
+The scheduled publisher runs at 13:00 UTC on Tuesday, Thursday, and Friday,
+three hours before the notification dispatcher. The publication date selects
+the matching `game_recap`, `tnf_matchup_prep`, or `weekend_deepdive`
+hook. Generated source and compiled static files are committed only when the
+feed produced a changed article.
 
 ```bash
-SLEEPER_LEAGUE_ID=<your league id> npm run generate:editorial   # write a new recap
-npm run build:blog                                               # compile it
-npm run check:editorial                                          # network-free self-test
+npm run generate:editorial              # infer today's scheduled edition
+npm run build:blog                       # compile it
+npm run check:editorial                  # network-free RSS/Atom self-test
 ```
 
-There is no default league id configured anywhere in this repo (the in-app
-league data comes from ESPN, not Sleeper), so the script requires
-`SLEEPER_LEAGUE_ID` (or `--league <id>`) explicitly and refuses to guess one.
-`npm run check:editorial` verifies the fetch, matchup pairing, entity
-extraction, and punctuation contract against local fixture data, so it runs
-without network access and without a real league id.
+The default source list includes CBS Sports NFL, ESPN NFL, and Yahoo Sports
+NFL. One failing source is reported as a warning while healthy sources
+continue; the run fails loudly if every source fails or fewer than three fresh,
+unique reports remain. Operators may replace the defaults with repeated
+`--feed "Name|https://..."` arguments or a JSON `FSN_NEWS_FEEDS` array.
 
 `landing/content/generated/blog/` is produced by the build. Do not hand edit it.
 It is committed so the `fsn-landing` deploy (which runs no build step) serves it

@@ -1,16 +1,10 @@
 #!/usr/bin/env node
 /* ============================================================================
-   FSN BLOG GENERATION -> INGESTION -> NOTIFICATION CONTRACT CHECK
+   FSN INTERNET NEWS -> APP -> NOTIFICATION CONTRACT CHECK
 
-   This is the missing cross-boundary check. Existing suites deeply verify the
-   News Desk renderer and the push dispatcher in isolation. This harness proves
-   that one article built from real provider-shaped scores keeps the same
-   identity, week, category and trigger as it moves through the compiler, the
-   app feed contract and the Tuesday notification cadence.
-
-   It writes only below the operating system temp directory. Production source,
-   compiled blog payloads, deterministic News Desk generators and Supabase are
-   never touched.
+   Exercises the same source article across the RSS fetcher, blog compiler,
+   league-empty News Desk ingestion contract, and Tuesday/Thursday/Friday push
+   routes. All network input and output directories are local fixtures.
 ============================================================================ */
 
 import { spawn } from 'node:child_process';
@@ -26,7 +20,11 @@ import { fileURLToPath } from 'node:url';
 const require = createRequire(import.meta.url);
 const notifications = require('../lib/notifications/triggers.js');
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const FIXED_DATE = '2026-09-15'; // Tuesday, the recap dispatch day.
+const EDITIONS = [
+  { date: '2026-09-15', weekday: 2, trigger: 'game_recap', slot: 'recap', category: 'Recap' },
+  { date: '2026-09-17', weekday: 4, trigger: 'tnf_matchup_prep', slot: 'roster', category: 'Roster Watch' },
+  { date: '2026-09-18', weekday: 5, trigger: 'weekend_deepdive', slot: 'roster', category: 'Roster Watch' },
+];
 
 let failures = 0;
 const ok = (label) => console.log('  ok    ' + label);
@@ -37,52 +35,23 @@ const equal = (actual, wanted, label) => {
   else fail(label + ' = ' + JSON.stringify(actual) + ', expected ' + JSON.stringify(wanted));
 };
 
-function fixtures() {
-  return {
-    '/v1/state/nfl': { week: 1, season: '2026', season_type: 'regular' },
-    '/v1/league/pipeline-league': { league_id: 'pipeline-league', name: 'Pipeline League', season: '2026' },
-    '/v1/league/pipeline-league/rosters': [
-      { roster_id: 1, owner_id: 'u1' },
-      { roster_id: 2, owner_id: 'u2' },
-    ],
-    '/v1/league/pipeline-league/users': [
-      { user_id: 'u1', display_name: 'Alice', metadata: { team_name: 'Alice All Stars' } },
-      { user_id: 'u2', display_name: 'Bob', metadata: { team_name: 'Bob Blitz' } },
-    ],
-    '/v1/league/pipeline-league/matchups/1': [
-      {
-        roster_id: 1, matchup_id: 1, points: 120.5,
-        starters: ['1001', '1002'], players_points: { '1001': 30.2, '1002': 10.1 },
-      },
-      {
-        roster_id: 2, matchup_id: 1, points: 110,
-        starters: ['2001'], players_points: { '2001': 25.5 },
-      },
-    ],
-    '/v1/players/nfl': {
-      '1001': { full_name: 'Test Player One', position: 'WR' },
-      '1002': { full_name: 'Test Player Two', position: 'RB' },
-      '2001': { full_name: 'Test Player Three', position: 'QB' },
-    },
-  };
-}
-
 function startFixtureServer() {
-  const rows = fixtures();
-  return new Promise((resolve) => {
-    const server = createServer((req, res) => {
-      const pathname = new URL(req.url, 'http://127.0.0.1').pathname;
-      res.setHeader('Content-Type', 'application/json');
-      if (!(pathname in rows)) {
-        res.statusCode = 404;
-        res.end(JSON.stringify({ error: 'fixture not found', pathname }));
-        return;
-      }
-      res.statusCode = 200;
-      res.end(JSON.stringify(rows[pathname]));
-    });
-    server.listen(0, '127.0.0.1', () => resolve(server));
+  const rss = `<?xml version="1.0"?><rss version="2.0"><channel><title>Pipeline News</title>
+    <item><title>Star receiver cleared to practice</title><link>https://news.example/receiver</link><pubDate>Tue, 15 Sep 2026 17:00:00 GMT</pubDate><description>The receiver returned to full work after an early-week limitation.</description></item>
+    <item><title>Backfield rotation changes after opener</title><link>https://news.example/backfield</link><pubDate>Tue, 15 Sep 2026 15:00:00 GMT</pubDate><description>Coaches confirmed a larger role for the younger back.</description></item>
+    <item><title>Defense adjusts its pressure package</title><link>https://news.example/defense</link><pubDate>Tue, 15 Sep 2026 13:00:00 GMT</pubDate><description>The unit changed its third-down rotation.</description></item>
+  </channel></rss>`;
+  const atom = `<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"><title>Pipeline Wire</title>
+    <entry><title>Veteran lineman joins contender</title><link href="https://wire.example/lineman"/><updated>2026-09-15T12:00:00Z</updated><summary>The move adds depth before the weekend slate.</summary></entry>
+    <entry><title>Star receiver cleared to practice</title><link href="https://wire.example/duplicate"/><updated>2026-09-15T11:00:00Z</updated><summary>This duplicate should be removed.</summary></entry>
+  </feed>`;
+  const server = createServer((req, res) => {
+    res.setHeader('Content-Type', 'application/xml');
+    if (req.url === '/rss.xml') res.end(rss);
+    else if (req.url === '/atom.xml') res.end(atom);
+    else { res.statusCode = 404; res.end('<error>not found</error>'); }
   });
+  return new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve(server)));
 }
 
 function runNode(args, env) {
@@ -99,11 +68,13 @@ function runNode(args, env) {
     child.on('error', reject);
     child.on('close', (code) => {
       if (code === 0) resolve({ stdout, stderr });
-      else reject(new Error(
-        `${process.execPath} ${args.join(' ')} exited ${code}\n${stdout}${stderr}`
-      ));
+      else reject(new Error(`${process.execPath} ${args.join(' ')} exited ${code}\n${stdout}${stderr}`));
     });
   });
+}
+
+function slugFor(edition) {
+  return `nfl-news-${edition.trigger.replace(/_/g, '-')}-${edition.date}`;
 }
 
 const tmp = mkdtempSync(path.join(os.tmpdir(), 'fsn-blog-pipeline-'));
@@ -114,34 +85,38 @@ mkdirSync(sourceDir, { recursive: true });
 mkdirSync(pagesDir, { recursive: true });
 
 const server = await startFixtureServer();
-const apiBase = `http://127.0.0.1:${server.address().port}/v1`;
+const origin = `http://127.0.0.1:${server.address().port}`;
+const feeds = [
+  '--feed', `Pipeline News|${origin}/rss.xml`,
+  '--feed', `Pipeline Wire|${origin}/atom.xml`,
+];
 
 try {
-  console.log('\n-- 1. Provider metrics -> source article --');
-  await runNode([
-    'scripts/generate-editorial.mjs',
-    '--league', 'pipeline-league',
-    '--week', '1',
-    '--publish-date', FIXED_DATE,
-    '--out', sourceDir,
-    '--base', apiBase,
-  ]);
+  console.log('\n-- 1. Public RSS/Atom -> source articles --');
+  for (const edition of EDITIONS) {
+    await runNode([
+      'scripts/generate-editorial.mjs',
+      '--publish-date', edition.date,
+      '--out', sourceDir,
+      '--limit', '4',
+      '--max-age-hours', '96',
+      ...feeds,
+    ]);
+    const sourceFile = path.join(sourceDir, slugFor(edition) + '.md');
+    check(existsSync(sourceFile), `${edition.date} generator wrote a standalone news article`);
+    const source = readFileSync(sourceFile, 'utf8');
+    check(source.includes('Star receiver cleared to practice'), 'real RSS headline was compiled');
+    check(source.includes('[Pipeline News](https://news.example/receiver)'), 'original source link was retained');
+    check(source.includes('[Pipeline Wire](https://wire.example/lineman)'), 'Atom source was retained');
+    equal((source.match(/Star receiver cleared to practice/g) || []).length, 1,
+      'duplicate cross-feed headline count');
+    check(source.includes(`notificationTrigger: ${edition.trigger}`),
+      `${edition.date} article declares ${edition.trigger}`);
+    check(!/SLEEPER_LEAGUE_ID|--league|league_id|roster_id|owner_id|sleeperPlayerId/.test(source),
+      'source article has no league, roster, or user dependency');
+  }
 
-  const sourceFile = path.join(sourceDir, 'week-1-game-recap.md');
-  check(existsSync(sourceFile), 'generator wrote the Week 1 source article');
-  const source = readFileSync(sourceFile, 'utf8');
-  check(source.includes('Alice All Stars beat Bob Blitz, 120.50 to 110.00.'),
-    'winner and final scores came from the provider payload');
-  check(source.includes('Test Player One') && source.includes('30.20 points'),
-    'winning roster top performer and points were compiled');
-  check(source.includes('Test Player Three') && source.includes('25.50 points'),
-    'opposing roster top performer and points were compiled');
-  check(!source.includes('Test Player Two'),
-    'lower-scoring starter was not mislabeled as the top performer');
-  check(source.includes('notificationTrigger: game_recap'),
-    'generated recap declares its notification trigger');
-
-  console.log('-- 2. Source article -> deploy payload --');
+  console.log('-- 2. Source articles -> deploy payload --');
   await runNode(['scripts/build-blog.mjs'], {
     FSN_BLOG_SOURCE_DIR: sourceDir,
     FSN_BLOG_OUTPUT_DIR: outputDir,
@@ -150,74 +125,83 @@ try {
   });
 
   const manifest = JSON.parse(readFileSync(path.join(outputDir, 'index.json'), 'utf8'));
-  equal(manifest.count, 1, 'compiled manifest article count');
-  const row = manifest.posts[0];
-  equal(row.slug, 'week-1-game-recap', 'manifest preserves the generated slug');
-  equal(row.publishDate, FIXED_DATE, 'manifest preserves the dispatch date');
-  equal(row.category, 'Recap', 'manifest preserves the News Desk category');
-  equal(row.notificationTrigger, 'game_recap', 'manifest preserves the dispatch hook');
+  equal(manifest.count, EDITIONS.length, 'compiled manifest article count');
+  for (const edition of EDITIONS) {
+    const slug = slugFor(edition);
+    const row = manifest.posts.find((post) => post.slug === slug);
+    check(!!row, `manifest includes ${slug}`);
+    equal(row && row.category, edition.category, `${edition.date} category`);
+    equal(row && row.notificationTrigger, edition.trigger, `${edition.date} dispatch hook`);
+    check(!row.entities || (Array.isArray(row.entities) && row.entities.length === 0),
+      `${edition.date} manifest row needs no roster entities`);
 
-  const post = JSON.parse(readFileSync(
-    path.join(outputDir, 'posts', 'week-1-game-recap.json'), 'utf8'
-  ));
-  check(/<h3>Alice All Stars vs Bob Blitz<\/h3>/.test(post.bodyHtml),
-    'compiler rendered matchup markup for the app');
-  check(/Alice All Stars beat Bob Blitz, 120\.50 to 110\.00\./.test(post.bodyHtml),
-    'rendered body preserves the verified winner and score');
-  check(!/<script|onerror=|onclick=/i.test(post.bodyHtml),
-    'compiled body contains no executable markup');
-  equal(post.notificationTrigger, row.notificationTrigger,
-    'post body and manifest carry the same trigger identity');
-  check(existsSync(path.join(pagesDir, 'week-1-game-recap.html')),
-    'compiler stamped the clean reader route');
+    const post = JSON.parse(readFileSync(path.join(outputDir, 'posts', slug + '.json'), 'utf8'));
+    check(/<h3>Star receiver cleared to practice<\/h3>/.test(post.bodyHtml),
+      `${edition.date} body renders the fetched headline`);
+    check(/href="https:\/\/news\.example\/receiver"/.test(post.bodyHtml),
+      `${edition.date} body renders the original report link`);
+    check(!/<script|onerror=|onclick=/i.test(post.bodyHtml),
+      `${edition.date} body contains no executable markup`);
+    check(Array.isArray(post.entities) && post.entities.length === 0,
+      `${edition.date} compiled post remains league-agnostic`);
+    check(existsSync(path.join(pagesDir, slug + '.html')),
+      `${edition.date} compiler stamped the reader route`);
+  }
 
-  console.log('-- 3. Deploy payload -> News Desk ingestion contract --');
+  console.log('-- 3. Deploy payload -> league-empty News Desk contract --');
   const app = readFileSync(path.join(ROOT, 'index.html'), 'utf8');
   check(app.includes("const INDEX_PATH = '/content/generated/blog/index.json';"),
     'app polls the compiled manifest path');
   check(app.includes("const POSTS_PATH = '/content/generated/blog/posts/';"),
     'app loads the compiled post path');
-  check(app.includes("slug: String(src.slug || row.slug || '').trim()") &&
-      app.includes("category: String(src.category || row.category || '').trim()") &&
-      app.includes("bodyHtml: typeof src.bodyHtml === 'string' ? src.bodyHtml : ''"),
-    'compiled payload exposes every field the app ingestion contract requires');
-  check(/recap:\s*\{[\s\S]*?terms:\s*\[[\s\S]*?'recap'/.test(app),
-    'Recap category is routable to the app recap slot');
-  check(app.includes('FSNBridge.call(\'renderDeskWire\')'),
+  check(app.includes("const entities = (Array.isArray(src.entities) ? src.entities : [])"),
+    'app treats a missing/empty entity list as optional');
+  check(app.includes("if(!data || !Array.isArray(data.schedule) || !data.schedule.length) return empty;"),
+    'ownership enrichment exits cleanly when no league is loaded');
+  check(app.includes("FSNBridge.call('renderDeskWire')"),
     'successful polling repaints the News Desk through the guarded bridge');
   check(app.includes("console.warn('[FSNArticles] the article feed at "),
     'poll failures remain loud and use the cached/empty fallback path');
 
-  console.log('-- 4. Generated article -> Tuesday dispatch hook --');
-  const tuesdayRun = Date.UTC(2026, 8, 15, 16, 0, 0);
-  const due = notifications.dueTriggers({
-    deviceId: 'pipeline-device',
-    timezone: 'America/Chicago',
-    prefs: { tuesday: true, wednesday: true, thursday: true, friday: true },
-    seasonYear: 2026,
-    week: 1,
-  }, tuesdayRun, new Set());
-  equal(due.length, 1, 'Tuesday produces exactly one notification');
-  const dueTrigger = due[0] && due[0].trigger;
-  equal(dueTrigger && dueTrigger.id, row.notificationTrigger,
-    'Tuesday trigger matches the generated article metadata');
-  equal(dueTrigger && dueTrigger.articleSlot, 'recap',
-    'dispatch trigger targets the same recap slot the app renders');
+  console.log('-- 4. Tuesday/Thursday/Friday articles -> public notification hooks --');
+  for (const edition of EDITIONS) {
+    const runAt = Date.parse(edition.date + 'T16:00:00Z');
+    const due = notifications.dueTriggers({
+      deviceId: 'pipeline-device',
+      timezone: 'UTC',
+      prefs: { tuesday: true, wednesday: true, thursday: true, friday: true },
+      seasonYear: 2026,
+      week: 1,
+    }, runAt, new Set());
+    equal(due.length, 1, `${edition.date} produces one notification`);
+    equal(due[0] && due[0].trigger.id, edition.trigger,
+      `${edition.date} trigger matches generated article metadata`);
+    equal(due[0] && due[0].trigger.articleSlot, edition.slot,
+      `${edition.date} dispatch slot matches News Desk category`);
 
-  const notification = notifications.buildNotification(row.notificationTrigger, {
-    leagueId: 'pipeline-league', seasonYear: 2026, week: 1,
-  });
-  check(!!notification, 'notification payload built for the generated article');
-  equal(notification && notification.data.articleSlot, dueTrigger && dueTrigger.articleSlot,
-    'payload carries the generated-content slot');
-  equal(notification && notification.data.url, '/?goto=news',
-    'notification click opens the News Desk');
+    const notification = notifications.buildNotification(edition.trigger, {
+      seasonYear: 2026, week: 1,
+    });
+    check(!!notification, `${edition.date} notification payload built without a league id`);
+    equal(notification && notification.data.articleSlot, edition.slot,
+      `${edition.date} payload carries the article slot`);
+    equal(notification && notification.data.url, '/?goto=news',
+      `${edition.date} payload opens the News Desk`);
+    equal(Object.hasOwn(notification.data, 'leagueId'), false,
+      `${edition.date} payload omits user-specific league state`);
+  }
 
   const vercel = JSON.parse(readFileSync(path.join(ROOT, 'vercel.json'), 'utf8'));
-  const dispatchCron = (vercel.crons || []).filter((c) => c.path === '/api/notifications-dispatch');
+  const dispatchCron = (vercel.crons || []).filter((cron) => cron.path === '/api/notifications-dispatch');
   equal(dispatchCron.length, 1, 'one notification dispatcher cron is configured');
   equal(dispatchCron[0] && dispatchCron[0].schedule, '0 16 * * *',
     'dispatcher keeps the audited once-daily 16:00 UTC schedule');
+
+  const editorialWorkflow = readFileSync(path.join(ROOT, '.github', 'workflows', 'editorial-news.yml'), 'utf8');
+  check(editorialWorkflow.includes("cron: '0 13 * * 2,4,5'"),
+    'news scraper runs three hours before Tuesday/Thursday/Friday dispatch');
+  check(!/SLEEPER_LEAGUE_ID|--league/.test(editorialWorkflow),
+    'scheduled scraper has no league-id configuration');
 } catch (err) {
   fail('pipeline harness threw: ' + ((err && err.stack) || err));
 } finally {

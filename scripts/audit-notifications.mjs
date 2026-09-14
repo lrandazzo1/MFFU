@@ -184,7 +184,7 @@ stub(join(root, 'lib/notifications/apns.js'), {
   openSession: () => { calls.apnsSession++; return { __fake: true }; },
   closeSession: () => {},
   send: (session, token, notification) => {
-    calls.apnsSend.push({ token, title: notification.title });
+    calls.apnsSend.push({ token, title: notification.title, data: notification.data });
     return Promise.resolve(apnsResult());
   },
   apnsConfig: () => ({}),
@@ -202,7 +202,7 @@ stub(join(root, 'lib/notifications/webpush.js'), {
   publicKey: () => 'test-key',
   validSubscription: () => true,
   send: (subscription, notification) => {
-    calls.webpushSend.push({ endpoint: subscription && subscription.endpoint, title: notification.title });
+    calls.webpushSend.push({ endpoint: subscription && subscription.endpoint, title: notification.title, data: notification.data });
     return Promise.resolve({ ok: true, status: 201, reason: '', retryable: false, unregister: false });
   },
 });
@@ -366,6 +366,8 @@ console.log('-- 2. Dry-run safety --');
   Date.now = realNow;
   check('live run returns 200', res.statusCode, 200);
   checkTrue('live run actually sends (control for the dry-run assertions)', calls.webpushSend.length === 1);
+  check('live push opens the general News Desk', calls.webpushSend[0].data.url, '/?goto=news');
+  check('live push omits fantasy league routing state', Object.hasOwn(calls.webpushSend[0].data, 'leagueId'), false);
   checkTrue('live run writes the ledger', calls.dbWrites.length > 0);
 
   // --- dry run via req.query (the Vercel path)
@@ -614,14 +616,11 @@ console.log('-- 5. Schedule shape --');
   const workflows = existsSync(workflowDir)
     ? readdirSync(workflowDir).filter((f) => /\.ya?ml$/.test(f))
     : [];
-  const scheduled = [];
   const touchingDispatch = [];
   for (const file of workflows) {
     const body = readFileSync(join(workflowDir, file), 'utf8');
-    if (/^\s*schedule:/m.test(body)) scheduled.push(file);
     if (/notifications-dispatch/.test(body)) touchingDispatch.push(file);
   }
-  check('no GitHub workflow runs on a schedule', scheduled, []);
   check('no GitHub workflow invokes the dispatcher', touchingDispatch, []);
 }
 

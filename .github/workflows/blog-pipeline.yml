@@ -18,6 +18,7 @@ on:
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/blog-pipeline.yml'
+      - '.github/workflows/editorial-news.yml'
   workflow_dispatch:
 
 concurrency:
@@ -52,6 +53,13 @@ jobs:
 
       - name: Verify generated blog pipeline
         run: npm run check:blog-pipeline
+
+      - name: Verify live public news sources
+        run: |
+          node scripts/generate-editorial.mjs \
+            --publish-date "$(date -u +%F)" \
+            --trigger weekend_deepdive \
+            --out "$RUNNER_TEMP/editorial-live"
 
       - name: Verify compiled blog is current
         run: npm run check:blog
