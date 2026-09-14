@@ -4489,21 +4489,81 @@ function normalizedLeagueProvider(provider){
    no finalization stamp to honour, so completion falls back to the caller's
    long-standing "has it been scored?" read, leaving historical behaviour
    unchanged. */
-const SCHEDULE_FINAL_STATE_RE = /^(post|final|complete|completed|closed)/i;
+const SCHEDULE_FINAL_STATE_RE = /^(post|final|complete|completed|closed|over|finished)$/i;
+const SCHEDULE_OPEN_STATE_RE = /^(pre|scheduled|upcoming|not[ _-]?started|live|in[ _-]?progress|active)$/i;
+const SCHEDULE_NO_REMAINING_STATE_RE = /^(bye|out|inactive|injured[ _-]?reserve|ir|suspended|dnp)$/i;
+const SCHEDULE_BENCH_SLOT_IDS = new Set([20, 21, 88]);
 
 function scheduleStarterEntries(side){
   const roster = side && (side.rosterForCurrentScoringPeriod || side.rosterForMatchupPeriod);
   const entries = roster && Array.isArray(roster.entries) ? roster.entries : [];
-  return entries.filter(entry=> entry && ![20, 21, 88].includes(Number(entry.lineupSlotId)));
+  return entries.filter(entry=> entry && !SCHEDULE_BENCH_SLOT_IDS.has(Number(entry.lineupSlotId)));
+}
+
+function scheduleStatusValues(entry){
+  const poolEntry = (entry && entry.playerPoolEntry) || {};
+  const player = poolEntry.player || (entry && entry.player) || {};
+  const nested = [entry, poolEntry, player];
+  const values = [];
+  nested.forEach(item=>{
+    if(!item) return;
+    ['playerGameStatus', 'proGameStatus', 'gameStatus', 'status', 'state'].forEach(key=>{
+      const value = item[key];
+      if(value == null) return;
+      if(typeof value === 'object'){
+        ['state', 'name', 'type', 'status', 'detail', 'description'].forEach(nestedKey=>{
+          const nestedValue = value[nestedKey];
+          if(typeof nestedValue === 'string') values.push(nestedValue);
+          else if(nestedValue && typeof nestedValue === 'object'){
+            ['name', 'state', 'description'].forEach(deepKey=>{
+              if(typeof nestedValue[deepKey] === 'string') values.push(nestedValue[deepKey]);
+            });
+          }
+        });
+      } else if(typeof value === 'string') values.push(value);
+    });
+  });
+  return values.map(value=> String(value).trim()).filter(Boolean);
+}
+
+function scheduleEntryState(entry){
+  if(!entry) return 'unknown';
+  const poolEntry = entry.playerPoolEntry || {};
+  const player = poolEntry.player || entry.player || {};
+  const values = [entry, poolEntry, player];
+  if(values.some(value=> value && (value.gameComplete === true || value.isGameComplete === true ||
+      value.completed === true || value.isFinal === true))) return 'final';
+
+  const statuses = scheduleStatusValues(entry);
+  if(statuses.some(status=> SCHEDULE_FINAL_STATE_RE.test(status))) return 'final';
+  /* A starter who has been ruled out, placed on IR, or is on a bye has no
+     remaining scoring opportunity in this matchup. It is therefore settled
+     for the Local Read even while unrelated NFL games continue elsewhere. */
+  if(statuses.some(status=> SCHEDULE_NO_REMAINING_STATE_RE.test(status))) return 'final';
+  if(statuses.some(status=> SCHEDULE_OPEN_STATE_RE.test(status))) return 'open';
+  return 'unknown';
+}
+
+/* Completion is intentionally matchup-local. A roster is complete only when
+   every scoring starter has a final/no-remaining-game state; a bench or IR
+   player cannot keep a fantasy score moving and is excluded. Returning the
+   states makes this rule inspectable in the render assertions without making
+   the UI infer completion from a broad NFL-week clock. */
+function scheduleMatchupRosterStatus(game){
+  if(!game || !game.home || !game.away) return { complete:false, starters:0, remaining:0, states:[] };
+  const starters = scheduleStarterEntries(game.home).concat(scheduleStarterEntries(game.away));
+  const states = starters.map(scheduleEntryState);
+  const remaining = states.filter(state=> state !== 'final').length;
+  return {
+    complete: starters.length > 0 && remaining === 0,
+    starters: starters.length,
+    remaining: remaining,
+    states: states,
+  };
 }
 
 function scheduleEntryFinal(entry){
-  if(!entry) return false;
-  if(entry.gameComplete === true) return true;
-  const player = (entry.playerPoolEntry && entry.playerPoolEntry.player) || entry.player || {};
-  if(player.gameComplete === true) return true;
-  const status = entry.playerGameStatus || player.proGameStatus || player.gameStatus || entry.gameStatus;
-  return typeof status === 'string' && SCHEDULE_FINAL_STATE_RE.test(status.trim());
+  return scheduleEntryState(entry) === 'final';
 }
 
 function scheduleGameFinal(game){
@@ -4513,17 +4573,10 @@ function scheduleGameFinal(game){
     return String(winner).toUpperCase() !== 'UNDECIDED';
   }
 
-  /* An ESPN scoring period can remain UNDECIDED while stat corrections are
-     pending even after every NFL game in the matchup has closed. In that
-     window, a completed starter lineup is the authoritative completion signal
-     for display and Local Read tense. A nonzero fantasy score is not: it can
-     arrive in the first drive, so it must never finalize a matchup by itself. */
-  const homeStarters = scheduleStarterEntries(game.home);
-  const awayStarters = scheduleStarterEntries(game.away);
-  if(homeStarters.length || awayStarters.length){
-    return homeStarters.length > 0 && awayStarters.length > 0 &&
-      homeStarters.concat(awayStarters).every(scheduleEntryFinal);
-  }
+  /* ESPN can hold a matchup winner at UNDECIDED while stat corrections are
+     pending. Do not wait for every NFL game in the week: close this specific
+     matchup as soon as both of its active lineups have no scoring game left. */
+  if(scheduleMatchupRosterStatus(game).complete) return true;
 
   const providerStatus = (game._yahoo && game._yahoo.status) || game.status || game.statusText || '';
   return typeof providerStatus === 'string' && SCHEDULE_FINAL_STATE_RE.test(providerStatus.trim());
