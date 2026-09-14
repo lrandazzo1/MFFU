@@ -348,24 +348,32 @@ try {
     if (readerOpen === 'true') pass('tapping the story opened the reader');
     else fail('tapping the story did not open the reader');
 
-    await page.click('#readerCopy');
-    await page.waitForTimeout(400);
+    /* The reader now has one export action (header pill plus body CTA),
+       which delivers a share card. Inspect the exact caption that delivery
+       builds rather than a removed, duplicate copy icon. */
+    const shareBrief = await page.evaluate((id) => {
+      const controls = document.querySelectorAll('#reader [data-reader-export]').length;
+      const article = typeof articleById === 'function' ? articleById(id) : null;
+      const copy = article && typeof shareCopyFor === 'function' ? shareCopyFor(article) : null;
+      return { controls, text: String((copy && copy.text) || '') };
+    }, storyId);
+    if (shareBrief.controls > 0) pass('the reader exposes its current share-card action');
+    else fail('the reader exposes no share-card action');
 
-    const copied = await page.evaluate(() => (window.__fsnCopied || [])[0] || '');
     const linkInBrief = await page.evaluate((text) => {
       const match = String(text).match(/https?:\/\/\S+/);
       if (!match) return null;
       return { url: match[0], route: window.FSNDeepLink.parse(match[0]) };
-    }, copied);
+    }, shareBrief.text);
 
     if (!linkInBrief) {
-      fail('the copied brief carries no link at all:\n' + JSON.stringify(copied));
+      fail('the share-card caption carries no link at all:\n' + JSON.stringify(shareBrief.text));
     } else if (!linkInBrief.route || !linkInBrief.route.story) {
-      fail('the copied brief’s link names no story: ' + linkInBrief.url);
+      fail('the share-card caption link names no story: ' + linkInBrief.url);
     } else if (linkInBrief.route.story !== storyId) {
-      fail('the copied brief links to "' + linkInBrief.route.story + '" but the open story is "' + storyId + '"');
+      fail('the share-card caption links to "' + linkInBrief.route.story + '" but the open story is "' + storyId + '"');
     } else {
-      pass('the copied brief links back to this exact story: ' + linkInBrief.url);
+      pass('the share-card caption links back to this exact story: ' + linkInBrief.url);
       if (linkInBrief.route.league === '999999') pass('the link names the league it is about');
       else fail('the link does not name the league (got "' + linkInBrief.route.league + '")');
       if (!/token=/.test(linkInBrief.url)) pass('the link carries no share token');
