@@ -35,7 +35,7 @@ jobs:
           node --check scripts/appstore-preflight.mjs
           python3 -m py_compile scripts/generate-ios-export-options.py scripts/verify-ios-release.py
           python3 scripts/generate-ios-export-options.py "$RUNNER_TEMP/ExportOptions.plist" TESTTEAM123
-          python3 -c "import plistlib; p=plistlib.load(open('$RUNNER_TEMP/ExportOptions.plist','rb')); assert p == {'destination':'export','manageAppVersionAndBuildNumber':False,'method':'app-store-connect','signingCertificate':'Apple Distribution','signingStyle':'automatic','stripSwiftSymbols':True,'teamID':'TESTTEAM123'}"
+          python3 -c "import pathlib, plistlib; raw=pathlib.Path('$RUNNER_TEMP/ExportOptions.plist').read_bytes(); assert raw.startswith(b'<?xml') and b'<!DOCTYPE plist' in raw; p=plistlib.loads(raw); assert p == {'compileBitcode':False,'destination':'export','manageAppVersionAndBuildNumber':False,'method':'app-store-connect','signingCertificate':'Apple Distribution','signingStyle':'automatic','stripSwiftSymbols':True,'teamID':'TESTTEAM123'}"
           if grep -q 'prepare-ios-archive.py' .github/workflows/ios-build.yml; then
             echo "::error title=Ad-hoc signing regression::The removed archive surgery is referenced by the release workflow."
             exit 1
