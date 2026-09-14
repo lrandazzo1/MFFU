@@ -54,6 +54,11 @@ The article body is plain Markdown below the frontmatter.
 **SEO metadata (all required):** `title`, `slug`, `publishDate` (YYYY-MM-DD),
 `category`, `excerpt`. `author` is optional and defaults to `FSN Desk`.
 
+**Notification hook (`notificationTrigger`, optional):** automated posts name
+the dispatch trigger that announces the story: `game_recap`, `waiver_pivot`,
+`tnf_matchup_prep`, or `weekend_deepdive`. The compiler rejects unknown values
+so a generated story cannot silently bind itself to a nonexistent cadence.
+
 **Entity extraction array (`entities`):** a clean array the web app and mobile
 app parse to map stories onto active league rosters. Each entry:
 

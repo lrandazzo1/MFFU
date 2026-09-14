@@ -245,7 +245,17 @@ function buildArticle({ week, pairs, ownerMap, playerNames, publishDate }) {
   const excerpt = `Real scores from every matchup in week ${week}, and the player who did the most to win it.`;
   const body = [`The week ${week} slate is final. Here is exactly what happened, matchup by matchup.`, ...sections].join('\n\n');
 
-  return { title, slug, publishDate, category: 'Recap', excerpt, author: 'FSN Desk', entities, body };
+  return {
+    title,
+    slug,
+    publishDate,
+    category: 'Recap',
+    excerpt,
+    author: 'FSN Desk',
+    notificationTrigger: 'game_recap',
+    entities,
+    body,
+  };
 }
 
 /* ------------------------------------------------------------------ *
@@ -291,6 +301,7 @@ function serializeFrontmatter(article) {
   lines.push(`category: ${article.category}`);
   lines.push(`excerpt: ${article.excerpt}`);
   lines.push(`author: ${article.author}`);
+  lines.push(`notificationTrigger: ${article.notificationTrigger}`);
   lines.push('entities:');
   for (const e of article.entities) {
     lines.push(`  - name: ${e.name}`);
@@ -405,6 +416,7 @@ async function runSelfTest() {
     check(content.includes('Alice All Stars beat Bob, 120.50 to 110.00'), 'expected the real scores to decide and report the winner');
     check(!BANNED_CHARS.test(content), 'expected no em dash anywhere in generated content');
     check(/sleeperPlayerId: "1001"/.test(content), 'expected sleeperPlayerId to be serialized as a quoted string');
+    check(content.includes('notificationTrigger: game_recap'), 'expected the recap to declare the notification trigger that announces it');
 
     // Missing league id must fail loudly, never fabricate a league.
     let threwForMissingLeague = false;

@@ -387,6 +387,7 @@ console.log('-- 2. Dry-run safety --');
   checkTrue('dry run still SCANNED the send ledger', calls.dbReads.includes('notification_sends'));
   checkTrue('dry run reports what would have sent', !!(res.body && res.body.plan && res.body.plan.length === 1));
   check('dry run names the trigger', res.body.plan[0].trigger, 'game_recap');
+  check('dry run names the generated-content slot', res.body.plan[0].articleSlot, 'recap');
 
   // --- dry run when the runtime did NOT pre-parse the query string
   scenario('dry run, req.query absent', null, { devices: [dueDevice()] });
@@ -708,6 +709,8 @@ console.log('-- 6. Selftest mode --');
   scenario('selftest named trigger', null, { devices: [iosDevice()] });
   res = await invoke({ url: '/api/notifications-dispatch?selftest=' + DEVICE + '&trigger=waiver_pivot', headers: auth });
   check('a named trigger is used', res.body.notification.trigger, 'waiver_pivot');
+  check('the named trigger reports its generated-content slot', res.body.notification.articleSlot, 'waiver');
+  check('the named trigger opens the News Desk', res.body.notification.url, '/?goto=news');
 
   // --- no transport for that platform: a clear 503, not a silent success
   res = await selftest(DEVICE, { devices: [iosDevice()] }, { transports: { apns: false } });

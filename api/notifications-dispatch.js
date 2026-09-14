@@ -395,7 +395,14 @@ async function runSelftest(supabase, res, deviceId, triggerId, readiness) {
       disabledReason: row.disabled_reason || null,
     },
 
-    notification: { trigger: trigger.id, group: trigger.group, title: notification.title, body: notification.body },
+    notification: {
+      trigger: trigger.id,
+      group: trigger.group,
+      articleSlot: trigger.articleSlot,
+      title: notification.title,
+      body: notification.body,
+      url: notification.data.url,
+    },
 
     /* Verbatim from the provider. `reason` is Apple's own string — see
        lib/notifications/apns.js for what each one means. */
@@ -666,6 +673,7 @@ async function handler(req, res) {
         timezone: w.row.timezone,
         trigger: w.due.trigger.id,
         group: w.due.trigger.group,
+        articleSlot: w.due.trigger.articleSlot,
         season: w.due.deviceSeason,
         week: w.due.deviceWeek,
         /* The local hour this run landed on for this device, and the hour the

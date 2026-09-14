@@ -1,0 +1,62 @@
+name: Blog pipeline audit
+
+on:
+  pull_request:
+    paths:
+      - 'index.html'
+      - 'notificationService.js'
+      - 'sw.js'
+      - 'api/notifications*.js'
+      - 'lib/notifications/**'
+      - 'scripts/build-blog.mjs'
+      - 'scripts/generate-editorial.mjs'
+      - 'scripts/blog-pipeline-check.mjs'
+      - 'scripts/article-ingest-check.mjs'
+      - 'scripts/audit-notifications.mjs'
+      - 'landing/content/blog/**'
+      - 'landing/blog/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/blog-pipeline.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: blog-pipeline-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Generate, ingest, render, dispatch
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Verify generated blog pipeline
+        run: npm run check:blog-pipeline
+
+      - name: Verify compiled blog is current
+        run: npm run check:blog
+
+      - name: Render News Desk ingestion
+        run: npm run check:articles
+
+      - name: Verify notification cadence
+        run: npm run test:triggers
+
+      - name: Exercise notification dispatcher
+        run: npm run audit:notifications

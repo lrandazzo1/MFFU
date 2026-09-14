@@ -33,7 +33,7 @@ self.addEventListener('activate', function (event) {
    push
 
    The payload is written by lib/notifications/triggers.js:
-     { title, body, category, data: { trigger, group, leagueId, season, week, url } }
+     { title, body, category, data: { trigger, group, articleSlot, leagueId, season, week, url } }
 
    Chrome and Firefox require every push to produce a visible notification
    (the subscription was made with userVisibleOnly), so the catch path still

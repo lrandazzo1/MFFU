@@ -517,7 +517,7 @@ curl -H "Authorization: Bearer $CRON_SECRET" \
   "planTruncated": false,                        // `due` is always the real total
   "plan": [{
     "deviceId": "…", "platform": "web", "timezone": "America/New_York",
-    "trigger": "game_recap", "group": "tuesday",
+    "trigger": "game_recap", "group": "tuesday", "articleSlot": "recap",
     "season": 2026, "week": 1,
     "localHour": 12,                             // where the run landed on their clock
     "idealHour": 9,                              // where the alert would rather be
