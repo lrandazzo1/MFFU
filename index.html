@@ -10596,19 +10596,77 @@ window.FSNLocalDesk = (function(){
     };
   }
 
-  /* The desk wire's localized lede. FSNArticles has already matched the
-     ingested item's entities against this league; this turns that match list
-     into the sentence an inside analyst would actually open with, and returns
-     '' when nothing in the piece touches the league — at which point the
-     caller keeps the published excerpt, because an honest national blurb beats
-     a manufactured local one. */
+  /* A recap can name a player no roster in this league owns. That should not
+     erase the recap's Local Read: rank only the article's extracted entities
+     and keep the result specific to that player, without inventing a local
+     ownership tag or a stat line. */
+  function recapFallbackEntity(post, unmatched){
+    const rows = (Array.isArray(unmatched) && unmatched.length ? unmatched :
+      (post && Array.isArray(post.entities) ? post.entities : [])).filter(row=> row && row.name);
+    if(!rows.length) return null;
+    const text = [post && post.title, post && post.excerpt, post && post.bodyHtml].join(' ');
+    const compactText = compactName(text);
+    const compactTitle = compactName(post && post.title);
+    const seen = Object.create(null);
+    const candidates = [];
+    rows.forEach(row=>{
+      const key = compactName(row.name);
+      if(!key || seen[key]) return;
+      seen[key] = true;
+      let mentions = 0;
+      let at = compactText.indexOf(key);
+      while(at !== -1){
+        mentions++;
+        at = compactText.indexOf(key, at + key.length);
+      }
+      candidates.push({
+        name:String(row.name).trim(),
+        score:(compactTitle.indexOf(key) !== -1 ? 100 : 0) + (mentions * 10),
+      });
+    });
+    candidates.sort((a,b)=> (b.score - a.score) || a.name.localeCompare(b.name));
+    return candidates[0] || null;
+  }
+
+  function recapWeekState(week){
+    const games = weekScoreboard(week);
+    if(!games.length) return 'PREGAME';
+    let started = false;
+    let allFinal = true;
+    games.forEach(game=>{
+      if(!scheduleGameFinal(game.raw)) allFinal = false;
+      if((num(game.homeActual) || 0) > 0 || (num(game.awayActual) || 0) > 0) started = true;
+    });
+    return allFinal ? 'FINAL' : (started ? 'LIVE' : 'PREGAME');
+  }
+
+  function recapFallbackLine(entity, week){
+    if(!entity || !entity.name) return '';
+    const weekLabel = week > 0 ? 'Week ' + week : 'this week';
+    const state = recapWeekState(week);
+    if(state === 'FINAL'){
+      return entity.name + ' is the focal player in this recap; their performance is now part of the finalized ' +
+        weekLabel + ' record.';
+    }
+    if(state === 'LIVE'){
+      return entity.name + ' is the focal player in this recap, with their performance still a live pressure point in ' +
+        weekLabel + '.';
+    }
+    return entity.name + ' is the focal player in this recap, setting the player focus before ' + weekLabel + ' scoring begins.';
+  }
+
+  /* The desk wire's recap-only Local Read. Rostered entities resolve through
+     the exact matchup state machine; an article with no roster match keeps the
+     same compact card shape by naming its highest-impact extracted entity
+     without inventing a manager, score, or ownership tag. */
   function localizeWire(view, slot, dateKey){
     if(!view || !view.post) return '';
     const post = view.post;
     const matched = (view.matches || []).filter(m=> m && m.owner);
-    if(!matched.length) return '';
-
     const week = num(view.context && view.context.currentWeek) || 0;
+    if(!matched.length){
+      return recapFallbackLine(recapFallbackEntity(post, view.unmatched), week);
+    }
     /* Thursday publishes ahead of TNF and Friday publishes after it, and the
        roster slot covers both days — so the day the payload was routed on is
        what decides the tense. It is a calendar day, which is already this
