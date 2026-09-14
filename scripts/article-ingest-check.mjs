@@ -442,6 +442,7 @@ try {
       title: (wrap.querySelector('.wire-title') || {}).textContent || '',
       dek: dek ? dek.textContent.trim() : '',
       dekIsLocal: !!localDek,
+      dekIsNational: !!nationalDek,
       dekBoth: !!(localDek && nationalDek),
       /* The deep data section: the localized read, the per-player stat chips
          and the live head-to-head, appended below the card. */
@@ -502,25 +503,26 @@ try {
     else fail('the dek is not a short paragraph (' + card.dek.length + ' chars): ' + card.dek);
     expect(card.dekBoth, false, 'the card paints one dek treatment, never both');
 
-    /* ---- COPY, GATED BY CATEGORY ----
-       The Local Read and the deep stat block are a From-the-Desk / Analysis
-       affordance. On any other category the card renders as a clean chip:
-       national excerpt, no localized lede, no stat block. The dedicated
-       Analysis-forcing scenario below asserts the retention behaviour; this
-       branch asserts the contract for whatever category today's slot picks. */
-    const todayCategory = (FIXTURE_POSTS.find((p) => p.slug === card.slug) || {}).category || '';
-    const todayIsAnalysis = todayCategory.trim().toLowerCase() === 'analysis';
+    /* ---- LOCAL READ, REQUIRED FOR EVERY CARD ---------------------------
+       A public article is never allowed to fall back to a national dek. The
+       resolver must choose a rostered player when possible, otherwise the
+       article's highest-impact extracted entity, and it must keep analysis-only
+       deep data behavior unchanged. */
+    expect(card.dekIsLocal, true, 'every wire card leads with The Local Read');
+    expect(card.dekIsNational, false, 'no wire card leaks the national excerpt treatment');
+    const todayFixture = FIXTURE_POSTS.find((p) => p.slug === card.slug) || {};
+    const normalizeLocalRead = (value) => String(value || '').toLowerCase()
+      .replace(/[.'\`\u2019]/g, '').replace(/[^a-z0-9]+/g, '');
+    const flatTodayRead = normalizeLocalRead(card.dek);
+    const todayFocusNamed = (todayFixture.entities || []).some((entity) =>
+      entity && entity.name && flatTodayRead.includes(normalizeLocalRead(entity.name)));
+    if (todayFocusNamed) pass('The Local Read names an extracted player entity: ' + card.dek);
+    else fail('The Local Read did not name a player from the article: ' + card.dek);
+    const todayIsAnalysis = String(todayFixture.category || '').trim().toLowerCase() === 'analysis';
     if (todayIsAnalysis) {
-      expect(card.dekIsLocal, true, 'an Analysis card leads with the hyper-local read');
-      if (/Manager [1-4]\u2019s [A-Z]/.test(card.dek)) {
-        pass('the Analysis lede uses the "<Manager>\u2019s <Player>" ownership callout');
-      } else fail('the Analysis lede carries no ownership callout: ' + card.dek);
-      if (!card.deep) fail('no .deepstat block was appended to the Analysis wire card');
-      else pass('the Analysis card carries a deep data block');
+      if (card.deep) pass('the Analysis card carries a deep data block');
+      else fail('no .deepstat block was appended to the Analysis wire card');
     } else {
-      expect(card.dekIsLocal, false, 'a non-Analysis card does NOT lead with the hyper-local read');
-      if (/for the app wire check/i.test(card.dek)) pass('the national excerpt is what today\'s non-Analysis card prints');
-      else fail('a non-Analysis card should print the national excerpt, got: ' + card.dek);
       expect(card.deep, null, 'a non-Analysis card carries no deep data block');
     }
     expect(card.openCta, 'Open on the web ›', '"Open on the web" affordance is present in the footer');
@@ -617,46 +619,26 @@ try {
 
       const isAnalysis = String(fixture.category || '').trim().toLowerCase() === 'analysis';
       if (!inspect || !inspect.present) {
-        fail('category-gate: fixture ' + fixture.slug + ' could not be force-routed');
+        fail('local-read: fixture ' + fixture.slug + ' could not be force-routed');
         continue;
       }
-      if (isAnalysis) {
-        if (inspect.hasLocal) pass('category-gate: Analysis fixture ' + fixture.slug + ' KEEPS the Local Read');
-        else fail('category-gate: Analysis fixture ' + fixture.slug + ' lost the Local Read');
-        if (inspect.hasDeep) pass('category-gate: Analysis fixture ' + fixture.slug + ' KEEPS the deep block');
-        else fail('category-gate: Analysis fixture ' + fixture.slug + ' lost the deep block');
-        /* The Local Read routes on scoreboard state (pre-game / nail-biter
-           / moderate / blowout / final), and each state names the manager
-           and the rostered player in a form specific to that state. The
-           assertion checks the WEAKER contract that both a Manager token
-           and the player's name appear in the line, which every state
-           emits; the exact per-state wording is under mechanical guard in
-           scripts/local-desk-check.mjs. */
-        const namesManager = /\bManager [1-4]\b/.test(inspect.localText);
-        /* A published entity name and the roster name can differ by
-           punctuation ("A.J. Brown" vs. "AJ Brown"), the same difference
-           FSNArticles normalizes on when it resolves ownership. Match the
-           two the same way for this assertion. */
-        const norm = (s) => String(s || '').toLowerCase()
-          .replace(/[.'`\u2019]/g, '').replace(/[^a-z0-9]+/g, '');
-        const flatLocal = norm(inspect.localText);
-        const playerNamed = (fixture.entities || []).some((ent) =>
-          ent && ent.name && flatLocal.includes(norm(ent.name)));
-        if (inspect.matchCount > 0 && namesManager && playerNamed) {
-          pass('category-gate: Analysis Local Read names a manager and a rostered player from this fixture');
-        } else if (inspect.matchCount === 0) {
-          pass('category-gate: this Analysis fixture matched no rostered players; the Local Read cannot invent one');
-        } else {
-          fail('category-gate: Analysis Local Read is missing the callout: ' + inspect.localText);
-        }
+      if (inspect.hasLocal) pass('local-read: ' + fixture.slug + ' renders The Local Read');
+      else fail('local-read: ' + fixture.slug + ' is missing The Local Read');
+      expect(inspect.hasNational, false,
+        'local-read: ' + fixture.slug + ' has no national-excerpt fallback');
+      const norm = (value) => String(value || '').toLowerCase()
+        .replace(/[.'\`\u2019]/g, '').replace(/[^a-z0-9]+/g, '');
+      const flatLocal = norm(inspect.localText);
+      const playerNamed = (fixture.entities || []).some((entity) =>
+        entity && entity.name && flatLocal.includes(norm(entity.name)));
+      if (playerNamed) {
+        pass('local-read: ' + fixture.slug + ' names an extracted article entity');
       } else {
-        expect(inspect.hasLocal, false,
-          'category-gate: ' + fixture.category + ' fixture ' + fixture.slug + ' does NOT carry the Local Read');
-        expect(inspect.hasDeep, false,
-          'category-gate: ' + fixture.category + ' fixture ' + fixture.slug + ' does NOT carry the deep block');
-        expect(inspect.hasNational, true,
-          'category-gate: ' + fixture.category + ' fixture ' + fixture.slug + ' prints the national excerpt');
+        fail('local-read: ' + fixture.slug + ' did not name a verified article entity: ' + inspect.localText);
       }
+      expect(inspect.hasDeep, isAnalysis,
+        'local-read: ' + fixture.slug + (isAnalysis ? ' preserves' : ' omits') + ' the analysis deep block');
+
     }
 
     if (/^http:\/\/127\.0\.0\.1:\d+\/blog\//.test(card.readerUrl)) pass('reader URL points at the blog: ' + card.readerUrl);
