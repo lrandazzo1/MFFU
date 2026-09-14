@@ -4489,15 +4489,44 @@ function normalizedLeagueProvider(provider){
    no finalization stamp to honour, so completion falls back to the caller's
    long-standing "has it been scored?" read, leaving historical behaviour
    unchanged. */
+const SCHEDULE_FINAL_STATE_RE = /^(post|final|complete|completed|closed)/i;
+
+function scheduleStarterEntries(side){
+  const roster = side && (side.rosterForCurrentScoringPeriod || side.rosterForMatchupPeriod);
+  const entries = roster && Array.isArray(roster.entries) ? roster.entries : [];
+  return entries.filter(entry=> entry && ![20, 21, 88].includes(Number(entry.lineupSlotId)));
+}
+
+function scheduleEntryFinal(entry){
+  if(!entry) return false;
+  if(entry.gameComplete === true) return true;
+  const player = (entry.playerPoolEntry && entry.playerPoolEntry.player) || entry.player || {};
+  if(player.gameComplete === true) return true;
+  const status = entry.playerGameStatus || player.proGameStatus || player.gameStatus || entry.gameStatus;
+  return typeof status === 'string' && SCHEDULE_FINAL_STATE_RE.test(status.trim());
+}
+
 function scheduleGameFinal(game){
   if(!game || !game.home || !game.away) return false;
   const winner = game.winner;
   if(winner != null && String(winner).trim() !== ''){
     return String(winner).toUpperCase() !== 'UNDECIDED';
   }
-  const hs = Number(game.home.totalPoints || 0);
-  const as = Number(game.away.totalPoints || 0);
-  return hs > 0 || as > 0;
+
+  /* An ESPN scoring period can remain UNDECIDED while stat corrections are
+     pending even after every NFL game in the matchup has closed. In that
+     window, a completed starter lineup is the authoritative completion signal
+     for display and Local Read tense. A nonzero fantasy score is not: it can
+     arrive in the first drive, so it must never finalize a matchup by itself. */
+  const homeStarters = scheduleStarterEntries(game.home);
+  const awayStarters = scheduleStarterEntries(game.away);
+  if(homeStarters.length || awayStarters.length){
+    return homeStarters.length > 0 && awayStarters.length > 0 &&
+      homeStarters.concat(awayStarters).every(scheduleEntryFinal);
+  }
+
+  const providerStatus = (game._yahoo && game._yahoo.status) || game.status || game.statusText || '';
+  return typeof providerStatus === 'string' && SCHEDULE_FINAL_STATE_RE.test(providerStatus.trim());
 }
 
 /* Is the given week still LIVE — i.e. a regular-season matchup exists for it
@@ -6109,7 +6138,7 @@ window.LeagueData = (function(){
            Published as its OWN field. homeProjected/awayProjected keep their
            exact previous meaning per CLAUDE.md rule 2, so nothing already
            reading them changes underneath. */
-        const settled = !!(game.winner && String(game.winner).toUpperCase() !== 'UNDECIDED');
+        const settled = scheduleGameFinal(game);
         const projectionWeek = points(game.scoringPeriodId) || points(game.matchupPeriodId) || null;
         const homeActual = actualScore(home);
         const awayActual = actualScore(away);
@@ -8424,11 +8453,11 @@ function matchupSchedule(scoreboardPayload, fallbackWeek){
     const homeScore = finiteNumber(sides[0].weekScore) || 0;
     const awayScore = finiteNumber(sides[1].weekScore) || 0;
     const status = String(matchup.status || '').toLowerCase();
-    const played = !!winnerKey || tied || /post|final|complete/.test(status) || homeScore > 0 || awayScore > 0;
+    const closed = !!winnerKey || tied || /post|final|complete|closed/.test(status);
     let winner = 'UNDECIDED';
     if(tied) winner = 'TIE';
     else if(winnerKey) winner = winnerKey === sides[0].teamKey ? 'HOME' : 'AWAY';
-    else if(played) winner = homeScore > awayScore ? 'HOME' : (awayScore > homeScore ? 'AWAY' : 'TIE');
+    else if(closed) winner = homeScore > awayScore ? 'HOME' : (awayScore > homeScore ? 'AWAY' : 'TIE');
     const playoff = truthyYahoo(matchup.is_playoffs);
     const consolation = truthyYahoo(matchup.is_consolation);
     games.push({
@@ -22337,14 +22366,14 @@ function emptyState(title, sub, gotoTab){
 /* A game is "live" when the scores are still moving — ESPN reports a winner
    of UNDECIDED and at least one side has points on the board. */
 function gameStatus(g){
-  /* Reads the corrected actual, so a slate that ESPN is still scoring reports
-     LIVE instead of PRE. The old reading came off totalPoints alone, which the
-     provider holds at 0 until the matchup period settles — an in-progress
-     week therefore looked like it had not kicked off. */
+  /* Matchup cards, Local Read and the shared weekly coverage flag all resolve
+     completion through scheduleGameFinal(). Do not repeat the winner-only
+     heuristic here: an UNDECIDED scorecard whose NFL starters are all final is
+     closed for reader-facing purposes, while a nonzero early score is still
+     live. */
   const hs = actualOf(g, 'home'), as = actualOf(g, 'away');
   const played = (hs != null && hs !== 0) || (as != null && as !== 0);
-  const decided = g.winner && g.winner !== 'UNDECIDED';
-  if(decided) return 'final';
+  if(scheduleGameFinal(g && g.raw ? g.raw : g)) return 'final';
   if(played) return 'live';
   return 'pre';
 }
