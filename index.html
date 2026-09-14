@@ -31608,27 +31608,22 @@ function renderDeskWire(){
   const categoryPill = post.category
     ? `<span class="sep">/</span><span>${esc(post.category)}</span>` : '';
   /* ---- HYPER-LOCAL COPY ----
-     An ingested item arrives written for a national audience. Whenever it
-     names a player somebody in THIS league actually rosters, the card drops
-     the published blurb entirely and leads with the league's own read on it
-     instead — the manager who owns the player, what the player did, and where
-     that leaves their head-to-head. FSNLocalDesk (block 1) writes the
-     sentence; this only decides which of the two gets painted.
+     The public wire remains the default for every category. The one exception is
+     the timeline's recap treatment: only a completed-week recap earns a
+     matchup-specific Local Read. Preview, waiver, injury, analysis and general
+     feed cards retain their published headline, excerpt and public context.
 
-     The desk's editorial category decides whether the piece is a From-the-
-     Desk analysis or a wire-style news item, and only the analysis line
-     carries the localized read. Every other category — a waiver run, an
-     injury note, a national syndication — keeps its published blurb, because
-     an analyst's voice layered on top of a national list makes both sides
-     feel manufactured. Compared case-insensitively so 'analysis' or
-     ' Analysis ' cannot be silently dropped from the treatment. */
-  const isAnalysis = String(post.category || '').trim().toLowerCase() === 'analysis';
+     Normalize whitespace and case so the two permitted editorial labels,
+     "Recap" and "The Recap", take the same deterministic path without widening
+     that treatment to a general analysis category. */
+  const normalizedCategory = String(post.category || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  const isRecap = normalizedCategory === 'recap' || normalizedCategory === 'the recap';
   let localLede = '';
-  if(isAnalysis){
+  if(isRecap){
     try{
       localLede = FSNLocalDesk.localizeWire(view, slot, snapshot.dateKey);
     }catch(err){
-      console.error('[LocalDesk] localizing the desk analysis item "' + (post.slug || post.title || 'untitled') +
+      console.error('[LocalDesk] localizing the recap item "' + (post.slug || post.title || 'untitled') +
         '" failed; the card falls back to the published excerpt.', err);
       localLede = '';
     }
@@ -31638,12 +31633,12 @@ function renderDeskWire(){
     ? `<p class="wire-dek-local"><span class="tag">The Local Read</span>${esc(localLede)}</p>`
     : (blurb ? `<p class="wire-dek-compact">${esc(blurb)}</p>` : '');
 
-  /* The deep data block rides the same category gate. On an Analysis card it
+  /* The deep data block rides the same category gate. On a recap card it
      hangs below the excerpt with the stat lines and the head-to-head; on
      anything else the wire stays a clean chip so the News screen is not a
      wall of numbers under a waiver-list item. */
   let wireDeep = '';
-  if(isAnalysis){
+  if(isRecap){
     try{
       const matched = (view.matches || []).filter(m=> m && m.owner).map(m=> m.name);
       if(matched.length){
@@ -31654,10 +31649,10 @@ function renderDeskWire(){
           slot: slot.id || '',
           names: matched,
           texts: [post.title, post.excerpt],
-        }), 'compact', 'desk analysis item ' + (post.slug || 'untitled'));
+        }), 'compact', 'desk recap item ' + (post.slug || 'untitled'));
       }
     }catch(err){
-      console.error('[LocalDesk] the deep stat block failed for desk analysis item "' +
+      console.error('[LocalDesk] the deep stat block failed for desk recap item "' +
         (post.slug || post.title || 'untitled') + '"; the card renders without it.', err);
       wireDeep = '';
     }
