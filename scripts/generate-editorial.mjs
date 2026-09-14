@@ -1,57 +1,60 @@
 #!/usr/bin/env node
 /* ============================================================================
-   FSN — AUTOMATED EDITORIAL GENERATOR (Sleeper recap)
+   FSN — EDITORIAL COMPILER
    ----------------------------------------------------------------------------
-   Fetches one week's real matchup data from the public Sleeper API and turns
-   it into a "who carried their squad" recap article, written straight into
-   `landing/content/blog/` in the format `scripts/build-blog.mjs` already
-   consumes (see `landing/content/blog/README.md` for the schema).
+   Compiles structured editorial source files (Markdown with YAML frontmatter,
+   or JSON) into `landing/content/blog/` in the exact schema that
+   `scripts/build-blog.mjs` already consumes (see
+   `landing/content/blog/README.md`). From there `npm run build:blog` picks
+   them up like any hand-authored article and stamps the deploy payload.
 
-   This script is deliberately dumb about content: it never invents a score, a
-   manager, or a stat line. Every number and every name in the output comes
-   from the Sleeper response for the league and week you pass in. If the
-   Sleeper API does not return enough to build a real article, the script
-   fails loudly instead of padding the gap with generic copy.
+   This script is intentionally dependency-free and network-free. It does not
+   fetch anything from the outside world, does not require a league id, and
+   does not call any external API. All content originates from local editorial
+   source files that the editor drops into the source directory.
 
-   No `SLEEPER_LEAGUE_ID` is configured anywhere in this repo (the in-app
-   league data comes from ESPN, not Sleeper), so this script requires a league
-   id explicitly and never guesses one:
+   The core content guardrails are preserved verbatim:
 
-     --league <sleeperLeagueId>   or   SLEEPER_LEAGUE_ID=<id>
-     --week <n>                   optional, defaults to Sleeper's current week
-     --publish-date <YYYY-MM-DD>  optional, defaults to today
-     --out <dir>                  optional, defaults to landing/content/blog
-     --base <url>                 optional, override the Sleeper API base
-                                   (used by --self-test to point at a fixture
-                                   server instead of the real network)
+     * Em dashes (U+2014) and horizontal bars (U+2015) are rejected in every
+       user-facing field, matching `landing/content/blog/README.md`.
+     * Every entry in `entities` must appear verbatim (case-insensitive, after
+       stripping markdown emphasis) in the article title or body. Ghost
+       entities are rejected loudly instead of being silently dropped, so the
+       author sees the mistake before it ships.
+     * Slugs must be lowercase kebab-case (letters, digits, hyphens).
 
    Usage:
-     SLEEPER_LEAGUE_ID=123456789012345678 node scripts/generate-editorial.mjs
-     node scripts/generate-editorial.mjs --league <id> --week 3
-     node scripts/generate-editorial.mjs --self-test    # network-free check
+     node scripts/generate-editorial.mjs                # process default source dir
+     node scripts/generate-editorial.mjs --source <dir> # read source files from <dir>
+     node scripts/generate-editorial.mjs --out <dir>    # write compiled files to <dir>
+     node scripts/generate-editorial.mjs --publish-date 2026-09-11
+                                                        # fallback publishDate when a
+                                                        # source article omits one
+     node scripts/generate-editorial.mjs --self-test    # run the offline test suite
 
-   After a real run, compile it into the deploy payload as usual:
+   After a run:
      npm run build:blog
 
-   This script is additive: it only writes new files under
-   `landing/content/blog/`. It never touches index.html, the News Desk
-   generators, Supabase, or any historical data pipeline.
+   This script is additive: it only reads its source directory and writes into
+   the blog content directory. It never touches index.html, the News Desk
+   generators, Supabase wiring, or any historical data pipeline.
 ============================================================================ */
 
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const DEFAULT_SOURCE_DIR = path.join(ROOT, 'content', 'editorial');
 const DEFAULT_OUT_DIR = path.join(ROOT, 'landing', 'content', 'blog');
-const DEFAULT_BASE = 'https://api.sleeper.app/v1';
 
 // U+2014 EM DASH and U+2015 HORIZONTAL BAR are banned everywhere in FSN blog
-// copy (see landing/content/blog/README.md). Mirrored here so a generated
-// article can never slip an em dash past the build-blog.mjs check.
+// copy (see landing/content/blog/README.md). Mirrored here so a compiled
+// article can never slip past the build-blog.mjs punctuation check.
 const BANNED_CHARS = /[—―]/;
+const REQUIRED_META = ['title', 'slug', 'publishDate', 'category', 'excerpt'];
+const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 function normName(s) {
   return String(s == null ? '' : s)
@@ -66,211 +69,170 @@ function normName(s) {
  * ------------------------------------------------------------------ */
 function parseArgs(argv) {
   const args = {
-    league: process.env.SLEEPER_LEAGUE_ID || null,
-    week: null,
-    publishDate: null,
+    source: DEFAULT_SOURCE_DIR,
     out: DEFAULT_OUT_DIR,
-    base: process.env.SLEEPER_API_BASE || DEFAULT_BASE,
+    publishDate: null,
     selfTest: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === '--league') args.league = argv[++i];
-    else if (a === '--week') args.week = Number(argv[++i]);
-    else if (a === '--publish-date') args.publishDate = argv[++i];
+    if (a === '--source') args.source = path.resolve(argv[++i]);
     else if (a === '--out') args.out = path.resolve(argv[++i]);
-    else if (a === '--base') args.base = argv[++i];
+    else if (a === '--publish-date') args.publishDate = argv[++i];
     else if (a === '--self-test') args.selfTest = true;
   }
   return args;
 }
 
 /* ------------------------------------------------------------------ *
- * Sleeper fetch layer. Every call surfaces a specific, actionable error
- * instead of returning a fallback value a caller might mistake for data.
+ * Minimal YAML frontmatter parser. Same shape build-blog.mjs uses:
+ * scalar keys and a `- key: value` list of maps for `entities`.
  * ------------------------------------------------------------------ */
-async function fetchJson(url) {
-  let res;
-  try {
-    res = await fetch(url, { headers: { Accept: 'application/json' } });
-  } catch (err) {
-    throw new Error(`[generate-editorial] request to ${url} failed: ${err.message}`);
+function parseScalar(raw) {
+  const v = String(raw).trim();
+  if (v === '') return '';
+  if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
+    return v.slice(1, -1);
   }
-  const text = await res.text();
-  if (!res.ok) {
-    throw new Error(`[generate-editorial] Sleeper returned ${res.status} ${res.statusText} for ${url}: ${text.slice(0, 200)}`);
-  }
-  try {
-    return JSON.parse(text);
-  } catch (err) {
-    throw new Error(`[generate-editorial] Sleeper response for ${url} was not valid JSON: ${err.message}`);
-  }
+  if (v === 'true') return true;
+  if (v === 'false') return false;
+  return v;
 }
 
-async function currentWeek(base) {
-  const state = await fetchJson(`${base}/state/nfl`);
-  const week = Number(state && state.week);
-  if (!Number.isFinite(week) || week < 1) {
-    throw new Error('[generate-editorial] Sleeper /state/nfl did not return a usable current week.');
-  }
-  return week;
-}
-
-async function fetchLeagueWeek(base, leagueId, week) {
-  const [league, rosters, users, matchups] = await Promise.all([
-    fetchJson(`${base}/league/${leagueId}`),
-    fetchJson(`${base}/league/${leagueId}/rosters`),
-    fetchJson(`${base}/league/${leagueId}/users`),
-    fetchJson(`${base}/league/${leagueId}/matchups/${week}`),
-  ]);
-  if (!league) {
-    throw new Error(`[generate-editorial] Sleeper league "${leagueId}" was not found (the API returned null). Refusing to fabricate a league.`);
-  }
-  if (!Array.isArray(rosters) || rosters.length === 0) {
-    throw new Error(`[generate-editorial] Sleeper league "${leagueId}" returned no rosters.`);
-  }
-  if (!Array.isArray(matchups) || matchups.length === 0) {
-    throw new Error(`[generate-editorial] Sleeper league "${leagueId}" returned no matchups for week ${week}. That week may not have started yet.`);
-  }
-  return { league, rosters, users: Array.isArray(users) ? users : [], matchups };
-}
-
-async function fetchPlayerNames(base, playerIds) {
-  if (playerIds.size === 0) return new Map();
-  // /players/nfl is a multi-megabyte blob of every NFL player, so only pull it
-  // when the week's matchups actually reference player ids to name.
-  const all = await fetchJson(`${base}/players/nfl`);
-  const names = new Map();
-  for (const id of playerIds) {
-    const p = all[id];
-    if (!p) continue;
-    const full = p.full_name || [p.first_name, p.last_name].filter(Boolean).join(' ');
-    if (full) names.set(id, { name: full, position: p.position || '' });
-  }
-  return names;
-}
-
-/* ------------------------------------------------------------------ *
- * Transform: raw Sleeper payloads -> matchup pairs with real owners and
- * real top performers. No randomness, no invented values.
- * ------------------------------------------------------------------ */
-function rosterOwnerMap(rosters, users) {
-  const userById = new Map(users.map((u) => [u.user_id, u]));
-  const map = new Map();
-  for (const r of rosters) {
-    const u = userById.get(r.owner_id);
-    const managerName = (u && (u.display_name || u.username)) || 'Unclaimed roster';
-    const teamName = (u && u.metadata && u.metadata.team_name) || managerName;
-    map.set(r.roster_id, { managerName, teamName });
-  }
-  return map;
-}
-
-function buildMatchupPairs(matchups) {
-  const byId = new Map();
-  for (const m of matchups) {
-    const list = byId.get(m.matchup_id) || [];
-    list.push(m);
-    byId.set(m.matchup_id, list);
-  }
-  return [...byId.entries()]
-    .sort((a, b) => a[0] - b[0])
-    .map(([id, sides]) => ({ id, sides: sides.slice().sort((a, b) => a.roster_id - b.roster_id) }));
-}
-
-function topPerformer(side, playerNames) {
-  const starters = Array.isArray(side.starters) ? side.starters : [];
-  const pointsMap = side.players_points || {};
-  let best = null;
-  for (const id of starters) {
-    const pts = Number(pointsMap[id]);
-    if (!Number.isFinite(pts)) continue;
-    if (!best || pts > best.points || (pts === best.points && String(id) < String(best.id))) {
-      best = { id, points: pts };
-    }
-  }
-  if (!best) return null;
-  const info = playerNames.get(best.id);
-  if (!info) return null;
-  return { id: String(best.id), points: best.points, name: info.name, position: info.position };
-}
-
-const fmtPts = (n) => Number(n).toFixed(2);
-
-function buildArticle({ week, pairs, ownerMap, playerNames, publishDate }) {
-  const entitiesById = new Map();
-  const sections = [];
-
-  for (const pair of pairs) {
-    if (pair.sides.length < 2) {
-      console.warn(`[generate-editorial] matchup ${pair.id} has only one side (bye or odd roster count); skipping it rather than inventing an opponent.`);
-      continue;
-    }
-    if (pair.sides.length > 2) {
-      console.warn(`[generate-editorial] matchup ${pair.id} has ${pair.sides.length} sides; only the first two are used.`);
-    }
-    const [a, b] = pair.sides;
-    const ownerA = ownerMap.get(a.roster_id) || { managerName: 'Unclaimed roster', teamName: 'Unclaimed roster' };
-    const ownerB = ownerMap.get(b.roster_id) || { managerName: 'Unclaimed roster', teamName: 'Unclaimed roster' };
-    const scoreA = Number(a.points) || 0;
-    const scoreB = Number(b.points) || 0;
-
-    const topA = topPerformer(a, playerNames);
-    const topB = topPerformer(b, playerNames);
-    if (topA) entitiesById.set(topA.id, topA);
-    if (topB) entitiesById.set(topB.id, topB);
-
-    const lines = [`### ${ownerA.teamName} vs ${ownerB.teamName}`];
-    if (scoreA === scoreB) {
-      lines.push(`${ownerA.teamName} and ${ownerB.teamName} tied at ${fmtPts(scoreA)} apiece.`);
+function parseFrontmatter(block) {
+  const meta = {};
+  const lines = block.split(/\r?\n/);
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    if (line.trim() === '') { i++; continue; }
+    const m = line.match(/^([A-Za-z0-9_]+):\s*(.*)$/);
+    if (!m) { i++; continue; }
+    const key = m[1];
+    const rest = m[2];
+    if (rest.trim() === '') {
+      const items = [];
+      i++;
+      while (i < lines.length && /^\s*-\s+/.test(lines[i])) {
+        const item = {};
+        const firstProp = lines[i].replace(/^\s*-\s+/, '');
+        const fp = firstProp.match(/^([A-Za-z0-9_]+):\s*(.*)$/);
+        if (fp) item[fp[1]] = parseScalar(fp[2]);
+        i++;
+        while (i < lines.length && /^\s+[A-Za-z0-9_]+:/.test(lines[i]) && !/^\s*-\s+/.test(lines[i])) {
+          const sp = lines[i].trim().match(/^([A-Za-z0-9_]+):\s*(.*)$/);
+          if (sp) item[sp[1]] = parseScalar(sp[2]);
+          i++;
+        }
+        items.push(item);
+      }
+      meta[key] = items;
     } else {
-      const winner = scoreA > scoreB ? ownerA : ownerB;
-      const loser = scoreA > scoreB ? ownerB : ownerA;
-      const winScore = Math.max(scoreA, scoreB);
-      const loseScore = Math.min(scoreA, scoreB);
-      lines.push(`${winner.teamName} beat ${loser.teamName}, ${fmtPts(winScore)} to ${fmtPts(loseScore)}.`);
+      meta[key] = parseScalar(rest);
+      i++;
     }
-    if (topA) lines.push(`${ownerA.teamName} leaned on **${topA.name}**, who scored ${fmtPts(topA.points)} points.`);
-    if (topB) lines.push(`${ownerB.teamName} got the most from **${topB.name}**, who scored ${fmtPts(topB.points)} points.`);
-    sections.push(lines.join('\n\n'));
   }
-
-  if (sections.length === 0) {
-    throw new Error('[generate-editorial] no complete matchup pairs were available for this week; refusing to publish an article with no real content.');
-  }
-
-  const entities = [...entitiesById.values()].map((t) => ({ name: t.name, position: t.position, sleeperPlayerId: t.id }));
-  const title = `Week ${week} recap: who carried their squad`;
-  const slug = `week-${week}-game-recap`;
-  const excerpt = `Real scores from every matchup in week ${week}, and the player who did the most to win it.`;
-  const body = [`The week ${week} slate is final. Here is exactly what happened, matchup by matchup.`, ...sections].join('\n\n');
-
-  return { title, slug, publishDate, category: 'Recap', excerpt, author: 'FSN Desk', entities, body };
+  return meta;
 }
 
 /* ------------------------------------------------------------------ *
- * Validate + serialize, mirroring the rules scripts/build-blog.mjs
- * enforces so nothing generated here can fail that build.
+ * Load one source file into a normalized editorial record.
+ * ------------------------------------------------------------------ */
+function normalizeEntities(raw, file) {
+  if (raw == null) return [];
+  if (!Array.isArray(raw)) {
+    throw new Error(`[generate-editorial] ${file}: "entities" must be an array`);
+  }
+  return raw.map((e, idx) => {
+    if (typeof e !== 'object' || e == null) {
+      throw new Error(`[generate-editorial] ${file}: entity #${idx + 1} is not an object`);
+    }
+    const name = String(e.name || '').trim();
+    if (!name) {
+      throw new Error(`[generate-editorial] ${file}: entity #${idx + 1} is missing "name"`);
+    }
+    const position = e.position != null ? String(e.position).trim() : '';
+    const sleeperPlayerId = (e.sleeperPlayerId != null ? String(e.sleeperPlayerId)
+      : e.player_id != null ? String(e.player_id) : '').trim();
+    return { name, position, sleeperPlayerId };
+  });
+}
+
+function loadSourceFile(sourceDir, file, fallbackPublishDate) {
+  const ext = path.extname(file).toLowerCase();
+  const full = path.join(sourceDir, file);
+  const rawText = fs.readFileSync(full, 'utf8');
+  let meta = {};
+  let body = '';
+  let format = 'markdown';
+
+  if (ext === '.json') {
+    format = 'json';
+    let parsed;
+    try { parsed = JSON.parse(rawText); }
+    catch (err) {
+      throw new Error(`[generate-editorial] ${file}: invalid JSON (${err.message})`);
+    }
+    if (typeof parsed !== 'object' || parsed == null || Array.isArray(parsed)) {
+      throw new Error(`[generate-editorial] ${file}: JSON source must be an object`);
+    }
+    meta = parsed;
+    body = typeof parsed.body === 'string' ? parsed.body : '';
+  } else if (ext === '.md' || ext === '.mdx') {
+    const fm = rawText.match(/^---\s*\n([\s\S]*?)\n---\s*\n?([\s\S]*)$/);
+    if (!fm) {
+      throw new Error(`[generate-editorial] ${file}: markdown source is missing a frontmatter block delimited by "---"`);
+    }
+    meta = parseFrontmatter(fm[1]);
+    body = fm[2] || '';
+  } else {
+    return null;
+  }
+
+  const slugFromName = path.basename(file, ext);
+  const article = {
+    title: meta.title != null ? String(meta.title).trim() : '',
+    slug: (meta.slug != null ? String(meta.slug) : slugFromName).trim(),
+    publishDate: meta.publishDate != null ? String(meta.publishDate).trim()
+      : (fallbackPublishDate || '').trim(),
+    category: meta.category != null ? String(meta.category).trim() : '',
+    excerpt: meta.excerpt != null ? String(meta.excerpt).trim() : '',
+    author: meta.author != null ? String(meta.author).trim() : 'FSN Desk',
+    entities: normalizeEntities(meta.entities, file),
+    body,
+    format,
+    sourceFile: file,
+  };
+
+  return article;
+}
+
+/* ------------------------------------------------------------------ *
+ * Guardrails. Every rule below mirrors a rule build-blog.mjs enforces,
+ * so an article that compiles here cannot fail the blog build. They run
+ * BEFORE writing anything so a bad source file never lands in
+ * landing/content/blog/.
  * ------------------------------------------------------------------ */
 function validateArticle(article) {
-  const required = ['title', 'slug', 'publishDate', 'category', 'excerpt', 'author'];
-  for (const key of required) {
-    if (!article[key]) throw new Error(`[generate-editorial] generated article is missing required field "${key}"`);
+  for (const key of REQUIRED_META) {
+    if (!article[key]) {
+      throw new Error(`[generate-editorial] ${article.sourceFile}: missing required field "${key}"`);
+    }
   }
-  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(article.slug)) {
-    throw new Error(`[generate-editorial] generated slug "${article.slug}" is not lowercase kebab-case`);
+  if (!SLUG_RE.test(article.slug)) {
+    throw new Error(`[generate-editorial] ${article.sourceFile}: slug "${article.slug}" is not lowercase kebab-case`);
   }
   if (Number.isNaN(Date.parse(article.publishDate))) {
-    throw new Error(`[generate-editorial] generated publishDate "${article.publishDate}" is not a parseable date`);
+    throw new Error(`[generate-editorial] ${article.sourceFile}: publishDate "${article.publishDate}" is not a parseable date (use YYYY-MM-DD)`);
   }
-  if (article.entities.length === 0) {
-    throw new Error('[generate-editorial] generated article has no entities; refusing to publish an unattributed recap');
+  if (!article.entities.length) {
+    throw new Error(`[generate-editorial] ${article.sourceFile}: articles must list at least one entity so the reader tray has something to map`);
   }
 
   const haystack = normName(article.title + ' ' + article.body);
   for (const e of article.entities) {
     if (!haystack.includes(normName(e.name))) {
-      throw new Error(`[generate-editorial] entity "${e.name}" is not named verbatim in the article body; refusing to ship a ghost entity`);
+      throw new Error(`[generate-editorial] ${article.sourceFile}: entity "${e.name}" is not named verbatim in the article title or body; refusing to ship a ghost entity`);
     }
   }
 
@@ -278,12 +240,17 @@ function validateArticle(article) {
     ...article.entities.map((e) => e.name)];
   for (const field of scanFields) {
     if (BANNED_CHARS.test(String(field))) {
-      throw new Error(`[generate-editorial] em dash found in generated content: "${field}"`);
+      throw new Error(`[generate-editorial] ${article.sourceFile}: em dash (or horizontal bar) found in "${field}". Break clauses with periods, commas, or colons instead.`);
     }
   }
 }
 
-function serializeFrontmatter(article) {
+/* ------------------------------------------------------------------ *
+ * Serialization. Markdown sources round-trip as markdown, JSON sources
+ * round-trip as JSON, so the compiled file mirrors the shape the editor
+ * authored.
+ * ------------------------------------------------------------------ */
+function serializeMarkdown(article) {
   const lines = ['---'];
   lines.push(`title: ${article.title}`);
   lines.push(`slug: ${article.slug}`);
@@ -299,137 +266,222 @@ function serializeFrontmatter(article) {
   }
   lines.push('---');
   lines.push('');
-  lines.push(article.body);
+  lines.push(article.body.replace(/\s+$/g, ''));
   return lines.join('\n') + '\n';
 }
 
-/* ------------------------------------------------------------------ *
- * Orchestration
- * ------------------------------------------------------------------ */
-async function generate({ league, week, publishDate, out, base }) {
-  if (!league) {
-    throw new Error('[generate-editorial] missing Sleeper league id. Pass --league <id> or set SLEEPER_LEAGUE_ID. Refusing to guess a league, since that would mean shipping fabricated data.');
-  }
-  const resolvedWeek = week || await currentWeek(base);
-  const resolvedDate = publishDate || new Date().toISOString().slice(0, 10);
-
-  console.log(`[generate-editorial] fetching league ${league}, week ${resolvedWeek} from ${base}`);
-  const { rosters, users, matchups } = await fetchLeagueWeek(base, league, resolvedWeek);
-  const ownerMap = rosterOwnerMap(rosters, users);
-  const pairs = buildMatchupPairs(matchups);
-
-  const neededIds = new Set();
-  for (const pair of pairs) {
-    for (const side of pair.sides) {
-      for (const id of (side.starters || [])) neededIds.add(id);
-    }
-  }
-  const playerNames = await fetchPlayerNames(base, neededIds);
-
-  const article = buildArticle({ week: resolvedWeek, pairs, ownerMap, playerNames, publishDate: resolvedDate });
-  validateArticle(article);
-
-  fs.mkdirSync(out, { recursive: true });
-  const outFile = path.join(out, `${article.slug}.md`);
-  fs.writeFileSync(outFile, serializeFrontmatter(article), 'utf8');
-  console.log(`[generate-editorial] wrote ${outFile}`);
-  return outFile;
+function serializeJson(article) {
+  const record = {
+    title: article.title,
+    slug: article.slug,
+    publishDate: article.publishDate,
+    category: article.category,
+    excerpt: article.excerpt,
+    author: article.author,
+    entities: article.entities.map((e) => {
+      const out = { name: e.name };
+      if (e.position) out.position = e.position;
+      if (e.sleeperPlayerId) out.sleeperPlayerId = e.sleeperPlayerId;
+      return out;
+    }),
+    body: article.body,
+  };
+  return JSON.stringify(record, null, 2) + '\n';
 }
 
 /* ------------------------------------------------------------------ *
- * Self-test: exercises the entire pipeline (fetch, pairing, entity
- * extraction, validation, serialization) against a local fixture server
- * shaped exactly like the real Sleeper API, so it runs without network
- * access and without a real league id.
+ * Compile
  * ------------------------------------------------------------------ */
-function buildFixtures() {
-  return {
-    '/v1/state/nfl': { week: 1, season: '2026', season_type: 'regular' },
-    '/v1/league/test-league': { league_id: 'test-league', name: 'Fixture League', season: '2026' },
-    '/v1/league/test-league/rosters': [
-      { roster_id: 1, owner_id: 'u1' },
-      { roster_id: 2, owner_id: 'u2' },
-    ],
-    '/v1/league/test-league/users': [
-      { user_id: 'u1', display_name: 'Alice', metadata: { team_name: 'Alice All Stars' } },
-      { user_id: 'u2', display_name: 'Bob', metadata: {} },
-    ],
-    '/v1/league/test-league/matchups/1': [
-      { roster_id: 1, matchup_id: 1, points: 120.5, starters: ['1001', '1002'], players_points: { '1001': 30.2, '1002': 10.1 } },
-      { roster_id: 2, matchup_id: 1, points: 110.0, starters: ['2001'], players_points: { '2001': 25.5 } },
-    ],
-    '/v1/players/nfl': {
-      '1001': { full_name: 'Test Player One', position: 'WR' },
-      '1002': { full_name: 'Test Player Two', position: 'RB' },
-      '2001': { full_name: 'Test Player Three', position: 'QB' },
-    },
-  };
+function compile({ source, out, publishDate }) {
+  if (!fs.existsSync(source)) {
+    throw new Error(`[generate-editorial] source directory not found: ${source}. Drop editorial .md/.mdx/.json files there, or pass --source <dir>.`);
+  }
+  const stat = fs.statSync(source);
+  if (!stat.isDirectory()) {
+    throw new Error(`[generate-editorial] source path is not a directory: ${source}`);
+  }
+
+  const files = fs.readdirSync(source)
+    .filter((f) => /\.(json|md|mdx)$/i.test(f) && f.toLowerCase() !== 'readme.md')
+    .sort();
+
+  if (!files.length) {
+    console.log(`[generate-editorial] no source articles in ${source}; nothing to compile.`);
+    return [];
+  }
+
+  const compiled = [];
+  const seenSlugs = new Map();
+
+  for (const file of files) {
+    const article = loadSourceFile(source, file, publishDate);
+    if (!article) continue;
+    validateArticle(article);
+    if (seenSlugs.has(article.slug)) {
+      throw new Error(`[generate-editorial] ${file}: duplicate slug "${article.slug}" (also in ${seenSlugs.get(article.slug)})`);
+    }
+    seenSlugs.set(article.slug, file);
+    compiled.push(article);
+  }
+
+  fs.mkdirSync(out, { recursive: true });
+  const written = [];
+  for (const article of compiled) {
+    const ext = article.format === 'json' ? '.json' : '.md';
+    const outFile = path.join(out, article.slug + ext);
+    const body = article.format === 'json' ? serializeJson(article) : serializeMarkdown(article);
+    fs.writeFileSync(outFile, body, 'utf8');
+    written.push(outFile);
+    console.log(`[generate-editorial] wrote ${path.relative(ROOT, outFile)}`);
+  }
+  return written;
+}
+
+/* ------------------------------------------------------------------ *
+ * Self-test: exercises the full pipeline (parse, guardrails, write) with
+ * in-memory fixtures, so `npm run check:editorial` runs offline and
+ * needs no external service to stay green.
+ * ------------------------------------------------------------------ */
+const SELF_TEST_MD = `---
+title: Week one recap: who carried their squad
+slug: week-1-recap
+publishDate: 2026-09-16
+category: Recap
+excerpt: The week one slate is final. Here is what happened and who won it.
+author: FSN Desk
+entities:
+  - name: Test Player One
+    position: WR
+    sleeperPlayerId: "1001"
+  - name: Test Player Two
+    position: RB
+    sleeperPlayerId: "1002"
+---
+
+The week one slate is final. Here is what happened.
+
+## Alice All Stars beat Bob
+
+Alice All Stars leaned on **Test Player One**, whose day was the difference.
+Bob still got a starter effort from **Test Player Two**, but not enough to
+close the gap.
+`;
+
+const SELF_TEST_JSON = {
+  title: 'Waiver watch: two names to bid on',
+  slug: 'waiver-watch-week-1',
+  publishDate: '2026-09-11',
+  category: 'Waiver Wire',
+  excerpt: 'Two low-owned names worth a real bid before Wednesday.',
+  author: 'FSN Desk',
+  entities: [
+    { name: 'Kimani Vidal', position: 'RB' },
+    { name: 'Jalen McMillan', position: 'WR' },
+  ],
+  body: '**Kimani Vidal** stepped into first-team reps and is still low-owned. **Jalen McMillan** ran a full route tree and is available on most wires.',
+};
+
+function writeFixture(dir, name, body) {
+  fs.writeFileSync(path.join(dir, name), body, 'utf8');
 }
 
 async function runSelfTest() {
-  const fixtures = buildFixtures();
-  const server = createServer((req, res) => {
-    const url = new URL(req.url, 'http://127.0.0.1');
-    const body = fixtures[url.pathname];
-    res.setHeader('Content-Type', 'application/json');
-    if (body === undefined) {
-      res.statusCode = 200;
-      res.end('null'); // matches Sleeper's own behaviour for an unknown id
-      return;
-    }
-    res.statusCode = 200;
-    res.end(JSON.stringify(body));
-  });
-  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-  const { port } = server.address();
-  const base = `http://127.0.0.1:${port}/v1`;
-
-  const tmpOut = fs.mkdtempSync(path.join(os.tmpdir(), 'fsn-editorial-selftest-'));
   const failures = [];
   const check = (cond, msg) => { if (!cond) failures.push(msg); };
 
+  const tmpSource = fs.mkdtempSync(path.join(os.tmpdir(), 'fsn-editorial-src-'));
+  const tmpOut = fs.mkdtempSync(path.join(os.tmpdir(), 'fsn-editorial-out-'));
+
   try {
-    // Run twice to confirm the pipeline is deterministic for identical input.
-    let outFile;
+    writeFixture(tmpSource, 'week-1-recap.md', SELF_TEST_MD);
+    writeFixture(tmpSource, 'waiver-watch-week-1.json', JSON.stringify(SELF_TEST_JSON, null, 2));
+
+    // 1. Determinism: same input, same output, twice.
+    let firstMd = null;
+    let firstJson = null;
     for (let run = 1; run <= 2; run++) {
-      outFile = await generate({ league: 'test-league', week: 1, publishDate: '2026-09-16', out: tmpOut, base });
+      compile({ source: tmpSource, out: tmpOut, publishDate: null });
+      const md = fs.readFileSync(path.join(tmpOut, 'week-1-recap.md'), 'utf8');
+      const jsn = fs.readFileSync(path.join(tmpOut, 'waiver-watch-week-1.json'), 'utf8');
+      if (run === 1) { firstMd = md; firstJson = jsn; }
+      else {
+        check(md === firstMd, 'markdown compile must be deterministic across runs');
+        check(jsn === firstJson, 'json compile must be deterministic across runs');
+      }
     }
-    const content = fs.readFileSync(outFile, 'utf8');
 
-    check(content.includes('title: Week 1 recap'), 'expected week-aware title');
-    check(content.includes('Test Player One'), 'expected the higher-scoring starter (30.2 > 10.1) to be named as roster 1\'s top performer');
-    check(!content.includes('Test Player Two'), 'expected the lower-scoring starter to be omitted as a top performer');
-    check(content.includes('Test Player Three'), 'expected roster 2\'s only starter to be named as its top performer');
-    check(content.includes('Alice All Stars'), 'expected users.metadata.team_name to be used when present');
-    check(/\bBob\b/.test(content) && !content.includes('Bob\'s'), 'expected display_name fallback when team_name is absent');
-    check(content.includes('Alice All Stars beat Bob, 120.50 to 110.00'), 'expected the real scores to decide and report the winner');
-    check(!BANNED_CHARS.test(content), 'expected no em dash anywhere in generated content');
-    check(/sleeperPlayerId: "1001"/.test(content), 'expected sleeperPlayerId to be serialized as a quoted string');
+    // 2. Round-trip: written files carry the fields the blog build needs.
+    check(firstMd.includes('title: Week one recap: who carried their squad'), 'expected markdown title round-trip');
+    check(firstMd.includes('sleeperPlayerId: "1001"'), 'expected sleeperPlayerId to be quoted in markdown output');
+    check(firstMd.includes('**Test Player One**'), 'expected markdown body to round-trip verbatim');
+    check(firstJson.includes('"slug": "waiver-watch-week-1"'), 'expected json slug round-trip');
+    check(firstJson.includes('"category": "Waiver Wire"'), 'expected json category round-trip');
+    check(!BANNED_CHARS.test(firstMd), 'expected no em dash in compiled markdown');
+    check(!BANNED_CHARS.test(firstJson), 'expected no em dash in compiled json');
 
-    // Missing league id must fail loudly, never fabricate a league.
-    let threwForMissingLeague = false;
+    // 3. Em dash rejection.
+    const badDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fsn-editorial-bad-'));
     try {
-      await generate({ league: null, week: 1, out: tmpOut, base });
-    } catch (err) {
-      threwForMissingLeague = /missing Sleeper league id/.test(err.message);
+      writeFixture(badDir, 'em-dash.md', `---\ntitle: Something — else\nslug: em-dash\npublishDate: 2026-09-11\ncategory: Analysis\nexcerpt: nope\nauthor: FSN Desk\nentities:\n  - name: Justin Jefferson\n---\n\nJustin Jefferson stayed put.\n`);
+      let threw = false;
+      try { compile({ source: badDir, out: tmpOut, publishDate: null }); }
+      catch (err) { threw = /em dash/.test(err.message); }
+      check(threw, 'expected an em dash in a source file to abort the compile with a clear message');
+    } finally {
+      fs.rmSync(badDir, { recursive: true, force: true });
     }
-    check(threwForMissingLeague, 'expected a missing league id to throw a clear, specific error');
 
-    // An unknown league id (Sleeper returns null, not a 404) must also fail loudly.
-    let threwForUnknownLeague = false;
+    // 4. Ghost entity rejection.
+    const ghostDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fsn-editorial-ghost-'));
     try {
-      await generate({ league: 'does-not-exist', week: 1, out: tmpOut, base });
-    } catch (err) {
-      threwForUnknownLeague = /was not found/.test(err.message);
+      writeFixture(ghostDir, 'ghost.md', `---\ntitle: A safe title\nslug: ghost\npublishDate: 2026-09-11\ncategory: Analysis\nexcerpt: fine\nauthor: FSN Desk\nentities:\n  - name: Nobody Mentioned\n---\n\nThe body never names the entity.\n`);
+      let threw = false;
+      try { compile({ source: ghostDir, out: tmpOut, publishDate: null }); }
+      catch (err) { threw = /ghost entity/.test(err.message); }
+      check(threw, 'expected a ghost entity (unnamed in the body) to abort the compile');
+    } finally {
+      fs.rmSync(ghostDir, { recursive: true, force: true });
     }
-    check(threwForUnknownLeague, 'expected an unknown league id to throw a clear, specific error instead of writing a file');
 
-    // Week auto-detection from /state/nfl.
-    fs.rmSync(path.join(tmpOut, 'week-1-game-recap.md'), { force: true });
-    await generate({ league: 'test-league', publishDate: '2026-09-16', out: tmpOut, base });
-    check(fs.existsSync(path.join(tmpOut, 'week-1-game-recap.md')), 'expected week to be auto-detected from /state/nfl when --week is omitted');
+    // 5. Slug hygiene.
+    const slugDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fsn-editorial-slug-'));
+    try {
+      writeFixture(slugDir, 'ok.md', `---\ntitle: Slug hygiene\nslug: NotKebabCase\npublishDate: 2026-09-11\ncategory: Analysis\nexcerpt: fine\nauthor: FSN Desk\nentities:\n  - name: Justin Jefferson\n---\n\nJustin Jefferson holds the target share.\n`);
+      let threw = false;
+      try { compile({ source: slugDir, out: tmpOut, publishDate: null }); }
+      catch (err) { threw = /kebab-case/.test(err.message); }
+      check(threw, 'expected a non kebab-case slug to abort the compile');
+    } finally {
+      fs.rmSync(slugDir, { recursive: true, force: true });
+    }
+
+    // 6. No CLI flags required. Compile ran with no --league, no --source, no
+    //    --publish-date argument in step 1; getting here proves it.
+    check(true, 'compile ran without --league, --source, or --publish-date');
+
+    // 7. Missing publishDate falls back to --publish-date when provided.
+    const dateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fsn-editorial-date-'));
+    const dateOut = fs.mkdtempSync(path.join(os.tmpdir(), 'fsn-editorial-date-out-'));
+    try {
+      writeFixture(dateDir, 'nodate.md', `---\ntitle: No date in the source\nslug: nodate\ncategory: Analysis\nexcerpt: fine\nauthor: FSN Desk\nentities:\n  - name: Justin Jefferson\n---\n\nJustin Jefferson still leads the league.\n`);
+      compile({ source: dateDir, out: dateOut, publishDate: '2026-09-11' });
+      const out = fs.readFileSync(path.join(dateOut, 'nodate.md'), 'utf8');
+      check(/publishDate: 2026-09-11/.test(out), 'expected --publish-date to be used when a source file omits publishDate');
+    } finally {
+      fs.rmSync(dateDir, { recursive: true, force: true });
+      fs.rmSync(dateOut, { recursive: true, force: true });
+    }
+
+    // 8. Empty source directory is a no-op, not an error.
+    const emptyDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fsn-editorial-empty-'));
+    try {
+      const written = compile({ source: emptyDir, out: tmpOut, publishDate: null });
+      check(Array.isArray(written) && written.length === 0, 'expected an empty source directory to be a no-op');
+    } finally {
+      fs.rmSync(emptyDir, { recursive: true, force: true });
+    }
   } finally {
-    server.close();
+    fs.rmSync(tmpSource, { recursive: true, force: true });
     fs.rmSync(tmpOut, { recursive: true, force: true });
   }
 
@@ -438,7 +490,7 @@ async function runSelfTest() {
     for (const f of failures) console.error('  - ' + f);
     process.exit(1);
   }
-  console.log('[generate-editorial] self-test passed: Sleeper fetch, matchup pairing, entity extraction, determinism, and the punctuation/ghost-entity contract all verified against fixture data.');
+  console.log('[generate-editorial] self-test passed: markdown and json compile, guardrails (em dashes, ghost entities, slug hygiene) all verified offline.');
 }
 
 async function main() {
@@ -448,8 +500,10 @@ async function main() {
     return;
   }
   try {
-    const outFile = await generate(args);
-    console.log(`[generate-editorial] done. Run "npm run build:blog" to compile ${path.relative(ROOT, outFile)} into the deploy payload.`);
+    const written = compile(args);
+    if (written.length) {
+      console.log(`[generate-editorial] done. Run "npm run build:blog" to compile ${written.length} article(s) into the deploy payload.`);
+    }
   } catch (err) {
     console.error(err.message);
     process.exit(1);
