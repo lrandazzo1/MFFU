@@ -718,7 +718,7 @@ try {
     if (rosterState.localReadState !== 'FINAL') {
       fail('Local Read did not close its roster-complete matchup: ' + rosterState.localReadState);
     } else pass('Local Read resolves FINAL from its own roster state, not the NFL-wide slate');
-    const localCard = rosterState.cards.find((card) => /Alpha/.test(card.text));
+    const localCard = rosterState.cards.find((card) => /Alpha/i.test(card.text));
     if (!localCard || !localCard.final || localCard.live) {
       fail('the roster-complete Head-to-Head card did not show FINAL: ' + JSON.stringify(rosterState.cards));
     } else pass('the roster-complete Head-to-Head card shows FINAL, never LIVE');
