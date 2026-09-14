@@ -2660,17 +2660,11 @@ body.fsn-dd-lock{ overflow:hidden; }
   font-family:'Anton',Impact,sans-serif; font-size:16.5px; line-height:1.13;
   text-transform:uppercase; color:#fff; margin:0;
 }
-.wire-dek-compact{
-  font-family:'Oswald',sans-serif; font-weight:300; font-size:12.5px;
-  line-height:1.5; color:var(--off); margin:7px 0 0;
-  display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden;
-}
-/* The localized lede. When an ingested item names a player somebody in this
-   league actually rosters, the card leads with the league's own read on it
-   instead of the published national blurb — brighter than the blurb it
-   replaces, because it is the reason the card is worth a tap. The clamp is
-   four lines rather than three: a sentence that names two managers and a
-   player needs the room, and it is still a fixed-height card. */
+/* The Local Read is required for every ingested item. It names a player from
+   the article and frames that entity against the reader's matchup when a roster
+   match exists; otherwise it keeps the report specific by focusing its
+   highest-impact mentioned player. The extra line keeps the focal-player
+   sentence readable while the card remains fixed-height. */
 .wire-dek-local{
   font-family:'Oswald',sans-serif; font-weight:400; font-size:12.5px;
   line-height:1.5; color:#e9edf4; margin:7px 0 0;
@@ -9537,6 +9531,126 @@ window.FSNArticles = (function(){
     return value;
   }
 
+
+  /* ---- LOCAL READ RESOLVER ----------------------------------------------
+     The wire stays a public article feed; this adapter is the one place where
+     that reporting is translated into a reader's current fantasy matchup.
+     It never invents a stat, and its template rotation is a stable hash of the
+     article, matchup and date key — varied across stories without changing
+     during a repaint or a notification deep-link revisit. */
+  function localReadHash(text){
+    let hash = 2166136261;
+    const value = String(text || '');
+    for(let i = 0; i < value.length; i++){
+      hash ^= value.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+    return hash >>> 0;
+  }
+
+  function localReadNameKey(value){
+    return normalizeName(value).replace(/[^a-z0-9]/g, '');
+  }
+
+  function localReadOccurrences(haystack, needle){
+    if(!haystack || !needle) return 0;
+    let count = 0;
+    let at = haystack.indexOf(needle);
+    while(at !== -1){
+      count++;
+      at = haystack.indexOf(needle, at + needle.length);
+    }
+    return count;
+  }
+
+  function localReadCandidates(view){
+    const post = view && view.post;
+    if(!post) return [];
+    const rows = Object.create(null);
+    const text = [post.title, post.excerpt, post.bodyHtml].join(' ');
+    const textKey = localReadNameKey(text);
+    const titleKey = localReadNameKey(post.title);
+    const add = (row, role)=>{
+      if(!row || !row.name) return;
+      const key = localReadNameKey(row.name);
+      if(!key) return;
+      const existing = rows[key];
+      const normalizedRole = role === 'self' || role === 'opponent' ? role : '';
+      if(existing){
+        if(!existing.role && normalizedRole) existing.role = normalizedRole;
+        return;
+      }
+      const mentions = localReadOccurrences(textKey, key);
+      rows[key] = {
+        name:String(row.name).trim(),
+        position:String(row.position || '').trim(),
+        role:normalizedRole,
+        score:(titleKey.indexOf(key) !== -1 ? 100 : 0) + (mentions * 10),
+      };
+    };
+    (post.entities || []).forEach(entity=> add(entity, ''));
+    (view.matches || []).forEach(match=> add(match, match && match.role));
+    (view.unmatched || []).forEach(entity=> add(entity, ''));
+
+    return Object.keys(rows).map(key=> rows[key]).sort((a,b)=>{
+      if(b.score !== a.score) return b.score - a.score;
+      return a.name.localeCompare(b.name);
+    });
+  }
+
+  function localRead(view, slot, dateKey){
+    const post = view && view.post;
+    if(!post) return '';
+    const candidates = localReadCandidates(view);
+    const local = candidates.filter(candidate=> candidate.role === 'self' || candidate.role === 'opponent');
+    const focal = local[0] || candidates[0];
+    if(!focal) return '';
+
+    const week = Number((view.context && view.context.currentWeek) || 0);
+    const weekLabel = week > 0 ? 'Week ' + week : 'this matchup';
+    const reportText = [post.title, post.excerpt, post.bodyHtml].join(' ');
+    const statusRisk = /\b(out|inactive|injur(?:y|ed)|doubtful|questionable|suspend(?:ed|ion)|limited|miss(?:es|ed|ing)?)\b/i.test(reportText);
+    const seed = [
+      leagueScopeToken(), post.slug, (slot && slot.id) || '',
+      dateKey || '', focal.name, focal.role || 'outside'
+    ].join('|');
+    const choose = (lines)=> lines[localReadHash(seed) % lines.length];
+
+    if(focal.role === 'self'){
+      return statusRisk
+        ? choose([
+            focal.name + ' is on your roster, and this report puts a decision point into ' + weekLabel + '.',
+            focal.name + ' belongs to your side; the update adds pressure to your ' + weekLabel + ' plan.',
+            focal.name + ' is your matchup exposure here, so this report is a status signal for ' + weekLabel + '.',
+          ])
+        : choose([
+            focal.name + ' is on your roster, and this report creates upside for ' + weekLabel + '.',
+            focal.name + ' belongs to your side; the development here can help your ' + weekLabel + ' outlook.',
+            focal.name + ' is your focal player in this report, putting a tailwind behind ' + weekLabel + '.',
+          ]);
+    }
+
+    if(focal.role === 'opponent'){
+      return statusRisk
+        ? choose([
+            focal.name + ' is on your ' + weekLabel + ' opponent, and this report opens a possible lane for your side.',
+            focal.name + ' belongs to the other side; the update adds volatility to their ' + weekLabel + ' outlook.',
+            focal.name + ' is your opponent’s exposure here, so this report can ease the pressure across ' + weekLabel + '.',
+          ])
+        : choose([
+            focal.name + ' is on your ' + weekLabel + ' opponent, sharpening the threat across this matchup.',
+            focal.name + ' belongs to the other side; the development here raises the stakes for ' + weekLabel + '.',
+            focal.name + ' is your opponent’s focal player in this report, adding pressure to your ' + weekLabel + ' outlook.',
+          ]);
+    }
+
+    return choose([
+      focal.name + ' is the report’s highest-impact player, making this a lineup signal to track before ' + weekLabel + ' decisions.',
+      focal.name + ' carries the strongest article signal here; monitor this development before your ' + weekLabel + ' choices lock.',
+      focal.name + ' is the focal player in this report, so their development is the tactical item to watch for ' + weekLabel + '.',
+    ]);
+  }
+
   /* ---- 7. ARMING ------------------------------------------------------- */
 
   let armed = false;
@@ -9592,6 +9706,7 @@ window.FSNArticles = (function(){
     ownerTagText,
     readerContext,
     annotated,
+    localRead,
     current,
     refresh,
     readerUrl,
@@ -31507,49 +31622,19 @@ function wirePublishLabel(dateKey){
    the card stays quiet. */
 function wireContextLine(view, slot){
   if(!view) return '';
-  const context = view.context || {};
-  const rostered = (view.matches || []).filter(m=> m && m.owner);
-  const mine = rostered.filter(m=> m.role === 'self');
-  const opponent = rostered.filter(m=> m.role === 'opponent');
-  const other = rostered.filter(m=> m.role === 'other');
-  const free = view.unmatched || [];
-  const isWaiver = slot && slot.id === 'waiver';
-
-  const entryHtml = (name, label, cls)=>
-    `<span><span class="player">${esc(name)}</span> <span class="owner${cls ? ' ' + cls : ''}">· ${esc(label)}</span></span>`;
-
-  const bucket = (leadText, rows, chipLabel, leadCls, chipCls, moreText)=>{
-    if(!rows.length) return '';
-    const cap = rows.slice(0, 3);
-    const chips = cap.map(m=> entryHtml(m.name, typeof chipLabel === 'function' ? chipLabel(m) : chipLabel, chipCls));
-    const remainder = rows.length - cap.length;
-    const list = chips.join('<span class="sep">·</span>');
-    const more = remainder > 0
-      ? `<span class="sep">·</span><span class="owner${chipCls ? ' ' + chipCls : ''}">+${remainder} ${esc(moreText)}</span>`
-      : '';
-    return `<span class="lead${leadCls ? ' ' + leadCls : ''}">${esc(leadText)}</span>${list}${more}`;
+  const rostered=(view.matches||[]).filter(m=>m&&m.owner);
+  const mine=rostered.filter(m=>m.role==='self');
+  const opponent=rostered.filter(m=>m.role==='opponent');
+  const week=Number((view.context&&view.context.currentWeek)||0);
+  const bucket=(label,cls,rows)=>{
+    const names=rows.slice(0,3).map(m=>'<span class="wire-context-player '+cls+'">'+esc(m.name)+'</span>').join('');
+    const more=rows.length>3?'<span class="wire-context-more">+'+(rows.length-3)+'</span>':'';
+    return '<span class="wire-context-group"><span class="wire-context-label">'+esc(label)+'</span>'+names+more+'</span>';
   };
-
-  const parts = [];
-  const selfBucket = bucket('On your roster', mine, 'your player', 'self', 'self', 'more on your roster');
-  if(selfBucket) parts.push(selfBucket);
-
-  const oppLead = context.currentWeek > 0
-    ? ('Week ' + context.currentWeek + ' opponent')
-    : 'Your opponent';
-  const oppBucket = bucket(oppLead, opponent, (m)=> m.label || 'opponent', 'opponent', 'opponent', 'more on their roster');
-  if(oppBucket) parts.push(oppBucket);
-
-  if(other.length){
-    const otherBucket = bucket('Around the league', other, (m)=> m.label || 'rostered', '', '', 'more on rosters');
-    if(otherBucket) parts.push(otherBucket);
-  }
-
-  if(isWaiver && free.length){
-    parts.push(bucket('Available now', free.map(f=>({ name:f.name })), 'free agent', 'free', 'free', 'more available'));
-  }
-  if(!parts.length) return '';
-  return `<div class="wire-context">${parts.join('<span class="sep" style="margin:0 4px">•</span>')}</div>`;
+  const parts=[];
+  if(mine.length) parts.push(bucket('On your roster','self',mine));
+  if(opponent.length) parts.push(bucket(week?'Week '+week+' opponent':'Opponent','opponent',opponent));
+  return parts.length?'<div class="wire-context" aria-label="Matchup player context">'+parts.join('')+'</div>':'';
 }
 
 function renderDeskWire(){
@@ -31607,36 +31692,23 @@ function renderDeskWire(){
   const slotLabel = String(slot.label || 'From the Desk').toUpperCase();
   const categoryPill = post.category
     ? `<span class="sep">/</span><span>${esc(post.category)}</span>` : '';
-  /* ---- HYPER-LOCAL COPY ----
-     An ingested item arrives written for a national audience. Whenever it
-     names a player somebody in THIS league actually rosters, the card drops
-     the published blurb entirely and leads with the league's own read on it
-     instead — the manager who owns the player, what the player did, and where
-     that leaves their head-to-head. FSNLocalDesk (block 1) writes the
-     sentence; this only decides which of the two gets painted.
-
-     The desk's editorial category decides whether the piece is a From-the-
-     Desk analysis or a wire-style news item, and only the analysis line
-     carries the localized read. Every other category — a waiver run, an
-     injury note, a national syndication — keeps its published blurb, because
-     an analyst's voice layered on top of a national list makes both sides
-     feel manufactured. Compared case-insensitively so 'analysis' or
-     ' Analysis ' cannot be silently dropped from the treatment. */
-  const isAnalysis = String(post.category || '').trim().toLowerCase() === 'analysis';
-  let localLede = '';
-  if(isAnalysis){
-    try{
-      localLede = FSNLocalDesk.localizeWire(view, slot, snapshot.dateKey);
-    }catch(err){
-      console.error('[LocalDesk] localizing the desk analysis item "' + (post.slug || post.title || 'untitled') +
-        '" failed; the card falls back to the published excerpt.', err);
-      localLede = '';
-    }
+  /* ---- THE LOCAL READ ---------------------------------------------------
+     Every rendered wire card receives one deterministic matchup narrative.
+     An unresolved post is held back instead of leaking a generic public dek. */
+  const isAnalysis=String(post.category||'').trim().toLowerCase()==='analysis';
+  let localLede='';
+  try{
+    localLede=FSNArticles.localRead(view,slot,snapshot.dateKey);
+  }catch(err){
+    console.error('[FSNArticles] Local Read resolution failed for '+post.slug+'; holding this card rather than rendering an unscoped public dek.',err);
   }
-  const blurb = wireBlurb(post.excerpt);
-  const blurbHtml = localLede
-    ? `<p class="wire-dek-local"><span class="tag">The Local Read</span>${esc(localLede)}</p>`
-    : (blurb ? `<p class="wire-dek-compact">${esc(blurb)}</p>` : '');
+  if(!localLede){
+    console.error('[FSNArticles] Local Read found no verified article entity for '+post.slug+'; holding the card rather than rendering an unscoped public fallback.',
+      new Error('FSN_LOCAL_READ_ENTITY_MISSING'));
+    hide();
+    return;
+  }
+  const blurbHtml='<p class="wire-dek-local"><span class="tag">The Local Read</span>'+esc(localLede)+'</p>';
 
   /* The deep data block rides the same category gate. On an Analysis card it
      hangs below the excerpt with the stat lines and the head-to-head; on
