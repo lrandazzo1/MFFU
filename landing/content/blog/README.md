@@ -102,27 +102,28 @@ npm run build:blog     # compile source -> landing/content/generated/blog/
 npm run check:blog     # verify the payload is fresh and punctuation is clean
 ```
 
-## Automated Sleeper recap pipeline
+## Automated public-news pipeline
 
-`scripts/generate-editorial.mjs` fetches one week's real matchup data from the
-public Sleeper API (`https://api.sleeper.app/v1/...`) and writes a source
-article in this directory, in the exact format described above. It never
-invents a score, a manager, or a stat line: every name and number in the
-output comes straight from the Sleeper response for the league and week you
-give it, and it fails loudly rather than padding a gap with generic copy.
+`scripts/generate-editorial.mjs` reads one item from a public RSS or Atom
+feed and writes a small, attributed source article in this directory. It has no
+league, roster, provider-cookie, or fantasy-stat input. The brief preserves the
+source headline and links readers to the original report instead of generating
+new claims around it.
 
 ```bash
-SLEEPER_LEAGUE_ID=<your league id> npm run generate:editorial   # write a new recap
-npm run build:blog                                               # compile it
-npm run check:editorial                                          # network-free self-test
+npm run generate:editorial
+node scripts/generate-editorial.mjs --feed <rss-url> --player "CeeDee Lamb|WR"
+npm run build:blog
+npm run check:editorial
 ```
 
-There is no default league id configured anywhere in this repo (the in-app
-league data comes from ESPN, not Sleeper), so the script requires
-`SLEEPER_LEAGUE_ID` (or `--league <id>`) explicitly and refuses to guess one.
-`npm run check:editorial` verifies the fetch, matchup pairing, entity
-extraction, and punctuation contract against local fixture data, so it runs
-without network access and without a real league id.
+`--player` is optional and repeatable. A supplied player must appear in the
+selected public item or generation fails, preventing ghost entities. When no
+entity is supplied, the app's News Desk still safely recognizes rostered player
+names mentioned in the published article and adds reader-specific context.
+`npm run check:editorial` verifies the public-feed parser, attribution, clean
+Markdown, evidence-backed entity tags, and zero league/stat dependency using a
+local fixture, so it runs without network access.
 
 `landing/content/generated/blog/` is produced by the build. Do not hand edit it.
 It is committed so the `fsn-landing` deploy (which runs no build step) serves it
