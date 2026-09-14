@@ -5035,12 +5035,17 @@ window.FSNRelease = (function(){
   function isIOS(){
     return document.documentElement.getAttribute('data-fsn-release') === 'ios' || FSNApi.isNativeShell();
   }
-  /* Yahoo now renders on every release. The OAuth handshake is still cookie-
-     scoped to the deployment origin, so the native shell routes the login
-     through a Safari sheet (see startYahooLogin) — but the button, the OAuth
-     panel and the setup wiring are shared between web and iOS. */
-  function supportsProvider(){ return true; }
-  if($('ftuProviders')) $('ftuProviders').textContent = 'ESPN, Sleeper or Yahoo';
+  /* Yahoo's OAuth session is owned by the deployment-origin browser cookie.
+     A Capacitor webview cannot reuse that Safari cookie, so exposing Yahoo in
+     the packaged app would let a reader complete login and then strand them
+     without a hydration path. Keep the provider available on the web, and
+     only present iOS choices the native shell can actually load. */
+  function supportsProvider(provider){
+    return !isIOS() || String(provider || '').toLowerCase() !== 'yahoo';
+  }
+  if($('ftuProviders')) $('ftuProviders').textContent = isIOS()
+    ? 'ESPN or Sleeper'
+    : 'ESPN, Sleeper or Yahoo';
   return { isIOS, supportsProvider };
 })();
 
