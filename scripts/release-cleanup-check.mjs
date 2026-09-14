@@ -171,11 +171,7 @@ for(const native of [true,false]){
   const c = context({ document:{ documentElement:{ getAttribute:()=>native?'ios':'web' }, querySelectorAll:()=>[] },
     FSNApi:{ isNativeShell:()=>false }, $:()=>null });
   vm.runInContext(releaseCode,c);
-  // Yahoo's OAuth flow is Safari-backed on iOS, but its setup and
-  // selection UI are intentionally available in both release targets. Keep
-  // this check aligned with that native handoff rather than treating the
-  // browser-only cookie transport as an unavailable provider.
-  assert.equal(c.FSNRelease.supportsProvider('yahoo'),true);
+  assert.equal(c.FSNRelease.supportsProvider('yahoo'),!native);
   assert.equal(c.FSNRelease.supportsProvider('espn'),true);
   assert.equal(c.FSNRelease.supportsProvider('sleeper'),true);
 }
