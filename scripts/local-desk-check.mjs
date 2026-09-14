@@ -465,6 +465,31 @@ try {
       }, 'primer', seed),
       blowoutAgain: D.gameLine(london, D.liveScore(3, 2), 'recap', seed),
       finalWonAgain: D.gameLine(bijan, D.liveScore(1, 1), 'recap', seed),
+      /* The recap card calls this adapter, not gameLine() directly. Exercise
+         both scoreboard states through that public path. */
+      localWireFinal: D.localizeWire({
+        post:{ slug:'final-recap-probe', title:'Final recap: Bijan Robinson', excerpt:'Bijan Robinson finished the week.' },
+        matches:[{ name:'Bijan Robinson', owner:bijan.owner }],
+        unmatched:[], context:{ currentWeek:1 },
+      }, { id:'recap' }, '2026-09-14'),
+      localWireLive: D.localizeWire({
+        post:{ slug:'live-recap-probe', title:'Live recap: Bijan Robinson', excerpt:'Bijan Robinson is still driving the matchup.' },
+        matches:[{ name:'Bijan Robinson', owner:bijan.owner }],
+        unmatched:[], context:{ currentWeek:2 },
+      }, { id:'recap' }, '2026-09-14'),
+      /* No roster owns this mentioned player. The recap stays specific to the
+         article entity, but never fabricates a manager tag or stat line. */
+      unownedFinalWire: D.localizeWire({
+        post:{
+          slug:'unowned-final-recap-probe',
+          title:'Nobody Freeagent closes the recap',
+          excerpt:'Nobody Freeagent remains the central name in this recap.',
+          entities:[{ name:'Nobody Freeagent' }, { name:'Secondary Mention' }],
+        },
+        matches:[],
+        unmatched:[{ name:'Nobody Freeagent' }, { name:'Secondary Mention' }],
+        context:{ currentWeek:1 },
+      }, { id:'recap' }, '2026-09-14'),
     };
   });
 
@@ -606,6 +631,28 @@ try {
   if (/\bwinning\b|\bsealing\b|\bwrong way\b/i.test(engine.finalTied)) {
     fail('the tied-final line leaked a decisive-outcome word: ' + engine.finalTied);
   } else pass('the tied-final line uses no decisive-outcome language');
+
+  /* LocalizeWire is the exact recap-card seam. A final cannot leak live
+     tension, while a live score must retain its active matchup pressure. */
+  contains(engine.localWireFinal, 'When the dust settled',
+    'recap Local Read uses the finalized state through localizeWire()');
+  if (/\bwindow is still open\b|\bcushion\b|\bclosable\b|\bhanging in the balance\b/i.test(engine.localWireFinal)) {
+    fail('final recap Local Read leaked active-game phrasing: ' + engine.localWireFinal);
+  } else pass('final recap Local Read carries no active-game tension phrasing');
+
+  if (/\bWhen the dust settled\b|\bfinalized\b/i.test(engine.localWireLive)) {
+    fail('live recap Local Read leaked finalized-game phrasing: ' + engine.localWireLive);
+  } else pass('live recap Local Read avoids finalized-game phrasing');
+  contains(engine.localWireLive, 'closable, and only if the rest of the lineup answers',
+    'live recap Local Read retains its active pressure phrasing');
+
+  contains(engine.unownedFinalWire, 'Nobody Freeagent',
+    'an unowned recap entity remains the Local Read focal player');
+  contains(engine.unownedFinalWire, 'finalized Week 1 record',
+    'the unowned fallback respects finalized matchup state');
+  if (/\bManager \d\b|\bwindow is still open\b|\bcushion\b/i.test(engine.unownedFinalWire)) {
+    fail('unowned final recap fallback leaked an ownership tag or live phrase: ' + engine.unownedFinalWire);
+  } else pass('unowned recap fallback stays specific without generic ownership or live language');
 
   /* ---- the no-lineup week ---- */
   expect(engine.emptyWeek && engine.emptyWeek.week, 2,
