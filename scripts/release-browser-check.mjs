@@ -24,7 +24,13 @@ await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 const base = 'http://127.0.0.1:' + server.address().port;
 const browser = await chromium.launch({ executablePath:process.env.FSN_CHROMIUM_PATH || chromium.executablePath() });
 try{
-  for(const route of ['', '?goto=setup&platform=yahoo&id=449.l.12345', '?goto=setup&platform=yahoo&id=123456']){
+  const cases = [
+    { route:'', provider:'espn', leagueId:'', yahooPanelHidden:true },
+    { route:'?goto=setup&platform=yahoo&id=449.l.12345', provider:'yahoo', leagueId:'', yahooPanelHidden:false },
+    { route:'?goto=setup&platform=yahoo&id=123456', provider:'yahoo', leagueId:'123456', yahooPanelHidden:false },
+  ];
+  for(const releaseCase of cases){
+    const { route, provider, leagueId, yahooPanelHidden } = releaseCase;
     const page = await browser.newPage({ viewport:{ width:390, height:844 } });
     const calls = [], errors = [];
     page.on('request',req=>{ if(/\/api\/(?:auth\/yahoo|yahoo|espn)/.test(req.url())) calls.push(req.url()); });
@@ -39,14 +45,19 @@ try{
     });
     await page.goto(base + '/' + route,{ waitUntil:'load' });
     await page.waitForSelector('.screen[data-screen="setup"][data-active="true"]');
-    assert.equal(await page.locator('#providerYahoo').count(),0);
-    assert.equal(await page.locator('#yahooAuthPanel').count(),0);
-    assert.equal(await page.locator('#leagueIdInput').inputValue(),'');
+    assert.equal(await page.locator('#providerYahoo').count(),1);
+    assert.equal(await page.locator('#yahooAuthPanel').count(),1);
+    assert.equal(await page.locator('#providerYahoo').getAttribute('aria-selected'),provider === 'yahoo' ? 'true' : 'false');
+    assert.equal(await page.locator('#yahooAuthPanel').evaluate(el=>el.classList.contains('hidden')),yahooPanelHidden);
+    assert.equal(await page.locator('#leagueIdInput').inputValue(),leagueId);
     assert.equal(await page.locator('#homeLeagueName').textContent(),'THE DESK');
     assert.equal(await page.locator('#homeSeasonLabel').textContent(),'');
-    assert(!/Yahoo/.test(await page.locator('#leagueSwitcher').textContent()));
-    assert.equal(await page.locator('#ftuProviders').textContent(),'ESPN or Sleeper');
-    assert.equal(calls.length,0,'iOS boot/link must not fetch Yahoo or reinterpret its ID as ESPN');
+    assert.match(await page.locator('#leagueSwitcher').textContent(),/Old Yahoo · YAHOO/);
+    assert.equal(await page.locator('#ftuProviders').textContent(),'ESPN, Sleeper or Yahoo');
+    if(provider === 'yahoo'){
+      assert.match(await page.locator('#yahooAuthStatus').textContent(),/Yahoo login opens in Safari/);
+    }
+    assert.equal(calls.length,0,'iOS boot/link must not probe Yahoo or reinterpret its ID as ESPN');
     assert.deepEqual(errors,[]);
     await page.evaluate(()=>{
       localStorage.setItem('fsn.private','secret');
@@ -70,7 +81,7 @@ try{
     assert.deepEqual(errors,[]);
     await page.close();
   }
-  console.log('[release-browser] Native provider UI, stale preferences/links, clean Desk and complete erase/reload passed.');
+  console.log('[release-browser] Native Yahoo UI, stale preferences/links, safe Safari handoff and complete erase/reload passed.');
 }finally{
   await browser.close();
   server.close();
