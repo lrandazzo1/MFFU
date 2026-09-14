@@ -1,41 +1,25 @@
 #!/usr/bin/env node
 /* ============================================================================
-   FSN — AUTOMATED EDITORIAL GENERATOR (Sleeper recap)
+   FSN — LEAGUE-AGNOSTIC NFL EDITORIAL GENERATOR
    ----------------------------------------------------------------------------
-   Fetches one week's real matchup data from the public Sleeper API and turns
-   it into a "who carried their squad" recap article, written straight into
-   `landing/content/blog/` in the format `scripts/build-blog.mjs` already
-   consumes (see `landing/content/blog/README.md` for the schema).
+   Fetches public NFL RSS/Atom feeds and compiles a source-attributed roundup
+   into landing/content/blog/. It never reads a fantasy league, roster,
+   database, provider cookie, or user identifier.
 
-   This script is deliberately dumb about content: it never invents a score, a
-   manager, or a stat line. Every number and every name in the output comes
-   from the Sleeper response for the league and week you pass in. If the
-   Sleeper API does not return enough to build a real article, the script
-   fails loudly instead of padding the gap with generic copy.
-
-   No `SLEEPER_LEAGUE_ID` is configured anywhere in this repo (the in-app
-   league data comes from ESPN, not Sleeper), so this script requires a league
-   id explicitly and never guesses one:
-
-     --league <sleeperLeagueId>   or   SLEEPER_LEAGUE_ID=<id>
-     --week <n>                   optional, defaults to Sleeper's current week
-     --publish-date <YYYY-MM-DD>  optional, defaults to today
-     --out <dir>                  optional, defaults to landing/content/blog
-     --base <url>                 optional, override the Sleeper API base
-                                   (used by --self-test to point at a fixture
-                                   server instead of the real network)
+   Defaults:
+     Tuesday  -> game_recap        -> Recap
+     Thursday -> tnf_matchup_prep  -> Roster Watch
+     Friday   -> weekend_deepdive  -> Roster Watch
 
    Usage:
-     SLEEPER_LEAGUE_ID=123456789012345678 node scripts/generate-editorial.mjs
-     node scripts/generate-editorial.mjs --league <id> --week 3
-     node scripts/generate-editorial.mjs --self-test    # network-free check
+     npm run generate:editorial
+     node scripts/generate-editorial.mjs --publish-date 2026-09-15
+     node scripts/generate-editorial.mjs --feed "CBS Sports NFL|https://..."
+     node scripts/generate-editorial.mjs --self-test
 
-   After a real run, compile it into the deploy payload as usual:
-     npm run build:blog
-
-   This script is additive: it only writes new files under
-   `landing/content/blog/`. It never touches index.html, the News Desk
-   generators, Supabase, or any historical data pipeline.
+   FSN_NEWS_FEEDS may be a JSON array of { name, url } objects. A custom
+   --feed argument replaces the defaults and may be repeated. Normal runs fail
+   loudly unless at least one source succeeds and enough recent stories remain.
 ============================================================================ */
 
 import fs from 'node:fs';
@@ -46,412 +30,458 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DEFAULT_OUT_DIR = path.join(ROOT, 'landing', 'content', 'blog');
-const DEFAULT_BASE = 'https://api.sleeper.app/v1';
-
-// U+2014 EM DASH and U+2015 HORIZONTAL BAR are banned everywhere in FSN blog
-// copy (see landing/content/blog/README.md). Mirrored here so a generated
-// article can never slip an em dash past the build-blog.mjs check.
+const DEFAULT_FEEDS = Object.freeze([
+  { name: 'CBS Sports NFL', url: 'https://www.cbssports.com/rss/headlines/nfl/' },
+  { name: 'ESPN NFL', url: 'https://www.espn.com/espn/rss/nfl/news' },
+  { name: 'Yahoo Sports NFL', url: 'https://sports.yahoo.com/nfl/rss/' },
+]);
+const EDITIONS = Object.freeze({
+  game_recap: {
+    weekdays: [2],
+    category: 'Recap',
+    titlePrefix: 'NFL news roundup',
+    excerpt: 'The latest verified NFL headlines and reporting from around the league.',
+    intro: 'The NFL news cycle has moved. Here are the reports shaping the league right now.',
+  },
+  tnf_matchup_prep: {
+    weekdays: [4],
+    category: 'Roster Watch',
+    titlePrefix: 'NFL Thursday news briefing',
+    excerpt: 'The latest NFL injuries, roster developments, and reporting before Thursday night.',
+    intro: 'Thursday has arrived with injuries, roster movement, and a new slate taking shape. Here is the latest reporting.',
+  },
+  weekend_deepdive: {
+    weekdays: [5],
+    category: 'Roster Watch',
+    titlePrefix: 'NFL weekend news briefing',
+    excerpt: 'The NFL reports that matter before the weekend slate begins.',
+    intro: 'The weekend board is nearly set. These are the NFL reports worth carrying into the slate.',
+  },
+});
+const ALLOWED_TRIGGERS = new Set(Object.keys(EDITIONS));
 const BANNED_CHARS = /[—―]/;
+const MAX_DESCRIPTION_CHARS = 360;
 
-function normName(s) {
-  return String(s == null ? '' : s)
-    .replace(/[*_`~]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .toLowerCase();
+function decodeEntities(value) {
+  const named = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
+  return String(value).replace(/&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot|apos|nbsp);/gi, (full, entity) => {
+    const key = entity.toLowerCase();
+    if (key[0] !== '#') return named[key] == null ? full : named[key];
+    const number = key.startsWith('#x') ? parseInt(key.slice(2), 16) : parseInt(key.slice(1), 10);
+    return Number.isFinite(number) ? String.fromCodePoint(number) : full;
+  });
 }
 
-/* ------------------------------------------------------------------ *
- * CLI args
- * ------------------------------------------------------------------ */
+function cleanText(value) {
+  return decodeEntities(String(value == null ? '' : value)
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
+    .replace(/<script\b[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style\b[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' '))
+    .replace(BANNED_CHARS, ',')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function tagValue(block, names) {
+  for (const name of names) {
+    const escaped = escapeRegExp(name);
+    const match = new RegExp(`<${escaped}\\b[^>]*>([\\s\\S]*?)<\\/${escaped}>`, 'i').exec(block);
+    if (match) return match[1];
+  }
+  return '';
+}
+
+function atomLink(block) {
+  const tags = block.match(/<link\b[^>]*>/gi) || [];
+  for (const tag of tags) {
+    const rel = /\brel=["']([^"']+)["']/i.exec(tag);
+    const href = /\bhref=["']([^"']+)["']/i.exec(tag);
+    if (href && (!rel || rel[1].toLowerCase() === 'alternate')) return decodeEntities(href[1]);
+  }
+  return '';
+}
+
+function blocksFor(xml, tag) {
+  const escaped = escapeRegExp(tag);
+  return [...String(xml).matchAll(new RegExp(`<${escaped}\\b[^>]*>([\\s\\S]*?)<\\/${escaped}>`, 'gi'))]
+    .map((match) => match[1]);
+}
+
+function safeHttpUrl(value, base) {
+  try {
+    const url = new URL(cleanText(value), base);
+    const loopback = url.protocol === 'http:' && /^(localhost|127\.0\.0\.1)$/.test(url.hostname);
+    if (url.protocol !== 'https:' && !loopback) return '';
+    url.hash = '';
+    return url.toString();
+  } catch (err) {
+    return '';
+  }
+}
+
+function parseFeed(xml, feed) {
+  const rssItems = blocksFor(xml, 'item');
+  const atomEntries = rssItems.length ? [] : blocksFor(xml, 'entry');
+  const blocks = rssItems.length ? rssItems : atomEntries;
+  const isAtom = !rssItems.length && atomEntries.length > 0;
+  const channelTitle = cleanText(tagValue(xml, ['title']));
+  const source = cleanText(feed.name || channelTitle || new URL(feed.url).hostname);
+  return blocks.map((block) => {
+    const title = cleanText(tagValue(block, ['title']));
+    const rawLink = isAtom ? atomLink(block) : tagValue(block, ['link']);
+    const url = safeHttpUrl(rawLink, feed.url);
+    const publishedRaw = cleanText(tagValue(block, ['pubDate', 'dc:date', 'published', 'updated']));
+    const publishedMs = Date.parse(publishedRaw);
+    const description = cleanText(tagValue(block, ['description', 'summary', 'content:encoded', 'content']));
+    return {
+      title,
+      url,
+      source,
+      publishedAt: Number.isFinite(publishedMs) ? new Date(publishedMs).toISOString() : '',
+      publishedMs: Number.isFinite(publishedMs) ? publishedMs : 0,
+      description,
+    };
+  }).filter((item) => item.title && item.url && item.publishedMs > 0);
+}
+
+function parseFeedArg(value) {
+  const raw = String(value || '').trim();
+  const split = raw.indexOf('|');
+  const name = split === -1 ? '' : raw.slice(0, split).trim();
+  const url = split === -1 ? raw : raw.slice(split + 1).trim();
+  if (!url) throw new Error('[generate-editorial] --feed requires a URL, optionally prefixed with "Source name|".');
+  return { name, url };
+}
+
+function feedsFromEnv() {
+  const raw = String(process.env.FSN_NEWS_FEEDS || '').trim();
+  if (!raw) return null;
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    throw new Error(`[generate-editorial] FSN_NEWS_FEEDS must be valid JSON: ${err.message}`);
+  }
+  if (!Array.isArray(parsed) || !parsed.length) {
+    throw new Error('[generate-editorial] FSN_NEWS_FEEDS must be a non-empty JSON array.');
+  }
+  return parsed.map((feed, index) => {
+    if (!feed || typeof feed !== 'object' || !feed.url) {
+      throw new Error(`[generate-editorial] FSN_NEWS_FEEDS entry ${index + 1} needs a url.`);
+    }
+    return { name: String(feed.name || '').trim(), url: String(feed.url).trim() };
+  });
+}
+
 function parseArgs(argv) {
+  const cliFeeds = [];
   const args = {
-    league: process.env.SLEEPER_LEAGUE_ID || null,
-    week: null,
+    feeds: null,
     publishDate: null,
     out: DEFAULT_OUT_DIR,
-    base: process.env.SLEEPER_API_BASE || DEFAULT_BASE,
+    trigger: null,
+    limit: 6,
+    maxAgeHours: 96,
     selfTest: false,
   };
   for (let i = 0; i < argv.length; i++) {
-    const a = argv[i];
-    if (a === '--league') args.league = argv[++i];
-    else if (a === '--week') args.week = Number(argv[++i]);
-    else if (a === '--publish-date') args.publishDate = argv[++i];
-    else if (a === '--out') args.out = path.resolve(argv[++i]);
-    else if (a === '--base') args.base = argv[++i];
-    else if (a === '--self-test') args.selfTest = true;
+    const arg = argv[i];
+    if (arg === '--feed') cliFeeds.push(parseFeedArg(argv[++i]));
+    else if (arg === '--publish-date') args.publishDate = argv[++i];
+    else if (arg === '--out') args.out = path.resolve(argv[++i]);
+    else if (arg === '--trigger') args.trigger = argv[++i];
+    else if (arg === '--limit') args.limit = Number(argv[++i]);
+    else if (arg === '--max-age-hours') args.maxAgeHours = Number(argv[++i]);
+    else if (arg === '--self-test') args.selfTest = true;
+    else throw new Error(`[generate-editorial] unknown argument "${arg}".`);
   }
+  args.feeds = cliFeeds.length ? cliFeeds : (feedsFromEnv() || DEFAULT_FEEDS.map((feed) => ({ ...feed })));
   return args;
 }
 
-/* ------------------------------------------------------------------ *
- * Sleeper fetch layer. Every call surfaces a specific, actionable error
- * instead of returning a fallback value a caller might mistake for data.
- * ------------------------------------------------------------------ */
-async function fetchJson(url) {
-  let res;
+function validateFeedUrl(feed) {
+  const url = safeHttpUrl(feed.url, feed.url);
+  if (!url) throw new Error(`[generate-editorial] refused non-HTTPS feed URL "${feed.url}".`);
+  return { name: cleanText(feed.name), url };
+}
+
+async function fetchText(url) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 12000);
+  let response;
   try {
-    res = await fetch(url, { headers: { Accept: 'application/json' } });
+    response = await fetch(url, {
+      headers: {
+        Accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.1',
+        'User-Agent': 'FSNEditorialBot/1.0 (+https://fantasysportsnetwork.app)',
+      },
+      signal: controller.signal,
+    });
   } catch (err) {
     throw new Error(`[generate-editorial] request to ${url} failed: ${err.message}`);
+  } finally {
+    clearTimeout(timeout);
   }
-  const text = await res.text();
-  if (!res.ok) {
-    throw new Error(`[generate-editorial] Sleeper returned ${res.status} ${res.statusText} for ${url}: ${text.slice(0, 200)}`);
+  const text = await response.text();
+  if (!response.ok) {
+    throw new Error(`[generate-editorial] feed returned ${response.status} ${response.statusText} for ${url}: ${text.slice(0, 160)}`);
   }
-  try {
-    return JSON.parse(text);
-  } catch (err) {
-    throw new Error(`[generate-editorial] Sleeper response for ${url} was not valid JSON: ${err.message}`);
+  if (!/<(?:rss|feed|rdf:RDF)\b/i.test(text)) {
+    throw new Error(`[generate-editorial] ${url} did not return RSS or Atom XML.`);
   }
+  return text;
 }
 
-async function currentWeek(base) {
-  const state = await fetchJson(`${base}/state/nfl`);
-  const week = Number(state && state.week);
-  if (!Number.isFinite(week) || week < 1) {
-    throw new Error('[generate-editorial] Sleeper /state/nfl did not return a usable current week.');
-  }
-  return week;
-}
-
-async function fetchLeagueWeek(base, leagueId, week) {
-  const [league, rosters, users, matchups] = await Promise.all([
-    fetchJson(`${base}/league/${leagueId}`),
-    fetchJson(`${base}/league/${leagueId}/rosters`),
-    fetchJson(`${base}/league/${leagueId}/users`),
-    fetchJson(`${base}/league/${leagueId}/matchups/${week}`),
-  ]);
-  if (!league) {
-    throw new Error(`[generate-editorial] Sleeper league "${leagueId}" was not found (the API returned null). Refusing to fabricate a league.`);
-  }
-  if (!Array.isArray(rosters) || rosters.length === 0) {
-    throw new Error(`[generate-editorial] Sleeper league "${leagueId}" returned no rosters.`);
-  }
-  if (!Array.isArray(matchups) || matchups.length === 0) {
-    throw new Error(`[generate-editorial] Sleeper league "${leagueId}" returned no matchups for week ${week}. That week may not have started yet.`);
-  }
-  return { league, rosters, users: Array.isArray(users) ? users : [], matchups };
-}
-
-async function fetchPlayerNames(base, playerIds) {
-  if (playerIds.size === 0) return new Map();
-  // /players/nfl is a multi-megabyte blob of every NFL player, so only pull it
-  // when the week's matchups actually reference player ids to name.
-  const all = await fetchJson(`${base}/players/nfl`);
-  const names = new Map();
-  for (const id of playerIds) {
-    const p = all[id];
-    if (!p) continue;
-    const full = p.full_name || [p.first_name, p.last_name].filter(Boolean).join(' ');
-    if (full) names.set(id, { name: full, position: p.position || '' });
-  }
-  return names;
-}
-
-/* ------------------------------------------------------------------ *
- * Transform: raw Sleeper payloads -> matchup pairs with real owners and
- * real top performers. No randomness, no invented values.
- * ------------------------------------------------------------------ */
-function rosterOwnerMap(rosters, users) {
-  const userById = new Map(users.map((u) => [u.user_id, u]));
-  const map = new Map();
-  for (const r of rosters) {
-    const u = userById.get(r.owner_id);
-    const managerName = (u && (u.display_name || u.username)) || 'Unclaimed roster';
-    const teamName = (u && u.metadata && u.metadata.team_name) || managerName;
-    map.set(r.roster_id, { managerName, teamName });
-  }
-  return map;
-}
-
-function buildMatchupPairs(matchups) {
-  const byId = new Map();
-  for (const m of matchups) {
-    const list = byId.get(m.matchup_id) || [];
-    list.push(m);
-    byId.set(m.matchup_id, list);
-  }
-  return [...byId.entries()]
-    .sort((a, b) => a[0] - b[0])
-    .map(([id, sides]) => ({ id, sides: sides.slice().sort((a, b) => a.roster_id - b.roster_id) }));
-}
-
-function topPerformer(side, playerNames) {
-  const starters = Array.isArray(side.starters) ? side.starters : [];
-  const pointsMap = side.players_points || {};
-  let best = null;
-  for (const id of starters) {
-    const pts = Number(pointsMap[id]);
-    if (!Number.isFinite(pts)) continue;
-    if (!best || pts > best.points || (pts === best.points && String(id) < String(best.id))) {
-      best = { id, points: pts };
-    }
-  }
-  if (!best) return null;
-  const info = playerNames.get(best.id);
-  if (!info) return null;
-  return { id: String(best.id), points: best.points, name: info.name, position: info.position };
-}
-
-const fmtPts = (n) => Number(n).toFixed(2);
-
-function buildArticle({ week, pairs, ownerMap, playerNames, publishDate }) {
-  const entitiesById = new Map();
-  const sections = [];
-
-  for (const pair of pairs) {
-    if (pair.sides.length < 2) {
-      console.warn(`[generate-editorial] matchup ${pair.id} has only one side (bye or odd roster count); skipping it rather than inventing an opponent.`);
-      continue;
-    }
-    if (pair.sides.length > 2) {
-      console.warn(`[generate-editorial] matchup ${pair.id} has ${pair.sides.length} sides; only the first two are used.`);
-    }
-    const [a, b] = pair.sides;
-    const ownerA = ownerMap.get(a.roster_id) || { managerName: 'Unclaimed roster', teamName: 'Unclaimed roster' };
-    const ownerB = ownerMap.get(b.roster_id) || { managerName: 'Unclaimed roster', teamName: 'Unclaimed roster' };
-    const scoreA = Number(a.points) || 0;
-    const scoreB = Number(b.points) || 0;
-
-    const topA = topPerformer(a, playerNames);
-    const topB = topPerformer(b, playerNames);
-    if (topA) entitiesById.set(topA.id, topA);
-    if (topB) entitiesById.set(topB.id, topB);
-
-    const lines = [`### ${ownerA.teamName} vs ${ownerB.teamName}`];
-    if (scoreA === scoreB) {
-      lines.push(`${ownerA.teamName} and ${ownerB.teamName} tied at ${fmtPts(scoreA)} apiece.`);
+async function fetchFeeds(feeds) {
+  const checked = feeds.map(validateFeedUrl);
+  const results = await Promise.allSettled(checked.map(async (feed) => {
+    const xml = await fetchText(feed.url);
+    const items = parseFeed(xml, feed);
+    if (!items.length) throw new Error(`[generate-editorial] ${feed.url} contained no usable dated stories.`);
+    return { feed, items };
+  }));
+  const items = [];
+  let succeeded = 0;
+  results.forEach((result, index) => {
+    if (result.status === 'fulfilled') {
+      succeeded++;
+      items.push(...result.value.items);
     } else {
-      const winner = scoreA > scoreB ? ownerA : ownerB;
-      const loser = scoreA > scoreB ? ownerB : ownerA;
-      const winScore = Math.max(scoreA, scoreB);
-      const loseScore = Math.min(scoreA, scoreB);
-      lines.push(`${winner.teamName} beat ${loser.teamName}, ${fmtPts(winScore)} to ${fmtPts(loseScore)}.`);
+      console.warn(`[generate-editorial] source "${checked[index].name || checked[index].url}" failed; continuing with the other configured feeds.`, result.reason);
     }
-    if (topA) lines.push(`${ownerA.teamName} leaned on **${topA.name}**, who scored ${fmtPts(topA.points)} points.`);
-    if (topB) lines.push(`${ownerB.teamName} got the most from **${topB.name}**, who scored ${fmtPts(topB.points)} points.`);
-    sections.push(lines.join('\n\n'));
-  }
-
-  if (sections.length === 0) {
-    throw new Error('[generate-editorial] no complete matchup pairs were available for this week; refusing to publish an article with no real content.');
-  }
-
-  const entities = [...entitiesById.values()].map((t) => ({ name: t.name, position: t.position, sleeperPlayerId: t.id }));
-  const title = `Week ${week} recap: who carried their squad`;
-  const slug = `week-${week}-game-recap`;
-  const excerpt = `Real scores from every matchup in week ${week}, and the player who did the most to win it.`;
-  const body = [`The week ${week} slate is final. Here is exactly what happened, matchup by matchup.`, ...sections].join('\n\n');
-
-  return { title, slug, publishDate, category: 'Recap', excerpt, author: 'FSN Desk', entities, body };
+  });
+  if (!succeeded) throw new Error('[generate-editorial] every configured news feed failed. No article was written.');
+  return items;
 }
 
-/* ------------------------------------------------------------------ *
- * Validate + serialize, mirroring the rules scripts/build-blog.mjs
- * enforces so nothing generated here can fail that build.
- * ------------------------------------------------------------------ */
+function selectStories(items, asOfMs, maxAgeHours, limit) {
+  const minimum = asOfMs - maxAgeHours * 3600000;
+  const maximum = asOfMs + 6 * 3600000;
+  const seen = new Set();
+  const sourceCounts = new Map();
+  const sorted = items.slice().sort((a, b) => b.publishedMs - a.publishedMs || a.title.localeCompare(b.title));
+  const selected = [];
+  for (const item of sorted) {
+    if (item.publishedMs < minimum || item.publishedMs > maximum) continue;
+    const key = item.title.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    if (!key || seen.has(key)) continue;
+    const count = sourceCounts.get(item.source) || 0;
+    if (count >= 3) continue;
+    seen.add(key);
+    sourceCounts.set(item.source, count + 1);
+    selected.push(item);
+    if (selected.length >= limit) break;
+  }
+  return selected;
+}
+
+function editionFor(publishDate, requestedTrigger) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(publishDate) || Number.isNaN(Date.parse(publishDate + 'T12:00:00Z'))) {
+    throw new Error(`[generate-editorial] publish date "${publishDate}" must be YYYY-MM-DD.`);
+  }
+  if (requestedTrigger) {
+    if (!ALLOWED_TRIGGERS.has(requestedTrigger)) {
+      throw new Error(`[generate-editorial] trigger "${requestedTrigger}" is not a Tuesday, Thursday, or Friday news trigger.`);
+    }
+    return { trigger: requestedTrigger, ...EDITIONS[requestedTrigger] };
+  }
+  const weekday = new Date(publishDate + 'T12:00:00Z').getUTCDay();
+  const match = Object.entries(EDITIONS).find(([, edition]) => edition.weekdays.includes(weekday));
+  if (!match) {
+    throw new Error(`[generate-editorial] ${publishDate} is not a Tuesday, Thursday, or Friday. Pass --trigger only for an intentional manual edition.`);
+  }
+  return { trigger: match[0], ...match[1] };
+}
+
+function displayDate(publishDate) {
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC',
+  }).format(new Date(publishDate + 'T12:00:00Z'));
+}
+
+function trimDescription(value) {
+  const text = cleanText(value);
+  if (text.length <= MAX_DESCRIPTION_CHARS) return text;
+  const clipped = text.slice(0, MAX_DESCRIPTION_CHARS - 3).replace(/\s+\S*$/, '').trim();
+  return clipped + '...';
+}
+
+function buildArticle({ publishDate, edition, stories }) {
+  const stamp = displayDate(publishDate);
+  const sections = stories.map((story) => {
+    const published = new Intl.DateTimeFormat('en-US', {
+      month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+      timeZone: 'UTC', timeZoneName: 'short',
+    }).format(new Date(story.publishedAt));
+    const description = trimDescription(story.description);
+    const lines = [
+      `### ${story.title}`,
+      `Source: [${story.source}](${story.url}) · ${published}`,
+    ];
+    if (description && description.toLowerCase() !== story.title.toLowerCase()) lines.push(description);
+    return lines.join('\n\n');
+  });
+  return {
+    title: `${edition.titlePrefix}: ${stamp}`,
+    slug: `nfl-news-${edition.trigger.replace(/_/g, '-')}-${publishDate}`,
+    publishDate,
+    category: edition.category,
+    excerpt: edition.excerpt,
+    author: 'FSN Desk',
+    notificationTrigger: edition.trigger,
+    entities: [],
+    body: [edition.intro, ...sections,
+      'FSN links to the original reporting so readers can continue with the source publication.'].join('\n\n'),
+  };
+}
+
 function validateArticle(article) {
-  const required = ['title', 'slug', 'publishDate', 'category', 'excerpt', 'author'];
-  for (const key of required) {
-    if (!article[key]) throw new Error(`[generate-editorial] generated article is missing required field "${key}"`);
+  for (const key of ['title', 'slug', 'publishDate', 'category', 'excerpt', 'author', 'notificationTrigger', 'body']) {
+    if (!article[key]) throw new Error(`[generate-editorial] generated article is missing required field "${key}".`);
   }
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(article.slug)) {
-    throw new Error(`[generate-editorial] generated slug "${article.slug}" is not lowercase kebab-case`);
+    throw new Error(`[generate-editorial] generated slug "${article.slug}" is not lowercase kebab-case.`);
   }
-  if (Number.isNaN(Date.parse(article.publishDate))) {
-    throw new Error(`[generate-editorial] generated publishDate "${article.publishDate}" is not a parseable date`);
+  if (!ALLOWED_TRIGGERS.has(article.notificationTrigger)) {
+    throw new Error(`[generate-editorial] generated trigger "${article.notificationTrigger}" is not registered.`);
   }
-  if (article.entities.length === 0) {
-    throw new Error('[generate-editorial] generated article has no entities; refusing to publish an unattributed recap');
+  if (article.entities.length !== 0) {
+    throw new Error('[generate-editorial] internet news articles must not carry league roster entities.');
   }
-
-  const haystack = normName(article.title + ' ' + article.body);
-  for (const e of article.entities) {
-    if (!haystack.includes(normName(e.name))) {
-      throw new Error(`[generate-editorial] entity "${e.name}" is not named verbatim in the article body; refusing to ship a ghost entity`);
-    }
-  }
-
-  const scanFields = [article.title, article.slug, article.category, article.excerpt, article.author, article.body,
-    ...article.entities.map((e) => e.name)];
-  for (const field of scanFields) {
-    if (BANNED_CHARS.test(String(field))) {
-      throw new Error(`[generate-editorial] em dash found in generated content: "${field}"`);
-    }
+  for (const field of [article.title, article.category, article.excerpt, article.author, article.body]) {
+    if (BANNED_CHARS.test(String(field))) throw new Error('[generate-editorial] em dash found in generated content.');
   }
 }
 
 function serializeFrontmatter(article) {
-  const lines = ['---'];
-  lines.push(`title: ${article.title}`);
-  lines.push(`slug: ${article.slug}`);
-  lines.push(`publishDate: ${article.publishDate}`);
-  lines.push(`category: ${article.category}`);
-  lines.push(`excerpt: ${article.excerpt}`);
-  lines.push(`author: ${article.author}`);
-  lines.push('entities:');
-  for (const e of article.entities) {
-    lines.push(`  - name: ${e.name}`);
-    if (e.position) lines.push(`    position: ${e.position}`);
-    if (e.sleeperPlayerId) lines.push(`    sleeperPlayerId: "${e.sleeperPlayerId}"`);
-  }
-  lines.push('---');
-  lines.push('');
-  lines.push(article.body);
-  return lines.join('\n') + '\n';
+  return [
+    '---',
+    `title: ${article.title}`,
+    `slug: ${article.slug}`,
+    `publishDate: ${article.publishDate}`,
+    `category: ${article.category}`,
+    `excerpt: ${article.excerpt}`,
+    `author: ${article.author}`,
+    `notificationTrigger: ${article.notificationTrigger}`,
+    '---',
+    '',
+    article.body,
+    '',
+  ].join('\n');
 }
 
-/* ------------------------------------------------------------------ *
- * Orchestration
- * ------------------------------------------------------------------ */
-async function generate({ league, week, publishDate, out, base }) {
-  if (!league) {
-    throw new Error('[generate-editorial] missing Sleeper league id. Pass --league <id> or set SLEEPER_LEAGUE_ID. Refusing to guess a league, since that would mean shipping fabricated data.');
+async function generate({ feeds, publishDate, out, trigger, limit, maxAgeHours }) {
+  if (!Number.isInteger(limit) || limit < 3 || limit > 12) {
+    throw new Error('[generate-editorial] --limit must be an integer from 3 through 12.');
   }
-  const resolvedWeek = week || await currentWeek(base);
+  if (!Number.isFinite(maxAgeHours) || maxAgeHours < 1 || maxAgeHours > 336) {
+    throw new Error('[generate-editorial] --max-age-hours must be between 1 and 336.');
+  }
   const resolvedDate = publishDate || new Date().toISOString().slice(0, 10);
-
-  console.log(`[generate-editorial] fetching league ${league}, week ${resolvedWeek} from ${base}`);
-  const { rosters, users, matchups } = await fetchLeagueWeek(base, league, resolvedWeek);
-  const ownerMap = rosterOwnerMap(rosters, users);
-  const pairs = buildMatchupPairs(matchups);
-
-  const neededIds = new Set();
-  for (const pair of pairs) {
-    for (const side of pair.sides) {
-      for (const id of (side.starters || [])) neededIds.add(id);
-    }
+  const edition = editionFor(resolvedDate, trigger);
+  const asOfMs = Date.parse(resolvedDate + 'T23:59:59Z');
+  console.log(`[generate-editorial] fetching ${feeds.length} public news feed(s) for ${edition.trigger}`);
+  const fetched = await fetchFeeds(feeds);
+  const stories = selectStories(fetched, asOfMs, maxAgeHours, limit);
+  if (stories.length < 3) {
+    throw new Error(`[generate-editorial] only ${stories.length} recent unique stories remained; at least 3 are required. No article was written.`);
   }
-  const playerNames = await fetchPlayerNames(base, neededIds);
-
-  const article = buildArticle({ week: resolvedWeek, pairs, ownerMap, playerNames, publishDate: resolvedDate });
+  const article = buildArticle({ publishDate: resolvedDate, edition, stories });
   validateArticle(article);
-
   fs.mkdirSync(out, { recursive: true });
-  const outFile = path.join(out, `${article.slug}.md`);
+  const outFile = path.join(out, article.slug + '.md');
   fs.writeFileSync(outFile, serializeFrontmatter(article), 'utf8');
-  console.log(`[generate-editorial] wrote ${outFile}`);
-  return outFile;
+  console.log(`[generate-editorial] wrote ${outFile} from ${stories.length} source-attributed reports`);
+  return { outFile, article, stories };
 }
 
-/* ------------------------------------------------------------------ *
- * Self-test: exercises the entire pipeline (fetch, pairing, entity
- * extraction, validation, serialization) against a local fixture server
- * shaped exactly like the real Sleeper API, so it runs without network
- * access and without a real league id.
- * ------------------------------------------------------------------ */
-function buildFixtures() {
-  return {
-    '/v1/state/nfl': { week: 1, season: '2026', season_type: 'regular' },
-    '/v1/league/test-league': { league_id: 'test-league', name: 'Fixture League', season: '2026' },
-    '/v1/league/test-league/rosters': [
-      { roster_id: 1, owner_id: 'u1' },
-      { roster_id: 2, owner_id: 'u2' },
-    ],
-    '/v1/league/test-league/users': [
-      { user_id: 'u1', display_name: 'Alice', metadata: { team_name: 'Alice All Stars' } },
-      { user_id: 'u2', display_name: 'Bob', metadata: {} },
-    ],
-    '/v1/league/test-league/matchups/1': [
-      { roster_id: 1, matchup_id: 1, points: 120.5, starters: ['1001', '1002'], players_points: { '1001': 30.2, '1002': 10.1 } },
-      { roster_id: 2, matchup_id: 1, points: 110.0, starters: ['2001'], players_points: { '2001': 25.5 } },
-    ],
-    '/v1/players/nfl': {
-      '1001': { full_name: 'Test Player One', position: 'WR' },
-      '1002': { full_name: 'Test Player Two', position: 'RB' },
-      '2001': { full_name: 'Test Player Three', position: 'QB' },
-    },
-  };
+function fixtureFeeds(origin) {
+  return [
+    { name: 'Fixture RSS', url: origin + '/rss.xml' },
+    { name: 'Fixture Atom', url: origin + '/atom.xml' },
+  ];
+}
+
+function startFixtureServer() {
+  const rss = `<?xml version="1.0"?><rss version="2.0"><channel><title>Fixture RSS</title>
+    <item><title>Quarterback returns to practice</title><link>https://example.com/qb-practice</link><pubDate>Tue, 15 Sep 2026 16:00:00 GMT</pubDate><description><![CDATA[The starter returned — and handled the full session.]]></description></item>
+    <item><title>Rookie receiver earns larger role</title><link>https://example.com/rookie-role</link><pubDate>Tue, 15 Sep 2026 14:00:00 GMT</pubDate><description>The offense expanded his package after a strong opener.</description></item>
+    <item><title>Old report outside the window</title><link>https://example.com/old</link><pubDate>Mon, 01 Jun 2026 10:00:00 GMT</pubDate><description>Stale.</description></item>
+  </channel></rss>`;
+  const atom = `<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"><title>Fixture Atom</title>
+    <entry><title>Defense adjusts after Week 1</title><link rel="alternate" href="https://example.org/defense"/><updated>2026-09-15T12:00:00Z</updated><summary>Coaches changed the rotation &amp; elevated a young defender.</summary></entry>
+    <entry><title>Quarterback returns to practice</title><link href="https://example.org/duplicate"/><updated>2026-09-15T11:00:00Z</updated><summary>Duplicate title.</summary></entry>
+    <entry><title>Veteran signs with contender</title><link href="https://example.org/signing"/><updated>2026-09-15T10:00:00Z</updated><summary>A veteran joined the active roster.</summary></entry>
+  </feed>`;
+  const server = createServer((req, res) => {
+    res.setHeader('Content-Type', 'application/xml');
+    if (req.url === '/rss.xml') res.end(rss);
+    else if (req.url === '/atom.xml') res.end(atom);
+    else { res.statusCode = 404; res.end('<error>missing</error>'); }
+  });
+  return new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve(server)));
 }
 
 async function runSelfTest() {
-  const fixtures = buildFixtures();
-  const server = createServer((req, res) => {
-    const url = new URL(req.url, 'http://127.0.0.1');
-    const body = fixtures[url.pathname];
-    res.setHeader('Content-Type', 'application/json');
-    if (body === undefined) {
-      res.statusCode = 200;
-      res.end('null'); // matches Sleeper's own behaviour for an unknown id
-      return;
-    }
-    res.statusCode = 200;
-    res.end(JSON.stringify(body));
-  });
-  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-  const { port } = server.address();
-  const base = `http://127.0.0.1:${port}/v1`;
-
-  const tmpOut = fs.mkdtempSync(path.join(os.tmpdir(), 'fsn-editorial-selftest-'));
+  const server = await startFixtureServer();
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), 'fsn-editorial-selftest-'));
   const failures = [];
-  const check = (cond, msg) => { if (!cond) failures.push(msg); };
-
+  const check = (condition, message) => { if (!condition) failures.push(message); };
   try {
-    // Run twice to confirm the pipeline is deterministic for identical input.
-    let outFile;
-    for (let run = 1; run <= 2; run++) {
-      outFile = await generate({ league: 'test-league', week: 1, publishDate: '2026-09-16', out: tmpOut, base });
+    const dates = [
+      ['2026-09-15', 'game_recap', 'Recap'],
+      ['2026-09-17', 'tnf_matchup_prep', 'Roster Watch'],
+      ['2026-09-18', 'weekend_deepdive', 'Roster Watch'],
+    ];
+    let first = '';
+    for (const [publishDate, expectedTrigger, expectedCategory] of dates) {
+      const result = await generate({
+        feeds: fixtureFeeds(origin), publishDate, out, trigger: null, limit: 4, maxAgeHours: 96,
+      });
+      const content = fs.readFileSync(result.outFile, 'utf8');
+      check(result.article.notificationTrigger === expectedTrigger, `${publishDate} should map to ${expectedTrigger}`);
+      check(result.article.category === expectedCategory, `${publishDate} should map to ${expectedCategory}`);
+      check(result.article.entities.length === 0, 'internet articles should carry no roster entities');
+      check(content.includes('[Fixture RSS](https://example.com/qb-practice)'), 'RSS source link should be preserved');
+      check(content.includes('[Fixture Atom](https://example.org/defense)'), 'Atom source link should be preserved');
+      check((content.match(/Quarterback returns to practice/g) || []).length === 1, 'duplicate headlines should collapse');
+      check(!content.includes('Old report outside the window'), 'stale feed items should be filtered');
+      check(!BANNED_CHARS.test(content), 'source copy should be punctuation-cleaned');
+      check(!/roster_id|owner_id|sleeperPlayerId/.test(content), 'output should not contain fantasy-league identifiers');
+      if (!first) first = content;
     }
-    const content = fs.readFileSync(outFile, 'utf8');
-
-    check(content.includes('title: Week 1 recap'), 'expected week-aware title');
-    check(content.includes('Test Player One'), 'expected the higher-scoring starter (30.2 > 10.1) to be named as roster 1\'s top performer');
-    check(!content.includes('Test Player Two'), 'expected the lower-scoring starter to be omitted as a top performer');
-    check(content.includes('Test Player Three'), 'expected roster 2\'s only starter to be named as its top performer');
-    check(content.includes('Alice All Stars'), 'expected users.metadata.team_name to be used when present');
-    check(/\bBob\b/.test(content) && !content.includes('Bob\'s'), 'expected display_name fallback when team_name is absent');
-    check(content.includes('Alice All Stars beat Bob, 120.50 to 110.00'), 'expected the real scores to decide and report the winner');
-    check(!BANNED_CHARS.test(content), 'expected no em dash anywhere in generated content');
-    check(/sleeperPlayerId: "1001"/.test(content), 'expected sleeperPlayerId to be serialized as a quoted string');
-
-    // Missing league id must fail loudly, never fabricate a league.
-    let threwForMissingLeague = false;
-    try {
-      await generate({ league: null, week: 1, out: tmpOut, base });
-    } catch (err) {
-      threwForMissingLeague = /missing Sleeper league id/.test(err.message);
-    }
-    check(threwForMissingLeague, 'expected a missing league id to throw a clear, specific error');
-
-    // An unknown league id (Sleeper returns null, not a 404) must also fail loudly.
-    let threwForUnknownLeague = false;
-    try {
-      await generate({ league: 'does-not-exist', week: 1, out: tmpOut, base });
-    } catch (err) {
-      threwForUnknownLeague = /was not found/.test(err.message);
-    }
-    check(threwForUnknownLeague, 'expected an unknown league id to throw a clear, specific error instead of writing a file');
-
-    // Week auto-detection from /state/nfl.
-    fs.rmSync(path.join(tmpOut, 'week-1-game-recap.md'), { force: true });
-    await generate({ league: 'test-league', publishDate: '2026-09-16', out: tmpOut, base });
-    check(fs.existsSync(path.join(tmpOut, 'week-1-game-recap.md')), 'expected week to be auto-detected from /state/nfl when --week is omitted');
+    const again = await generate({
+      feeds: fixtureFeeds(origin), publishDate: '2026-09-15', out, trigger: null, limit: 4, maxAgeHours: 96,
+    });
+    check(fs.readFileSync(again.outFile, 'utf8') === first, 'identical feed input should generate identical output');
   } finally {
     server.close();
-    fs.rmSync(tmpOut, { recursive: true, force: true });
+    fs.rmSync(out, { recursive: true, force: true });
   }
-
   if (failures.length) {
     console.error('[generate-editorial] SELF-TEST FAILED:');
-    for (const f of failures) console.error('  - ' + f);
+    failures.forEach((failure) => console.error('  - ' + failure));
     process.exit(1);
   }
-  console.log('[generate-editorial] self-test passed: Sleeper fetch, matchup pairing, entity extraction, determinism, and the punctuation/ghost-entity contract all verified against fixture data.');
+  console.log('[generate-editorial] self-test passed: RSS, Atom, deduplication, freshness, cadence routing, attribution, and league independence verified.');
 }
 
 async function main() {
-  const args = parseArgs(process.argv.slice(2));
-  if (args.selfTest) {
-    await runSelfTest();
-    return;
-  }
   try {
-    const outFile = await generate(args);
-    console.log(`[generate-editorial] done. Run "npm run build:blog" to compile ${path.relative(ROOT, outFile)} into the deploy payload.`);
+    const args = parseArgs(process.argv.slice(2));
+    if (args.selfTest) await runSelfTest();
+    else {
+      const result = await generate(args);
+      console.log(`[generate-editorial] done. Run "npm run build:blog" to compile ${path.relative(ROOT, result.outFile)}.`);
+    }
   } catch (err) {
-    console.error(err.message);
+    console.error('[generate-editorial] generation failed.', err);
     process.exit(1);
   }
 }

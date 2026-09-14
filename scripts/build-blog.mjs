@@ -34,8 +34,16 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 // in landing/content/blog and the compiled payload lands in
 // landing/content/generated/blog so the landing deploy serves it directly at
 // /content/generated/blog/**.
-const SRC_DIR = path.join(ROOT, 'landing', 'content', 'blog');
-const OUT_DIR = path.join(ROOT, 'landing', 'content', 'generated', 'blog');
+/* Test-only directory seams let the end-to-end pipeline check compile a real
+   generated article without touching the checked-in production payload. They
+   are deliberately environment-only: normal builds keep the exact paths they
+   have always used. */
+const resolveDir = (name, fallback) => {
+  const configured = String(process.env[name] || '').trim();
+  return configured ? path.resolve(configured) : fallback;
+};
+const SRC_DIR = resolveDir('FSN_BLOG_SOURCE_DIR', path.join(ROOT, 'landing', 'content', 'blog'));
+const OUT_DIR = resolveDir('FSN_BLOG_OUTPUT_DIR', path.join(ROOT, 'landing', 'content', 'generated', 'blog'));
 const POSTS_DIR = path.join(OUT_DIR, 'posts');
 // The reader is a static shell that resolves its slug from the URL path. The
 // landing project runs cleanUrls, which serves an extensionless path from a
@@ -43,8 +51,8 @@ const POSTS_DIR = path.join(OUT_DIR, 'posts');
 // /blog/:slug rewrite does not fire. To make every article slug resolve on
 // the root domain we stamp one page per slug (a verbatim copy of the reader
 // shell) into landing/blog/, which cleanUrls then serves at /blog/<slug>.
-const PAGES_DIR = path.join(ROOT, 'landing', 'blog');
-const READER_TEMPLATE = path.join(PAGES_DIR, 'reader.html');
+const PAGES_DIR = resolveDir('FSN_BLOG_PAGES_DIR', path.join(ROOT, 'landing', 'blog'));
+const READER_TEMPLATE = resolveDir('FSN_BLOG_READER_TEMPLATE', path.join(ROOT, 'landing', 'blog', 'reader.html'));
 // Hand-authored shells in landing/blog that the build must never delete.
 const RESERVED_PAGES = new Set(['index.html', 'reader.html']);
 
@@ -54,6 +62,9 @@ const CHECK_ONLY = process.argv.includes('--check');
 // banned. En dashes and hyphens are allowed (they are legitimate ranges/joins).
 const BANNED_CHARS = /[—―]/;
 const REQUIRED_META = ['title', 'slug', 'publishDate', 'category', 'excerpt'];
+const ALLOWED_NOTIFICATION_TRIGGERS = new Set([
+  'game_recap', 'waiver_pivot', 'tnf_matchup_prep', 'weekend_deepdive',
+]);
 
 // Normalize a string for name matching: strip markdown emphasis/backticks,
 // collapse whitespace (names split across a wrapped line still match), lowercase.
@@ -317,6 +328,7 @@ function loadFile(file) {
     category: meta.category != null ? String(meta.category).trim() : '',
     excerpt: meta.excerpt != null ? String(meta.excerpt).trim() : '',
     author: meta.author != null ? String(meta.author).trim() : 'FSN Desk',
+    notificationTrigger: meta.notificationTrigger != null ? String(meta.notificationTrigger).trim() : '',
     body,
     entities: normalizeEntities(meta.entities, file),
     format,
@@ -331,6 +343,9 @@ function loadFile(file) {
   }
   if (article.publishDate && Number.isNaN(Date.parse(article.publishDate))) {
     fail(`${file}: publishDate "${article.publishDate}" is not a parseable date (use YYYY-MM-DD).`);
+  }
+  if (article.notificationTrigger && !ALLOWED_NOTIFICATION_TRIGGERS.has(article.notificationTrigger)) {
+    fail(`${file}: notificationTrigger "${article.notificationTrigger}" is not a registered dispatch trigger.`);
   }
 
   filterMentionedEntities(article, file);
@@ -383,6 +398,7 @@ function build() {
       category: a.category,
       excerpt: a.excerpt,
       author: a.author,
+      notificationTrigger: a.notificationTrigger || undefined,
       entityCount: a.entities.length,
     })),
   };
@@ -394,6 +410,7 @@ function build() {
     category: a.category,
     excerpt: a.excerpt,
     author: a.author,
+    notificationTrigger: a.notificationTrigger || undefined,
     format: a.format,
     entities: a.entities,
     bodyHtml: renderMarkdown(a.body),

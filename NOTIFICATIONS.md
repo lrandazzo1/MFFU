@@ -90,7 +90,14 @@ every later send collided with a Week-2 ledger row and that device went quiet
 for the rest of the season. The feed is now authoritative; the device's own
 report is the fallback for a run whose pull has never succeeded.
 
-### It cannot trigger a Vercel redeploy
+The editorial destination is league-agnostic. Tuesday, Thursday, and Friday
+articles are produced from public NFL RSS/Atom feeds at 13:00 UTC, then the
+dispatcher opens `/?goto=news` at 16:00 UTC. The push payload carries the
+public season/week, trigger, and News Desk slot, but no fantasy league id.
+League registration still identifies the subscribed device; it does not select
+or alter the article.
+
+### The notification pull cannot trigger a Vercel redeploy
 
 The pull runs **inside the serverless function**, invoked by Vercel Cron. In
 full:
@@ -99,10 +106,12 @@ full:
   function. It is not a Git event, so it creates no deployment.
 - The job writes one Supabase row and sends pushes. It does not write to the
   repository, call the Vercel API, hit a Deploy Hook, or touch a webhook.
-- No GitHub Actions workflow is scheduled and none invokes the dispatcher — a
-  workflow curling this route on a schedule would put the pull back on the
-  repository's side of the fence, with the deploy-triggering surface that comes
-  with it. `npm run audit:notifications` asserts both, mechanically, so a later
+- The separate editorial workflow is scheduled to fetch and publish static
+  RSS/Atom content, but no GitHub Actions workflow invokes the dispatcher. A
+  workflow curling this route on a schedule would put the notification pull
+  back on the repository's side of the fence, with the deploy-triggering
+  surface that comes with it. `npm run audit:notifications` asserts this
+  separation mechanically, so a later
   change cannot quietly reintroduce it.
 
 ## Architecture
@@ -517,7 +526,7 @@ curl -H "Authorization: Bearer $CRON_SECRET" \
   "planTruncated": false,                        // `due` is always the real total
   "plan": [{
     "deviceId": "…", "platform": "web", "timezone": "America/New_York",
-    "trigger": "game_recap", "group": "tuesday",
+    "trigger": "game_recap", "group": "tuesday", "articleSlot": "recap",
     "season": 2026, "week": 1,
     "localHour": 12,                             // where the run landed on their clock
     "idealHour": 9,                              // where the alert would rather be

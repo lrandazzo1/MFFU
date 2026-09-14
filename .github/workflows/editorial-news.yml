@@ -1,0 +1,69 @@
+name: Publish editorial news
+
+on:
+  schedule:
+    # Publish before the notification dispatcher runs at 16:00 UTC.
+    - cron: '0 13 * * 2,4,5'
+  workflow_dispatch:
+    inputs:
+      trigger:
+        description: Edition used for a manual run
+        required: false
+        type: string
+        default: weekend_deepdive
+
+permissions:
+  contents: write
+
+concurrency:
+  group: editorial-news-publisher
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Fetch, compile, verify, publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Verify the scraper before using the internet
+        run: npm run check:editorial
+
+      - name: Fetch public NFL news
+        env:
+          EDITION_TRIGGER: ${{ inputs.trigger }}
+        run: |
+          args=(--publish-date "$(date -u +%F)")
+          if [ -n "$EDITION_TRIGGER" ]; then
+            args+=(--trigger "$EDITION_TRIGGER")
+          fi
+          npm run generate:editorial -- "${args[@]}"
+
+      - name: Compile and verify deploy payload
+        run: |
+          npm run build:blog
+          npm run check:blog
+          npm run check:blog-pipeline
+          npm run test:triggers
+
+      - name: Publish generated static content
+        run: |
+          git config user.name "fsn-editorial-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add landing/content/blog landing/content/generated/blog landing/blog
+          if git diff --cached --quiet; then
+            echo "No editorial changes to publish."
+            exit 0
+          fi
+          git commit -m "content: publish NFL news for $(date -u +%F)"
+          git push origin HEAD:main

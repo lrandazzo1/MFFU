@@ -171,7 +171,11 @@ for(const native of [true,false]){
   const c = context({ document:{ documentElement:{ getAttribute:()=>native?'ios':'web' }, querySelectorAll:()=>[] },
     FSNApi:{ isNativeShell:()=>false }, $:()=>null });
   vm.runInContext(releaseCode,c);
-  assert.equal(c.FSNRelease.supportsProvider('yahoo'),!native);
+  /* Yahoo now ships in both targets. The iOS build opens OAuth in a Safari
+     sheet, so the old "Yahoo is web-only" expectation was stale and kept the
+     release workflow red even though build-ios explicitly requires the Yahoo
+     controls to be present in the native bundle. */
+  assert.equal(c.FSNRelease.supportsProvider('yahoo'),true);
   assert.equal(c.FSNRelease.supportsProvider('espn'),true);
   assert.equal(c.FSNRelease.supportsProvider('sleeper'),true);
 }

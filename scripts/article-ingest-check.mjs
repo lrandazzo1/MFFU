@@ -15,17 +15,19 @@
      1. the weekly cadence routes every day to the slot the desk publishes for
      2. selection is deterministic, rejects unpublished and out-of-window copy,
         and breaks a same-day tie on slug rather than on manifest order
-     3. entities match this league's rosters by Sleeper id AND by name, through
+     3. an article with no loaded league still renders with zero ownership
+        matches and without a missing-id error
+     4. entities match this league's rosters by Sleeper id AND by name, through
         the punctuation and suffix variance between a desk's copy and a
         provider's roster
-     4. the ownership tag is injected once into the annotated HTML, at the
+     5. the ownership tag is injected once into the annotated HTML, at the
         first mention, without disturbing the markup around it — the compact
         card does not paint that HTML inline, but the annotator still runs
         so the wire-context strip and any future consumer can key off it
-     5. the body sanitizer drops script/style/iframe and every event attribute
-     6. the compact card paints on the News Desk with no page error, no "hit
+     6. the body sanitizer drops script/style/iframe and every event attribute
+     7. the compact card paints on the News Desk with no page error, no "hit
         a snag", no inline expand section, and links out to the blog
-     7. an unreachable feed disables the slot and leaves the News Desk intact
+     8. an unreachable feed disables the slot and leaves the News Desk intact
 
    Exit code 0 means clean.
 ============================================================================ */
@@ -343,7 +345,27 @@ try {
   expect(selection.offSlot, null, 'a post from another slot is not surfaced');
   expect(selection.tie, 'alpha', 'a same-day tie breaks on slug, not manifest order');
 
-  /* ---- 3. Entity matching against this league's rosters ----------------- */
+  /* ---- 3. A public article does not require a loaded fantasy league ------ */
+  const leagueEmpty = await page.evaluate(async () => {
+    await window.FSNArticles.refresh({ force: true });
+    const state = window.FSNArticles.current();
+    const view = window.FSNArticles.annotated();
+    return {
+      status: state.status,
+      slug: state.post && state.post.slug,
+      body: !!(view && view.html),
+      rostered: view ? view.rostered : -1,
+      matches: view ? view.matches.length : -1,
+    };
+  });
+  expect(leagueEmpty.status, 'ready', 'general article loads before a league is connected');
+  if (leagueEmpty.slug) pass('league-empty News Desk selected ' + leagueEmpty.slug);
+  else fail('league-empty News Desk did not select an article');
+  expect(leagueEmpty.body, true, 'general article body renders without league data');
+  expect(leagueEmpty.rostered, 0, 'league-empty article performs no roster ownership match');
+  expect(leagueEmpty.matches, 0, 'league-empty article has no user-specific annotations');
+
+  /* ---- 4. Entity matching against this league's rosters ----------------- */
   await page.evaluate((data) => {
     window.LeagueData.setEspnData(data);
     window.__fsnRender();

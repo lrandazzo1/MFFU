@@ -184,7 +184,7 @@ stub(join(root, 'lib/notifications/apns.js'), {
   openSession: () => { calls.apnsSession++; return { __fake: true }; },
   closeSession: () => {},
   send: (session, token, notification) => {
-    calls.apnsSend.push({ token, title: notification.title });
+    calls.apnsSend.push({ token, title: notification.title, data: notification.data });
     return Promise.resolve(apnsResult());
   },
   apnsConfig: () => ({}),
@@ -202,7 +202,7 @@ stub(join(root, 'lib/notifications/webpush.js'), {
   publicKey: () => 'test-key',
   validSubscription: () => true,
   send: (subscription, notification) => {
-    calls.webpushSend.push({ endpoint: subscription && subscription.endpoint, title: notification.title });
+    calls.webpushSend.push({ endpoint: subscription && subscription.endpoint, title: notification.title, data: notification.data });
     return Promise.resolve({ ok: true, status: 201, reason: '', retryable: false, unregister: false });
   },
 });
@@ -366,6 +366,8 @@ console.log('-- 2. Dry-run safety --');
   Date.now = realNow;
   check('live run returns 200', res.statusCode, 200);
   checkTrue('live run actually sends (control for the dry-run assertions)', calls.webpushSend.length === 1);
+  check('live push opens the general News Desk', calls.webpushSend[0].data.url, '/?goto=news');
+  check('live push omits fantasy league routing state', Object.hasOwn(calls.webpushSend[0].data, 'leagueId'), false);
   checkTrue('live run writes the ledger', calls.dbWrites.length > 0);
 
   // --- dry run via req.query (the Vercel path)
@@ -387,6 +389,7 @@ console.log('-- 2. Dry-run safety --');
   checkTrue('dry run still SCANNED the send ledger', calls.dbReads.includes('notification_sends'));
   checkTrue('dry run reports what would have sent', !!(res.body && res.body.plan && res.body.plan.length === 1));
   check('dry run names the trigger', res.body.plan[0].trigger, 'game_recap');
+  check('dry run names the generated-content slot', res.body.plan[0].articleSlot, 'recap');
 
   // --- dry run when the runtime did NOT pre-parse the query string
   scenario('dry run, req.query absent', null, { devices: [dueDevice()] });
@@ -613,14 +616,11 @@ console.log('-- 5. Schedule shape --');
   const workflows = existsSync(workflowDir)
     ? readdirSync(workflowDir).filter((f) => /\.ya?ml$/.test(f))
     : [];
-  const scheduled = [];
   const touchingDispatch = [];
   for (const file of workflows) {
     const body = readFileSync(join(workflowDir, file), 'utf8');
-    if (/^\s*schedule:/m.test(body)) scheduled.push(file);
     if (/notifications-dispatch/.test(body)) touchingDispatch.push(file);
   }
-  check('no GitHub workflow runs on a schedule', scheduled, []);
   check('no GitHub workflow invokes the dispatcher', touchingDispatch, []);
 }
 
@@ -708,6 +708,8 @@ console.log('-- 6. Selftest mode --');
   scenario('selftest named trigger', null, { devices: [iosDevice()] });
   res = await invoke({ url: '/api/notifications-dispatch?selftest=' + DEVICE + '&trigger=waiver_pivot', headers: auth });
   check('a named trigger is used', res.body.notification.trigger, 'waiver_pivot');
+  check('the named trigger reports its generated-content slot', res.body.notification.articleSlot, 'waiver');
+  check('the named trigger opens the News Desk', res.body.notification.url, '/?goto=news');
 
   // --- no transport for that platform: a clear 503, not a silent success
   res = await selftest(DEVICE, { devices: [iosDevice()] }, { transports: { apns: false } });
