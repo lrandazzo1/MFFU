@@ -542,6 +542,88 @@
   }
 })();
 
+/* Week-bucket and Local Read context guard. This file is loaded before the
+   inline application engines, so it installs after boot without changing any
+   deterministic generator, its seed, or its source-week data. */
+(function(){
+  function sourceWeek(post){
+    var explicit=Number(post&&post.week);
+    if(Number.isInteger(explicit)&&explicit>=1&&explicit<=18) return explicit;
+    var match=/\bweek\s+([1-9]|1[0-8])\b/i.exec([post&&post.title,post&&post.excerpt].join(' '));
+    return match?Number(match[1]):0;
+  }
+  function isRecap(post){
+    var category=String(post&&post.category||'').trim().toLowerCase().replace(/\s+/g,' ');
+    return category==='recap'||category==='the recap';
+  }
+  function postgame(article){
+    if(!article||article.custom||article.kind==='sotl') return false;
+    if(article.topic==='draft'||article.slot==='primer'||article.slot==='injury') return false;
+    return article.slot==='gameday'||article.slot==='primetime'||article.slot==='recap';
+  }
+  function activeSeason(){
+    try{
+      if(!window.NewsDesk||typeof window.NewsDesk.activeSeasonYear!=='function'||typeof window.NewsDesk.viewedSeasonYear!=='function') return false;
+      return Number(window.NewsDesk.activeSeasonYear())===Number(window.NewsDesk.viewedSeasonYear());
+    }catch(err){ console.error('[WeekBucket] active-season check failed',err); return false; }
+  }
+  function routeWeek(original,week){
+    var display=Math.max(1,Number(week)||1);
+    var current=original(display);
+    if(!activeSeason()) return current;
+    var advance=(Array.isArray(current)?current:[]).filter(function(article){return !postgame(article);});
+    if(display===1) return advance;
+    var prior=original(display-1);
+    var finished=(Array.isArray(prior)?prior:[]).filter(postgame);
+    return advance.concat(finished).sort(function(a,b){
+      return (Number(!!(b&&b.custom))-Number(!!(a&&a.custom)))||Number(b&&b.at||0)-Number(a&&a.at||0);
+    });
+  }
+  function repairLocalRead(view){
+    if(!view||!view.post||!isRecap(view.post)||!view.context) return view;
+    var week=sourceWeek(view.post);
+    if(!week) return view;
+    view.context.currentWeek=week;
+    var data=window.LeagueData&&window.LeagueData.espnData;
+    var schedule=data&&Array.isArray(data.schedule)?data.schedule:[];
+    var opponents=Object.create(null);
+    schedule.forEach(function(game){
+      if(Number(game&&game.matchupPeriodId)!==week) return;
+      var home=game&&game.home,away=game&&game.away;
+      if(home&&away&&home.teamId!=null&&away.teamId!=null){
+        opponents[String(home.teamId)]=String(away.teamId);
+        opponents[String(away.teamId)]=String(home.teamId);
+      }
+    });
+    view.context.opponentByTeamId=opponents;
+    return view;
+  }
+  function patch(){
+    if(!window.NewsDesk||window.NewsDesk.__weekBucketGuard) return false;
+    var originalStream=window.NewsDesk.getTimelineStream;
+    if(typeof originalStream!=='function') return false;
+    window.NewsDesk.getTimelineStream=function(week){ return routeWeek(originalStream,week); };
+    window.NewsDesk.getNewsFeedForWeek=function(season,week){ return window.NewsDesk.getTimelineStream(week); };
+    if(window.FSNArticles&&typeof window.FSNArticles.annotated==='function'){
+      var originalAnnotated=window.FSNArticles.annotated;
+      window.FSNArticles.annotated=function(){
+        var view=originalAnnotated.apply(this,arguments);
+        try{return repairLocalRead(view);}
+        catch(err){ console.error('[WeekBucket] Local Read context repair failed',err); return view; }
+      };
+    }
+    try{Object.defineProperty(window.NewsDesk,'__weekBucketGuard',{value:true,enumerable:false});}
+    catch(err){console.error('[WeekBucket] guard flag definition failed',err);window.NewsDesk.__weekBucketGuard=true;}
+    return true;
+  }
+  function boot(tries){
+    if(patch()) return;
+    if(tries>=160){console.error('[WeekBucket] News Desk was unavailable; week routing was not installed.',new Error('WEEK_BUCKET_GUARD_UNAVAILABLE'));return;}
+    setTimeout(function(){boot(tries+1);},25);
+  }
+  if(typeof window!=='undefined') setTimeout(function(){boot(0);},0);
+})();
+
 /* Matchup Preview + no-FAAB runtime guard — additive and output-scoped. */
 (function(){
   'use strict';
