@@ -18,6 +18,7 @@ const required = [
   ['previous-week stream', 'var prior=original(display-1);'],
   ['previous-week postgame filter', 'var finished=(Array.isArray(prior)?prior:[]).filter(postgame);'],
   ['current-week advance filter', 'var advance=(Array.isArray(current)?current:[]).filter(function(article){return !postgame(article);});'],
+  ['later-week release pass-through', 'if(display>2) return current;'],
   ['strict Week 2 boundary', 'if(display===2) return finished;'],
   ['week-scoped panel re-key', 'function rekeyNewsPanels(week)'],
   ['Week 2 Local Read display suppression', 'function suppressDeskWireBlocks()'],
