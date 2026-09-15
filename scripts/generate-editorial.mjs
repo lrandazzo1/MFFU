@@ -29,6 +29,10 @@
                                   `verifiedEditorialSource` object. It is read
                                   only after feed reads fail and is never
                                   published unless its source text validates.
+                                  When omitted, scripts/data/weekly-editorial-source.json
+                                  is used automatically if present, so a run in a
+                                  network-restricted environment degrades to that
+                                  fixture instead of skipping outright.
      --out <dir>                  Optional output directory.
      --self-test                  Network-free parser and serialization check.
 
@@ -44,6 +48,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DEFAULT_OUT_DIR = path.join(ROOT, 'landing', 'content', 'blog');
 const DEFAULT_FEED = 'https://news.google.com/rss/search?q=NFL%20fantasy%20football&hl=en-US&gl=US&ceid=US:en';
+const DEFAULT_LOCAL_STATE = path.join(ROOT, 'scripts', 'data', 'weekly-editorial-source.json');
 const BANNED_CHARS = /[—―]/;
 
 function decodeEntities(value) {
@@ -309,10 +314,11 @@ async function generate(options) {
       console.warn('[generate-editorial] skipping public feed ' + feed + ': ' + err.message);
     }
   }
-  if (!item && options.localState) {
+  const localStatePath = options.localState || (fs.existsSync(DEFAULT_LOCAL_STATE) ? DEFAULT_LOCAL_STATE : '');
+  if (!item && localStatePath) {
     try {
-      item = localVerifiedSource(options.localState);
-      console.warn('[generate-editorial] live feeds were unavailable; using the supplied verified local editorial source.');
+      item = localVerifiedSource(localStatePath);
+      console.warn('[generate-editorial] live feeds were unavailable; using the verified local editorial source at ' + path.relative(ROOT, localStatePath) + '.');
     } catch (err) {
       lastError = err;
       console.warn('[generate-editorial] local fallback rejected: ' + err.message);
