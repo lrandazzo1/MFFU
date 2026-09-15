@@ -575,9 +575,42 @@
     if(display===1) return advance;
     var prior=original(display-1);
     var finished=(Array.isArray(prior)?prior:[]).filter(postgame);
+    /* Week 2 is a hard historical boundary. Its News Desk can only review
+       completed Week 1 games. Never append current-week primers or Local Read. */
+    if(display===2) return finished;
     return advance.concat(finished).sort(function(a,b){
       return (Number(!!(b&&b.custom))-Number(!!(a&&a.custom)))||Number(b&&b.at||0)-Number(a&&a.at||0);
     });
+  }
+  var renderedWeek=null;
+  function rekeyNewsPanels(week){
+    if(renderedWeek===week||typeof document==='undefined') return;
+    renderedWeek=week;
+    ['newsLeadWrap','timelineFeed','deskWireWrap'].forEach(function(id){
+      var node=document.getElementById(id);
+      if(node){ node.textContent=''; node.dataset.newsWeek=String(week); }
+    });
+  }
+  function displayedWeek(){
+    try{
+      return typeof window.effectiveWeek==='function'?Number(window.effectiveWeek())||0:0;
+    }catch(err){ console.error('[WeekBucket] displayed-week lookup failed',err); return 0; }
+  }
+  function suppressLocalRead(){ return displayedWeek()===2; }
+  function patchLocalRead(){
+    if(!window.FSNLocalDesk||typeof window.FSNLocalDesk.localizeWire!=='function'||typeof window.FSNLocalDesk.deepData!=='function') return false;
+    var originalLocalize=window.FSNLocalDesk.localizeWire;
+    var originalDeepData=window.FSNLocalDesk.deepData;
+    window.FSNLocalDesk.localizeWire=function(){
+      if(suppressLocalRead()) return '';
+      return originalLocalize.apply(this,arguments);
+    };
+    window.FSNLocalDesk.deepData=function(){
+      var data=originalDeepData.apply(this,arguments);
+      if(!suppressLocalRead()||!data) return data;
+      return Object.assign({},data,{local:'',players:[],scores:[],hasSplits:false});
+    };
+    return true;
   }
   function repairLocalRead(view){
     if(!view||!view.post||!isRecap(view.post)||!view.context) return view;
@@ -602,7 +635,12 @@
     if(!window.NewsDesk||window.NewsDesk.__weekBucketGuard) return false;
     var originalStream=window.NewsDesk.getTimelineStream;
     if(typeof originalStream!=='function') return false;
-    window.NewsDesk.getTimelineStream=function(week){ return routeWeek(originalStream,week); };
+    if(!patchLocalRead()) return false;
+    window.NewsDesk.getTimelineStream=function(week){
+      var display=Math.max(1,Number(week)||1);
+      rekeyNewsPanels(display);
+      return routeWeek(originalStream,display);
+    };
     window.NewsDesk.getNewsFeedForWeek=function(season,week){ return window.NewsDesk.getTimelineStream(week); };
     if(window.FSNArticles&&typeof window.FSNArticles.annotated==='function'){
       var originalAnnotated=window.FSNArticles.annotated;
