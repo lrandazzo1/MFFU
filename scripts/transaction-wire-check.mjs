@@ -11,8 +11,8 @@ const {generate} = require('../lib/transaction-wire/engine');
 const root = resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const now = Date.now();
 const season = new Date(now).getUTCFullYear();
-const article = generate({key:`espn:999999:${season}`,provider:'espn',league:'999999',season,week:2},
-  {id:'fixture-claim',kind:'waiver',at:now-1000,week:2,bid:12,moves:[{playerId:'5',from:null,to:'1'}],assets:[]},
+const article = generate({key:`espn:999999:${season}`,provider:'espn',league:'999999',season,week:3},
+  {id:'fixture-claim',kind:'waiver',at:now-1000,week:3,bid:12,moves:[{playerId:'5',from:null,to:'1'}],assets:[]},
   {players:{5:{name:'Wire Test Runner',pos:'RB'}},teams:{1:{id:'1',name:'Alpha',wins:1,losses:1,ties:0,points:220}}},now);
 const requests = [];
 let blockSecondLeague = false;
@@ -47,16 +47,16 @@ try{
     document.getElementById('leagueIdInput').value='999999';
     document.getElementById('seasonYear').value=String(season);
     const teams=[1,2,3,4].map(id=>({id,location:['','Alpha','Bravo','Charlie','Delta'][id],nickname:'Team',abbrev:'T'+id,owners:['o'+id],record:{overall:{wins:1,losses:1,ties:0,pointsFor:220,pointsAgainst:220}},roster:{entries:[]}}));
-    const schedule=[1,2].flatMap(w=>[1,3].map(id=>({id:w*10+id,matchupPeriodId:w,playoffTierType:'NONE',winner:'HOME',home:{teamId:id,totalPoints:110,pointsByScoringPeriod:{[w]:110}},away:{teamId:id+1,totalPoints:100,pointsByScoringPeriod:{[w]:100}}})));
-    LeagueData.setEspnData({id:999999,seasonId:season,scoringPeriodId:2,status:{currentMatchupPeriod:2,finalScoringPeriod:17,isActive:true},settings:{name:'Wire Test',size:4,scheduleSettings:{matchupPeriodCount:14,playoffTeamCount:4}},teams,members:teams.map(t=>({id:t.owners[0],displayName:t.location})),schedule});
+    const schedule=[1,2,3].flatMap(w=>[1,3].map(id=>({id:w*10+id,matchupPeriodId:w,playoffTierType:'NONE',winner:'HOME',home:{teamId:id,totalPoints:110,pointsByScoringPeriod:{[w]:110}},away:{teamId:id+1,totalPoints:100,pointsByScoringPeriod:{[w]:100}}})));
+    LeagueData.setEspnData({id:999999,seasonId:season,scoringPeriodId:3,status:{currentMatchupPeriod:3,finalScoringPeriod:17,isActive:true},settings:{name:'Wire Test',size:4,scheduleSettings:{matchupPeriodCount:14,playoffTeamCount:4}},teams,members:teams.map(t=>({id:t.owners[0],displayName:t.location})),schedule});
     window.__fsnRender();
   },{season});
-  await page.waitForFunction(()=>FSNTransactionWire.merge([],2).length===1);
+  await page.waitForFunction(()=>FSNTransactionWire.merge([],3).length===1);
   const result = await page.evaluate(()=>{
     const lead={id:'lead',kind:'sotl',at:0};
-    return {lead:FSNTransactionWire.merge([lead],2)[0].id,old:FSNTransactionWire.merge([],1).length,current:FSNTransactionWire.merge([],2).length};
+    return {lead:FSNTransactionWire.merge([lead],3)[0].id,old:FSNTransactionWire.merge([],1).length,current:FSNTransactionWire.merge([],3).length,weekTwo:FSNTransactionWire.merge([{id:'week-1-recap'}],2).map(a=>a.id)};
   });
-  assert.deepEqual(result,{lead:'lead',old:0,current:1});
+  assert.deepEqual(result,{lead:'lead',old:0,current:1,weekTwo:['week-1-recap']});
   assert.ok(requests.some(r=>r.method==='GET'));
   assert.ok(requests.some(r=>r.method==='POST'));
   assert.match(await page.locator('#transactionWireStatus').textContent(),/Live roster updates are shown/);
@@ -72,10 +72,10 @@ try{
   await page.evaluate(()=>{
     const original=Date.now;
     Date.now=()=>original()+61000;
-    FSNTransactionWire.merge([],2);
+    FSNTransactionWire.merge([],3);
   });
   await page.waitForFunction(()=>document.getElementById('transactionWireStatus').textContent.includes('Showing saved transactions'));
-  assert.equal(await page.evaluate(()=>FSNTransactionWire.merge([],2).length),1,'provider failure retains prior verified article');
+  assert.equal(await page.evaluate(()=>FSNTransactionWire.merge([],3).length),1,'provider failure retains prior verified article');
   blockSecondLeague=true;
   await page.evaluate(()=>{document.getElementById('leagueIdInput').value='888888'; window.__fsnRender();});
   await page.waitForFunction(()=>document.getElementById('transactionWireStatus').textContent.includes('Reconnect this league'));

@@ -498,10 +498,6 @@ try {
     /* The card is a compact timeline entry, not an inline reader. It must not
        paint the full article body anywhere on the News Desk. */
     expect(card.hasInlineExpand, false, 'no inline body / expand section is rendered');
-    if (card.dek.length && card.dek.length <= 320) pass('the dek is one short paragraph (' + card.dek.length + ' chars): ' + card.dek);
-    else fail('the dek is not a short paragraph (' + card.dek.length + ' chars): ' + card.dek);
-    expect(card.dekBoth, false, 'the card paints one dek treatment, never both');
-
     /* ---- COPY, GATED TO RECAPS ONLY -------------------------------------
        The Local Read and deep stat block are recap-only treatments. Every
        other category retains the normal published excerpt and public player
@@ -509,13 +505,15 @@ try {
     const todayCategory = (FIXTURE_POSTS.find((p) => p.slug === card.slug) || {}).category || '';
     const todayNormalizedCategory = todayCategory.trim().toLowerCase().replace(/\s+/g, ' ');
     const todayIsRecap = todayNormalizedCategory === 'recap' || todayNormalizedCategory === 'the recap';
+    if (!todayIsRecap && card.dek.length && card.dek.length <= 320) pass('the dek is one short paragraph (' + card.dek.length + ' chars): ' + card.dek);
+    else if (!todayIsRecap) fail('the dek is not a short paragraph (' + card.dek.length + ' chars): ' + card.dek);
+    expect(card.dekBoth, false, 'the card paints one dek treatment, never both');
     if (todayIsRecap) {
-      expect(card.dekIsLocal, true, 'a Recap card leads with the hyper-local read');
-      if (/Manager [1-4]\u2019s\b/.test(card.dek)) {
-        pass('the Recap lede carries a possessive manager reference');
-      } else fail('the Recap lede carries no ownership callout: ' + card.dek);
-      if (!card.deep) fail('no .deepstat block was appended to the Recap wire card');
-      else pass('the Recap card carries a deep data block');
+      /* This fixture drives the active Week 2 view. Local Read and Deep Stats
+         are Week 1 context, so the rendered Week 2 recap stays clean. */
+      expect(card.dekIsLocal, false, 'the Week 2 Recap card hides the hyper-local read');
+      expect(card.dek, '', 'the Week 2 Recap carries no replacement Local Read lede');
+      expect(card.deep, null, 'the Week 2 Recap carries no deep data block');
     } else {
       expect(card.dekIsLocal, false, 'a non-Recap card does NOT lead with the hyper-local read');
       if (/for the app wire check/i.test(card.dek)) pass('the public excerpt is what today\'s non-Recap card prints');
