@@ -21,6 +21,8 @@ const required = [
   ['strict Week 2 boundary', 'if(display===2) return finished;'],
   ['week-scoped panel re-key', 'function rekeyNewsPanels(week)'],
   ['Week 2 Local Read suppression', 'function suppressLocalRead(){ return displayedWeek()===2; }'],
+  ['Week 2 Transaction Wire suppression', 'function patchTransactionWire()'],
+  ['Transaction Wire output filter', 'if(Math.max(1,Number(week)||1)===2) return Array.isArray(existing)?existing:[];'],
   ['Local Read output filter', "if(suppressLocalRead()) return '';"],
   ['Deep Stats output filter', "return Object.assign({},data,{local:'',players:[],scores:[],hasSplits:false});"],
   ['public source-week resolver', 'function sourceWeek(post)'],
@@ -63,6 +65,9 @@ const windowFixture = {
     localizeWire: () => 'Week 1 Local Read',
     deepData: () => ({ local: 'Week 1 Local Read', players: ['Player'], scores: ['Score'], hasSplits: true }),
   },
+  FSNTransactionWire: {
+    merge: (articles) => articles.concat({ id: 'current-week-transaction', slot: 'transaction_wire' }),
+  },
   effectiveWeek: () => selectedWeek,
 };
 vm.runInNewContext(source.slice(start, end), {
@@ -75,11 +80,12 @@ vm.runInNewContext(source.slice(start, end), {
 const weekOne = windowFixture.NewsDesk.getTimelineStream(1).map((article) => article.id);
 selectedWeek = 2;
 const weekTwo = windowFixture.NewsDesk.getTimelineStream(2).map((article) => article.id);
+const weekTwoWithWire = windowFixture.FSNTransactionWire.merge([{ id: 'week-1-recap', slot: 'recap' }], 2).map((article) => article.id);
 const weekTwoLocal = windowFixture.FSNLocalDesk.localizeWire();
 const weekTwoDeep = windowFixture.FSNLocalDesk.deepData();
 const stalePanel = [...panels.values()].find((panel) => panel.textContent || panel.dataset.newsWeek !== '2');
-if (weekOne.join(',') !== 'week-1-preview' || weekTwo.join(',') !== 'week-1-recap' || weekTwoLocal !== '' || weekTwoDeep.local || weekTwoDeep.players.length || weekTwoDeep.scores.length || stalePanel) {
-  console.error('[week-bucket-check] runtime separation failed.', { weekOne, weekTwo, weekTwoLocal, weekTwoDeep, panels: [...panels.values()] });
+if (weekOne.join(',') !== 'week-1-preview' || weekTwo.join(',') !== 'week-1-recap' || weekTwoWithWire.join(',') !== 'week-1-recap' || weekTwoLocal !== '' || weekTwoDeep.local || weekTwoDeep.players.length || weekTwoDeep.scores.length || stalePanel) {
+  console.error('[week-bucket-check] runtime separation failed.', { weekOne, weekTwo, weekTwoWithWire, weekTwoLocal, weekTwoDeep, panels: [...panels.values()] });
   process.exit(1);
 }
 console.log('[week-bucket-check] passed: Week 2 only receives Week 1 postgame coverage, Local Read is hidden in Week 2, and week changes clear stale panels.');
