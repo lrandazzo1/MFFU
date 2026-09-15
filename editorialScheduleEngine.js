@@ -597,6 +597,17 @@
     }catch(err){ console.error('[WeekBucket] displayed-week lookup failed',err); return 0; }
   }
   function suppressLocalRead(){ return displayedWeek()===2; }
+  function patchTransactionWire(){
+    if(!window.FSNTransactionWire||typeof window.FSNTransactionWire.merge!=='function') return false;
+    var originalMerge=window.FSNTransactionWire.merge;
+    window.FSNTransactionWire.merge=function(existing,week){
+      /* newsList merges this feed after getTimelineStream. Keep that second
+         path from bypassing the Week 2 historical boundary. */
+      if(Math.max(1,Number(week)||1)===2) return Array.isArray(existing)?existing:[];
+      return originalMerge.apply(this,arguments);
+    };
+    return true;
+  }
   function patchLocalRead(){
     if(!window.FSNLocalDesk||typeof window.FSNLocalDesk.localizeWire!=='function'||typeof window.FSNLocalDesk.deepData!=='function') return false;
     var originalLocalize=window.FSNLocalDesk.localizeWire;
@@ -635,6 +646,7 @@
     if(!window.NewsDesk||window.NewsDesk.__weekBucketGuard) return false;
     var originalStream=window.NewsDesk.getTimelineStream;
     if(typeof originalStream!=='function') return false;
+    if(!patchTransactionWire()) return false;
     if(!patchLocalRead()) return false;
     window.NewsDesk.getTimelineStream=function(week){
       var display=Math.max(1,Number(week)||1);
