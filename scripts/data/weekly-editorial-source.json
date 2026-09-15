@@ -1,0 +1,11 @@
+{
+  "_comment": "Fallback fixture for scripts/generate-editorial.mjs. Used only when every --feed in the run fails (for example, a sandboxed environment whose network egress proxy blocks outbound RSS fetches). Replace verifiedEditorialSource.url with a real, currently-live public report before relying on this in a real run: the script refuses to publish unless sourceText actually backs the title and any --player entities, but it cannot itself confirm the URL is genuine. Never fill this file with fabricated player stats or performance claims; it holds an attributed link brief, the same as a live feed item would.",
+  "verifiedEditorialSource": {
+    "title": "NFL clubs trim practice squads as Week 2 approaches",
+    "description": "Teams around the league finalized practice squad moves ahead of Week 2, with several clubs adding depth at receiver and cornerback.",
+    "url": "https://news.example.test/nfl-week-2-practice-squad-moves",
+    "publishedAt": "2026-09-14",
+    "author": "Example Sports Wire",
+    "sourceText": "NFL clubs trim practice squads as Week 2 approaches. Teams around the league finalized practice squad moves ahead of Week 2, with several clubs adding depth at receiver and cornerback."
+  }
+}
