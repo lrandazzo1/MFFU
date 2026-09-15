@@ -102,28 +102,41 @@ npm run build:blog     # compile source -> landing/content/generated/blog/
 npm run check:blog     # verify the payload is fresh and punctuation is clean
 ```
 
-## Automated public-news pipeline
+## Automated box-score recap pipeline
 
-`scripts/generate-editorial.mjs` reads one item from a public RSS or Atom
-feed and writes a small, attributed source article in this directory. It has no
-league, roster, provider-cookie, or fantasy-stat input. The brief preserves the
-source headline and links readers to the original report instead of generating
-new claims around it.
+`scripts/generate-editorial.mjs` reads a strict, structured box-score payload
+(no network access anywhere in the script) and writes a weekly recap source
+article into this directory. Every score, team name, and player name in the
+generated Markdown is read directly out of the payload and templated into
+prose; nothing is summarized, embellished, or invented, so the article can
+only ever say what the numbers say.
 
 ```bash
-npm run generate:editorial
-node scripts/generate-editorial.mjs --feed <rss-url> --player "CeeDee Lamb|WR"
+npm run generate:editorial                          # reads scripts/data/weekly-editorial-source.json
+node scripts/generate-editorial.mjs --source path/to/payload.json
 npm run build:blog
 npm run check:editorial
 ```
 
-`--player` is optional and repeatable. A supplied player must appear in the
-selected public item or generation fails, preventing ghost entities. When no
-entity is supplied, the app's News Desk still safely recognizes rostered player
-names mentioned in the published article and adds reader-specific context.
-`npm run check:editorial` verifies the public-feed parser, attribution, clean
-Markdown, evidence-backed entity tags, and zero league/stat dependency using a
-local fixture, so it runs without network access.
+The payload schema (`verifiedBoxScoreSource`) is documented at the top of
+`scripts/generate-editorial.mjs`, with a sample/fallback fixture at
+`scripts/data/weekly-editorial-source.json`. Every roster entry requires a
+`name`, `position`, numeric `points`, and a boolean `starter` flag; a malformed
+or incomplete payload is rejected rather than padded with fallback text.
+Generation fails loudly (and writes nothing) if a required field is missing,
+a score or point total isn't numeric, or an entity ends up unmentioned in the
+generated recap.
+
+`npm run check:editorial` runs a fully offline self-test: it exercises the
+validation, the win/loss/margin math, the top-performer and bench-decision
+templating, and the em-dash ban against an in-memory fixture, so it needs no
+network access and never touches `landing/content/blog/`.
+
+The sample fixture ships with clearly-labeled placeholder teams and players
+("Sample Team A", "Sample Player One", and so on). Replace it with the real
+completed week's box scores before generating an article meant for
+publication; do not commit a generated article built from the placeholder
+data.
 
 `landing/content/generated/blog/` is produced by the build. Do not hand edit it.
 It is committed so the `fsn-landing` deploy (which runs no build step) serves it

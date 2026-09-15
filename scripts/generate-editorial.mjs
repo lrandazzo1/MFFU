@@ -1,40 +1,50 @@
 #!/usr/bin/env node
 /* ============================================================================
-   FSN — PUBLIC EDITORIAL GENERATOR
+   FSN — PUBLIC EDITORIAL GENERATOR (box-score recap)
    ----------------------------------------------------------------------------
-   Turns one item from a public RSS/Atom feed into a small, attributed Markdown
-   source file for `landing/content/blog/`. It is intentionally league-agnostic:
-   it does not read league IDs, provider rosters, fantasy scores, or player
-   statistics. The original report remains the source of record; this script
-   writes a lean linked brief rather than inventing analysis around it.
+   Turns a structured, verified weekly box-score payload into a small Markdown
+   recap for `landing/content/blog/`. There is no network access anywhere in
+   this file: no RSS/Atom fetch, no external API call, no scraping. Every
+   number and every name in the generated article is read straight out of the
+   source payload and templated into prose; nothing is invented, summarized by
+   guesswork, or drawn from a model call. That keeps this script safe to run
+   in a network-restricted sandbox and keeps the output auditable: every claim
+   traces back to one field in the JSON.
+
+   Source schema (see scripts/data/weekly-editorial-source.json for a sample):
+     {
+       "verifiedBoxScoreSource": {
+         "season": 2026,
+         "week": 2,
+         "publishDate": "2026-09-16",      // optional, defaults to today (UTC)
+         "leagueName": "Optional League Name",
+         "matchups": [
+           {
+             "homeTeam": "Team A",
+             "awayTeam": "Team B",
+             "homeScore": 132.42,
+             "awayScore": 128.94,
+             "homeRoster": [
+               { "name": "Player One", "position": "QB", "points": 28.4, "starter": true },
+               { "name": "Player Two", "position": "WR", "points": 4.2,  "starter": false }
+             ],
+             "awayRoster": [ ... same shape ... ]
+           }
+         ]
+       }
+     }
 
    Usage:
      node scripts/generate-editorial.mjs
-     node scripts/generate-editorial.mjs --feed https://example.com/nfl.xml
-     node scripts/generate-editorial.mjs --feed <url> --player "CeeDee Lamb|WR"
-     node scripts/generate-editorial.mjs --local-state editorial-source.json
+     node scripts/generate-editorial.mjs --source path/to/payload.json
+     node scripts/generate-editorial.mjs --out landing/content/blog
      node scripts/generate-editorial.mjs --self-test
 
    Options:
-     --feed <url>                 Repeatable public RSS or Atom feed URL.
-                                  Defaults to Google News' NFL feed.
-     --item <n>                   Zero-based usable item in the feed (default 0).
-     --category <name>            Optional explicit blog category.
-     --player "Name|POSITION"     Repeatable, evidence-backed entity tag. The
-                                  supplied name must appear in the source item.
-     --publish-date <YYYY-MM-DD>  Optional date override (default: source date).
-     --week <1-18>                Optional source week. It must appear in the
-                                  verified source text.
-     --local-state <file>         Optional local JSON fallback containing a
-                                  `verifiedEditorialSource` object. It is read
-                                  only after feed reads fail and is never
-                                  published unless its source text validates.
-                                  When omitted, scripts/data/weekly-editorial-source.json
-                                  is used automatically if present, so a run in a
-                                  network-restricted environment degrades to that
-                                  fixture instead of skipping outright.
-     --out <dir>                  Optional output directory.
-     --self-test                  Network-free parser and serialization check.
+     --source <file>   Path to the verified box-score JSON. Defaults to
+                        scripts/data/weekly-editorial-source.json.
+     --out <dir>       Optional output directory (default: landing/content/blog).
+     --self-test       Fully offline parser/template/validation check.
 
    After generation, compile the static public payload with `npm run build:blog`.
 ============================================================================ */
@@ -42,75 +52,20 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DEFAULT_OUT_DIR = path.join(ROOT, 'landing', 'content', 'blog');
-const DEFAULT_FEED = 'https://news.google.com/rss/search?q=NFL%20fantasy%20football&hl=en-US&gl=US&ceid=US:en';
-const DEFAULT_LOCAL_STATE = path.join(ROOT, 'scripts', 'data', 'weekly-editorial-source.json');
+const DEFAULT_SOURCE = path.join(ROOT, 'scripts', 'data', 'weekly-editorial-source.json');
 const BANNED_CHARS = /[—―]/;
-
-function decodeEntities(value) {
-  return String(value)
-    .replace(/&amp;/gi, '&').replace(/&quot;/gi, '"').replace(/&#39;|&apos;/gi, "'")
-    .replace(/&lt;/gi, '<').replace(/&gt;/gi, '>')
-    .replace(/&#(x[0-9a-f]+|\d+);/gi, (_, raw) => {
-      const code = raw[0].toLowerCase() === 'x' ? parseInt(raw.slice(1), 16) : parseInt(raw, 10);
-      return Number.isFinite(code) ? String.fromCodePoint(code) : _;
-    });
-}
+const TOP_PERFORMER_COUNT = 3;
 
 function cleanText(value) {
-  return decodeEntities(String(value == null ? '' : value)
-    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
-    .replace(/<[^>]*>/g, ' '))
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function stripFeedSuffix(title) {
-  /* Google News appends " - Publisher". Preserve all other source copy. */
-  return String(title || '').replace(/\s+-\s+[^-]{2,80}$/, '').trim();
-}
-
-function xmlTag(block, names) {
-  for (const name of names) {
-    const re = new RegExp('<(?:[A-Za-z0-9_-]+:)?' + name + '\\b[^>]*>([\\s\\S]*?)<\\/(?:[A-Za-z0-9_-]+:)?' + name + '>', 'i');
-    const match = re.exec(block);
-    if (match) return cleanText(match[1]);
-  }
-  return '';
-}
-
-function xmlLink(block) {
-  const atom = /<link\b[^>]*\bhref=["']([^"']+)["'][^>]*>/i.exec(block);
-  if (atom) return decodeEntities(atom[1]).trim();
-  return xmlTag(block, ['link']);
-}
-
-function parseFeed(xml) {
-  const source = String(xml || '');
-  const chunks = source.match(/<(?:[A-Za-z0-9_-]+:)?(?:item|entry)\b[\s\S]*?<\/(?:[A-Za-z0-9_-]+:)?(?:item|entry)>/gi) || [];
-  return chunks.map((chunk) => ({
-    title: stripFeedSuffix(xmlTag(chunk, ['title'])),
-    description: xmlTag(chunk, ['description', 'summary', 'content']),
-    url: xmlLink(chunk),
-    publishedAt: xmlTag(chunk, ['pubDate', 'published', 'updated', 'date']),
-    author: xmlTag(chunk, ['creator', 'author']),
-  })).filter((item) => item.title && item.url);
-}
-
-function parsePlayer(raw) {
-  const parts = String(raw || '').split('|');
-  const name = cleanText(parts.shift());
-  const position = cleanText(parts.join('|')).toUpperCase();
-  if (!name) throw new Error('[generate-editorial] --player requires a name, for example "CeeDee Lamb|WR".');
-  return { name, position };
+  return String(value == null ? '' : value).replace(/\s+/g, ' ').trim();
 }
 
 function parseArgs(argv) {
-  const args = { feeds: [], item: 0, category: '', players: [], publishDate: '', week: 0, localState: '', out: DEFAULT_OUT_DIR, selfTest: false };
+  const args = { source: DEFAULT_SOURCE, out: DEFAULT_OUT_DIR, selfTest: false };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     const next = () => {
@@ -118,152 +73,185 @@ function parseArgs(argv) {
       if (!value || value.startsWith('--')) throw new Error('[generate-editorial] ' + arg + ' requires a value.');
       return value;
     };
-    if (arg === '--feed') args.feeds.push(next());
-    else if (arg === '--item') args.item = Number(next());
-    else if (arg === '--category') args.category = cleanText(next());
-    else if (arg === '--player') args.players.push(parsePlayer(next()));
-    else if (arg === '--publish-date') args.publishDate = next();
-    else if (arg === '--week') args.week = Number(next());
-    else if (arg === '--local-state') args.localState = path.resolve(next());
+    if (arg === '--source') args.source = path.resolve(next());
     else if (arg === '--out') args.out = path.resolve(next());
     else if (arg === '--self-test') args.selfTest = true;
-    else throw new Error('[generate-editorial] unknown option "' + arg + '". This generator accepts public feeds only; league options are not supported.');
+    else throw new Error('[generate-editorial] unknown option "' + arg + '". This generator reads a local verified box-score payload only.');
   }
-  if (!Number.isInteger(args.item) || args.item < 0) throw new Error('[generate-editorial] --item must be a non-negative integer.');
-  if (!Number.isInteger(args.week) || args.week < 0 || args.week > 18) throw new Error('[generate-editorial] --week must be an integer from 1 through 18.');
-  if (!args.feeds.length) args.feeds.push(DEFAULT_FEED);
   return args;
 }
 
-async function fetchFeed(url) {
-  let res;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 9000);
-  try {
-    res = await fetch(url, {
-      headers: { Accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.1' },
-      signal: controller.signal,
-    });
-  } catch (err) {
-    throw new Error('[generate-editorial] request to ' + url + ' failed: ' + err.message);
-  } finally {
-    clearTimeout(timer);
-  }
-  const body = await res.text();
-  if (!res.ok) throw new Error('[generate-editorial] feed returned ' + res.status + ' ' + res.statusText + ' for ' + url + '.');
-  const items = parseFeed(body);
-  if (!items.length) throw new Error('[generate-editorial] no usable RSS or Atom items were found at ' + url + '.');
-  return items;
+/* ------------------------------------------------------------------ *
+ * Strict payload validation. Every check throws with the exact field
+ * that failed so a bad payload never gets padded with fallback text.
+ * ------------------------------------------------------------------ */
+function validatePlayer(raw, where) {
+  if (!raw || typeof raw !== 'object') throw new Error('[generate-editorial] ' + where + ' has a roster entry that is not an object.');
+  const name = cleanText(raw.name);
+  const position = cleanText(raw.position).toUpperCase();
+  const points = Number(raw.points);
+  const starter = raw.starter === true || raw.starter === false ? raw.starter : null;
+  if (!name) throw new Error('[generate-editorial] ' + where + ' has a roster entry missing "name".');
+  if (!position) throw new Error('[generate-editorial] ' + where + ' entry "' + name + '" is missing "position".');
+  if (!Number.isFinite(points)) throw new Error('[generate-editorial] ' + where + ' entry "' + name + '" has a non-numeric "points".');
+  if (starter === null) throw new Error('[generate-editorial] ' + where + ' entry "' + name + '" is missing a boolean "starter" flag.');
+  if (BANNED_CHARS.test(name) || BANNED_CHARS.test(position)) throw new Error('[generate-editorial] ' + where + ' entry "' + name + '" contains a banned em dash.');
+  return { name, position, points, starter };
 }
 
-/* A local fallback is intentionally narrow. It may hold a previously verified
-   public-source snapshot, but never raw league data, scores, rosters, cookies
-   or provider payloads. That keeps a network-restricted run deterministic and
-   prevents private state from becoming a public blog post. */
-function localVerifiedSource(file) {
+function validateMatchup(raw, index) {
+  const where = 'matchup #' + (index + 1);
+  if (!raw || typeof raw !== 'object') throw new Error('[generate-editorial] ' + where + ' is not an object.');
+  const homeTeam = cleanText(raw.homeTeam);
+  const awayTeam = cleanText(raw.awayTeam);
+  const homeScore = Number(raw.homeScore);
+  const awayScore = Number(raw.awayScore);
+  if (!homeTeam) throw new Error('[generate-editorial] ' + where + ' is missing "homeTeam".');
+  if (!awayTeam) throw new Error('[generate-editorial] ' + where + ' is missing "awayTeam".');
+  if (homeTeam === awayTeam) throw new Error('[generate-editorial] ' + where + ' has "homeTeam" and "awayTeam" set to the same name.');
+  if (!Number.isFinite(homeScore) || homeScore < 0) throw new Error('[generate-editorial] ' + where + ' ("' + homeTeam + '") has a non-numeric or negative "homeScore".');
+  if (!Number.isFinite(awayScore) || awayScore < 0) throw new Error('[generate-editorial] ' + where + ' ("' + awayTeam + '") has a non-numeric or negative "awayScore".');
+  if (!Array.isArray(raw.homeRoster) || !raw.homeRoster.length) throw new Error('[generate-editorial] ' + where + ' ("' + homeTeam + '") is missing a non-empty "homeRoster".');
+  if (!Array.isArray(raw.awayRoster) || !raw.awayRoster.length) throw new Error('[generate-editorial] ' + where + ' ("' + awayTeam + '") is missing a non-empty "awayRoster".');
+  if (BANNED_CHARS.test(homeTeam) || BANNED_CHARS.test(awayTeam)) throw new Error('[generate-editorial] ' + where + ' has a team name containing a banned em dash.');
+  const homeRoster = raw.homeRoster.map((p) => validatePlayer(p, where + ' homeRoster'));
+  const awayRoster = raw.awayRoster.map((p) => validatePlayer(p, where + ' awayRoster'));
+  return { homeTeam, awayTeam, homeScore, awayScore, homeRoster, awayRoster };
+}
+
+function loadSource(file) {
   let parsed;
   try {
     parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
   } catch (err) {
-    throw new Error('[generate-editorial] local state ' + file + ' could not be read: ' + err.message);
+    throw new Error('[generate-editorial] source ' + file + ' could not be read: ' + err.message);
   }
-  const source = parsed && parsed.verifiedEditorialSource;
+  const source = parsed && parsed.verifiedBoxScoreSource;
   if (!source || typeof source !== 'object') {
-    throw new Error('[generate-editorial] local state has no verifiedEditorialSource; no public output will be created.');
+    throw new Error('[generate-editorial] ' + file + ' has no "verifiedBoxScoreSource" object; no output will be created.');
   }
-  const title = cleanText(source.title);
-  const description = cleanText(source.description || source.summary);
-  const url = cleanText(source.url);
-  const sourceText = cleanText(source.sourceText || source.text);
-  if (!title || !url || !sourceText) {
-    throw new Error('[generate-editorial] local verifiedEditorialSource requires title, url, and sourceText; no public output will be created.');
-  }
-  if (!/^https?:\/\//i.test(url)) {
-    throw new Error('[generate-editorial] local verifiedEditorialSource url must be http(s); no public output will be created.');
-  }
-  return {
-    title,
-    description: description || sourceText,
-    url,
-    publishedAt: cleanText(source.publishedAt || source.publishDate),
-    author: cleanText(source.author),
-    sourceText,
-  };
+  const season = Number(source.season);
+  const week = Number(source.week);
+  if (!Number.isInteger(season) || season < 2000) throw new Error('[generate-editorial] verifiedBoxScoreSource.season must be a valid year.');
+  if (!Number.isInteger(week) || week < 1 || week > 18) throw new Error('[generate-editorial] verifiedBoxScoreSource.week must be an integer from 1 through 18.');
+  if (!Array.isArray(source.matchups) || !source.matchups.length) throw new Error('[generate-editorial] verifiedBoxScoreSource.matchups must be a non-empty array.');
+  const publishDate = cleanText(source.publishDate) || new Date().toISOString().slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(publishDate)) throw new Error('[generate-editorial] verifiedBoxScoreSource.publishDate must be YYYY-MM-DD.');
+  const leagueName = cleanText(source.leagueName);
+  if (leagueName && BANNED_CHARS.test(leagueName)) throw new Error('[generate-editorial] verifiedBoxScoreSource.leagueName contains a banned em dash.');
+  const matchups = source.matchups.map(validateMatchup);
+  return { season, week, publishDate, leagueName, matchups };
 }
 
-function sourceTextFor(item) {
-  return cleanText([item && item.title, item && item.description, item && item.sourceText].filter(Boolean).join(' '));
-}
-
-function resolveSourceWeek(item, requestedWeek) {
-  const sourceText = sourceTextFor(item);
-  const weeks = Array.from(sourceText.matchAll(/\bweek\s+([1-9]|1[0-8])\b/gi), match => Number(match[1]));
-  const uniqueWeeks = Array.from(new Set(weeks));
-  if (requestedWeek) {
-    if (!uniqueWeeks.includes(requestedWeek)) {
-      throw new Error('[generate-editorial] --week ' + requestedWeek + ' is not present in the verified source text. Refusing to assign an unsupported week bucket.');
-    }
-    return requestedWeek;
-  }
-  return uniqueWeeks.length === 1 ? uniqueWeeks[0] : null;
-}
-
-function sourceDate(value, fallback) {
-  if (fallback) return fallback;
-  const parsed = Date.parse(String(value || ''));
-  return Number.isFinite(parsed) ? new Date(parsed).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
-}
-
-function slugify(value) {
-  const slug = cleanText(value).toLowerCase().normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '').slice(0, 72).replace(/-+$/g, '');
-  return slug || 'nfl-news-brief';
-}
-
-function inferCategory(item, explicit) {
-  if (explicit) return explicit;
-  const text = (item.title + ' ' + item.description).toLowerCase();
-  if (/\b(?:waiver|faab|pickup|streamer|claim)\b/.test(text)) return 'Waiver Wire';
-  if (/\b(?:injury|injured|questionable|out|inactive|practice)\b/.test(text)) return 'Injury Report';
-  if (/\b(?:preview|start sit|matchup|lineup|projection)\b/.test(text)) return 'Matchup Preview';
-  if (/\b(?:recap|results|final|highs|lows|standout)\b/.test(text)) return 'Recap';
-  return 'Analysis';
-}
-
-function dedupeEntities(players, sourceText) {
-  const lower = sourceText.toLowerCase();
-  const seen = new Set();
-  return players.filter((player) => {
-    const key = player.name.toLowerCase();
-    if (seen.has(key)) return false;
-    seen.add(key);
-    if (!lower.includes(key)) {
-      throw new Error('[generate-editorial] "' + player.name + '" was supplied with --player but does not appear in the selected public feed item. Refusing to create a ghost entity.');
-    }
-    return true;
+/* ------------------------------------------------------------------ *
+ * Pure math over the validated payload. No text is produced here, only
+ * facts derived from the numbers already present in the source.
+ * ------------------------------------------------------------------ */
+function analyze(source) {
+  const results = source.matchups.map((m) => {
+    const margin = Math.abs(m.homeScore - m.awayScore);
+    const tie = m.homeScore === m.awayScore;
+    const winner = tie ? null : (m.homeScore > m.awayScore ? m.homeTeam : m.awayTeam);
+    const loser = tie ? null : (m.homeScore > m.awayScore ? m.awayTeam : m.homeTeam);
+    const winnerScore = tie ? null : Math.max(m.homeScore, m.awayScore);
+    const loserScore = tie ? null : Math.min(m.homeScore, m.awayScore);
+    return { ...m, margin, tie, winner, loser, winnerScore, loserScore };
   });
+
+  const nailBiter = results.reduce((closest, m) => (closest == null || m.margin < closest.margin ? m : closest), null);
+
+  const allStarters = [];
+  for (const m of source.matchups) {
+    for (const p of m.homeRoster) if (p.starter) allStarters.push({ ...p, team: m.homeTeam });
+    for (const p of m.awayRoster) if (p.starter) allStarters.push({ ...p, team: m.awayTeam });
+  }
+  const topPerformers = [...allStarters].sort((a, b) => b.points - a.points).slice(0, TOP_PERFORMER_COUNT);
+
+  const benchRegrets = [];
+  for (const m of source.matchups) {
+    for (const [team, roster] of [[m.homeTeam, m.homeRoster], [m.awayTeam, m.awayRoster]]) {
+      const starters = roster.filter((p) => p.starter);
+      const bench = roster.filter((p) => !p.starter);
+      if (!starters.length || !bench.length) continue;
+      const weakestStarter = starters.reduce((min, p) => (p.points < min.points ? p : min));
+      const bestBench = bench.reduce((max, p) => (p.points > max.points ? p : max));
+      if (bestBench.points > weakestStarter.points) {
+        benchRegrets.push({ team, bestBench, weakestStarter, gap: bestBench.points - weakestStarter.points });
+      }
+    }
+  }
+  benchRegrets.sort((a, b) => b.gap - a.gap);
+
+  return { results, nailBiter, topPerformers, benchRegrets };
 }
 
-function buildArticle(item, options) {
-  const publishDate = sourceDate(item.publishedAt, options.publishDate);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(publishDate)) throw new Error('[generate-editorial] publish date must be YYYY-MM-DD.');
-  const summary = cleanText(item.description).slice(0, 420);
-  const title = item.title;
-  const sourceText = sourceTextFor(item);
-  const entities = dedupeEntities(options.players, sourceText);
-  const excerpt = summary || 'A public NFL news brief from the FSN desk.';
-  const sourceLabel = cleanText(item.author) || new URL(item.url).hostname.replace(/^www\./, '');
-  const body = [
-    '## Public news brief',
-    summary || 'This brief links directly to the original public report.',
-    '[Read the original report](' + item.url + ')',
-    '*Source: ' + sourceLabel + '*',
-  ].join('\n\n');
+function fmtPts(n) {
+  return (Math.round(n * 100) / 100).toFixed(2);
+}
+
+/* ------------------------------------------------------------------ *
+ * Deterministic templating. Every sentence below only ever substitutes
+ * values that came directly out of the validated payload.
+ * ------------------------------------------------------------------ */
+function buildArticle(source, analysis) {
+  const { results, nailBiter, topPerformers, benchRegrets } = analysis;
+
+  const scoreLines = results.map((m) => {
+    if (m.tie) return '- ' + m.homeTeam + ' and ' + m.awayTeam + ' tied at ' + fmtPts(m.homeScore) + '.';
+    return '- ' + m.winner + ' defeated ' + m.loser + ', ' + fmtPts(m.winnerScore) + ' to ' + fmtPts(m.loserScore) + '.';
+  });
+
+  const nailBiterLine = nailBiter.tie
+    ? 'The closest matchup of the week was a flat tie: ' + nailBiter.homeTeam + ' and ' + nailBiter.awayTeam + ' both finished at ' + fmtPts(nailBiter.homeScore) + '.'
+    : 'The nail-biter of the week: ' + nailBiter.winner + ' held off ' + nailBiter.loser + ' by just ' + fmtPts(nailBiter.margin) + ' points, ' + fmtPts(nailBiter.winnerScore) + ' to ' + fmtPts(nailBiter.loserScore) + '.';
+
+  const topPerformerLines = topPerformers.map((p, idx) =>
+    (idx + 1) + '. ' + p.name + ' (' + p.position + ', ' + p.team + '): ' + fmtPts(p.points) + ' points.');
+
+  const benchLines = benchRegrets.slice(0, TOP_PERFORMER_COUNT).map((b) =>
+    '- ' + b.team + ' left ' + fmtPts(b.gap) + ' points on the bench: ' + b.bestBench.name + ' (' + b.bestBench.position + ') scored ' + fmtPts(b.bestBench.points) + ' while starter ' + b.weakestStarter.name + ' (' + b.weakestStarter.position + ') posted ' + fmtPts(b.weakestStarter.points) + '.');
+
+  const leaguePrefix = source.leagueName ? source.leagueName + ', ' : '';
+  const title = 'Week ' + source.week + ' Recap: Box Scores, Top Performers, and Bench Regrets';
+
+  const bodyParts = [
+    '## Week ' + source.week + ' box scores',
+    scoreLines.join('\n'),
+    '## ' + nailBiterLine,
+  ];
+  if (topPerformerLines.length) {
+    bodyParts.push('## Top performers', topPerformerLines.join('\n'));
+  }
+  if (benchLines.length) {
+    bodyParts.push('## Bench decisions that cost points', benchLines.join('\n'));
+  } else {
+    bodyParts.push('## Bench decisions', 'Every starting lineup this week outscored its bench alternatives: no bench regrets to report.');
+  }
+  const body = bodyParts.join('\n\n');
+
+  const excerpt = leaguePrefix + 'Week ' + source.week + ' results: ' +
+    (nailBiter.tie ? nailBiter.homeTeam + ' and ' + nailBiter.awayTeam + ' tied' : nailBiter.winner + ' edged ' + nailBiter.loser + ' by ' + fmtPts(nailBiter.margin)) +
+    ', plus the week\'s top scorers and biggest bench decisions.';
+
+  const entities = [];
+  const seen = new Set();
+  const addEntity = (name, position) => {
+    const key = name.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    entities.push({ name, position });
+  };
+  for (const p of topPerformers) addEntity(p.name, p.position);
+  for (const b of benchRegrets.slice(0, TOP_PERFORMER_COUNT)) {
+    addEntity(b.bestBench.name, b.bestBench.position);
+    addEntity(b.weakestStarter.name, b.weakestStarter.position);
+  }
+
+  const slug = 'week-' + source.week + '-' + source.season + '-recap';
+
   return {
-    title, slug: slugify(publishDate + '-' + title), publishDate,
-    category: inferCategory(item, options.category), excerpt, author: 'FSN Desk',
-    week: resolveSourceWeek(item, options.week), entities, body,
+    title, slug, publishDate: source.publishDate, category: 'Recap',
+    excerpt, author: 'FSN Desk', week: source.week, entities, body,
   };
 }
 
@@ -275,11 +263,11 @@ function validateArticle(article) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(article.publishDate)) throw new Error('[generate-editorial] generated publishDate is not YYYY-MM-DD.');
   const haystack = cleanText(article.title + ' ' + article.body).toLowerCase();
   for (const entity of article.entities) {
-    if (!haystack.includes(entity.name.toLowerCase())) throw new Error('[generate-editorial] entity "' + entity.name + '" is not named in the public brief.');
+    if (!haystack.includes(entity.name.toLowerCase())) throw new Error('[generate-editorial] entity "' + entity.name + '" is not named in the generated recap; refusing to publish an unlinked entity.');
   }
   const fields = [article.title, article.slug, article.category, article.excerpt, article.author, article.body, ...article.entities.map((e) => e.name)];
   if (fields.some((field) => BANNED_CHARS.test(String(field)))) throw new Error('[generate-editorial] em dash found in generated content.');
-  if (article.week != null && (!Number.isInteger(article.week) || article.week < 1 || article.week > 18)) {
+  if (!Number.isInteger(article.week) || article.week < 1 || article.week > 18) {
     throw new Error('[generate-editorial] generated week must be an integer from 1 through 18.');
   }
 }
@@ -287,7 +275,7 @@ function validateArticle(article) {
 function serializeFrontmatter(article) {
   const lines = ['---'];
   for (const key of ['title', 'slug', 'publishDate', 'category', 'excerpt', 'author']) lines.push(key + ': ' + article[key]);
-  if (article.week != null) lines.push('week: ' + article.week);
+  lines.push('week: ' + article.week);
   if (article.entities.length) {
     lines.push('entities:');
     for (const entity of article.entities) {
@@ -299,37 +287,14 @@ function serializeFrontmatter(article) {
   return lines.join('\n') + '\n';
 }
 
-async function generate(options) {
-  let item = null;
-  let lastError = null;
-  for (const feed of options.feeds) {
-    try {
-      const items = await fetchFeed(feed);
-      item = items[options.item] || null;
-      if (!item) throw new Error('[generate-editorial] feed ' + feed + ' has no usable item #' + options.item + '.');
-      console.log('[generate-editorial] selected public feed item from ' + feed + '.');
-      break;
-    } catch (err) {
-      lastError = err;
-      console.warn('[generate-editorial] skipping public feed ' + feed + ': ' + err.message);
-    }
-  }
-  const localStatePath = options.localState || (fs.existsSync(DEFAULT_LOCAL_STATE) ? DEFAULT_LOCAL_STATE : '');
-  if (!item && localStatePath) {
-    try {
-      item = localVerifiedSource(localStatePath);
-      console.warn('[generate-editorial] live feeds were unavailable; using the verified local editorial source at ' + path.relative(ROOT, localStatePath) + '.');
-    } catch (err) {
-      lastError = err;
-      console.warn('[generate-editorial] local fallback rejected: ' + err.message);
-    }
-  }
-  if (!item) {
-    console.warn('[generate-editorial] no verified source is available; no blog, News Desk, or database write was attempted.' +
-      (lastError ? ' Last verification failure: ' + lastError.message : ''));
+function generate(options) {
+  if (!fs.existsSync(options.source)) {
+    console.warn('[generate-editorial] no verified box-score source found at ' + path.relative(ROOT, options.source) + '; no blog, News Desk, or database write was attempted.');
     return null;
   }
-  const article = buildArticle(item, options);
+  const source = loadSource(options.source);
+  const analysis = analyze(source);
+  const article = buildArticle(source, analysis);
   validateArticle(article);
   fs.mkdirSync(options.out, { recursive: true });
   const outFile = path.join(options.out, article.slug + '.md');
@@ -338,81 +303,83 @@ async function generate(options) {
   return outFile;
 }
 
-function fixtureXml() {
-  return `<?xml version="1.0"?><rss><channel><title>Fixture</title><item><title>CeeDee Lamb returns to practice - Example Sports</title><link>https://news.example.test/ceedee-lamb-practice</link><description><![CDATA[The Cowboys listed CeeDee Lamb as a full participant in Monday's practice.]]></description><pubDate>Mon, 14 Sep 2026 12:00:00 GMT</pubDate><dc:creator xmlns:dc="http://purl.org/dc/elements/1.1/">Example Sports</dc:creator></item></channel></rss>`;
+function fixtureSource() {
+  return {
+    verifiedBoxScoreSource: {
+      season: 2026,
+      week: 2,
+      publishDate: '2026-09-16',
+      leagueName: 'Fixture League',
+      matchups: [
+        {
+          homeTeam: 'Gridiron Gurus', awayTeam: 'End Zone Elites',
+          homeScore: 132.42, awayScore: 128.94,
+          homeRoster: [
+            { name: 'Fixture QB One', position: 'QB', points: 28.4, starter: true },
+            { name: 'Fixture Bench WR', position: 'WR', points: 22.1, starter: false },
+            { name: 'Fixture Weak RB', position: 'RB', points: 5.3, starter: true },
+          ],
+          awayRoster: [
+            { name: 'Fixture RB Star', position: 'RB', points: 31.7, starter: true },
+            { name: 'Fixture Other', position: 'TE', points: 9.0, starter: true },
+          ],
+        },
+        {
+          homeTeam: 'Blitz Brigade', awayTeam: 'Red Zone Raiders',
+          homeScore: 101.0, awayScore: 100.5,
+          homeRoster: [{ name: 'Fixture Kicker', position: 'K', points: 10.0, starter: true }],
+          awayRoster: [{ name: 'Fixture WR Two', position: 'WR', points: 18.0, starter: true }],
+        },
+      ],
+    },
+  };
 }
 
-async function runSelfTest() {
-  const server = createServer((req, res) => {
-    if (req.url === '/feed.xml') {
-      res.writeHead(200, { 'Content-Type': 'application/rss+xml' });
-      res.end(fixtureXml());
-      return;
-    }
-    res.writeHead(404).end();
-  });
-  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+function runSelfTest() {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'fsn-editorial-selftest-'));
-  const localState = path.join(tmp, 'verified-editorial-source.json');
+  const sourceFile = path.join(tmp, 'source.json');
   const failures = [];
   const check = (value, message) => { if (!value) failures.push(message); };
   try {
-    const file = await generate({ feeds:['http://127.0.0.1:' + server.address().port + '/feed.xml'], item:0, category:'', players:[parsePlayer('CeeDee Lamb|WR')], publishDate:'', week:0, localState:'', out:tmp });
+    fs.writeFileSync(sourceFile, JSON.stringify(fixtureSource()), 'utf8');
+    const file = generate({ source: sourceFile, out: tmp });
     const content = fs.readFileSync(file, 'utf8');
-    check(content.includes('CeeDee Lamb returns to practice'), 'source headline was not preserved');
-    check(content.includes('position: WR'), 'player position was not serialized');
-    check(content.includes('[Read the original report](https://news.example.test/ceedee-lamb-practice)'), 'original report link is missing');
-    check(!/league\/.+matchup|points:/.test(content), 'output contains a league or fabricated-stat dependency');
+    check(content.includes('End Zone Elites defeated Gridiron Gurus') === false, 'winner/loser direction should follow the higher score');
+    check(content.includes('Gridiron Gurus defeated End Zone Elites, 132.42 to 128.94'), 'expected score line missing or wrong');
+    check(content.includes('Blitz Brigade held off Red Zone Raiders by just 0.50 points'), 'nail-biter line missing or wrong margin');
+    check(content.includes('Fixture RB Star (RB, End Zone Elites): 31.70 points'), 'top performer line missing or wrong');
+    check(content.includes('Gridiron Gurus left 16.80 points on the bench: Fixture Bench WR (WR) scored 22.10 while starter Fixture Weak RB (RB) posted 5.30'), 'bench regret line missing or wrong');
     check(!BANNED_CHARS.test(content), 'output contains banned punctuation');
-    check(!/^week:/m.test(content), 'unverified fixture did not infer an unsupported week');
-    fs.writeFileSync(localState, JSON.stringify({ verifiedEditorialSource: {
-      title:'Week 1 CeeDee Lamb practice update',
-      description:'CeeDee Lamb practiced in full before Week 2.',
-      url:'https://news.example.test/week-1-lamb',
-      publishedAt:'2026-09-14', author:'Example Sports',
-      sourceText:'Week 1 CeeDee Lamb practice update. CeeDee Lamb practiced in full before Week 2.',
-    } }), 'utf8');
-    const fallbackFile = await generate({
-      feeds:['http://127.0.0.1:' + server.address().port + '/blocked.xml'], item:0, category:'',
-      players:[parsePlayer('CeeDee Lamb|WR')], publishDate:'', week:1, localState, out:tmp,
-    });
-    const fallbackContent = fs.readFileSync(fallbackFile, 'utf8');
-    check(/^week: 1$/m.test(fallbackContent), 'verified local fallback did not preserve its source week');
-    check(fallbackContent.includes('CeeDee Lamb'), 'verified local fallback dropped its source entity');
-    const beforeNoop = fs.readdirSync(tmp).sort().join('|');
-    const noOutput = await generate({
-      feeds:['http://127.0.0.1:' + server.address().port + '/blocked.xml'], item:0, category:'',
-      players:[], publishDate:'', week:0, localState:path.join(tmp, 'missing-state.json'), out:tmp,
-    });
-    check(noOutput === null, 'unverified fallback did not return the safe no-write result');
-    check(fs.readdirSync(tmp).sort().join('|') === beforeNoop, 'unverified fallback wrote a blog artifact');
-    let leagueOptionRejected = false;
-    try { parseArgs(['--league', '123']); }
-    catch (err) { leagueOptionRejected = /league options are not supported/.test(err.message); }
-    check(leagueOptionRejected, 'legacy league input was not rejected');
-    let ghostRejected = false;
-    try { buildArticle(parseFeed(fixtureXml())[0], { players:[parsePlayer('Ghost Player|QB')], category:'', publishDate:'', week:0 }); }
-    catch (err) { ghostRejected = /ghost entity/.test(err.message); }
-    check(ghostRejected, 'unmentioned player entity was not rejected');
+    check(/^week: 2$/m.test(content), 'week frontmatter missing');
+
+    const missingFile = path.join(tmp, 'missing.json');
+    const noOutput = generate({ source: missingFile, out: tmp });
+    check(noOutput === null, 'a missing source file should skip safely instead of crashing');
+
+    const badFile = path.join(tmp, 'bad.json');
+    fs.writeFileSync(badFile, JSON.stringify({ verifiedBoxScoreSource: { season: 2026, week: 2, matchups: [{ homeTeam: 'A', awayTeam: 'B', homeScore: 10, awayScore: 5, homeRoster: [{ name: 'Ghost Player', position: 'QB', points: 10 }], awayRoster: [{ name: 'X', position: 'WR', points: 5, starter: true }] }] } }), 'utf8');
+    let rejected = false;
+    try { generate({ source: badFile, out: tmp }); }
+    catch (err) { rejected = /missing a boolean "starter" flag/.test(err.message); }
+    check(rejected, 'a roster entry missing the starter flag should be rejected, not defaulted');
   } finally {
-    await new Promise((resolve) => server.close(resolve));
-    fs.rmSync(tmp, { recursive:true, force:true });
+    fs.rmSync(tmp, { recursive: true, force: true });
   }
   if (failures.length) {
     console.error('[generate-editorial] SELF-TEST FAILED:');
     failures.forEach((failure) => console.error('  - ' + failure));
     process.exit(1);
   }
-  console.log('[generate-editorial] self-test passed: public RSS ingestion, attributed Markdown, evidence-backed player entities, and no league/stat dependency.');
+  console.log('[generate-editorial] self-test passed: strict box-score validation, deterministic recap templating, no network calls.');
 }
 
 async function main() {
   let args;
   try { args = parseArgs(process.argv.slice(2)); }
   catch (err) { console.error(err.message); process.exit(1); }
-  if (args.selfTest) { await runSelfTest(); return; }
+  if (args.selfTest) { runSelfTest(); return; }
   try {
-    const file = await generate(args);
+    const file = generate(args);
     if (file) console.log('[generate-editorial] done. Run "npm run build:blog" to compile ' + path.relative(ROOT, file) + '.');
     else console.log('[generate-editorial] skipped safely: no verified source, no output written.');
   } catch (err) {

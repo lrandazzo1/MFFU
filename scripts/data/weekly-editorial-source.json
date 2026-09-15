@@ -1,11 +1,39 @@
 {
-  "_comment": "Fallback fixture for scripts/generate-editorial.mjs. Used only when every --feed in the run fails (for example, a sandboxed environment whose network egress proxy blocks outbound RSS fetches). Replace verifiedEditorialSource.url with a real, currently-live public report before relying on this in a real run: the script refuses to publish unless sourceText actually backs the title and any --player entities, but it cannot itself confirm the URL is genuine. Never fill this file with fabricated player stats or performance claims; it holds an attributed link brief, the same as a live feed item would.",
-  "verifiedEditorialSource": {
-    "title": "NFL clubs trim practice squads as Week 2 approaches",
-    "description": "Teams around the league finalized practice squad moves ahead of Week 2, with several clubs adding depth at receiver and cornerback.",
-    "url": "https://news.example.test/nfl-week-2-practice-squad-moves",
-    "publishedAt": "2026-09-14",
-    "author": "Example Sports Wire",
-    "sourceText": "NFL clubs trim practice squads as Week 2 approaches. Teams around the league finalized practice squad moves ahead of Week 2, with several clubs adding depth at receiver and cornerback."
+  "_comment": "Sample/fallback payload for scripts/generate-editorial.mjs. Replace with the real completed week's box scores before running for publication: every team name, player name, and point total below is fixture data, not a real result. The generator validates strictly (numeric scores, a boolean starter flag on every roster entry, non-empty rosters) and refuses to write an article if anything here is malformed.",
+  "verifiedBoxScoreSource": {
+    "season": 2026,
+    "week": 2,
+    "publishDate": "2026-09-16",
+    "leagueName": "",
+    "matchups": [
+      {
+        "homeTeam": "Sample Team A",
+        "awayTeam": "Sample Team B",
+        "homeScore": 118.62,
+        "awayScore": 104.18,
+        "homeRoster": [
+          { "name": "Sample Player One", "position": "QB", "points": 24.6, "starter": true },
+          { "name": "Sample Player Two", "position": "RB", "points": 19.8, "starter": true },
+          { "name": "Sample Player Three", "position": "WR", "points": 8.4, "starter": true },
+          { "name": "Sample Bench Player", "position": "WR", "points": 21.2, "starter": false }
+        ],
+        "awayRoster": [
+          { "name": "Sample Player Four", "position": "RB", "points": 27.3, "starter": true },
+          { "name": "Sample Player Five", "position": "TE", "points": 6.1, "starter": true }
+        ]
+      },
+      {
+        "homeTeam": "Sample Team C",
+        "awayTeam": "Sample Team D",
+        "homeScore": 96.4,
+        "awayScore": 95.9,
+        "homeRoster": [
+          { "name": "Sample Player Six", "position": "QB", "points": 18.2, "starter": true }
+        ],
+        "awayRoster": [
+          { "name": "Sample Player Seven", "position": "WR", "points": 15.7, "starter": true }
+        ]
+      }
+    ]
   }
 }
