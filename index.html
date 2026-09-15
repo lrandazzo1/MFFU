@@ -2208,15 +2208,6 @@ html[data-fsn-boot="loading"] #tickerBar{ visibility:hidden; }
   margin-left:auto; flex:none; font-family:'JetBrains Mono',monospace;
   font-size:8.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--dim);
 }
-.ds-local{
-  padding:12px 14px; border-bottom:1px solid var(--line);
-  font-size:12.5px; line-height:1.6; color:#e9edf4;
-  background:linear-gradient(90deg,rgba(255,196,0,.06),transparent 70%);
-}
-.ds-local .tag{
-  display:block; margin-bottom:5px; font-size:9px; font-weight:800;
-  letter-spacing:.16em; text-transform:uppercase; color:var(--gold);
-}
 .ds-player{ padding:10px 14px; border-bottom:1px dashed rgba(255,255,255,.07); }
 .ds-player:last-child{ border-bottom:0; }
 .ds-player-top{ display:flex; align-items:baseline; gap:8px; }
@@ -2281,7 +2272,6 @@ html[data-fsn-boot="loading"] #tickerBar{ visibility:hidden; }
 .deepstat.ds-compact{ margin:11px 0 0; border-radius:11px; }
 .deepstat.ds-compact .ds-head{ padding:8px 11px; }
 .deepstat.ds-compact .ds-head h4{ font-size:10px; letter-spacing:.12em; }
-.deepstat.ds-compact .ds-local{ padding:9px 11px; font-size:11.5px; line-height:1.55; }
 .deepstat.ds-compact .ds-player{ padding:8px 11px; }
 .deepstat.ds-compact .ds-name{ font-size:12px; }
 .deepstat.ds-compact .ds-pts{ font-size:13px; }
@@ -2664,22 +2654,6 @@ body.fsn-dd-lock{ overflow:hidden; }
   font-family:'Oswald',sans-serif; font-weight:300; font-size:12.5px;
   line-height:1.5; color:var(--off); margin:7px 0 0;
   display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden;
-}
-/* The localized lede. When an ingested item names a player somebody in this
-   league actually rosters, the card leads with the league's own read on it
-   instead of the published national blurb — brighter than the blurb it
-   replaces, because it is the reason the card is worth a tap. The clamp is
-   four lines rather than three: a sentence that names two managers and a
-   player needs the room, and it is still a fixed-height card. */
-.wire-dek-local{
-  font-family:'Oswald',sans-serif; font-weight:400; font-size:12.5px;
-  line-height:1.5; color:#e9edf4; margin:7px 0 0;
-  display:-webkit-box; -webkit-line-clamp:4; -webkit-box-orient:vertical; overflow:hidden;
-}
-.wire-dek-local .tag{
-  display:block; margin-bottom:3px; font-family:'JetBrains Mono',monospace;
-  font-size:8.5px; font-weight:700; letter-spacing:.16em;
-  text-transform:uppercase; color:var(--gold);
 }
 /* The roster context line: how this article touches the reader's team. Woven
    into the card copy so a rostered player is called out inline rather than in
@@ -30402,19 +30376,15 @@ function livePlayoffBracketHtml(board){
 }
 
 /* ============================================================
-   THE LOCAL DESK BLOCK — deep stats and the live head-to-head
+   DEEP STATS BLOCK: player stats and the live head-to-head
 
    The section that hangs BELOW the copy and below the By-the-Numbers box on
-   every article and every timeline card. Three parts, in this order:
+   every article and every timeline card. Two parts, in this order:
 
-     1. THE LOCAL READ — one sentence in the league's own voice, naming the
-        manager who owns the player the item is about. FSNLocalDesk (block 1)
-        writes it from the mandated phrasing structures; this layer only paints
-        it.
-     2. THE PLAYERS — for each player driving the narrative: the exact stats
+     1. THE PLAYERS: for each player driving the narrative, the exact stats
         (yardage, touchdowns, carries, receptions) and the fantasy points those
         stats actually produced.
-     3. THE LIVE HEAD-TO-HEAD — where the real-time battle stands in the league
+     2. THE LIVE HEAD-TO-HEAD: where the real-time battle stands in the league
         matchup those points are scoring into, so a manager can see the state
         of their week without leaving the card.
 
@@ -30515,12 +30485,9 @@ function deepStatScoreHtml(score){
 
 /* Paint an already-computed FSNLocalDesk payload as the Deep Stats section.
 
-   The section is a From-the-Desk / Analysis affordance now: the only caller
-   is renderDeskWire, and only on `post.category === 'Analysis'`. The normal
-   article reader and every deterministic timeline card render WITHOUT this
-   section — that is the whole point of the split, and re-adding a call from
-   articleHtml or timelineCard would put the "Local Read" back on ordinary
-   news copy where the previous scope-check ripped it out.
+   The section is a recap wire affordance. Its only caller is renderDeskWire,
+   gated to recap categories. The normal article reader and every deterministic
+   timeline card render without it.
 
    `variant` is 'compact' for the wire card in the feed — two players, one
    head-to-head, no provenance footnote. The full variant (more players, the
@@ -30533,12 +30500,9 @@ function deepStatBlockFromData(data, variant, label){
   const compact = variant === 'compact';
   const players = compact ? data.players.slice(0, 2) : data.players;
   const scores = compact ? data.scores.slice(0, 1) : data.scores;
-  if(!data.local && !players.length && !scores.length) return '';
+  if(!players.length && !scores.length) return '';
 
   try{
-    const localHtml = data.local
-      ? `<div class="ds-local"><span class="tag">The Local Read</span>${esc(data.local)}</div>`
-      : '';
     const playersHtml = players.map(deepStatPlayerHtml).join('');
     const scoresHtml = scores.length
       ? `<div class="ds-scores">${scores.map(deepStatScoreHtml).join('')}</div>`
@@ -30552,10 +30516,9 @@ function deepStatBlockFromData(data, variant, label){
     return `<section class="deepstat${compact ? ' ds-compact' : ''}">
       <div class="ds-head">
         <span style="width:3px;height:14px;border-radius:2px;background:var(--gold);display:inline-block"></span>
-        <h4>Deep Stats · The Local Desk</h4>
+        <h4>Deep Stats</h4>
         ${data.week ? `<span class="ds-week">Week ${esc(String(data.week))}</span>` : ''}
       </div>
-      ${localHtml}
       ${playersHtml}
       ${scoresHtml}
       ${note ? `<div class="ds-note">${esc(note)}</div>` : ''}
@@ -31761,31 +31724,10 @@ function renderDeskWire(){
   const slotLabel = String(slot.label || 'From the Desk').toUpperCase();
   const categoryPill = post.category
     ? `<span class="sep">/</span><span>${esc(post.category)}</span>` : '';
-  /* ---- HYPER-LOCAL COPY ----
-     The public wire remains the default for every category. The one exception is
-     the timeline's recap treatment: only a completed-week recap earns a
-     matchup-specific Local Read. Preview, waiver, injury, analysis and general
-     feed cards retain their published headline, excerpt and public context.
-
-     Normalize whitespace and case so the two permitted editorial labels,
-     "Recap" and "The Recap", take the same deterministic path without widening
-     that treatment to a general analysis category. */
   const normalizedCategory = String(post.category || '').trim().toLowerCase().replace(/\s+/g, ' ');
   const isRecap = normalizedCategory === 'recap' || normalizedCategory === 'the recap';
-  let localLede = '';
-  if(isRecap){
-    try{
-      localLede = FSNLocalDesk.localizeWire(view, slot, snapshot.dateKey);
-    }catch(err){
-      console.error('[LocalDesk] localizing the recap item "' + (post.slug || post.title || 'untitled') +
-        '" failed; the card falls back to the published excerpt.', err);
-      localLede = '';
-    }
-  }
   const blurb = wireBlurb(post.excerpt);
-  const blurbHtml = localLede
-    ? `<p class="wire-dek-local"><span class="tag">The Local Read</span>${esc(localLede)}</p>`
-    : (blurb ? `<p class="wire-dek-compact">${esc(blurb)}</p>` : '');
+  const blurbHtml = blurb ? `<p class="wire-dek-compact">${esc(blurb)}</p>` : '';
 
   /* The deep data block rides the same category gate. On a recap card it
      hangs below the excerpt with the stat lines and the head-to-head; on
