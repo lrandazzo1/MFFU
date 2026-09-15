@@ -3490,13 +3490,6 @@ body.fsn-dd-lock{ overflow:hidden; }
         <h2>The Timeline</h2>
         <span class="kicker text-[var(--dim)] ml-auto" id="timelineLive">● UPDATING</span>
       </div>
-      <!-- THE DESK WIRE — today's published article, routed by the weekly
-           cadence and annotated with this league's rosters. Rendered as the
-           first item in the timeline stream so a breaking or analysis piece
-           reads as one more entry in the feed, not a dominant main attraction.
-           Hidden whenever FSNArticles has nothing for the slot; the desk below
-           stands alone in that case. -->
-      <div id="deskWireWrap" hidden></div>
       <div class="tl-wrap" id="timelineFeed"></div>
     </div>
 
@@ -9011,13 +9004,6 @@ window.FSNArticles = (function(){
     FSNStore.setJSON(CACHE_KEY, { ts:Date.now(), slot:slotId, dateKey, post }, { evictable:true });
   }
 
-  async function readJson(url, label){
-    const res = await FSNNet.fetch(url, { headers:{ Accept:'application/json' }, cache:'no-store' },
-      { timeoutMs:TIMEOUT_MS, label });
-    if(!res.ok) throw new Error(label + ' answered HTTP ' + res.status);
-    return res.json();
-  }
-
   /* Normalize one fetched article into the shape the renderer reads. Unknown
      fields are carried through untouched; missing ones become empty, never
      undefined, so the card never prints "undefined". */
@@ -9047,70 +9033,20 @@ window.FSNArticles = (function(){
     publish();
   }
 
-  /* The one network path. `force` skips the freshness gate (a manual retry);
-     everything else — launch, foreground, a screen repaint — is rate limited
-     so returning to the tab does not re-read the origin every time. */
-  function refresh(options){
-    const opts = options || {};
-    const now = Date.now();
-    const dateKey = localDateKey();
-    const slot = slotForDate();
-
-    /* The day rolled over while the app sat in the background: the cached
-       answer belongs to yesterday's slot, so it has to be re-routed even
-       though the payload itself is still fresh. */
-    const dayChanged = state.dateKey && state.dateKey !== dateKey;
-
-    if(inflight) return inflight;
-    if(!opts.force && !dayChanged && state.status !== 'idle' && (now - lastAttemptAt) < FRESH_MS){
-      return Promise.resolve(current());
-    }
-
-    lastAttemptAt = now;
-    if(state.status === 'idle') settle({ status:'loading', slot, dateKey });
-
-    inflight = (async ()=>{
-      const manifest = await readJson(indexUrl(), 'blog manifest');
-      const posts = (manifest && Array.isArray(manifest.posts)) ? manifest.posts : [];
-      const pick = selectForSlot(posts, slot, dateKey);
-      if(!pick){
-        return { status:'empty', slot, post:null, dateKey, cached:false, fetchedAt:Date.now(),
-                 reason:'No ' + slot.label + ' article is published for today.' };
-      }
-      const body = await readJson(postUrl(pick.slug), 'blog post ' + pick.slug);
-      const post = normalizePost(body, pick);
-      if(!post.slug || !post.bodyHtml){
-        return { status:'empty', slot, post:null, dateKey, cached:false, fetchedAt:Date.now(),
-                 reason:'The published ' + slot.label + ' article carried no body.' };
-      }
-      writeCache(post, slot.id, dateKey);
-      return { status:'ready', slot, post, dateKey, cached:false, fetchedAt:Date.now(), reason:'' };
-    })().then(next=>{
-      inflight = null;
-      annotationMemo = null;
-      settle(next);
-      return current();
-    }).catch(err=>{
-      inflight = null;
-      /* An unreachable origin is an ordinary offline condition on a phone, not
-         a defect in this app, so it warns rather than errors — but it always
-         says which read died and why, per CLAUDE.md rule 3. */
-      console.warn('[FSNArticles] the article feed at ' + indexUrl() + ' could not be read for ' +
-        slot.label + ' (' + dateKey + '); falling back to the cached copy if there is one.', err);
-      const cached = readCache();
-      if(cached && cached.slot === slot.id && cached.post){
-        annotationMemo = null;
-        settle({ status:'ready', slot, post:normalizePost(cached.post, cached.post), dateKey,
-                 cached:true, fetchedAt:Number(cached.ts) || 0, reason:'Showing the last article this device downloaded.' });
-      } else {
-        annotationMemo = null;
-        settle({ status:'offline', slot, post:null, dateKey, cached:false, fetchedAt:0,
-                 reason:'The article feed is unreachable right now.' });
-      }
-      return current();
+  /* External editorial content is intentionally disconnected from the app.
+     Native News Desk items are generated from the league data only. */
+  function refresh(){
+    annotationMemo = null;
+    settle({
+      status:'empty',
+      slot:slotForDate(),
+      post:null,
+      dateKey:localDateKey(),
+      cached:false,
+      fetchedAt:0,
+      reason:'External editorial is disabled in the app.',
     });
-
-    return inflight;
+    return Promise.resolve(current());
   }
 
   /* ---- 5. THE ROSTER LOOKUP -------------------------------------------- */
@@ -9611,33 +9547,11 @@ window.FSNArticles = (function(){
 
   let armed = false;
 
-  /* Launch and every return to the foreground, exactly as specified, plus a
-     plain `focus` for desktop browsers that do not fire visibilitychange on an
-     alt-tab. Both go through the same rate-limited refresh(). */
+  /* External editorial loading is disabled. This hook remains inert so the
+     application never requests, caches, annotates, or renders blog content. */
   function arm(){
     if(armed) return;
     armed = true;
-
-    const wake = (why)=>{
-      refresh({ reason:why }).catch(err=>{
-        console.warn('[FSNArticles] the ' + why + ' article refresh failed.', err);
-      });
-    };
-
-    document.addEventListener('visibilitychange', ()=>{
-      if(document.visibilityState !== 'visible') return;
-      wake('foreground');
-    });
-    window.addEventListener('focus', ()=> wake('focus'));
-
-    /* Paint whatever this device already downloaded before the network answers,
-       so a returning reader never sees an empty slot flash first. */
-    const cached = readCache();
-    if(cached && cached.slot === slotForDate().id && cached.post){
-      settle({ status:'ready', slot:slotForDate(), post:normalizePost(cached.post, cached.post),
-               dateKey:localDateKey(), cached:true, fetchedAt:Number(cached.ts) || 0, reason:'' });
-    }
-    wake('launch');
   }
 
   if(document.readyState === 'loading'){
@@ -31811,16 +31725,6 @@ document.addEventListener('click', (e)=>{
 });
 
 function renderNews(){
-  /* The wire card is painted first and independently of everything below it:
-     the desk's own stream can be empty, unavailable or mid-failure and the
-     day's published article still has to show. Guarded so the reverse is also
-     true — a wire failure degrades to a hidden slot, never to the desk's
-     "hit a snag" screen. */
-  safeRun('deskWire', renderDeskWire, ()=>{
-    const wireWrap = $('deskWireWrap');
-    if(wireWrap){ wireWrap.hidden = true; wireWrap.innerHTML = ''; }
-  });
-
   const week = effectiveWeek();
   const viewedYearNews = parseInt(($('seasonYear').value || '').trim(), 10) || uiActiveSeasonYear();
   const newsLabel = isPreseasonWeek1(week, viewedYearNews) ? 'PRESEASON' : 'WEEK ' + week;
@@ -31851,32 +31755,16 @@ function renderNews(){
   $('timelineLive').textContent = anyLive ? '● LIVE' : '● UPDATING';
   $('timelineLive').style.color = anyLive ? 'var(--red)' : 'var(--dim)';
 
-  /* The wire card lives inside newsFeedWrap now (right above the timeline
-     spine), so an empty-timeline branch that hides the whole feed would also
-     bury today's article. Keep the section visible whenever the wire has
-     content and blank just the timeline body instead. */
-  const wireHasContent = !!(($('deskWireWrap') || {}).innerHTML || '').trim();
-
   if(!LeagueData.hasLive() && !all.length){
     $('newsLeadWrap').innerHTML = emptyState('NO LEAGUE DATA', 'Connect your ESPN league and the deterministic timeline fills with recaps, matchup history, waiver fallout, and power rankings.', 'setup');
-    if(wireHasContent){
-      $('newsFeedWrap').classList.remove('hidden');
-      $('timelineFeed').innerHTML = '';
-    } else {
-      $('newsFeedWrap').classList.add('hidden');
-    }
+    $('newsFeedWrap').classList.add('hidden');
     return;
   }
 
   // No pre-generated stories for this week/season at all → clean placeholder.
   if(!all.length){
     $('newsLeadWrap').innerHTML = newsPlaceholderCard(week, newsLabel);
-    if(wireHasContent){
-      $('newsFeedWrap').classList.remove('hidden');
-      $('timelineFeed').innerHTML = '';
-    } else {
-      $('newsFeedWrap').classList.add('hidden');
-    }
+    $('newsFeedWrap').classList.add('hidden');
     return;
   }
 
@@ -31889,12 +31777,7 @@ function renderNews(){
           ? 'No draft board in this payload. Re-fetch with the draft views once your league has drafted.'
           : 'Nothing on this desk yet for week ' + week + '. Stories unlock as the week unfolds.');
     $('newsLeadWrap').innerHTML = emptyState('NO COPY', msg, null);
-    if(wireHasContent){
-      $('newsFeedWrap').classList.remove('hidden');
-      $('timelineFeed').innerHTML = '';
-    } else {
-      $('newsFeedWrap').classList.add('hidden');
-    }
+    $('newsFeedWrap').classList.add('hidden');
     return;
   }
 
@@ -32938,9 +32821,6 @@ FSNBridge.register({
   renderRecordBook,
   renderNews,
   renderHomeStories,
-  /* FSNArticles (block 1) repaints the wire card through this the moment a
-     fetch settles, without knowing anything about this closure. */
-  renderDeskWire,
   currentLeagueWeek,
   uiActiveSeasonYear,
 });
