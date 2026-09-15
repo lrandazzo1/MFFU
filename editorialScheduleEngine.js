@@ -571,6 +571,9 @@
     var display=Math.max(1,Number(week)||1);
     var current=original(display);
     if(!activeSeason()) return current;
+    /* The requested historical split is limited to the Week 1 and Week 2
+       transition. Later weeks retain the desk's normal release calendar. */
+    if(display>2) return current;
     var advance=(Array.isArray(current)?current:[]).filter(function(article){return !postgame(article);});
     if(display===1) return advance;
     var prior=original(display-1);
