@@ -35,6 +35,20 @@ jobs:
       APPSTORE_CONNECT_ISSUER_ID: ${{ secrets.APPSTORE_CONNECT_ISSUER_ID }}
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
       APP_BUNDLE_ID: app.fantasysportsnetwork
+      # Marketing version (CFBundleShortVersionString) shown to reviewers on
+      # App Store Connect. Capacitor's project template ships 1.0, which App
+      # Store Connect closes for new submissions once a build is accepted
+      # against it (ITMS-90186 / ITMS-90062). Bump the patch here whenever the
+      # previous version's submission slot is closed, so every subsequent
+      # upload advertises a fresh CFBundleShortVersionString.
+      APP_MARKETING_VERSION: '1.0.1'
+      # Build number floor (CFBundleVersion). Every uploaded build for a given
+      # marketing version must have a strictly greater CFBundleVersion than the
+      # previous one, or App Store Connect rejects it. github.run_number
+      # normally provides that, but if a run is re-triggered or the counter has
+      # not yet caught up with the last accepted build (144), fall back to this
+      # floor so a fresh upload is never below it.
+      APP_BUILD_NUMBER_FLOOR: '145'
 
     steps:
       - uses: actions/checkout@v5
@@ -164,6 +178,51 @@ jobs:
             || /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" "$PLIST"
           echo "ITSAppUsesNonExemptEncryption = $(/usr/libexec/PlistBuddy -c 'Print :ITSAppUsesNonExemptEncryption' "$PLIST")"
 
+      # Set CFBundleShortVersionString / CFBundleVersion directly in Info.plist
+      # in addition to the xcodebuild MARKETING_VERSION / CURRENT_PROJECT_VERSION
+      # flags. Capacitor 6's generated Info.plist ships literal "1.0" for both
+      # keys rather than referencing $(MARKETING_VERSION) / $(CURRENT_PROJECT_VERSION),
+      # so the xcodebuild flags alone can leave the shipped Info.plist reading
+      # 1.0 and the upload gets rejected with ITMS-90186 / ITMS-90062. Patching
+      # the plist here — after cap sync, before archive — makes sure the values
+      # actually reach the binary regardless of the template shape.
+      - name: Set app version and build number in Info.plist
+        env:
+          MARKETING: ${{ steps.ios_version.outputs.marketing }}
+          BUILD: ${{ steps.ios_version.outputs.build }}
+        run: |
+          PLIST="ios/App/App/Info.plist"
+          if [ ! -f "$PLIST" ]; then
+            echo "::error title=Info.plist missing::Expected $PLIST after the Capacitor sync."
+            exit 1
+          fi
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $MARKETING" "$PLIST" 2>/dev/null \
+            || /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string $MARKETING" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD" "$PLIST" 2>/dev/null \
+            || /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string $BUILD" "$PLIST"
+          echo "CFBundleShortVersionString = $(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$PLIST")"
+          echo "CFBundleVersion            = $(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$PLIST")"
+
+      # Compute the effective build number as max(github.run_number, floor).
+      # App Store Connect requires CFBundleVersion to strictly increase for a
+      # given CFBundleShortVersionString; using the run_number alone risks a
+      # regression if the counter is ever behind the last accepted build. Both
+      # xcodebuild invocations below read the resolved value.
+      - name: Resolve iOS version and build number
+        id: ios_version
+        env:
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          FLOOR="$APP_BUILD_NUMBER_FLOOR"
+          if [ "$RUN_NUMBER" -gt "$FLOOR" ]; then
+            BUILD="$RUN_NUMBER"
+          else
+            BUILD="$FLOOR"
+          fi
+          echo "marketing=$APP_MARKETING_VERSION" >> "$GITHUB_OUTPUT"
+          echo "build=$BUILD" >> "$GITHUB_OUTPUT"
+          echo "iOS build: CFBundleShortVersionString=$APP_MARKETING_VERSION, CFBundleVersion=$BUILD"
+
       # Validate the App Store Connect credentials BEFORE spending 30 minutes
       # on an archive that cannot be signed. This normalizes and installs the
       # .p8, verifies that Apple accepts the key and that it can access signing
@@ -206,7 +265,8 @@ jobs:
             -authenticationKeyIssuerID "$APPSTORE_CONNECT_ISSUER_ID" \
             DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
             CODE_SIGN_STYLE=Automatic \
-            CURRENT_PROJECT_VERSION=${{ github.run_number }}
+            MARKETING_VERSION=${{ steps.ios_version.outputs.marketing }} \
+            CURRENT_PROJECT_VERSION=${{ steps.ios_version.outputs.build }}
 
       # Preserve the compile-only CI signal when credentials are absent, but do
       # not manufacture an unsigned archive and never route it toward export.
@@ -221,7 +281,8 @@ jobs:
             -destination 'generic/platform=iOS' \
             -derivedDataPath "$RUNNER_TEMP/UnsignedDerivedData" \
             CODE_SIGNING_ALLOWED=NO \
-            CURRENT_PROJECT_VERSION=${{ github.run_number }}
+            MARKETING_VERSION=${{ steps.ios_version.outputs.marketing }} \
+            CURRENT_PROJECT_VERSION=${{ steps.ios_version.outputs.build }}
 
       # The deployment target was raised before the build, but MinimumOSVersion
       # is written by Xcode into the *built* Info.plist, so this is the only
