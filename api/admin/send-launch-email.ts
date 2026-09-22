@@ -20,6 +20,9 @@
      ?dry_run=1  — fetches the waitlist and returns the count without
                    sending anything. Use this before the real run.
      ?limit=N    — cap the number of recipients (smoke tests / first N).
+     ?to=<email> — bypass the waitlist and send to that one address
+                   only. Use this to smoke-test the template before the
+                   real blast. Ignored under ?dry_run=1.
 
    Because Vercel functions have a bounded max duration, this route
    sends synchronously in batches and returns { sent, failed, errors }.
@@ -318,21 +321,33 @@ async function handler(req: VercelRequest, res: VercelResponse) {
   const dryRun = qparam(req, 'dry_run') === '1' || qparam(req, 'dry_run') === 'true';
   const limitRaw = Number(qparam(req, 'limit'));
   const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.floor(limitRaw) : null;
+  const toOverride = qparam(req, 'to').trim().toLowerCase();
 
-  console.log(`[launch-email] request received — dry_run=${dryRun} limit=${limit ?? 'none'}`);
+  console.log(`[launch-email] request received — dry_run=${dryRun} limit=${limit ?? 'none'} to=${toOverride || 'none'}`);
 
+  // ?to=<email> — smoke-test override. Skip the waitlist query entirely and
+  // send to exactly that one address (still requires a valid-looking email).
   let recipients: string[];
-  try {
-    recipients = await fetchRecipients(supabase);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.error('[launch-email] fetch failed:', msg);
-    res.status(500).json({ error: 'FETCH_FAILED', detail: msg });
-    return;
+  let total: number;
+  if (toOverride && !dryRun) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(toOverride)) {
+      res.status(400).json({ error: 'BAD_TO', detail: 'not a valid email address' });
+      return;
+    }
+    recipients = [toOverride];
+    total = 1;
+  } else {
+    try {
+      recipients = await fetchRecipients(supabase);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[launch-email] fetch failed:', msg);
+      res.status(500).json({ error: 'FETCH_FAILED', detail: msg });
+      return;
+    }
+    total = recipients.length;
+    if (limit) recipients = recipients.slice(0, limit);
   }
-
-  const total = recipients.length;
-  if (limit) recipients = recipients.slice(0, limit);
 
   console.log(`[launch-email] fetched=${total} to_send=${recipients.length}`);
 
