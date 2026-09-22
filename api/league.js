@@ -99,6 +99,17 @@ function cleanLeagueId(value) {
   return /^\d{1,20}$/.test(id) ? id : '';
 }
 
+/* The single answer to "which league?" being unanswered. One shape for the
+   read and the write so the browser has exactly one condition to recognise. */
+function noActiveLeagueError() {
+  return {
+    error: 'No active league specified',
+    code: 'NO_ACTIVE_LEAGUE',
+    detail: 'Every request must carry a numeric league_id. This endpoint has no sample or demo league ' +
+      'and never answers with one.',
+  };
+}
+
 function cleanSeasonYear(value, fallback) {
   const year = Number(value || fallback);
   return Number.isInteger(year) && year >= 1990 && year <= activeFantasySeason() + 1 ? year : 0;
@@ -991,7 +1002,12 @@ async function handler(req, res) {
       : req.query.seasonYear);
     const seasonRequested = rawSeason !== undefined && String(rawSeason).trim() !== '';
     const seasonYear = seasonRequested ? cleanSeasonYear(rawSeason, 0) : 0;
-    if (!leagueId) return res.status(400).json({ error: 'A valid numeric league_id is required.' });
+    /* ---- no active league is an ERROR, never a demo ----
+       This route has no seed, sample or demo league and must never grow one.
+       A request that names no league is answered with a 400 that says exactly
+       that, so the browser can show "Select or Connect a League" rather than
+       rendering something that looks like a league and is not the reader's. */
+    if (!leagueId) return res.status(400).json(noActiveLeagueError());
     if (seasonRequested && !seasonYear) {
       return res.status(400).json({
         error: 'season_year must be a valid season between 1990 and ' + (activeFantasySeason() + 1) + '.',
@@ -1104,7 +1120,16 @@ async function handler(req, res) {
 
   const leagueId = cleanLeagueId(body.league_id || body.leagueId);
   const seasonYear = cleanSeasonYear(body.season_year || body.seasonYear, activeFantasySeason());
-  if (!leagueId || !seasonYear) return res.status(400).json({ error: 'Valid league_id and season_year values are required.' });
+  // Same contract as the read: a write with no league is refused by name, so a
+  // browser that lost its active league can never silently save over anything.
+  if (!leagueId) return res.status(400).json(noActiveLeagueError());
+  if (!seasonYear) {
+    return res.status(400).json({
+      error: 'A valid season_year is required.',
+      code: 'INVALID_SEASON',
+      league_id: leagueId,
+    });
+  }
 
   const historyJson = body.history_json !== undefined
     ? body.history_json

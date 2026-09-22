@@ -199,6 +199,12 @@ function leagueFixture(id, season, nameSuffix) {
    that called switchSeasonYear() directly would not prove the dropdown is
    wired to it. */
 async function selectSeason(page, year) {
+  const trigger = page.locator('#homeWeekScrubber .fsn-dd-trigger');
+  if (await trigger.count()) {
+    await trigger.first().click();
+    await page.locator('.fsn-dd-sheet .fsn-dd-opt[data-value="' + year + '"]').first().click();
+    return;
+  }
   const select = page.locator('#homeWeekScrubber select[data-season-select]');
   await select.waitFor({ state: 'attached', timeout: 20000 });
   await select.selectOption(year);
@@ -368,9 +374,12 @@ try {
   // The happy path still works: league A's own 2024 season loads and is kept.
   espnAnswer = { status: 200, body: leagueFixture(LEAGUE_A, 2024, 'ALPHA') };
   await selectSeason(page, '2024');
+  /* Wait for the DATA, not for the year box: switchSeasonYear() sets the year
+     and clears the not-synced flag before the read completes, so a wait on
+     those alone can match while the fetch is still in flight. */
   await page.waitForFunction(() => {
-    const gap = document.getElementById('homeSeasonGap');
-    return gap && gap.classList.contains('hidden') && document.getElementById('seasonYear').value === '2024';
+    const data = window.LeagueData.espnData;
+    return !!(data && Number(data.seasonId || data.season) === 2024);
   }, null, { timeout: 20000 });
   const loaded = await page.evaluate(() => ({
     season: window.LeagueData.espnData && (window.LeagueData.espnData.seasonId || window.LeagueData.espnData.season),
