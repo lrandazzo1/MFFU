@@ -530,6 +530,11 @@ module.exports = async function handler(req, res) {
         code: authenticated ? 'PRIVATE_LEAGUE_LOGIN_REJECTED' : 'PRIVATE_LEAGUE_ACCESS_REQUIRED',
         league_id: leagueContextFromTarget(target).leagueId || null,
         espn: payload,
+        /* Raw upstream body preview so the frontend can surface ESPN's own
+           reply verbatim in the diagnostic banner during testing. Truncated
+           so a giant HTML error page cannot balloon the JSON response. */
+        espn_body: typeof read.body === 'string' ? read.body.slice(0, 800) : '',
+        espn_status: upstream.status,
         auth: authenticated ? 'private' : 'public',
       });
     }
