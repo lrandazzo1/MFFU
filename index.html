@@ -25680,7 +25680,11 @@ function cacheLeagueRecord(record){
     league_id:String(record.league_id),
     season_year:Number(record.season_year),
     has_cookies:!!record.has_cookies,
-    updated_at:record.updated_at || new Date().toISOString(),
+    /* Whatever the SERVER last confirmed, or '' when it has confirmed nothing.
+       Never a locally minted "now": this field is a version marker, and a
+       fabricated one outlives the session in localStorage and makes every
+       later guarded save assert a version no row ever had. */
+    updated_at:record.updated_at ? String(record.updated_at) : '',
     local_fallback:true,
   };
 
@@ -26419,6 +26423,16 @@ async function syncLeagueToCloud(options){
     optimization = await optimizeArchiveForCloud(sourceArchive, { force:true, announce:true });
   }
 
+  /* An explicit save is a human pressing a button, not a background refresh.
+     Those go out with force:true, which tells /api/league to read the
+     authoritative updated_at from the database immediately before it writes
+     instead of trusting the marker this browser is holding. A marker that went
+     stale — a background save on another device, an interrupted upload, a
+     cached record older than the row — then costs nothing: the write still
+     happens. Automatic saves keep the optimistic guard, so a stale background
+     tab still cannot silently overwrite a leaguemate's newer archive. */
+  const explicitSave = !!opts.force;
+
   function makeSaveRequest(optimizedArchive){
     const historyJson = {
       schemaVersion:2,
@@ -26437,6 +26451,7 @@ async function syncLeagueToCloud(options){
       expected_updated_at:cloudVersionFor(league, season) || null,
       history_json:historyJson,
     };
+    if(explicitSave) body.force = true;
     return { historyJson, serialized:JSON.stringify(body) };
   }
 
@@ -26454,12 +26469,19 @@ async function syncLeagueToCloud(options){
      server last confirmed instead. */
   const priorRecord = readCachedLeagueRecord(league, season);
   const serverConfirmedCookies = !!(priorRecord && priorRecord.has_cookies);
+  /* updated_at describes the SERVER's row, so a pre-save mirror must carry
+     forward whatever the server last confirmed rather than stamping "now".
+     Minting a local timestamp here is what left this browser holding a version
+     marker no row ever had — the exact stale value the save guard then refused.
+     An empty string when nothing has been confirmed yet is honest: this record
+     has never been in the cloud. */
+  const priorServerVersion = String((priorRecord && priorRecord.updated_at) || '');
   cacheLeagueRecord({
     league_id:league,
     season_year:season,
     history_json:requestData.historyJson,
     has_cookies:serverConfirmedCookies,
-    updated_at:new Date().toISOString(),
+    updated_at:priorServerVersion,
   });
 
   // Set when a version conflict was resolved automatically, so the success
@@ -26495,7 +26517,7 @@ async function syncLeagueToCloud(options){
         season_year:season,
         history_json:requestData.historyJson,
         has_cookies:serverConfirmedCookies,
-        updated_at:new Date().toISOString(),
+        updated_at:priorServerVersion,
       });
       setCloudStatus('syncing', 'Retrying optimized archive upload…');
       response = await postArchive();
@@ -26572,8 +26594,11 @@ async function syncLeagueToCloud(options){
       if(response.status === 413){
         automaticMessage = 'Maximum archive optimization completed. The optimized local copy is saved and cloud sync will retry on the next save.';
       } else if(response.status === 409){
-        // The re-read + retry above already ran, so this is a live race with
-        // another member saving right now, not the stale-token lockout.
+        /* The re-read + retry above already ran, and an explicit save also
+           carried force:true — which makes the server read the authoritative
+           version itself. So a 409 surviving all of that is a live race with
+           another member committing right now, never the stale-marker lockout
+           that used to strand this button. */
         automaticMessage = 'Another league member is saving at the same moment, so this save was held back after ' +
           'one automatic retry. Your optimized archive is safe locally — press Save again in a few seconds.';
       } else {
@@ -26583,7 +26608,25 @@ async function syncLeagueToCloud(options){
     }
 
     const record = payload.record || {};
-    setCloudVersion(league, season, record.updated_at);
+    /* ---- adopt the version the server just wrote ----
+       Both the in-memory marker and the localStorage mirror are re-stamped
+       with the row's NEW updated_at before anything else happens, so the very
+       next save — automatic or explicit — asserts the version that is actually
+       in the database. Skipping this is what turned one successful save into a
+       permanent 409 loop for every save after it. */
+    const savedVersion = String(record.updated_at || '');
+    if(savedVersion){
+      setCloudVersion(league, season, savedVersion);
+    } else {
+      /* A 200 with no updated_at means this browser cannot know the row's
+         version. Holding the previous one would assert a version the row no
+         longer has, so drop it: the next save goes out as a first write and
+         the server resolves it against the database. */
+      clearCloudVersion();
+      console.error('[League Storage] The save for league ' + league + '/' + season +
+        ' succeeded but returned no updated_at, so no version marker could be stored. The next save ' +
+        'will be resolved server-side instead.', new Error('MISSING_SAVED_LEAGUE_VERSION'));
+    }
     cacheLeagueRecord(record);
     /* The save is the mint: ESPN just confirmed this browser belongs to the
        league, so the server hands back the per-league share secret. This is
@@ -28712,7 +28755,10 @@ $('leagueIdInput').addEventListener('input', ()=>{
   }
 });
 
-if($('cloudSyncBtn')) $('cloudSyncBtn').addEventListener('click', ()=> syncLeagueToCloud());
+/* force:true — this is the reader pressing Save, so the write is theirs to
+   command. The server re-reads the authoritative version before writing rather
+   than refusing the save over a marker this browser cached. */
+if($('cloudSyncBtn')) $('cloudSyncBtn').addEventListener('click', ()=> syncLeagueToCloud({ force:true }));
 
 /* ============================================================
    LEAGUE INVITE LINK  (H-1 — Share button)
@@ -28922,7 +28968,9 @@ async function handleShareInvite(){
     }
 
     setShareInviteStatus('Minting this league\u2019s invite link…', 'idle');
-    const saved = await syncLeagueToCloud({ silent:true });
+    // Share is a button press too: a stale version marker must not be what
+    // stops a member from minting their league's invite link.
+    const saved = await syncLeagueToCloud({ silent:true, force:true });
     if(!saved){
       // syncLeagueToCloud has already logged the exact reason and written it
       // into the cloud status line; point the reader at it rather than

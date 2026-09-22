@@ -542,15 +542,16 @@ function storageError(code, message, status, currentUpdatedAt) {
   return error;
 }
 
-// Existing rows use optimistic concurrency: the client must present the exact
-// updated_at value it most recently read, and the UPDATE repeats that check in
-// its WHERE clause. A stale tab therefore cannot overwrite a newer archive.
-async function saveLeagueRow(client, row, expectedUpdatedAt) {
+/* The exact stored row for this league+season, or null. Reading it INSIDE the
+   handler is what makes an explicit save reliable: the authoritative
+   updated_at comes from the database on every attempt, so a version marker a
+   browser cached minutes ago is never what decides whether the write runs. */
+async function readCurrentLeagueRow(client, leagueId, seasonYear) {
   const existing = await client
     .from('leagues')
     .select(RETURNING_COLUMNS)
-    .eq('league_id', row.league_id)
-    .eq('season_year', row.season_year)
+    .eq('league_id', leagueId)
+    .eq('season_year', seasonYear)
     .limit(2);
   if (existing.error) throw existing.error;
 
@@ -562,59 +563,142 @@ async function saveLeagueRow(client, row, expectedUpdatedAt) {
       503
     );
   }
+  return matches.length === 1 ? matches[0] : null;
+}
 
-  if (matches.length === 1) {
-    const current = matches[0];
-    const currentUpdatedAt = String(current.updated_at || '');
-    if (!expectedUpdatedAt ||
-        new Date(expectedUpdatedAt).getTime() !== new Date(currentUpdatedAt).getTime()) {
-      throw storageError(
-        'VERSION_CONFLICT',
-        'The shared league archive changed after this browser loaded it. Reload the latest archive before saving again.',
-        409,
-        currentUpdatedAt
-      );
+/* True when the cookies this save carries are not the ones already stored —
+   a member pasting a fresh espn_s2/SWID after ESPN expired the old pair. That
+   save is by definition newer than the row it replaces (nobody else can have
+   written these credentials), so it must never lose to a version marker. A
+   row whose envelope cannot be opened at all counts as superseded too: storing
+   readable credentials over unreadable ones is strictly an improvement. */
+function cookiesSupersedeStored(storedEnvelope, incoming) {
+  const fresh = cleanCookies(incoming);
+  if (!fresh.espn_s2 || !fresh.swid) return false;
+  if (!storedEnvelope) return true;
+  const stored = decryptCookies(storedEnvelope);
+  if (!stored.ok) return true;
+  return stored.espn_s2 !== fresh.espn_s2 || normalizeSwid(stored.swid) !== fresh.swid;
+}
+
+// How many times a forced save re-reads the authoritative version and retries
+// when a leaguemate committed between our read and our write. Bounded so two
+// members saving in a loop cannot turn one request into an unbounded retry.
+const FORCED_SAVE_ATTEMPTS = 3;
+
+/* Existing rows use optimistic concurrency: the client presents the exact
+   updated_at value it most recently read, and the UPDATE repeats that check in
+   its WHERE clause, so a stale background tab cannot overwrite a newer archive.
+   That guard is right for automatic saves and wrong for explicit ones.
+
+   `options.force` (the Save League Data Now button) and a save carrying
+   credentials the stored row does not have both mean "this human is asking for
+   this write, now". Those skip the client's marker entirely: the current
+   updated_at is read from the database immediately before the write and used
+   as the WHERE-clause guard instead, so the write is still atomic against a
+   concurrent commit — it simply can no longer be refused for holding a marker
+   that went stale in a browser tab. A commit that lands in that window is
+   re-read and retried rather than reported as a conflict. */
+async function saveLeagueRow(client, row, expectedUpdatedAt, options) {
+  const opts = options || {};
+  let forced = !!opts.force;
+  let credentialOverride = false;
+
+  for (let attempt = 1; ; attempt += 1) {
+    const current = await readCurrentLeagueRow(client, row.league_id, row.season_year);
+
+    if (!current) {
+      /* Nothing to overwrite. A marker for a row that does not exist is stale
+         by definition, so an explicit save treats this as the first write. */
+      if (expectedUpdatedAt && !forced) {
+        throw storageError(
+          'VERSION_CONFLICT',
+          'The shared league archive no longer matches the version loaded by this browser. Reload before saving again.',
+          409
+        );
+      }
+      const inserted = await client
+        .from('leagues')
+        .insert(row)
+        .select(RETURNING_COLUMNS)
+        .single();
+      if (!inserted.error) return inserted.data;
+      // Someone inserted the same composite key in the window between the read
+      // and this insert. Loop: the next pass finds the row and updates it.
+      const duplicateKey = inserted.error && String(inserted.error.code || '') === '23505';
+      if (duplicateKey && attempt < FORCED_SAVE_ATTEMPTS) {
+        console.warn('[api/league] Insert for league ' + row.league_id + '/' + row.season_year +
+          ' raced another first write; re-reading the row and saving over it (attempt ' + attempt + ').');
+        continue;
+      }
+      throw inserted.error;
     }
+
+    const currentUpdatedAt = String(current.updated_at || '');
+
+    if (!forced && opts.cookies && cookiesSupersedeStored(current.cookies, opts.cookies)) {
+      credentialOverride = true;
+      forced = true;
+      console.warn('[api/league] The save for league ' + row.league_id + '/' + row.season_year +
+        ' carries host credentials that differ from the stored envelope; bypassing the version ' +
+        'guard so refreshed espn_s2/SWID values are never rejected as a stale version.');
+    }
+
+    if (!forced) {
+      if (!expectedUpdatedAt ||
+          new Date(expectedUpdatedAt).getTime() !== new Date(currentUpdatedAt).getTime()) {
+        throw storageError(
+          'VERSION_CONFLICT',
+          'The shared league archive changed after this browser loaded it. Reload the latest archive before saving again.',
+          409,
+          currentUpdatedAt
+        );
+      }
+    }
+
+    // The guard is whatever the DATABASE says right now on a forced save, and
+    // the client's marker otherwise. Either way the UPDATE stays conditional,
+    // so a commit landing in this window loses the race instead of being lost.
+    const guardUpdatedAt = forced ? currentUpdatedAt : expectedUpdatedAt;
 
     const patch = {};
     Object.keys(row).forEach(function (key) {
       if (key !== 'league_id' && key !== 'season_year') patch[key] = row[key];
     });
-    const updated = await client
+    let query = client
       .from('leagues')
       .update(patch)
       .eq('league_id', row.league_id)
-      .eq('season_year', row.season_year)
-      .eq('updated_at', expectedUpdatedAt)
-      .select(RETURNING_COLUMNS)
-      .maybeSingle();
+      .eq('season_year', row.season_year);
+    // A row that somehow stores a null updated_at has no version to match on;
+    // the composite key alone is then the guard, rather than a filter that can
+    // never be true and would lock the league out of its own archive.
+    if (guardUpdatedAt) query = query.eq('updated_at', guardUpdatedAt);
+    const updated = await query.select(RETURNING_COLUMNS).maybeSingle();
     if (updated.error) throw updated.error;
-    if (!updated.data) {
-      throw storageError(
-        'VERSION_CONFLICT',
-        'The shared league archive changed while this save was in progress. Reload the latest archive before saving again.',
-        409,
-        currentUpdatedAt
-      );
+    if (updated.data) {
+      if (forced) {
+        console.warn('[api/league] Saved league ' + row.league_id + '/' + row.season_year +
+          ' past the version guard (' + (credentialOverride ? 'refreshed host credentials' : 'explicit user save') +
+          '); the authoritative version was read from the database immediately before the write.');
+      }
+      return updated.data;
     }
-    return updated.data;
-  }
 
-  if (expectedUpdatedAt) {
+    if (forced && attempt < FORCED_SAVE_ATTEMPTS) {
+      console.warn('[api/league] A leaguemate committed to league ' + row.league_id + '/' + row.season_year +
+        ' between this explicit save’s read and its write; re-reading the authoritative version and ' +
+        'retrying (attempt ' + attempt + ' of ' + FORCED_SAVE_ATTEMPTS + ').');
+      continue;
+    }
+
     throw storageError(
       'VERSION_CONFLICT',
-      'The shared league archive no longer matches the version loaded by this browser. Reload before saving again.',
-      409
+      'The shared league archive changed while this save was in progress. Reload the latest archive before saving again.',
+      409,
+      currentUpdatedAt
     );
   }
-
-  const inserted = await client
-    .from('leagues')
-    .insert(row)
-    .select(RETURNING_COLUMNS)
-    .single();
-  if (inserted.error) throw inserted.error;
-  return inserted.data;
 }
 
 async function findLeagueRow(client, leagueId, seasonYear, includeCookies) {
@@ -960,6 +1044,15 @@ async function handler(req, res) {
     return res.status(400).json({ error: historyValidationError });
   }
 
+  /* An explicit save asks the server to write what this browser is holding,
+     full stop. The client's cached version marker is advisory on such a save:
+     the handler reads the authoritative updated_at from the database instead
+     (see saveLeagueRow), so a marker that drifted in localStorage — because a
+     background refresh, another device, or an interrupted save moved the row
+     on — can no longer refuse the one save the reader actually pressed. */
+  const rawForce = body.force !== undefined ? body.force : body.force_save;
+  const forceSave = rawForce === true || String(rawForce || '').toLowerCase() === 'true';
+
   const rawExpectedUpdatedAt = body.expected_updated_at !== undefined
     ? body.expected_updated_at
     : body.expectedUpdatedAt;
@@ -1030,7 +1123,13 @@ async function handler(req, res) {
     // envelope never overwrites previously stored valid cookies with null.
     if (encryptedCookies) row.cookies = encryptedCookies;
 
-    const saved = await saveLeagueRow(client, row, expectedUpdatedAt);
+    const saved = await saveLeagueRow(client, row, expectedUpdatedAt, {
+      force: forceSave,
+      // Verified above, so a mismatch against the stored envelope means this
+      // member is refreshing the league's host credentials — see
+      // cookiesSupersedeStored(), which treats that as an explicit save too.
+      cookies: cookies,
+    });
 
     /* The saver is an ESPN-verified member, so they may hold the token — this
        is what the Share button copies into the invite link. */
@@ -1079,6 +1178,9 @@ async function handler(req, res) {
 }
 
 module.exports = handler;
+// Exported for scripts/league-save-check.mjs, which exercises the version
+// guard (and the explicit-save bypass) against an in-memory client.
+module.exports.saveLeagueRow = saveLeagueRow;
 module.exports.getStoredLeagueCookies = getStoredLeagueCookies;
 module.exports.resolveStoredLeagueAccess = resolveStoredLeagueAccess;
 module.exports.cleanShareToken = cleanShareToken;
