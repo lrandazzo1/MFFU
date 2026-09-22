@@ -261,6 +261,29 @@ function deriveFallbackEncryptionKey(overrides) {
   return crypto.createHash('sha256').update(seed).digest(); // exactly 32 bytes
 }
 
+/* The ONE sentence a reader is ever told about a decryption failure.
+
+   Everything that makes a failed decrypt diagnosable — which envelope version
+   it claimed, how many candidate keys were tried, which labels they carried,
+   the raw storage error — is SERVER detail. Putting it in an API response
+   tells a league-mate who clicked an invite link nothing they can act on,
+   while describing this deployment's key configuration to anybody who can
+   guess a league id. The detail belongs in console.error (see rule 3 in
+   CLAUDE.md), and this sentence belongs in the response. */
+const COOKIES_UNREADABLE_MESSAGE =
+  'This invite link has expired or requires the league host to re-authenticate.';
+
+/* The label encryptionKeyCandidates() gives the key encryptCookies() is
+   writing with RIGHT NOW. On a deployment with a valid
+   LEAGUE_COOKIE_ENCRYPTION_KEY that is the configured key; without one it is
+   the derived fallback, which is a legitimate active key and must not be
+   reported as a stale one. */
+function activeEncryptionKeyLabel() {
+  return parseEncryptionKeyValue(process.env.LEAGUE_COOKIE_ENCRYPTION_KEY)
+    ? 'LEAGUE_COOKIE_ENCRYPTION_KEY'
+    : 'derived fallback (current environment)';
+}
+
 // The ONE key every new envelope is written with.
 function encryptionKey() {
   const configured = parseEncryptionKeyValue(process.env.LEAGUE_COOKIE_ENCRYPTION_KEY);
@@ -334,7 +357,8 @@ function encryptCookies(cookies) {
   };
 }
 
-/* Never throws. Returns { espn_s2, swid, ok, reason, keyLabel }:
+/* Never throws. Returns { espn_s2, swid, ok, reason, internalReason, keyLabel,
+   stale }:
 
      ok:false with an empty pair when the envelope is absent, malformed, or
      could not be opened by ANY candidate key. The caller decides what that
@@ -342,24 +366,38 @@ function encryptCookies(cookies) {
      previous version throwing here is what produced the HTTP 502 the reader
      saw instead of an actionable message.
 
+     reason          the ONE reader-facing sentence, safe to put in an HTTP
+                     response body. Never names a key, a key count, an
+                     envelope version or a storage error.
+     internalReason  the full diagnostic. Logged, never returned to a browser.
+     stale           the envelope opened, but not with the key this deployment
+                     writes with today (a legacy plaintext row, a retired key,
+                     a pre-rotation derived fallback). The next host save
+                     re-encrypts it — see inspectStoredCookies().
+
    AES-256-GCM authenticates, so a wrong key throws on final() rather than
    returning garbage. The first candidate whose tag verifies is certainly the
    key the envelope was written with. */
 function decryptCookies(envelope) {
-  const empty = { espn_s2: '', swid: '', ok: false, reason: '', keyLabel: '' };
+  const empty = {
+    espn_s2: '', swid: '', ok: false,
+    reason: COOKIES_UNREADABLE_MESSAGE, internalReason: '', keyLabel: '', stale: false,
+  };
   if (!envelope || typeof envelope !== 'object') {
-    return Object.assign({}, empty, { reason: 'no cookie envelope was stored' });
+    return Object.assign({}, empty, { internalReason: 'no cookie envelope was stored' });
   }
 
   // Read legacy plaintext JSON rows once so existing deployments can migrate
   // naturally on the next authenticated-member save. New writes are encrypted.
   if (envelope.espn_s2 || envelope.s2) {
     const legacy = cleanCookies(envelope);
-    return Object.assign({}, legacy, { ok: true, reason: '', keyLabel: 'legacy plaintext row' });
+    return Object.assign({}, legacy, {
+      ok: true, reason: '', internalReason: '', keyLabel: 'legacy plaintext row', stale: true,
+    });
   }
   if (envelope.v !== 1 || envelope.alg !== 'A256GCM') {
     return Object.assign({}, empty, {
-      reason: 'the stored envelope is not in a format this build can read (v=' +
+      internalReason: 'the stored envelope is not in a format this build can read (v=' +
         JSON.stringify(envelope.v) + ', alg=' + JSON.stringify(envelope.alg) + ')',
     });
   }
@@ -369,12 +407,13 @@ function decryptCookies(envelope) {
   const data = Buffer.from(String(envelope.data || ''), 'base64');
   if (!iv.length || !tag.length || !data.length) {
     return Object.assign({}, empty, {
-      reason: 'the stored envelope is truncated (iv ' + iv.length + 'B, tag ' +
+      internalReason: 'the stored envelope is truncated (iv ' + iv.length + 'B, tag ' +
         tag.length + 'B, data ' + data.length + 'B)',
     });
   }
 
   const candidates = encryptionKeyCandidates();
+  const activeLabel = activeEncryptionKeyLabel();
   const tried = [];
   for (const candidate of candidates) {
     try {
@@ -382,31 +421,55 @@ function decryptCookies(envelope) {
       decipher.setAuthTag(tag);
       const plaintext = Buffer.concat([decipher.update(data), decipher.final()]).toString('utf8');
       const cookies = cleanCookies(JSON.parse(plaintext));
-      if (candidate.label !== 'LEAGUE_COOKIE_ENCRYPTION_KEY') {
+      const stale = candidate.label !== activeLabel;
+      if (stale) {
         /* Opened with something other than the key we write with today. The
            row still works, and the next member save re-encrypts it with the
            active key, healing it permanently. Say so once, loudly enough to
            be actionable but not as an error — nothing is broken. */
         console.warn('[api/league] Stored cookies opened with "' + candidate.label + '" rather than the ' +
-          'currently-active key. This row predates the current LEAGUE_COOKIE_ENCRYPTION_KEY configuration; ' +
-          'it will be re-encrypted with the active key the next time a league member saves this league.');
+          'currently-active key ("' + activeLabel + '"). This row predates the current ' +
+          'LEAGUE_COOKIE_ENCRYPTION_KEY configuration; it will be re-encrypted with the active key the ' +
+          'next time a league member saves this league.');
       }
-      return Object.assign({}, cookies, { ok: true, reason: '', keyLabel: candidate.label });
+      return Object.assign({}, cookies, {
+        ok: true, reason: '', internalReason: '', keyLabel: candidate.label, stale: stale,
+      });
     } catch (error) {
       // Wrong key — the GCM tag check failed. Expected while walking the list.
       tried.push(candidate.label);
     }
   }
 
+  const internalReason = 'the stored ESPN session was encrypted with a key this deployment no longer has ' +
+    '(tried ' + tried.length + ' candidate key' + (tried.length === 1 ? '' : 's') + ': ' +
+    (tried.join(', ') || '(none available)') + ')';
   console.error('[api/league] The stored cookie envelope could not be decrypted with any known key. ' +
     'Tried: ' + (tried.join(', ') || '(none available)') + '. The row was written by a deployment whose ' +
     'LEAGUE_COOKIE_ENCRYPTION_KEY (or SUPABASE_SERVICE_ROLE_KEY, which seeds the derived fallback) differs ' +
     'from this one. Set LEAGUE_COOKIE_ENCRYPTION_KEY_PREVIOUS to the retired key to recover these rows, ' +
-    'or have a league member re-save the league from Setup to rewrite it with the active key.');
-  return Object.assign({}, empty, {
-    reason: 'the stored ESPN session was encrypted with a key this deployment no longer has (tried ' +
-      tried.length + ' candidate key' + (tried.length === 1 ? '' : 's') + ')',
-  });
+    'or have a league member re-save the league from Setup to rewrite it with the active key. The reader ' +
+    'is told only: "' + COOKIES_UNREADABLE_MESSAGE + '"',
+    new Error('COOKIES_UNDECRYPTABLE'));
+  return Object.assign({}, empty, { internalReason: internalReason });
+}
+
+/* What shape a row's stored ESPN session is in — never the credentials
+   themselves. The save path asks this to decide whether the write it is about
+   to make is a REPAIR (re-encrypting under the active key, re-minting a share
+   token whose credentials nobody can open) rather than an ordinary save that
+   may legitimately lose a version race. */
+function inspectStoredCookies(envelope) {
+  if (!envelope) return { present: false, readable: false, stale: false, keyLabel: '' };
+  const opened = decryptCookies(envelope);
+  return {
+    present: true,
+    readable: !!opened.ok,
+    // Unreadable is stale by definition; readable-but-not-under-the-active-key
+    // is stale too, and healing it is the whole point of writing on every save.
+    stale: !opened.ok || !!opened.stale,
+    keyLabel: opened.keyLabel || '',
+  };
 }
 
 async function readBody(req) {
@@ -489,6 +552,63 @@ async function verifyLeagueMember(leagueId, seasonYear, cookies) {
 }
 
 const RETURNING_COLUMNS = 'league_id,season_year,history_json,cookies,share_token,updated_at';
+
+/* ============================================================
+   THE ON CONFLICT TARGET  —  why a plain .insert() could not work
+
+   Saving a league used to end in Postgres 23505, "duplicate key value violates
+   unique constraint leagues_pkey", for any league that already had a row —
+   league 57155288 hit it on every save. The cause is a schema divergence:
+
+     supabase/schema.sql declares   primary key (league_id, season_year)
+     the live database has          leagues_pkey PRIMARY KEY (league_id)
+
+   Under the live key a league holds ONE row. readCurrentLeagueRow filters on
+   league_id AND season_year, so a save for a season other than the stored one
+   found nothing, took the "nothing to overwrite" path, and ran an INSERT
+   straight into the existing league's primary key. Nothing about that is a
+   race — it failed deterministically, every time.
+
+   An upsert is the fix: ON CONFLICT turns exactly that collision into the
+   UPDATE it always should have been. The target has to match a real unique
+   constraint, so both are tried, live key first. A mismatch is Postgres 42P10
+   ("no unique or exclusion constraint matching the ON CONFLICT
+   specification"), which is unambiguous and cheap to fall through; the target
+   that worked is remembered for the life of the warm lambda so the probe costs
+   one request rather than one per save.
+============================================================ */
+const LEAGUE_CONFLICT_TARGETS = ['league_id', 'league_id,season_year'];
+let resolvedLeagueConflictTarget = '';
+
+async function upsertLeagueRow(client, row) {
+  /* The remembered target first, then every other known one. Remembering must
+     never be able to wedge a deployment: if the cached target stops matching
+     (the table was re-keyed under a running lambda), the cache is dropped and
+     the remaining targets are still tried on this same request. */
+  const targets = resolvedLeagueConflictTarget
+    ? [resolvedLeagueConflictTarget].concat(
+      LEAGUE_CONFLICT_TARGETS.filter(function (target) { return target !== resolvedLeagueConflictTarget; }))
+    : LEAGUE_CONFLICT_TARGETS.slice();
+
+  let result = null;
+  for (const target of targets) {
+    result = await client
+      .from('leagues')
+      .upsert(row, { onConflict: target })
+      .select(RETURNING_COLUMNS)
+      .single();
+    if (!result.error) {
+      resolvedLeagueConflictTarget = target;
+      return result;
+    }
+    if (String(result.error.code || '') !== '42P10') return result;
+    if (resolvedLeagueConflictTarget === target) resolvedLeagueConflictTarget = '';
+    console.warn('[api/league] public.leagues has no unique constraint on (' + target + '); ' +
+      'retrying the upsert for league ' + row.league_id + '/' + row.season_year +
+      ' against the next known conflict target.');
+  }
+  return result;
+}
 
 function archiveRows(historyJson) {
   if (Array.isArray(historyJson)) return historyJson;
@@ -582,13 +702,15 @@ async function readCurrentLeagueRow(client, leagueId, seasonYear) {
    save is by definition newer than the row it replaces (nobody else can have
    written these credentials), so it must never lose to a version marker. A
    row whose envelope cannot be opened at all counts as superseded too: storing
-   readable credentials over unreadable ones is strictly an improvement. */
-function cookiesSupersedeStored(storedEnvelope, incoming) {
+   readable credentials over unreadable ones is strictly an improvement.
+
+   `stored` is an already-decrypted envelope (a decryptCookies result) or null,
+   so the caller — which also needs to know whether that envelope is stale —
+   decrypts once per save rather than once per question. */
+function cookiesSupersedeStored(stored, incoming) {
   const fresh = cleanCookies(incoming);
   if (!fresh.espn_s2 || !fresh.swid) return false;
-  if (!storedEnvelope) return true;
-  const stored = decryptCookies(storedEnvelope);
-  if (!stored.ok) return true;
+  if (!stored || !stored.ok) return true;
   return stored.espn_s2 !== fresh.espn_s2 || normalizeSwid(stored.swid) !== fresh.swid;
 }
 
@@ -628,31 +750,52 @@ async function saveLeagueRow(client, row, expectedUpdatedAt, options) {
           409
         );
       }
-      const inserted = await client
-        .from('leagues')
-        .insert(row)
-        .select(RETURNING_COLUMNS)
-        .single();
-      if (!inserted.error) return inserted.data;
-      // Someone inserted the same composite key in the window between the read
-      // and this insert. Loop: the next pass finds the row and updates it.
-      const duplicateKey = inserted.error && String(inserted.error.code || '') === '23505';
+      /* UPSERT, not INSERT. See LEAGUE_CONFLICT_TARGETS above: under the live
+         schema this league may already own a row under a different
+         season_year, which the read above cannot see and which an INSERT can
+         only ever collide with. ON CONFLICT makes that collision an update. */
+      const upserted = await upsertLeagueRow(client, row);
+      if (!upserted.error) return upserted.data;
+      /* A duplicate key that survives an upsert means a constraint the
+         conflict target does not cover was violated in the window between the
+         read and the write. Loop: the next pass finds the row and updates it. */
+      const duplicateKey = String(upserted.error.code || '') === '23505';
       if (duplicateKey && attempt < FORCED_SAVE_ATTEMPTS) {
-        console.warn('[api/league] Insert for league ' + row.league_id + '/' + row.season_year +
-          ' raced another first write; re-reading the row and saving over it (attempt ' + attempt + ').');
+        console.warn('[api/league] The upsert for league ' + row.league_id + '/' + row.season_year +
+          ' still reported a duplicate key (' + String(upserted.error.message || '') + '); re-reading ' +
+          'the row and saving over it (attempt ' + attempt + ' of ' + FORCED_SAVE_ATTEMPTS + ').');
         continue;
       }
-      throw inserted.error;
+      throw upserted.error;
     }
 
     const currentUpdatedAt = String(current.updated_at || '');
 
-    if (!forced && opts.cookies && cookiesSupersedeStored(current.cookies, opts.cookies)) {
-      credentialOverride = true;
-      forced = true;
-      console.warn('[api/league] The save for league ' + row.league_id + '/' + row.season_year +
-        ' carries host credentials that differ from the stored envelope; bypassing the version ' +
-        'guard so refreshed espn_s2/SWID values are never rejected as a stale version.');
+    if (!forced && opts.cookies && row.cookies) {
+      /* Two reasons a save carrying host credentials must not be refused for
+         holding a stale version marker:
+
+           1. the pair differs from what is stored — nobody else can have
+              written these credentials, so this save is newer by definition;
+           2. the stored envelope is STALE — unreadable on this deployment, or
+              readable only under a retired key. This save re-encrypts it with
+              the active key, which is a repair. Losing that repair to a
+              version race is how a league stays permanently unreadable while
+              its host re-saves over and over and nothing changes. */
+      const stored = current.cookies ? decryptCookies(current.cookies) : null;
+      const refreshed = cookiesSupersedeStored(stored, opts.cookies);
+      const staleEnvelope = !!stored && (!stored.ok || !!stored.stale);
+      if (refreshed || staleEnvelope) {
+        credentialOverride = true;
+        forced = true;
+        console.warn('[api/league] The save for league ' + row.league_id + '/' + row.season_year +
+          ' ' + (refreshed
+            ? 'carries host credentials that differ from the stored envelope'
+            : 'rewrites a stored envelope held under "' + ((stored && stored.keyLabel) || 'an unknown key') +
+              '" rather than this deployment\'s active key') +
+          '; bypassing the version guard so the re-encrypted ESPN session is never rejected as a ' +
+          'stale version.');
+      }
     }
 
     if (!forced) {
@@ -927,13 +1070,19 @@ async function resolveStoredLeagueAccess(leagueId, seasonYear, shareToken) {
        request down with a 502. */
     const cookies = decryptCookies(row.cookies);
     if (!cookies.ok) {
+      /* The full cause goes to the server log; the caller gets one sentence.
+         `reason` is echoed to the browser by /api/espn, so it must never carry
+         the envelope version, the candidate-key labels or how many of them
+         were tried — that is this deployment's key configuration, described to
+         anyone holding a league id. */
       console.error('[api/league] The stored cookie envelope for league ' + id + '/' +
-        (row.season_year || year || 'latest') + ' could not be opened — ' + cookies.reason);
+        (row.season_year || year || 'latest') + ' could not be opened — ' +
+        (cookies.internalReason || 'no diagnostic was produced') + '.',
+        new Error('COOKIES_UNDECRYPTABLE'));
       return {
         status: 'none',
         cookies: null,
-        reason: cookies.reason ||
-          'the stored ESPN session could not be decrypted with this deployment\'s encryption key',
+        reason: COOKIES_UNREADABLE_MESSAGE,
         code: 'COOKIES_UNDECRYPTABLE',
       };
     }
@@ -953,12 +1102,16 @@ async function resolveStoredLeagueAccess(leagueId, seasonYear, shareToken) {
       '; lending the stored ESPN session (SWID and espn_s2 both present).');
     return { status: 'ok', cookies: cookies, reason: '', code: 'OK' };
   } catch (error) {
+    /* The database's own message (constraint names, RLS policy names, the
+       connection string in some drivers) is a server detail. Log it in full;
+       tell the caller only that the lookup failed and that retrying is the
+       right response. */
     console.error('[api/league] stored-cookie lookup failed for league ' + id + '/' + (year || 'latest') +
       '.', error);
     return {
       status: 'none',
       cookies: null,
-      reason: 'the league storage lookup failed: ' + String((error && error.message) || error),
+      reason: 'League storage could not be reached right now. Please try again in a moment.',
       code: 'STORAGE_ERROR',
     };
   }
@@ -1164,29 +1317,64 @@ async function handler(req, res) {
   const verification = await verifyLeagueMember(leagueId, seasonYear, cookies);
   if (!verification.ok) return res.status(verification.status || 403).json({ error: verification.error });
 
+  /* ---- IS THE STORED SESSION STALE? ----
+     Asked first, because the answer decides what happens to the share token
+     below. An envelope this deployment cannot open means every invite link
+     issued for the league has been failing with COOKIES_UNDECRYPTABLE — the
+     token still matched, the credentials behind it were rubble. This save
+     replaces those credentials with an envelope under the active key, so the
+     token guarding them is replaced in the same write rather than left
+     pointing at what used to be unreadable.
+
+     A readable envelope — even one opened with a retired key — is NOT that
+     case. Its links work, it is re-encrypted by this save anyway, and
+     re-minting would break every link already sitting in a league group chat
+     to fix nothing. Neither is a failed inspection: the save still writes a
+     freshly encrypted envelope, only the rotation decision is skipped. */
+  let storedCookieState = { present: false, readable: false, stale: false, keyLabel: '' };
+  try {
+    const existingRow = (await findLeagueRow(client, leagueId, seasonYear, true)) ||
+      (await findLeagueRow(client, leagueId, 0, true));
+    storedCookieState = inspectStoredCookies(existingRow && existingRow.cookies);
+  } catch (inspectError) {
+    console.error('[api/league] Could not inspect the stored ESPN session for league ' + leagueId +
+      ' before saving. The save continues and writes a freshly encrypted envelope regardless; only the ' +
+      'decision to re-mint the share token is skipped.', inspectError);
+  }
+
   /* ---- H-1: mint the per-league share secret ----
      Reached only after ESPN confirmed this caller is a member of this league,
      so the writer is exactly the person entitled to hold and hand out the
-     league's invite link. Reuse an existing token whenever the league has one:
-     rotating it on every save would silently invalidate every link already
-     sitting in a league group chat.
+     league's invite link. Reuse an existing token whenever the league has one
+     and its stored session is still readable: rotating it on every save would
+     silently invalidate every link already sitting in a league group chat.
 
      A lookup failure does NOT abort the save. Losing an archive over a token
      read is a far worse outcome than a league briefly holding two valid
      tokens, and leagueShareTokens() accepts every token stored for the league,
      so both keep working. */
   let shareToken = '';
-  try {
-    const existingTokens = await leagueShareTokens(client, leagueId);
-    shareToken = existingTokens.length ? existingTokens[0] : '';
-  } catch (tokenLookupError) {
-    console.error('[api/league] The share-token lookup for league ' + leagueId + ' failed; minting a new ' +
-      'token for this save. Any invite link already issued for this league stays valid.', tokenLookupError);
+  const rotateShareToken = storedCookieState.present && !storedCookieState.readable;
+  if (rotateShareToken) {
+    console.warn('[api/league] League ' + leagueId + ' held an ESPN session this deployment cannot ' +
+      'decrypt, so every invite link issued for it was already failing. Minting a fresh share token and ' +
+      'overwriting the stale one alongside the re-encrypted credentials; previously shared links for this ' +
+      'league stop working and the host must send the new one.');
+  } else {
+    try {
+      const existingTokens = await leagueShareTokens(client, leagueId);
+      shareToken = existingTokens.length ? existingTokens[0] : '';
+    } catch (tokenLookupError) {
+      console.error('[api/league] The share-token lookup for league ' + leagueId + ' failed; minting a new ' +
+        'token for this save. Any invite link already issued for this league stays valid.', tokenLookupError);
+    }
   }
   if (!shareToken) {
     shareToken = generateShareToken();
-    console.warn('[api/league] Minted a new share token for league ' + leagueId +
-      ' (no usable token was stored for it yet).');
+    if (!rotateShareToken) {
+      console.warn('[api/league] Minted a new share token for league ' + leagueId +
+        ' (no usable token was stored for it yet).');
+    }
   }
 
   // Encrypt the cookies, but never let an encryption problem halt the save.
@@ -1230,6 +1418,11 @@ async function handler(req, res) {
        is what the Share button copies into the invite link. */
     const responseBody = { record: publicRecord(saved, { includeShareToken: true }) };
     if (cookieWarning) responseBody.warning = cookieWarning;
+    else if (rotateShareToken) {
+      responseBody.warning = 'This league\'s stored ESPN access could not be unlocked on this deployment, ' +
+        'so it was re-encrypted and a new invite link was issued. Any link you shared before now has ' +
+        'stopped working — send your league-mates the new one from Share.';
+    }
     return res.status(200).json(responseBody);
   } catch (error) {
     if (error && (error.status === 409 || error.status === 503)) {
@@ -1276,6 +1469,12 @@ module.exports = handler;
 // Exported for scripts/league-save-check.mjs, which exercises the version
 // guard (and the explicit-save bypass) against an in-memory client.
 module.exports.saveLeagueRow = saveLeagueRow;
+// Exported for the same check: it builds an envelope under the ACTIVE key so
+// the "unchanged credentials still lose to the version guard" case is exercised
+// against a row that is NOT stale, and asserts the stale-row repair separately.
+module.exports.encryptCookies = encryptCookies;
+module.exports.decryptCookies = decryptCookies;
+module.exports.inspectStoredCookies = inspectStoredCookies;
 module.exports.getStoredLeagueCookies = getStoredLeagueCookies;
 module.exports.resolveStoredLeagueAccess = resolveStoredLeagueAccess;
 module.exports.cleanShareToken = cleanShareToken;

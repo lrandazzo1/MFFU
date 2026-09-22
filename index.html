@@ -30353,9 +30353,16 @@ const PRIVATE_INVITE_STAGE = {
   SUPABASE: 'Supabase Lookup Stage',
   ESPN: 'ESPN Relay Stage',
 };
-function reportPrivateInviteFailure(stage, message, err){
+/* `message` is what the reader sees. `diagnostic` is console-only: server
+   codes, masked tokens, relay detail — everything a tester needs and nothing a
+   league-mate who clicked an invite link can act on. Keeping the two apart is
+   what stopped the Supabase-lookup banner from printing "Server code:
+   COOKIES_UNDECRYPTABLE. Detail: … (tried 3 candidate keys)" at somebody whose
+   only available action is to ask their commissioner for a new link. */
+function reportPrivateInviteFailure(stage, message, err, diagnostic){
   const banner = '[' + stage + '] ' + message;
-  console.error('[Private League Auth][' + stage + '] ' + message, err || '');
+  console.error('[Private League Auth][' + stage + '] ' + message +
+    (diagnostic ? ' — ' + diagnostic : ''), err || '');
   setPrivateLeagueAuthStatus('privateLeagueAuthInviteStatus', banner, 'error');
 }
 
@@ -30431,10 +30438,15 @@ async function handlePrivateLeagueAuthInvite(value){
        off that rather than an enumerated code list, so a new server-side code
        is attributed to the right stage without a matching client release. */
     if(relayStage === 'supabase-lookup' || /^SHARE_TOKEN_|^SUPABASE_|^NO_LEAGUE_ROW$|^NO_STORED_COOKIES$|^COOKIES_|^STORAGE_ERROR$/.test(relayCode)){
-      reportPrivateInviteFailure(PRIVATE_INVITE_STAGE.SUPABASE,
-        'Token lookup failed in database — no host espn_s2/SWID credentials found for token [' +
-        parsed.token.slice(0, 8) + '…]. Server code: ' + (relayCode || 'UNKNOWN') +
-        (relayBody ? '. Detail: ' + relayBody : ''));
+      /* The relay's own sentence is already reader-ready and already names the
+         next step ("ask the league host to re-save", "ask for a fresh link").
+         Show that. The server code and the relay's long-form detail go to the
+         console, where a tester can still read them. */
+      const readerMessage = String((ui.lastRelayError && ui.lastRelayError.relayDetail) || '').trim() ||
+        'This invite link has expired or requires the league host to re-authenticate.';
+      reportPrivateInviteFailure(PRIVATE_INVITE_STAGE.SUPABASE, readerMessage, null,
+        'token [' + parsed.token.slice(0, 8) + '…], server code ' + (relayCode || 'UNKNOWN') +
+        (relayBody ? ', detail: ' + relayBody : ''));
       return;
     }
     if(relayStatus){

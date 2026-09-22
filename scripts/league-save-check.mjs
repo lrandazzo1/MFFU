@@ -29,7 +29,8 @@ import { chromium } from 'playwright';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(import.meta.url);
-const { saveLeagueRow } = require(join(root, 'api/league.js'));
+const leagueApi = require(join(root, 'api/league.js'));
+const { saveLeagueRow, encryptCookies, inspectStoredCookies } = leagueApi;
 
 const LEAGUE = '1234567';
 const SEASON = 2026;
@@ -38,13 +39,28 @@ const CURRENT = '2026-09-20T00:00:00.000Z';
 
 /* A deliberately small stand-in for PostgREST: enough chaining for the exact
    calls saveLeagueRow makes, and a hook (onRead) for simulating a leaguemate
-   committing between the read and the write. */
+   committing between the read and the write.
+
+   `uniqueOn` is the table's real unique key. The LIVE database keys
+   public.leagues on league_id ALONE (leagues_pkey PRIMARY KEY (league_id))
+   while supabase/schema.sql declares the composite, so the default here is the
+   live one — that divergence is the whole reason a save for a second season
+   used to die on Postgres 23505. An upsert whose ON CONFLICT target does not
+   match `uniqueOn` gets Postgres 42P10, exactly as the real server answers. */
 function fakeClient(options) {
   const opts = options || {};
-  const state = { rows: opts.rows ? opts.rows.map((row) => Object.assign({}, row)) : [], reads: 0, updates: 0, inserts: 0 };
+  const uniqueOn = opts.uniqueOn || ['league_id'];
+  const state = {
+    rows: opts.rows ? opts.rows.map((row) => Object.assign({}, row)) : [],
+    reads: 0, updates: 0, inserts: 0, upserts: 0, conflictTargets: [],
+  };
 
   function matches(filters) {
     return state.rows.filter((row) => filters.every(([col, value]) => String(row[col]) === String(value)));
+  }
+  function findByKey(row, columns) {
+    return state.rows.find((existing) =>
+      columns.every((col) => String(existing[col]) === String(row[col])));
   }
 
   state.from = function () {
@@ -60,6 +76,12 @@ function fakeClient(options) {
       },
       update(patch) { api._patch = patch; api._mode = 'update'; return api; },
       insert(row) { api._row = row; api._mode = 'insert'; return api; },
+      upsert(row, options) {
+        api._row = row;
+        api._mode = 'upsert';
+        api._conflict = String((options && options.onConflict) || '').split(',').map((c) => c.trim()).filter(Boolean);
+        return api;
+      },
       maybeSingle() {
         state.updates += 1;
         const found = matches(filters);
@@ -68,10 +90,33 @@ function fakeClient(options) {
         return Promise.resolve({ data: Object.assign({}, found[0]), error: null });
       },
       single() {
+        if (api._mode === 'upsert') {
+          state.upserts += 1;
+          state.conflictTargets.push(api._conflict.join(','));
+          const targetMatchesConstraint = api._conflict.length === uniqueOn.length &&
+            uniqueOn.every((col) => api._conflict.indexOf(col) !== -1);
+          if (!targetMatchesConstraint) {
+            return Promise.resolve({
+              data: null,
+              error: Object.assign(new Error('there is no unique or exclusion constraint matching the ON CONFLICT specification'), { code: '42P10' }),
+            });
+          }
+          const existing = findByKey(api._row, uniqueOn);
+          if (existing) {
+            Object.assign(existing, api._row);
+            return Promise.resolve({ data: Object.assign({}, existing), error: null });
+          }
+          state.rows.push(Object.assign({}, api._row));
+          return Promise.resolve({ data: Object.assign({}, api._row), error: null });
+        }
         state.inserts += 1;
-        const clash = state.rows.some((row) =>
-          String(row.league_id) === String(api._row.league_id) && Number(row.season_year) === Number(api._row.season_year));
-        if (clash) return Promise.resolve({ data: null, error: Object.assign(new Error('duplicate key'), { code: '23505' }) });
+        const clash = !!findByKey(api._row, uniqueOn);
+        if (clash) {
+          return Promise.resolve({
+            data: null,
+            error: Object.assign(new Error('duplicate key value violates unique constraint "leagues_pkey"'), { code: '23505' }),
+          });
+        }
         state.rows.push(Object.assign({}, api._row));
         return Promise.resolve({ data: Object.assign({}, api._row), error: null });
       },
@@ -92,17 +137,25 @@ function rowToWrite(updatedAt) {
   };
 }
 
+/* The default stored row holds an envelope written with THIS deployment's
+   ACTIVE key, so it is not stale and the version guard is the only thing
+   deciding whether a save lands. Pass LEGACY_PLAINTEXT to get the other case:
+   a pre-encryption row, which every save is now expected to repair. */
 function storedRow(cookies) {
   return {
     league_id: LEAGUE,
     season_year: SEASON,
     history_json: { yearsData: [] },
     share_token: 'b'.repeat(43),
-    // A legacy plaintext envelope, which decryptCookies reads without a key.
-    cookies: cookies || { espn_s2: 'stored-s2', swid: '{11111111-2222-3333-4444-555555555555}' },
+    cookies: cookies === undefined ? encryptCookies(STORED_PAIR) : cookies,
     updated_at: CURRENT,
   };
 }
+
+// A legacy plaintext envelope, which decryptCookies reads without a key.
+const LEGACY_PLAINTEXT = { espn_s2: 'stored-s2', swid: '{11111111-2222-3333-4444-555555555555}' };
+
+const STORED_PAIR = { espn_s2: 'stored-s2', swid: '{11111111-2222-3333-4444-555555555555}' };
 
 async function rejects(promise) {
   try { await promise; }
@@ -113,7 +166,7 @@ async function rejects(promise) {
 /* ---------- 1. the API route ---------- */
 {
   const client = fakeClient({ rows: [storedRow()] });
-  const err = await rejects(saveLeagueRow(client, rowToWrite(), STALE, { cookies: { espn_s2: 'stored-s2', swid: '{11111111-2222-3333-4444-555555555555}' } }));
+  const err = await rejects(saveLeagueRow(client, rowToWrite(), STALE, { cookies: STORED_PAIR }));
   assert.equal(err.code, 'VERSION_CONFLICT');
   assert.equal(err.status, 409);
   assert.equal(err.currentUpdatedAt, CURRENT);
@@ -122,7 +175,7 @@ async function rejects(promise) {
 }
 {
   const client = fakeClient({ rows: [storedRow()] });
-  const saved = await saveLeagueRow(client, rowToWrite(CURRENT), CURRENT, { cookies: { espn_s2: 'stored-s2', swid: '{11111111-2222-3333-4444-555555555555}' } });
+  const saved = await saveLeagueRow(client, rowToWrite(CURRENT), CURRENT, { cookies: STORED_PAIR });
   assert.equal(saved.updated_at, CURRENT);
   console.log('ok    an automatic save holding the current marker still writes');
 }
@@ -142,12 +195,26 @@ async function rejects(promise) {
   console.log('ok    refreshed host credentials bypass the guard even without force');
 }
 {
-  const client = fakeClient({ rows: [storedRow(null)] });
-  const err = await rejects(saveLeagueRow(client, rowToWrite(), STALE, {
-    cookies: { espn_s2: 'stored-s2', swid: '{11111111-2222-3333-4444-555555555555}' },
-  }));
+  /* The stored envelope is written with THIS deployment's active key, so the
+     row is not stale and the only question is whether the credentials changed.
+     They have not, so the version guard is still the one in charge. */
+  const client = fakeClient({ rows: [storedRow()] });
+  const err = await rejects(saveLeagueRow(client, rowToWrite(), STALE, { cookies: STORED_PAIR }));
   assert.equal(err.code, 'VERSION_CONFLICT', 'unchanged cookies must not be read as a credential refresh');
-  console.log('ok    unchanged host credentials do not bypass the guard');
+  console.log('ok    unchanged host credentials under the active key do not bypass the guard');
+}
+{
+  /* A legacy plaintext row is stale by definition: the credentials are sitting
+     in the column unencrypted. Re-saving it is a REPAIR and must not be
+     refused for holding a marker that drifted — otherwise the host presses
+     save, sees 409, and the row never gets encrypted. */
+  const client = fakeClient({ rows: [storedRow(LEGACY_PLAINTEXT)] });
+  const saved = await saveLeagueRow(client, rowToWrite('2026-09-22T03:00:00.000Z'), STALE, {
+    cookies: STORED_PAIR,
+  });
+  assert.equal(saved.updated_at, '2026-09-22T03:00:00.000Z');
+  assert.ok(inspectStoredCookies(client.rows[0].cookies).readable, 'the repaired row must still be readable');
+  console.log('ok    a stale stored envelope is re-encrypted past the version guard');
 }
 {
   // A leaguemate commits between the forced save's read and its write. The
@@ -170,6 +237,52 @@ async function rejects(promise) {
   assert.equal(saved.league_id, LEAGUE);
   assert.equal(forced.rows.length, 1);
   console.log('ok    a marker for a row that does not exist becomes a first write under force');
+}
+
+/* ---------- 1b. the primary-key collision (Postgres 23505) ---------- */
+{
+  /* THE BUG. The live table keys on league_id alone, so a league that already
+     has a 2025 row owns the key. A save for 2026 finds nothing on
+     (league_id, season_year), takes the "first write" path, and — as a plain
+     INSERT — walks into leagues_pkey. As an upsert it is the update it always
+     should have been. */
+  const client = fakeClient({
+    uniqueOn: ['league_id'],
+    rows: [Object.assign(storedRow(), { season_year: 2025 })],
+  });
+  const saved = await saveLeagueRow(client, rowToWrite('2026-09-22T04:00:00.000Z'), '', { cookies: STORED_PAIR });
+  assert.equal(saved.league_id, LEAGUE);
+  assert.equal(Number(saved.season_year), SEASON);
+  assert.equal(client.rows.length, 1, 'the league must still own exactly one row');
+  assert.equal(client.inserts, 0, 'no bare INSERT may be issued against a keyed league');
+  assert.equal(client.conflictTargets[0], 'league_id', 'the live primary key is tried first');
+  console.log('ok    a second season for an already-keyed league upserts instead of raising 23505');
+}
+{
+  // The composite schema in supabase/schema.sql must keep working: the first
+  // target answers 42P10 and the save falls through to (league_id, season_year).
+  const client = fakeClient({ uniqueOn: ['league_id', 'season_year'], rows: [] });
+  const saved = await saveLeagueRow(client, rowToWrite('2026-09-22T05:00:00.000Z'), '', { cookies: STORED_PAIR });
+  assert.equal(saved.league_id, LEAGUE);
+  assert.ok(client.conflictTargets.indexOf('league_id,season_year') !== -1,
+    'a 42P10 must fall through to the composite conflict target');
+  console.log('ok    a 42P10 on the live key falls through to the composite key in schema.sql');
+}
+
+/* ---------- 1c. decryption failures say nothing about the keys ---------- */
+{
+  const { decryptCookies } = leagueApi;
+  const envelope = encryptCookies(STORED_PAIR);
+  // Corrupt the ciphertext so the GCM tag check fails under every candidate key.
+  const broken = Object.assign({}, envelope, { data: Buffer.from('not the ciphertext').toString('base64') });
+  const opened = decryptCookies(broken);
+  assert.equal(opened.ok, false);
+  assert.equal(opened.reason, 'This invite link has expired or requires the league host to re-authenticate.');
+  assert.ok(!/candidate key|LEAGUE_COOKIE_ENCRYPTION_KEY|fallback|A256GCM/i.test(opened.reason),
+    'the reader-facing reason must not describe this deployment\'s key configuration');
+  assert.ok(/candidate key/.test(opened.internalReason || ''),
+    'the full diagnostic must still exist for the server log');
+  console.log('ok    an undecryptable envelope reports one clean sentence and logs the rest');
 }
 
 /* ---------- 2. the Save button ---------- */
@@ -280,6 +393,75 @@ try {
   assert.deepEqual(errors, [], 'no page or [FSN*] console errors');
   console.log('ok    zero page errors and zero [FSN*] console errors');
   await page.close();
+
+  /* ---------- 3. what an invite link says when the host's session is unreadable ----------
+     The banner used to read "Token lookup failed in database … Server code:
+     COOKIES_UNDECRYPTABLE. Detail: … (tried 3 candidate keys)" — this
+     deployment's key configuration, printed at a league-mate whose only
+     available action is to ask their commissioner for a new link. */
+  const invitePage = await browser.newPage({ serviceWorkers: 'block' });
+  const inviteLogs = [];
+  const inviteErrors = [];
+  await invitePage.addInitScript(() => localStorage.setItem('hasCompletedOnboarding', 'true'));
+  invitePage.on('pageerror', (err) => inviteErrors.push(String(err)));
+  invitePage.on('console', (msg) => {
+    inviteLogs.push(msg.text());
+    if (msg.type() === 'error' && /\[(FSN|NewsDesk|Standings|Matchups|League Storage)/.test(msg.text())) {
+      inviteErrors.push(msg.text());
+    }
+  });
+  // Exactly the body api/espn.js answers with for this verdict.
+  const relayBody = {
+    error: 'This invite link has expired or requires the league host to re-authenticate.',
+    code: 'COOKIES_UNDECRYPTABLE',
+    league_id: LEAGUE,
+    detail: 'This invite link has expired or requires the league host to re-authenticate.',
+    stage: 'supabase-lookup',
+    lookup_status: 'none',
+    auth: 'share-token',
+  };
+  await invitePage.route('**/*', async (route) => {
+    const url = new URL(route.request().url());
+    const json = (body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
+    if (url.origin !== origin) return route.abort();
+    if (url.pathname === '/api/espn') return json(relayBody, 400);
+    if (url.pathname === '/api/league') return json({ error: 'Invite access refused by fixture', code: 'SHARE_TOKEN_REQUIRED' }, 401);
+    if (url.pathname.startsWith('/api/')) return json({ configured: false, articles: [], transactions: [] });
+    if (url.pathname === '/') return route.fulfill({ contentType: 'text/html', body: html });
+    try {
+      return route.fulfill({ body: readFileSync(join(root, url.pathname.slice(1))), contentType: url.pathname.endsWith('.js') ? 'application/javascript' : 'image/svg+xml' });
+    } catch { return route.fulfill({ status: 404, body: '' }); }
+  });
+  await invitePage.goto(origin + '/?goto=setup', { waitUntil: 'load' });
+  await invitePage.waitForFunction(() => typeof window.__fsnRender === 'function');
+  await invitePage.evaluate(() => { document.getElementById('privateLeagueAuthModal').dataset.open = 'true'; });
+  await invitePage.locator('#privateLeagueAuthInviteInput').evaluate((input, value) => {
+    // Model paste -> value insertion -> input, as the browser emits it.
+    input.dispatchEvent(new Event('paste', { bubbles: true }));
+    input.value = value;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  }, 'id=' + LEAGUE + '&token=' + 'a'.repeat(43));
+  await invitePage.waitForFunction(
+    () => /Supabase Lookup Stage/.test(document.getElementById('privateLeagueAuthInviteStatus').textContent || ''),
+    null, { timeout: 20000 });
+
+  const banner = await invitePage.evaluate(() => document.getElementById('privateLeagueAuthInviteStatus').textContent || '');
+  assert.ok(banner.includes('This invite link has expired or requires the league host to re-authenticate.'),
+    'the banner must carry the clean sentence: ' + banner);
+  for (const leak of ['Server code', 'candidate key', 'COOKIES_UNDECRYPTABLE', 'LEAGUE_COOKIE_ENCRYPTION_KEY',
+    'A256GCM', 'espn_s2', 'SWID']) {
+    assert.ok(!banner.includes(leak), 'the banner must not expose "' + leak + '": ' + banner);
+  }
+  console.log('ok    an unreadable host session shows one clean sentence, with no server internals');
+
+  assert.ok(inviteLogs.some((line) => line.includes('[Private League Auth][Supabase Lookup Stage]') &&
+    line.includes('server code COOKIES_UNDECRYPTABLE')),
+    'the server code must still reach the console for a tester');
+  console.log('ok    the server code and relay detail still reach the console');
+
+  assert.deepEqual(inviteErrors.filter((line) => !/\[Private League Auth\]/.test(line)), [],
+    'no page errors beyond the expected invite refusal');
+  await invitePage.close();
 } finally {
   await browser.close();
 }
