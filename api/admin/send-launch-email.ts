@@ -57,7 +57,9 @@ export const config = {
 const BATCH_SIZE = 100;   // Resend batch endpoint accepts up to 100 messages per call.
 const PAGE_SIZE = 1000;   // Supabase pagination.
 const SUBJECT = "We're officially live on the App Store 🏆";
-const DEFAULT_FROM = 'support from FSN <support@fantasysportsnetwork.app>';
+const DEFAULT_FROM = 'Fantasy Sports Network <support@fantasysportsnetwork.app>';
+const DEFAULT_REPLY_TO = 'support@fantasysportsnetwork.app';
+const UNSUBSCRIBE_MAILTO = 'support@fantasysportsnetwork.app';
 const DEFAULT_APP_STORE_URL = 'https://apps.apple.com/app/fantasy-sports-network/id6809261472';
 
 let supabaseSingleton: SupabaseClient | null = null;
@@ -146,9 +148,15 @@ function launchEmailHtml(url: string): string {
             </tr>
             <tr>
               <td style="padding:20px 32px 32px;border-top:1px solid #1f2937;">
-                <p style="margin:0;color:#6b7280;font-size:12px;line-height:1.6;text-align:center;">
+                <p style="margin:0 0 8px;color:#6b7280;font-size:12px;line-height:1.6;text-align:center;">
                   You're receiving this because you joined the FSN waitlist at
-                  fantasysportsnetwork.app. Reply to this email if you'd rather not hear from us again.
+                  fantasysportsnetwork.app.
+                </p>
+                <p style="margin:0 0 8px;color:#6b7280;font-size:12px;line-height:1.6;text-align:center;">
+                  <a href="mailto:${UNSUBSCRIBE_MAILTO}?subject=Unsubscribe" style="color:#9aa4b2;text-decoration:underline;">Unsubscribe</a>
+                </p>
+                <p style="margin:0;color:#6b7280;font-size:12px;line-height:1.6;text-align:center;">
+                  Fantasy Sports Network · Fort Worth, TX
                 </p>
               </td>
             </tr>
@@ -176,7 +184,8 @@ function launchEmailText(url: string): string {
     "and copy the numeric ID from the URL. That's it — paste and go.",
     '',
     "You're receiving this because you joined the FSN waitlist at fantasysportsnetwork.app.",
-    "Reply if you'd rather not hear from us again.",
+    'Unsubscribe: mailto:' + UNSUBSCRIBE_MAILTO + '?subject=Unsubscribe',
+    'Fantasy Sports Network · Fort Worth, TX',
   ].join('\n');
 }
 
@@ -227,12 +236,27 @@ async function sendBatches(recipients: string[], apiKey: string): Promise<BatchO
 
     // One recipient per message: /emails/batch treats each entry as a
     // separate send, so no address is exposed to another reader.
+    //
+    // List-Unsubscribe + List-Unsubscribe-Post satisfy Gmail's and
+    // Yahoo's Feb-2024 bulk-sender rules — without them, deliverability
+    // to those providers is materially worse. RFC 8058 requires the
+    // one-click header be paired with a mailto: or https: entry in
+    // List-Unsubscribe. `Precedence: bulk` marks this as a broadcast so
+    // vacation autoresponders don't reply.
+    const commonHeaders = {
+      'List-Unsubscribe': `<mailto:${UNSUBSCRIBE_MAILTO}?subject=Unsubscribe>`,
+      'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+      'Precedence': 'bulk',
+    };
+
     const payload = chunk.map((to) => ({
       from,
       to: [to],
+      reply_to: DEFAULT_REPLY_TO,
       subject: SUBJECT,
       html,
       text,
+      headers: commonHeaders,
     }));
 
     try {
