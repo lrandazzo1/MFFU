@@ -291,9 +291,18 @@ jobs:
             -authenticationKeyIssuerID "$APPSTORE_CONNECT_ISSUER_ID" \
             DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
             CODE_SIGN_STYLE=Automatic \
-            PRODUCT_BUNDLE_IDENTIFIER="$APP_BUNDLE_ID" \
             MARKETING_VERSION=${{ steps.ios_version.outputs.marketing }} \
             CURRENT_PROJECT_VERSION=${{ steps.ios_version.outputs.build }}
+          # PRODUCT_BUNDLE_IDENTIFIER is deliberately NOT passed on the
+          # xcodebuild command line: a build setting supplied that way
+          # cascades to EVERY target in the workspace, including every
+          # embedded CocoaPods framework. Each Pod then archives with
+          # CFBundleIdentifier = app.fantasysportsnetwork, and App Store
+          # Connect refuses the upload with ITMS-90685 CFBundleIdentifier
+          # Collision. The bundle id for the main app is patched into
+          # ios/App/App/Info.plist by the "Set app identity, version and
+          # build number in Info.plist" step above, so no override is
+          # needed here — the Pods keep their own per-framework ids.
 
       # Preserve the compile-only CI signal when credentials are absent, but do
       # not manufacture an unsigned archive and never route it toward export.
@@ -308,9 +317,13 @@ jobs:
             -destination 'generic/platform=iOS' \
             -derivedDataPath "$RUNNER_TEMP/UnsignedDerivedData" \
             CODE_SIGNING_ALLOWED=NO \
-            PRODUCT_BUNDLE_IDENTIFIER="$APP_BUNDLE_ID" \
             MARKETING_VERSION=${{ steps.ios_version.outputs.marketing }} \
             CURRENT_PROJECT_VERSION=${{ steps.ios_version.outputs.build }}
+          # See the archive step above: PRODUCT_BUNDLE_IDENTIFIER is not
+          # passed here either. A workspace-wide bundle-id override collides
+          # every embedded framework with the main app (ITMS-90685). The
+          # source Info.plist patched by the earlier step is the single
+          # source of truth for the main app's bundle id.
 
       # The deployment target was raised before the build, but MinimumOSVersion
       # is written by Xcode into the *built* Info.plist, so this is the only
@@ -350,6 +363,24 @@ jobs:
           [ -z "$BVER" ]  && MISSING="$MISSING CFBundleVersion"
           if [ -n "$MISSING" ]; then
             echo "::error title=Info.plist keys missing or empty in archive::The archived .app is missing:$MISSING. TestFlight would reject this with 'Info.plist missing CFBundleIdentifier, CFBundleVersion, or CFBundleShortVersionString.' The 'Set app identity, version and build number in Info.plist' step ran before archive — either the Capacitor project regenerated the plist during archive, or xcodebuild processed the source plist macros to empty. Check that the source plist under ios/App/App/Info.plist still holds the literal values patched in by that step."
+            exit 1
+          fi
+          # Guard against ITMS-90685: every embedded bundle (framework, plugin,
+          # extension) must carry its OWN CFBundleIdentifier. Only the main
+          # app is allowed to hold $BID. A workspace-wide PRODUCT_BUNDLE_IDENTIFIER
+          # override on xcodebuild was the previous cause; keeping this check
+          # here means a re-introduction fails HERE instead of at the upload.
+          COLLISIONS=""
+          while IFS= read -r NESTED_PLIST; do
+            [ -f "$NESTED_PLIST" ] || continue
+            NBID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$NESTED_PLIST" 2>/dev/null | sed 's/[[:space:]]*$//')"
+            if [ "$NBID" = "$BID" ]; then
+              WHERE="$(dirname "$NESTED_PLIST" | sed "s|$APP/||")"
+              COLLISIONS="${COLLISIONS} [${WHERE}=${NBID}]"
+            fi
+          done < <(find "$APP/Frameworks" "$APP/PlugIns" -maxdepth 3 -name Info.plist 2>/dev/null)
+          if [ -n "$COLLISIONS" ]; then
+            echo "::error title=CFBundleIdentifier collision::Embedded bundle(s) share the main app's identifier ($BID). TestFlight would reject this with ITMS-90685. Collisions:$COLLISIONS"
             exit 1
           fi
 
