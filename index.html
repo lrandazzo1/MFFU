@@ -3308,13 +3308,18 @@ body.fsn-dd-lock{ overflow:hidden; }
     <!-- WEEK TIME-MACHINE -->
     <div id="homeWeekScrubber" class="px-4 pb-3"></div>
 
+    <!-- No league is selected. The copy and the second action are filled in by
+         renderHome() so a reader who already has saved leagues is asked to
+         PICK one, and a first-time reader is offered the walkthrough — rather
+         than both being told the signal is missing. -->
     <div id="homeNoData" class="px-4">
       <div class="card p-6 text-center">
-        <div class="glyph font-display text-[30px] text-[#232c3b]">NO SIGNAL</div>
-        <p class="text-[13px] text-[var(--dim)] mt-2 leading-relaxed">
-          Connect your league to bring the broadcast online.
+        <div class="glyph font-display text-[30px] text-[#232c3b]" id="homeNoDataTitle">SELECT OR CONNECT A LEAGUE</div>
+        <p class="text-[13px] text-[var(--dim)] mt-2 leading-relaxed" id="homeNoDataText">
+          Connect your ESPN, Sleeper or Yahoo league to bring the broadcast online.
         </p>
-        <button class="btn-primary mt-4" data-goto="setup">OPEN SETUP</button>
+        <button class="btn-primary mt-4" data-goto="setup" id="homeNoDataConnect">CONNECT A LEAGUE</button>
+        <button class="btn-ghost mt-2" type="button" id="homeNoDataIntro">HOW IT WORKS</button>
       </div>
     </div>
 
@@ -22832,6 +22837,39 @@ function upsertSeasonCache(year, leagueData){
   try{ LeagueData.setLeagueHistory(computeLeagueHistoryStats(next)); }catch(e){ console.warn('[FSN] Could not refresh archive stats', e); }
 }
 
+/* ---- "select or connect a league" ----
+   The state for a browser with NO active league at all: a first visit, a hard
+   refresh in a browser that keeps no site data, or a cleared league. It is a
+   real state with two real actions — pick one of this reader's saved leagues,
+   or connect a new one through the onboarding flow — and never a reason to
+   render a league the reader did not choose. /api/league answers the same
+   condition with 400 NO_ACTIVE_LEAGUE and no sample data, so the two halves
+   agree: no league means no data, said plainly. */
+function renderNoLeaguePanel(){
+  const title = $('homeNoDataTitle');
+  const text = $('homeNoDataText');
+  const connect = $('homeNoDataConnect');
+  const intro = $('homeNoDataIntro');
+  let saved = [];
+  try{ saved = savedLeagues().filter(function(row){ return FSNRelease.supportsProvider(row.provider); }); }
+  catch(err){
+    console.warn('[Setup] Could not read the saved-league list for the connect panel.', err);
+  }
+  const hasLeague = !!activeLeagueId();
+  if(title){
+    title.textContent = hasLeague ? 'LEAGUE NOT LOADED' : 'SELECT OR CONNECT A LEAGUE';
+  }
+  if(text){
+    text.textContent = hasLeague
+      ? 'League ' + activeLeagueId() + ' is selected but has no data loaded yet. Open Setup to connect it.'
+      : (saved.length
+        ? 'Pick one of your saved leagues in Setup, or connect a new one. Nothing is shown until you choose — this app never fills the screen with a league that is not yours.'
+        : 'Connect your ESPN, Sleeper or Yahoo league to bring the broadcast online.');
+  }
+  if(connect) connect.textContent = saved.length && !hasLeague ? 'SELECT OR CONNECT' : 'CONNECT A LEAGUE';
+  if(intro) intro.hidden = saved.length > 0;
+}
+
 /* ---- "no data synced for this league" ----
    A season the active league has neither archived nor can fetch is an EMPTY
    state, not a disconnected one, and it is emphatically not a reason to show
@@ -22901,6 +22939,16 @@ function seasonUnavailableMessage(){
   const name = (LeagueData.espnData && LeagueData.espnData.settings && LeagueData.espnData.settings.name) ||
     ((window._fsnCloudSettings || {}).leagueName) || '';
   return 'No ' + year + ' data synced for ' + (name ? '\u201c' + name + '\u201d' : 'this league') + '.';
+}
+
+/* The screen-level empty state for a browser with no active league, or '' when
+   one is selected. Screens ask for this before printing anything else, so "you
+   have not chosen a league" is never dressed up as "this league has no data". */
+function noActiveLeagueEmptyState(){
+  if(activeLeagueId()) return '';
+  return emptyState('SELECT OR CONNECT A LEAGUE',
+    'No league is selected, so there is nothing to show. Open Setup to pick a saved league or connect a new one.',
+    'setup');
 }
 
 /* The screen-level empty state for a season this league has not synced, or ''
@@ -23030,9 +23078,18 @@ async function switchSeasonYear(nextYear){
   }
 
   if(!league){
+    /* No active league — a first visit, or a hard refresh in a browser that
+       keeps no site data. The year the reader picked is meaningless without a
+       league, and picking one must never be answered with someone else's data,
+       so the app says which choice is missing and stops. */
+    console.warn('[Season] A season was selected with no active league, so there is nothing to load. ' +
+      'Showing the select-or-connect state.');
     ui.seasonLoading = null;
+    LeagueData.setEspnData(null);
+    clearSeasonUnavailable();
+    setConn('none');
     renderAll();
-    toast(year === active ? 'Enter a League ID to load the live season' : 'Load league history to open ' + year);
+    toast('Select or connect a league first');
     return;
   }
 
@@ -23670,9 +23727,12 @@ function renderHome(){
       $('homeWeekPill').textContent = 'NO DATA';
       $('homeSeasonLabel').textContent = seasonGap + ' SEASON';
     } else {
-      $('homeLeagueName').textContent = 'THE DESK';
-      $('homeLeagueMeta').textContent = 'Connect a league to get started';
-      $('homeWeekPill').textContent = 'CONNECT LEAGUE';
+      renderNoLeaguePanel();
+      $('homeLeagueName').textContent = activeLeagueId() ? leagueDisplayNameForScope() : 'THE DESK';
+      $('homeLeagueMeta').textContent = activeLeagueId()
+        ? leaguePlatformLabel() + ' · League ' + activeLeagueId()
+        : 'Select or connect a league to get started';
+      $('homeWeekPill').textContent = activeLeagueId() ? 'NO DATA' : 'SELECT LEAGUE';
       $('homeSeasonLabel').textContent = '';
     }
     try{ refreshDeskLeaguePicker(); }catch(err){ console.warn('[Home] desk league picker refresh failed', err); }
@@ -24133,7 +24193,7 @@ function compactGameRow(g){
 function renderMatchups(){
   const week = effectiveWeek();
   if(!LeagueData.hasLive()){
-    $('matchupList').innerHTML = seasonUnavailableEmptyState() ||
+    $('matchupList').innerHTML = seasonUnavailableEmptyState() || noActiveLeagueEmptyState() ||
       emptyState('NO SIGNAL', 'Fetch an ESPN league to see this week’s head-to-head board.', 'setup');
     return;
   }
@@ -24672,7 +24732,7 @@ function renderAnalytics(){
   if(!hasLive){
     if(seasonPill) seasonPill.textContent = '— SEASON';
     if(updatedLabel) updatedLabel.textContent = 'AWAITING DATA';
-    body.innerHTML = seasonUnavailableEmptyState() ||
+    body.innerHTML = seasonUnavailableEmptyState() || noActiveLeagueEmptyState() ||
       emptyState('NO ANALYTICS FEED', 'Fetch the current ESPN season to activate all six mathematical models.', 'setup');
     return;
   }
@@ -26622,6 +26682,20 @@ async function hydrateLeagueFromCloud(league, options){
     const rawBody = await response.text().catch(()=> '');
     let payload = {};
     try{ payload = rawBody ? JSON.parse(rawBody) : {}; }catch(parseErr){ payload = {}; }
+    /* ---- the server says no league was named ----
+       /api/league has no sample or demo league and refuses a request that
+       carries no league_id. That is a state to SHOW, not a transport failure
+       to retry or to paper over with a cached record: the reader has to pick a
+       league before anything can be loaded for one. */
+    if(response.status === 400 && payload && payload.code === 'NO_ACTIVE_LEAGUE'){
+      console.error('[League Storage] /api/league refused a read that named no league (' +
+        String(payload.error || 'No active league specified') + '). Showing the select-or-connect state ' +
+        'instead of any cached or sample data.', new Error('NO_ACTIVE_LEAGUE'));
+      clearCloudVersion();
+      setCloudStatus('error', 'No league is selected. Choose a saved league or connect a new one in Setup.');
+      renderAll();
+      return null;
+    }
     if(!response.ok){
       const serverError = (payload && (payload.error || payload.message)) ||
         (rawBody ? rawBody.slice(0, 500) : '');
@@ -28963,19 +29037,77 @@ if($('forgetLeagueBtn')) $('forgetLeagueBtn').addEventListener('click', ()=>{
   toast('Saved league removed from this device');
 });
 
+/* The league this browser is pointed at, exactly as every request scopes
+   itself. '' when there is none — which is a state the app must SHOW, never
+   paper over with whatever data happens to be in memory. */
+function activeLeagueId(){
+  const el = $('leagueIdInput');
+  return el ? String(el.value || '').trim() : '';
+}
+
+/* ---- THE ACTIVE LEAGUE, IN THE URL  (web) ----
+   On the web the address bar is the only state that survives a hard refresh in
+   a browser that refuses site data — Safari private browsing, an embedded
+   webview, a locked-down profile. FSNStore reports that refusal honestly and
+   keeps the value in memory for the session, but memory does not survive F5:
+   the reader came back to an app that had forgotten its league entirely.
+
+   So the active league id rides in the query string as ?league_id=…&platform=…
+   and applyDeepLink() reads it back on the next boot. Two rules:
+
+     - The id only. The SHARE TOKEN must never linger in the address bar, the
+       back/forward stack, a bookmark or a Referer header — that is why the
+       query string is wiped at boot in the first place, and this keeps only
+       the half that is not a secret (a league id is in every league URL and
+       every screenshot).
+     - The provider rides with it, because ESPN and Sleeper both hand out
+       numeric ids and restoring one as the other is the same cross-league
+       fault the season picker guards against.
+
+   Inert inside the packaged app, where the document is capacitor://localhost
+   and the query string is neither read nor shown. */
+function syncActiveLeagueUrl(){
+  try{
+    if(typeof FSNApi !== 'undefined' && FSNApi.isNativeShell && FSNApi.isNativeShell()) return false;
+    if(!window.history || !window.history.replaceState || !window.location) return false;
+    if(!/^https?:$/.test(String(window.location.protocol || ''))) return false;
+    const id = activeLeagueId();
+    const provider = normalizedLeagueProvider(ui.provider);
+    const next = window.location.pathname + (id
+      ? '?league_id=' + encodeURIComponent(id) + '&platform=' + encodeURIComponent(provider)
+      : '');
+    const current = window.location.pathname + (window.location.search || '');
+    if(current === next) return false;
+    window.history.replaceState({}, document.title, next);
+    return true;
+  }catch(err){
+    /* A browser that refuses replaceState keeps a working app with an untidy
+       URL — but it also loses the refresh-proofing, so say so once rather than
+       leaving a silent gap between what is stored and what is restorable. */
+    console.warn('[Setup] Could not write the active league into the URL; a hard refresh in a browser ' +
+      'without site data will not restore it.', err);
+    return false;
+  }
+}
+
 /* These two keys decide whether the next launch rehydrates a league at all,
    which makes them the ones that must never fail silently. Routing them
    through FSNStore means a quota failure first evicts the regenerable archive
    mirrors to make room, and if it still cannot write, says so loudly instead
-   of leaving a relaunch with nothing to restore. */
+   of leaving a relaunch with nothing to restore.
+
+   The URL is kept in step here, in the one funnel every screen already calls
+   when the active league or season changes, so the address bar can never drift
+   from the league the app is actually showing. */
 function savePrefs(){
   FSNStore.setJSON(STORE_KEY, {
-    leagueId: $('leagueIdInput').value.trim(),
+    leagueId: activeLeagueId(),
     season:   $('seasonYear').value.trim(),
     week:     $('weekNum').value.trim(),
     provider: ui.provider,
     statsMode: ui.statsMode,
   });
+  syncActiveLeagueUrl();
 }
 function loadPrefs(){
   let saved = null;
@@ -30577,6 +30709,10 @@ if($('ftuBack')) $('ftuBack').addEventListener('click', ()=> ftuGo(ftuSlide - 1)
 if($('ftuSkip')) $('ftuSkip').addEventListener('click', ()=> closeFtu(false));
 if($('ftuBackdrop')) $('ftuBackdrop').addEventListener('click', ()=> closeFtu(false));
 if($('ftuFinish')) $('ftuFinish').addEventListener('click', ()=> closeFtu(true));
+/* The Desk's empty state links straight into the onboarding walkthrough, so a
+   reader with no league has the connect flow one tap away rather than having
+   to find Setup on their own. */
+if($('homeNoDataIntro')) $('homeNoDataIntro').addEventListener('click', ()=> openFtu());
 // The Setup-tab trigger always shows the intro on demand, regardless of the
 // stored flag, so a commissioner can revisit or demo it anytime.
 if($('ftuReopenBtn')) $('ftuReopenBtn').addEventListener('click', openFtu);
@@ -32756,6 +32892,26 @@ function applyDeepLink(){
        invite opens the league now and reports honestly whether it will still
        be there after a relaunch. */
     FSNStore.set(SAVED_LEAGUE_ID_KEY, invitedLeague);
+  } else if(invitedLeague && !invitedToken &&
+            window.YahooAdapter && window.YahooAdapter.looksLikeYahooLeagueKey(invitedLeague)){
+    /* ---- ACTIVE-LEAGUE RESTORE, not an invite ----
+       A Yahoo league key (123.l.456) never matches the numeric invite shape
+       above, so a refresh of a Yahoo league would otherwise be discarded as
+       malformed. There is no token here and nothing is minted: this is the
+       league this browser was already on, coming back after a refresh that
+       lost storage. */
+    invited = invitedLeague;
+    try{
+      const input = $('leagueIdInput');
+      if(input && input.value.trim() !== invitedLeague){
+        input.value = invitedLeague;
+        savePrefs();
+      }
+    }catch(err){
+      console.error('[Setup] Could not restore the Yahoo league key ' + invitedLeague +
+        ' from the URL; this launch starts with no league.', err);
+    }
+    FSNStore.set(SAVED_LEAGUE_ID_KEY, invitedLeague);
   } else if(invitedLeague || invitedToken){
     console.warn('[League Share] Ignoring an invite link with a malformed League ID (' +
       (invitedLeague || '(empty)') + ').');
@@ -32763,9 +32919,14 @@ function applyDeepLink(){
 
   const target = (params.get('goto') || '').toLowerCase();
   const known = ['home','matchups','news','analytics','recordbook','setup'];
-  // A platform hint implies the user came to connect a league, so default the
-  // destination to Setup even if goto was omitted.
-  const dest = known.includes(target) ? target : (platform ? 'setup' : '');
+  /* A platform hint on its own implies the visitor came to CONNECT — that is
+     the marketing site's ?goto=setup&platform=espn link — so Setup is the
+     destination. A platform hint that arrives WITH a league id does not: that
+     is this app's own ?league_id=…&platform=… restore link, written by
+     syncActiveLeagueUrl() so a hard refresh keeps its league, and it must land
+     exactly where a refresh always did rather than bouncing the reader to
+     Setup every time they reload. */
+  const dest = known.includes(target) ? target : ((platform && !invited) ? 'setup' : '');
   if(dest) setScreen(dest);
 
   /* Clean the query string so a refresh or share doesn't re-trigger the jump
@@ -32778,6 +32939,10 @@ function applyDeepLink(){
      window.history && window.history.replaceState){
     try{ window.history.replaceState({}, document.title, window.location.pathname); }catch(e){}
   }
+  /* …and then put the one non-secret part back: the active league id, so the
+     NEXT hard refresh can restore it in a browser that keeps no site data.
+     After the wipe, never before it — the wipe is what removes the token. */
+  syncActiveLeagueUrl();
   /* hasInviteToken is what tells bootApp this reader's ONLY key to the shared
      multi-season archive arrived in the URL: no ESPN cookies, no previously
      stored record, nothing else to hydrate from. Boot forces the archive read
