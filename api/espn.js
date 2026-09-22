@@ -153,6 +153,7 @@ async function resolveEspnCredentials(req, target, shareToken) {
   }
 
   let storedDenied = null;
+  let storedLookup = null;
   const context = leagueContextFromTarget(target);
   if (context.leagueId) {
     /* resolveStoredLeagueAccess swallows its own storage failures and answers
@@ -160,6 +161,18 @@ async function resolveEspnCredentials(req, target, shareToken) {
        unconfigured or unreachable Supabase can never turn a public read into
        an error — and can never be talked into lending credentials either. */
     const access = await resolveStoredLeagueAccess(context.leagueId, context.seasonYear, shareToken);
+    /* Every outcome is recorded, including the 'none' sub-cases. A token-
+       bearing request that ends up with no cookies must be able to say WHY —
+       "Supabase is not configured", "no row for this league", "the envelope
+       would not decrypt" — instead of degrading to an anonymous read whose
+       401 reads to the user as "this league is private", which is the one
+       thing it definitely is not telling them. */
+    storedLookup = {
+      leagueId: context.leagueId,
+      status: access.status,
+      code: access.code || '',
+      reason: access.reason || '',
+    };
     if (access.status === 'unauthorized') {
       /* The league has a stored session and this caller may not use it. Do NOT
          return here: falling straight to a 401 would break every PUBLIC league
@@ -177,16 +190,51 @@ async function resolveEspnCredentials(req, target, shareToken) {
         'private the caller will be told they need the full invite link.');
     } else if (access.status === 'ok') {
       const pair = consider(credentialPair('league-store', access.cookies.swid, access.cookies.espn_s2));
-      if (pair) return { mode: 'private', pair: pair, rejected: rejected, storedDenied: null };
+      if (pair) {
+        /* DIAGNOSTIC: the outbound identity, masked. Enough to confirm in a
+           Vercel log that BOTH halves were attached and in the canonical
+           shape ESPN expects (SWID brace-wrapped, espn_s2 left URL-encoded),
+           without printing anything replayable. */
+        console.log('[api/espn] Attaching the token-authorized stored ESPN session for league ' +
+          context.leagueId + ' — SWID=' + maskCookie(pair.swid) + ', espn_s2=' + maskCookie(pair.espn_s2) +
+          ' (Cookie header ' + pair.header.length + ' bytes).');
+        return {
+          mode: 'private', pair: pair, rejected: rejected, storedDenied: null, storedLookup: storedLookup,
+        };
+      }
+      /* The envelope decrypted but the sanitizer rejected one half. Record it
+         as a lookup failure so a token-bearing request reports it rather than
+         silently reading anonymously. */
+      storedLookup.status = 'none';
+      storedLookup.code = 'COOKIES_UNUSABLE';
+      storedLookup.reason = 'the stored ESPN session did not survive sanitization and cannot be sent as a cookie header';
     }
   }
 
   if (process.env.ESPN_S2 || process.env.ESPN_SWID) {
     const pair = consider(credentialPair('deployment-env', process.env.ESPN_SWID, process.env.ESPN_S2));
-    if (pair) return { mode: 'private', pair: pair, rejected: rejected, storedDenied: storedDenied };
+    if (pair) {
+      return {
+        mode: 'private', pair: pair, rejected: rejected,
+        storedDenied: storedDenied, storedLookup: storedLookup,
+      };
+    }
   }
 
-  return { mode: 'public', pair: null, rejected: rejected, storedDenied: storedDenied };
+  return {
+    mode: 'public', pair: null, rejected: rejected,
+    storedDenied: storedDenied, storedLookup: storedLookup,
+  };
+}
+
+/* First and last two characters of a credential, with the length. Enough to
+   tell two cookies apart in a log and to confirm a value is not empty or
+   truncated; never enough to reconstruct one. */
+function maskCookie(value) {
+  const v = String(value == null ? '' : value);
+  if (!v) return '(empty)';
+  if (v.length <= 6) return '***(' + v.length + ' chars)';
+  return v.slice(0, 2) + '***' + v.slice(-2) + '(' + v.length + ' chars)';
 }
 
 /* ESPN sometimes answers an inaccessible (private / not-visible) league with a
@@ -215,12 +263,29 @@ async function readEspnUpstream(url, cookieHeader) {
   // a 400/401 that reads to every caller as a credential problem.
   if (cookieHeader) upstreamHeaders.Cookie = cookieHeader;
 
+  /* ---- DIAGNOSTIC LOG: the exact outbound request, masked ----
+     Cookie values are reduced to their name, first/last two characters and
+     length. That confirms in a Vercel log that both halves went out and that
+     SWID kept its braces, without ever printing a replayable credential. */
+  const cookieSummary = cookieHeader
+    ? cookieHeader.split('; ').map(function (part) {
+        const eq = part.indexOf('=');
+        if (eq < 0) return '(malformed pair)';
+        return part.slice(0, eq) + '=' + maskCookie(part.slice(eq + 1));
+      }).join('; ')
+    : '(none — ANONYMOUS request)';
+  console.log('[api/espn] → ESPN GET ' + url);
+  console.log('[api/espn]   User-Agent: ' + upstreamHeaders['User-Agent']);
+  console.log('[api/espn]   Accept:     ' + upstreamHeaders.Accept);
+  console.log('[api/espn]   Cookie:     ' + cookieSummary);
+
   const upstream = await fetch(url, {
     method: 'GET',
     headers: upstreamHeaders,
     redirect: 'follow',
   });
   const body = await upstream.text();
+  console.log('[api/espn] ← ESPN ' + upstream.status + ' (' + body.length + ' bytes) for ' + url);
 
   let payload = null;
   let parsed = true;
@@ -306,25 +371,82 @@ module.exports = async function handler(req, res) {
   // resolution block above for why the pair is atomic and source-tagged, and
   // why the stored league session is now gated on this league's share token.
   const shareToken = requestShareToken(req);
+  console.log('[api/espn] ' + target.pathname + ' — share token ' +
+    (shareToken ? 'PRESENT (' + shareToken.slice(0, 8) + '…, ' + shareToken.length + ' chars)' : 'ABSENT'));
   let creds = await resolveEspnCredentials(req, target, shareToken);
 
-  /* Short-circuit: the caller EXPLICITLY presented a share token and it did
-     not match this league's stored token(s). Without their own reader cookies
-     there is nothing to fall back to — an anonymous retry would only ever
-     answer for a public league that happens to have a cookie envelope on
-     file, and every other case just wastes an ESPN round trip before ending
-     at the same 401. Answer with the invalid-link verdict now so the reader
-     sees a clear message instead of ESPN's generic refusal envelope. */
-  if (shareToken && creds.storedDenied && creds.storedDenied.code === 'SHARE_TOKEN_INVALID' &&
-      creds.mode !== 'private') {
-    console.warn('[api/espn] Short-circuiting 401 SHARE_TOKEN_INVALID for league ' +
-      creds.storedDenied.leagueId + ' on ' + target.pathname +
-      ' — a token was supplied but did not match this league; refusing to attempt an anonymous read.');
-    return res.status(401).json({
-      error: 'This invite link is invalid or expired. Please ask the league host for a new link or sign in with ESPN cookies directly.',
-      code: 'SHARE_TOKEN_INVALID',
-      league_id: creds.storedDenied.leagueId,
-      detail: creds.storedDenied.reason,
+  /* ============================================================
+     TOKEN PRESENT ⇒ NEVER READ ANONYMOUSLY
+
+     This is the fix for the bug this whole block exists to prevent. A request
+     carrying a share token is, by definition, a reader who has no ESPN account
+     in this league and is relying entirely on the host's stored session. If
+     that session could not be produced — for ANY reason — the correct answer
+     is to say which reason, not to shrug and ask ESPN anonymously.
+
+     The anonymous read was actively harmful here: ESPN answers it with a
+     generic 401, and the relay then reported "ESPN denied the anonymous
+     request… this league is private", which sent the reader off to hunt for
+     espn_s2 / SWID cookies when the real fault was on our side (Supabase not
+     configured, no stored row, an undecryptable envelope, a mismatched token).
+
+     Two conditions gate this:
+       shareToken      the caller explicitly presented one
+       mode !== private no usable credential pair was resolved from ANY source
+                        (a reader who also sent their own cookies is left alone —
+                        their own pair is a real identity and its verdict is theirs)
+
+     `storedDenied` covers the token-was-checked-and-rejected cases;
+     `storedLookup` covers the there-was-nothing-to-check cases. Both end here.
+  ============================================================ */
+  if (shareToken && creds.mode !== 'private') {
+    const denied = creds.storedDenied;
+    const lookup = creds.storedLookup;
+    const code = (denied && denied.code) || (lookup && lookup.code) || 'SHARE_TOKEN_LOOKUP_FAILED';
+    const detail = (denied && denied.reason) || (lookup && lookup.reason) ||
+      'the stored ESPN session for this league could not be resolved';
+    const leagueId = (denied && denied.leagueId) || (lookup && lookup.leagueId) ||
+      leagueContextFromTarget(target).leagueId || null;
+
+    /* Reader-facing sentence per case. Every one of them avoids sending a
+       token-bearing reader to go find ESPN cookies, because in none of these
+       cases is that the actual problem. */
+    const READER_MESSAGE = {
+      SHARE_TOKEN_INVALID: 'This invite link is invalid or expired. Please ask the league host for a new link.',
+      SHARE_TOKEN_NOT_MINTED: 'This league has not finished setting up its invite links yet. Ask the league host to open Setup and save the league once, then send you a fresh link.',
+      SHARE_TOKEN_MISSING: 'This invite link is missing its share token. Ask the league host for the full link.',
+      SUPABASE_NOT_CONFIGURED: 'League storage is not configured on this deployment, so the host\'s saved ESPN access could not be read. This is a server configuration problem, not a problem with your link.',
+      SUPABASE_CLIENT_UNAVAILABLE: 'League storage is unavailable on this deployment. This is a server problem, not a problem with your link.',
+      NO_LEAGUE_ROW: 'No saved league data exists for this League ID yet. Ask the league host to open Setup and save the league once, then send you a fresh invite link.',
+      NO_STORED_COOKIES: 'The league host saved this league without their ESPN sign-in, so there is no access to share. Ask them to re-save it from Setup with their ESPN cookies entered.',
+      COOKIES_UNDECRYPTABLE: 'The host\'s saved ESPN access could not be unlocked on this deployment. Ask the league host to re-save the league from Setup.',
+      COOKIES_INCOMPLETE: 'The league host\'s saved ESPN access is incomplete. Ask them to re-save the league from Setup.',
+      COOKIES_UNUSABLE: 'The league host\'s saved ESPN access is stored in a form that cannot be used. Ask them to re-save the league from Setup.',
+      STORAGE_ERROR: 'League storage could not be reached right now. Please try again in a moment.',
+    };
+    const readerMessage = READER_MESSAGE[code] ||
+      'Unable to join this league with this link. Check the link or ask your commissioner for a fresh invite.';
+
+    console.error('[api/espn] REFUSING ANONYMOUS READ of ' + target.pathname + ' for league ' +
+      (leagueId || '(unknown)') + '. A share token was presented but no ESPN session could be ' +
+      'attached [' + code + ']: ' + detail + '. Returning the diagnostic rather than asking ESPN ' +
+      'anonymously (an anonymous 401 would be reported to the reader as "this league is private", ' +
+      'which is not what happened).');
+
+    /* 401 only for a token that was genuinely rejected; everything else is a
+       server-side / data-side failure and gets 502 so it is never mistaken for
+       an authentication verdict about the reader. */
+    const httpStatus = (code === 'SHARE_TOKEN_INVALID' || code === 'SHARE_TOKEN_MISSING' ||
+      code === 'SHARE_TOKEN_NOT_MINTED') ? 401 : 502;
+
+    return res.status(httpStatus).json({
+      error: readerMessage,
+      code: code,
+      league_id: leagueId,
+      detail: detail,
+      /* Full stage diagnostics for the in-app testing banner. */
+      stage: 'supabase-lookup',
+      lookup_status: (lookup && lookup.status) || 'unknown',
       auth: 'share-token',
     });
   }
