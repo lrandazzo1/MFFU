@@ -6701,6 +6701,32 @@ function parseLeagueInviteInput(value){
      and as forgiving as it was before this function existed. */
   if(/^\d{1,20}$/.test(raw)) return { leagueId:raw, token:'' };
 
+  /* Preferred path: a clean https:// invite parses cleanly with URL()'s own
+     searchParams so decoding is handed to the browser rather than a hand-rolled
+     regex. Falls through to the regex sweep below when the pasted text is a
+     bare "?id=…&token=…" tail, a bag of chat cruft around the link, or a
+     scheme URL() rejects. */
+  const readFromUrl = (input)=>{
+    try{
+      const parsed = new URL(input);
+      const idParam = parsed.searchParams.get('id') ||
+        parsed.searchParams.get('league_id') ||
+        parsed.searchParams.get('leagueId') || '';
+      const tokenParam = parsed.searchParams.get('token') ||
+        parsed.searchParams.get('share_token') || '';
+      return {
+        leagueId: /^\d{1,20}$/.test(String(idParam).trim()) ? String(idParam).trim() : '',
+        token: normalizeLeagueShareToken(tokenParam),
+      };
+    }catch(err){
+      return null;
+    }
+  };
+  const fromUrl = readFromUrl(raw);
+  if(fromUrl && (fromUrl.leagueId || fromUrl.token)){
+    return fromUrl;
+  }
+
   const readParam = (name)=>{
     const match = new RegExp('(?:^|[?&#])' + name + '=([^&#\\s\"<>]+)').exec(raw);
     if(!match) return '';
@@ -27344,7 +27370,9 @@ async function fetchLeagueData(options){
       const relayCode = String((err && err.relayCode) || '').trim();
       const isCookieRejection = relayCode === 'PRIVATE_LEAGUE_LOGIN_REJECTED' ||
         (credReport.state === 'ready' && !relayCode);
-      if(relayCode === 'SHARE_TOKEN_REQUIRED'){
+      if(relayCode === 'SHARE_TOKEN_INVALID'){
+        msg = 'This invite link is invalid or expired. Please ask the league host for a new link or sign in with ESPN cookies directly.';
+      } else if(relayCode === 'SHARE_TOKEN_REQUIRED'){
         msg = 'This league is protected by a per-league invite link. Open the full link a league-mate sent you, or paste your own ESPN cookies to sign in.';
       } else if(isCookieRejection){
         msg = 'ESPN did not accept your saved cookies. Paste a fresh pair or use an invite link — the sign-in panel is open below.';
@@ -27358,8 +27386,8 @@ async function fetchLeagueData(options){
          about auth. Guarded with a try so the fallback text still lands if the
          modal wiring is missing on an older build. */
       try{
-        const reasonForModal = relayCode === 'SHARE_TOKEN_REQUIRED'
-          ? 'SHARE_TOKEN_REQUIRED'
+        const reasonForModal = (relayCode === 'SHARE_TOKEN_REQUIRED' || relayCode === 'SHARE_TOKEN_INVALID')
+          ? relayCode
           : (isCookieRejection ? 'PRIVATE_LEAGUE_LOGIN_REJECTED' : 'PRIVATE_LEAGUE_ACCESS_REQUIRED');
         openPrivateLeagueAuthModal({
           leagueId: (err && err.relayLeagueId) || league,
@@ -29619,6 +29647,8 @@ function refreshPrivateLeagueAuthHeadline(){
   if(headline){
     if(ctx.reason === 'PRIVATE_LEAGUE_LOGIN_REJECTED'){
       headline.textContent = 'ESPN did not accept those cookies';
+    } else if(ctx.reason === 'SHARE_TOKEN_INVALID'){
+      headline.textContent = 'This invite link is invalid or expired';
     } else if(ctx.reason === 'SHARE_TOKEN_REQUIRED'){
       headline.textContent = 'Open your invite link';
     } else {
@@ -29628,6 +29658,8 @@ function refreshPrivateLeagueAuthHeadline(){
   if(sub){
     if(ctx.reason === 'PRIVATE_LEAGUE_LOGIN_REJECTED'){
       sub.textContent = 'Your saved cookies are likely expired. Paste a fresh pair below, or use an invite link from a league-mate — either path unlocks the league.';
+    } else if(ctx.reason === 'SHARE_TOKEN_INVALID'){
+      sub.textContent = 'Ask the league host for a new invite link, or sign in with your own ESPN espn_s2 + SWID cookies directly using the panel below.';
     } else if(ctx.reason === 'SHARE_TOKEN_REQUIRED'){
       sub.textContent = 'A league-mate can press Share in Setup and send you a link. Paste it below, or sign in with your own ESPN cookies instead.';
     } else {
