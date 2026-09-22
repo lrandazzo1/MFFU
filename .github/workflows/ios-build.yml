@@ -178,36 +178,20 @@ jobs:
             || /usr/libexec/PlistBuddy -c "Set :ITSAppUsesNonExemptEncryption false" "$PLIST"
           echo "ITSAppUsesNonExemptEncryption = $(/usr/libexec/PlistBuddy -c 'Print :ITSAppUsesNonExemptEncryption' "$PLIST")"
 
-      # Set CFBundleShortVersionString / CFBundleVersion directly in Info.plist
-      # in addition to the xcodebuild MARKETING_VERSION / CURRENT_PROJECT_VERSION
-      # flags. Capacitor 6's generated Info.plist ships literal "1.0" for both
-      # keys rather than referencing $(MARKETING_VERSION) / $(CURRENT_PROJECT_VERSION),
-      # so the xcodebuild flags alone can leave the shipped Info.plist reading
-      # 1.0 and the upload gets rejected with ITMS-90186 / ITMS-90062. Patching
-      # the plist here — after cap sync, before archive — makes sure the values
-      # actually reach the binary regardless of the template shape.
-      - name: Set app version and build number in Info.plist
-        env:
-          MARKETING: ${{ steps.ios_version.outputs.marketing }}
-          BUILD: ${{ steps.ios_version.outputs.build }}
-        run: |
-          PLIST="ios/App/App/Info.plist"
-          if [ ! -f "$PLIST" ]; then
-            echo "::error title=Info.plist missing::Expected $PLIST after the Capacitor sync."
-            exit 1
-          fi
-          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $MARKETING" "$PLIST" 2>/dev/null \
-            || /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string $MARKETING" "$PLIST"
-          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD" "$PLIST" 2>/dev/null \
-            || /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string $BUILD" "$PLIST"
-          echo "CFBundleShortVersionString = $(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$PLIST")"
-          echo "CFBundleVersion            = $(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$PLIST")"
-
       # Compute the effective build number as max(github.run_number, floor).
       # App Store Connect requires CFBundleVersion to strictly increase for a
       # given CFBundleShortVersionString; using the run_number alone risks a
       # regression if the counter is ever behind the last accepted build. Both
       # xcodebuild invocations below read the resolved value.
+      #
+      # MUST run BEFORE any step that reads steps.ios_version.outputs.* —
+      # previously this ran AFTER the plist-patching step, so the patch step
+      # received empty strings for MARKETING/BUILD and PlistBuddy silently
+      # wrote empty CFBundleShortVersionString / CFBundleVersion into the
+      # source Info.plist. The exported IPA then arrived at TestFlight with
+      # those keys empty, and apple-actions/upload-testflight-build refused
+      # it: "Info.plist missing CFBundleIdentifier, CFBundleVersion, or
+      # CFBundleShortVersionString."
       - name: Resolve iOS version and build number
         id: ios_version
         env:
@@ -219,9 +203,51 @@ jobs:
           else
             BUILD="$FLOOR"
           fi
+          if [ -z "$APP_MARKETING_VERSION" ] || [ -z "$BUILD" ]; then
+            echo "::error title=Version resolution failed::Marketing='$APP_MARKETING_VERSION', Build='$BUILD'. Refusing to proceed — the archive would ship empty plist keys and TestFlight would reject it."
+            exit 1
+          fi
           echo "marketing=$APP_MARKETING_VERSION" >> "$GITHUB_OUTPUT"
           echo "build=$BUILD" >> "$GITHUB_OUTPUT"
           echo "iOS build: CFBundleShortVersionString=$APP_MARKETING_VERSION, CFBundleVersion=$BUILD"
+
+      # Set CFBundleIdentifier / CFBundleShortVersionString / CFBundleVersion
+      # directly in Info.plist in addition to the xcodebuild MARKETING_VERSION
+      # / CURRENT_PROJECT_VERSION / PRODUCT_BUNDLE_IDENTIFIER flags. Capacitor
+      # 6's generated Info.plist references $(PRODUCT_BUNDLE_IDENTIFIER) /
+      # $(MARKETING_VERSION) / $(CURRENT_PROJECT_VERSION) macros; the archive
+      # process resolves them from the pbxproj/xcconfig, and any macro whose
+      # backing build setting is empty resolves to an empty string in the
+      # shipped plist. Writing literals here removes the substitution step
+      # entirely so the values are guaranteed to reach the binary regardless
+      # of what the template or pbxproj carries.
+      #
+      # If EITHER value is empty at this point the step fails hard: an empty
+      # plist key is exactly the TestFlight rejection we are here to prevent.
+      - name: Set app identity, version and build number in Info.plist
+        env:
+          MARKETING: ${{ steps.ios_version.outputs.marketing }}
+          BUILD: ${{ steps.ios_version.outputs.build }}
+          BUNDLE_ID: ${{ env.APP_BUNDLE_ID }}
+        run: |
+          PLIST="ios/App/App/Info.plist"
+          if [ ! -f "$PLIST" ]; then
+            echo "::error title=Info.plist missing::Expected $PLIST after the Capacitor sync."
+            exit 1
+          fi
+          if [ -z "$MARKETING" ] || [ -z "$BUILD" ] || [ -z "$BUNDLE_ID" ]; then
+            echo "::error title=Empty plist inputs::MARKETING='$MARKETING', BUILD='$BUILD', BUNDLE_ID='$BUNDLE_ID'. Refusing to patch — a blank value here is what TestFlight rejects with 'Info.plist missing CFBundleIdentifier/CFBundleVersion/CFBundleShortVersionString'."
+            exit 1
+          fi
+          /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $BUNDLE_ID" "$PLIST" 2>/dev/null \
+            || /usr/libexec/PlistBuddy -c "Add :CFBundleIdentifier string $BUNDLE_ID" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $MARKETING" "$PLIST" 2>/dev/null \
+            || /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string $MARKETING" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD" "$PLIST" 2>/dev/null \
+            || /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string $BUILD" "$PLIST"
+          echo "CFBundleIdentifier         = $(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$PLIST")"
+          echo "CFBundleShortVersionString = $(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$PLIST")"
+          echo "CFBundleVersion            = $(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$PLIST")"
 
       # Validate the App Store Connect credentials BEFORE spending 30 minutes
       # on an archive that cannot be signed. This normalizes and installs the
@@ -265,6 +291,7 @@ jobs:
             -authenticationKeyIssuerID "$APPSTORE_CONNECT_ISSUER_ID" \
             DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
             CODE_SIGN_STYLE=Automatic \
+            PRODUCT_BUNDLE_IDENTIFIER="$APP_BUNDLE_ID" \
             MARKETING_VERSION=${{ steps.ios_version.outputs.marketing }} \
             CURRENT_PROJECT_VERSION=${{ steps.ios_version.outputs.build }}
 
@@ -281,6 +308,7 @@ jobs:
             -destination 'generic/platform=iOS' \
             -derivedDataPath "$RUNNER_TEMP/UnsignedDerivedData" \
             CODE_SIGNING_ALLOWED=NO \
+            PRODUCT_BUNDLE_IDENTIFIER="$APP_BUNDLE_ID" \
             MARKETING_VERSION=${{ steps.ios_version.outputs.marketing }} \
             CURRENT_PROJECT_VERSION=${{ steps.ios_version.outputs.build }}
 
@@ -289,7 +317,7 @@ jobs:
       # place it can actually be read back. Checking it here turns a rejected
       # upload (ITMS-90068, reported by email minutes after a green run) into a
       # failed step naming the value that was shipped.
-      - name: Verify minimum OS version
+      - name: Verify archived Info.plist (minimum OS + required version keys)
         if: steps.signing.outputs.available == 'true'
         env:
           MIN_IOS_VERSION: '15.0'
@@ -303,6 +331,25 @@ jobs:
           echo "MinimumOSVersion = $MIN ($(basename "$APP"))"
           if [ "${MIN%%.*}" -lt "${MIN_IOS_VERSION%%.*}" ]; then
             echo "::error title=MinimumOSVersion too low::The archive declares MinimumOSVersion $MIN, below the required $MIN_IOS_VERSION — App Store Connect would reject it with ITMS-90068. The 'Set minimum iOS version' step ran, so the Capacitor project regained a lower value. Check that ios/App was regenerated after the step ran."
+            exit 1
+          fi
+          # The three keys apple-actions/upload-testflight-build refuses the
+          # upload for when any is empty or missing. Read them out of the
+          # archived .app now, so a broken plist fails HERE instead of at the
+          # upload step 20 minutes later. Trailing whitespace stripped so an
+          # accidental space-only value is treated as empty.
+          BID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist" 2>/dev/null | sed 's/[[:space:]]*$//')"
+          BVER="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Info.plist" 2>/dev/null | sed 's/[[:space:]]*$//')"
+          BSVER="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Info.plist" 2>/dev/null | sed 's/[[:space:]]*$//')"
+          echo "CFBundleIdentifier         = '$BID'"
+          echo "CFBundleShortVersionString = '$BSVER'"
+          echo "CFBundleVersion            = '$BVER'"
+          MISSING=""
+          [ -z "$BID" ]   && MISSING="$MISSING CFBundleIdentifier"
+          [ -z "$BSVER" ] && MISSING="$MISSING CFBundleShortVersionString"
+          [ -z "$BVER" ]  && MISSING="$MISSING CFBundleVersion"
+          if [ -n "$MISSING" ]; then
+            echo "::error title=Info.plist keys missing or empty in archive::The archived .app is missing:$MISSING. TestFlight would reject this with 'Info.plist missing CFBundleIdentifier, CFBundleVersion, or CFBundleShortVersionString.' The 'Set app identity, version and build number in Info.plist' step ran before archive — either the Capacitor project regenerated the plist during archive, or xcodebuild processed the source plist macros to empty. Check that the source plist under ios/App/App/Info.plist still holds the literal values patched in by that step."
             exit 1
           fi
 
@@ -323,6 +370,45 @@ jobs:
             -authenticationKeyPath "$API_KEY_PATH" \
             -authenticationKeyID "$APPSTORE_CONNECT_KEY_ID" \
             -authenticationKeyIssuerID "$APPSTORE_CONNECT_ISSUER_ID"
+
+      # Symmetric check on the EXPORTED IPA. The archive already passed the
+      # required-keys check above, but exportArchive can rewrite Info.plist as
+      # part of packaging, so the final .ipa is the artifact TestFlight
+      # actually receives and the last thing to verify. Failing loudly here
+      # names the bad key rather than letting the upload step surface the
+      # generic "Info.plist missing CFBundleIdentifier, CFBundleVersion, or
+      # CFBundleShortVersionString" message.
+      - name: Verify exported IPA has required Info.plist keys
+        if: steps.signing.outputs.available == 'true'
+        run: |
+          IPA_PATH="$(find "$RUNNER_TEMP/export" -name '*.ipa' | head -1)"
+          if [ -z "$IPA_PATH" ]; then
+            echo "::error title=No IPA to verify::exportArchive reported success but no .ipa was written to $RUNNER_TEMP/export."
+            exit 1
+          fi
+          WORK="$(mktemp -d)"
+          unzip -q "$IPA_PATH" -d "$WORK"
+          APP="$(find "$WORK/Payload" -maxdepth 1 -name '*.app' | head -1)"
+          if [ -z "$APP" ]; then
+            echo "::error title=Malformed IPA::$IPA_PATH holds no Payload/*.app bundle."
+            exit 1
+          fi
+          BID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist" 2>/dev/null | sed 's/[[:space:]]*$//')"
+          BVER="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Info.plist" 2>/dev/null | sed 's/[[:space:]]*$//')"
+          BSVER="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Info.plist" 2>/dev/null | sed 's/[[:space:]]*$//')"
+          echo "Exported IPA: $(basename "$IPA_PATH") / $(basename "$APP")"
+          echo "  CFBundleIdentifier         = '$BID'"
+          echo "  CFBundleShortVersionString = '$BSVER'"
+          echo "  CFBundleVersion            = '$BVER'"
+          MISSING=""
+          [ -z "$BID" ]   && MISSING="$MISSING CFBundleIdentifier"
+          [ -z "$BSVER" ] && MISSING="$MISSING CFBundleShortVersionString"
+          [ -z "$BVER" ]  && MISSING="$MISSING CFBundleVersion"
+          rm -rf "$WORK"
+          if [ -n "$MISSING" ]; then
+            echo "::error title=Exported IPA is missing plist keys::$(basename "$IPA_PATH") does not carry:$MISSING. TestFlight would reject this at the upload step."
+            exit 1
+          fi
 
       - name: Locate exported IPA
         id: ipa
