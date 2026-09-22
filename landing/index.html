@@ -183,6 +183,22 @@ a{ color:inherit; text-decoration:none; }
   color:#fff; background:#6001d2; padding:2px 7px; border-radius:5px; line-height:1.3;
 }
 
+/* ---------- web-app secondary text link ---------- */
+.cta-web-link{
+  display:inline-flex; align-items:center; gap:7px;
+  margin-top:14px; padding:6px 2px;
+  font-size:14.5px; font-weight:500; letter-spacing:.02em;
+  color:var(--dim);
+  border-bottom:1px solid transparent;
+  transition:color .12s ease, border-color .12s ease;
+}
+.cta-web-link:hover,
+.cta-web-link:focus-visible{
+  color:var(--cyan); border-bottom-color:rgba(0,224,255,.45); outline:none;
+}
+.cta-web-link .arrow{ transition:transform .12s ease; }
+.cta-web-link:hover .arrow{ transform:translateX(3px); }
+
 /* ---------- hero ---------- */
 .hero{ position:relative; padding:76px 0 60px; overflow:hidden; }
 .hero::before{
@@ -500,6 +516,12 @@ footer{ border-top:1px solid var(--line); padding:34px 0 46px; color:var(--dim);
         </span>
       </a>
     </div>
+    <div>
+      <a class="cta-web-link" href="https://app.fantasysportsnetwork.app" target="_blank" rel="noopener">
+        <span>Trying to access on the web? Click here</span>
+        <span class="arrow" aria-hidden="true">→</span>
+      </a>
+    </div>
     <p class="cta-fine">
       Sleeper &amp; ESPN connect natively inside the app · Yahoo sync available via web or app
     </p>
@@ -739,9 +761,7 @@ footer{ border-top:1px solid var(--line); padding:34px 0 46px; color:var(--dim);
     <nav class="foot-links" aria-label="Footer">
       <a class="support-link" href="/support">Support</a>
       <a href="/blog">Blog</a>
-      <a href="#waitlistOverlay" data-waitlist data-platform="espn" aria-haspopup="dialog" aria-controls="waitlistOverlay">Connect ESPN</a>
-      <a href="#waitlistOverlay" data-waitlist data-platform="sleeper" aria-haspopup="dialog" aria-controls="waitlistOverlay">Connect Sleeper</a>
-      <a href="#waitlistOverlay" data-waitlist data-platform="yahoo" aria-haspopup="dialog" aria-controls="waitlistOverlay">Yahoo · Web</a>
+      <a href="https://app.fantasysportsnetwork.app" target="_blank" rel="noopener">Launch Web App</a>
       <a href="/terms">Terms</a>
       <a href="/privacy">Privacy</a>
     </nav>
@@ -859,10 +879,10 @@ footer{ border-top:1px solid var(--line); padding:34px 0 46px; color:var(--dim);
   });
 
   /* ----------------------------------------------------------------
-     Waitlist modal. The Yahoo secondary link (data-waitlist,
-     data-platform="yahoo") still opens this so Yahoo users can complete
-     their web OAuth handoff. ESPN/Sleeper triggers remain for the footer
-     and any deep-links that still point here.
+     Waitlist modal. The nav/footer no longer links here — web users are
+     sent straight to app.fantasysportsnetwork.app. The modal and its
+     delegated [data-waitlist] opener are kept for deep-links and campaign
+     URLs that still point at #waitlistOverlay.
 
      Submissions: the page has no backend of its own (the landing project
      is static). Set WAITLIST_ENDPOINT to a form endpoint (Formspree, a
