@@ -701,6 +701,22 @@ async function saveLeagueRow(client, row, expectedUpdatedAt, options) {
   }
 }
 
+/* Every season stored for ONE league, newest first. Scoped to league_id like
+   every other read here: the season list a browser is offered must describe
+   the league it is looking at and no other. */
+async function leagueStoredSeasons(client, leagueId) {
+  const result = await client
+    .from('leagues')
+    .select('season_year')
+    .eq('league_id', leagueId)
+    .order('season_year', { ascending: false })
+    .limit(MAX_ARCHIVE_SEASONS + 10);
+  if (result.error) throw result.error;
+  return (Array.isArray(result.data) ? result.data : [])
+    .map(function (row) { return Number(row && row.season_year) || 0; })
+    .filter(function (year) { return year > 0; });
+}
+
 async function findLeagueRow(client, leagueId, seasonYear, includeCookies) {
   const columns = includeCookies
     ? 'league_id,season_year,history_json,cookies,share_token,updated_at'
@@ -959,16 +975,70 @@ async function handler(req, res) {
 
   if (req.method === 'GET') {
     const leagueId = cleanLeagueId(req.query && (req.query.league_id || req.query.leagueId));
-    const seasonYear = cleanSeasonYear(req.query && (req.query.season_year || req.query.seasonYear), 0);
+    /* ---- every read is scoped to league_id, and to season_year when one was
+       asked for ----
+       A season the caller NAMED is part of the key, never a hint. The old
+       reading treated an unparseable season as "not supplied" and fell through
+       to this league's newest stored row, so a request for 2025 could be
+       answered with 2026 and the browser had no way to tell it had been given
+       a different season than it asked for. Say 400 instead.
+
+       Omitting season_year entirely still means "this league's newest stored
+       season" — that is the invite-link handshake, and it is bounded to the
+       one league in the query either way. */
+    const rawSeason = req.query && (req.query.season_year !== undefined
+      ? req.query.season_year
+      : req.query.seasonYear);
+    const seasonRequested = rawSeason !== undefined && String(rawSeason).trim() !== '';
+    const seasonYear = seasonRequested ? cleanSeasonYear(rawSeason, 0) : 0;
     if (!leagueId) return res.status(400).json({ error: 'A valid numeric league_id is required.' });
+    if (seasonRequested && !seasonYear) {
+      return res.status(400).json({
+        error: 'season_year must be a valid season between 1990 and ' + (activeFantasySeason() + 1) + '.',
+        code: 'INVALID_SEASON',
+        league_id: leagueId,
+      });
+    }
 
     const suppliedToken = requestShareToken(req, null);
     let row;
     let tokens;
     try {
       row = await findLeagueRow(client, leagueId, seasonYear, true);
-      if (!row) return res.status(404).json({ error: 'No stored league record exists yet.' });
       tokens = await leagueShareTokens(client, leagueId);
+      if (!row) {
+        /* Nothing stored for this league at this season. The browser needs to
+           be able to tell that apart from a storage failure, because the
+           correct UI for it is an empty season inside the same league — never
+           a fallback to some other league's archive. The seasons this league
+           DOES have ride along only for a caller holding its invite token, so
+           the 404 cannot become a listing service for anyone with a league id. */
+        const authorizedListing = shareTokenAccepted(tokens, suppliedToken);
+        const body = {
+          error: seasonRequested
+            ? 'No stored league record exists for this league and season.'
+            : 'No stored league record exists yet.',
+          code: seasonRequested ? 'SEASON_NOT_STORED' : 'LEAGUE_NOT_STORED',
+          league_id: leagueId,
+        };
+        if (seasonRequested) body.season_year = seasonYear;
+        if (authorizedListing) {
+          body.available_seasons = await leagueStoredSeasons(client, leagueId);
+        }
+        return res.status(404).json(body);
+      }
+      /* Defence in depth. findLeagueRow filters on league_id (and season_year
+         when one was given), so a row that does not match cannot happen — and
+         if it ever does, it is a storage fault, not something to render. */
+      const rowLeagueId = String(row.league_id || '');
+      const rowSeason = Number(row.season_year) || 0;
+      if (rowLeagueId !== leagueId || (seasonRequested && rowSeason !== seasonYear)) {
+        console.error('[api/league] A read for league ' + leagueId + '/' +
+          (seasonRequested ? seasonYear : 'latest') + ' returned ' + rowLeagueId + '/' + rowSeason +
+          '; refusing to serve a record the caller did not ask for.',
+          new Error('LEAGUE_SCOPE_MISMATCH'));
+        return res.status(502).json({ error: 'League storage returned a record for a different league.' });
+      }
     } catch (error) {
       console.error('[api/league] read failed for league ' + leagueId + '/' + (seasonYear || 'latest'), error);
       return res.status(502).json({ error: 'League storage read failed.' });
