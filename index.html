@@ -6701,11 +6701,22 @@ function parseLeagueInviteInput(value){
      and as forgiving as it was before this function existed. */
   if(/^\d{1,20}$/.test(raw)) return { leagueId:raw, token:'' };
 
+  /* Aggressive sanitizer: every captured value is stripped of surrounding
+     whitespace, leading/trailing slashes, quotes, angle brackets, and any
+     trailing punctuation a chat client might have appended when auto-linking
+     the URL. The regex below matches into these characters too so nothing
+     valid is ever dropped just because a copy/paste dragged in a wrapper. */
+  const scrub = (v)=> String(v == null ? '' : v)
+    .replace(/^[\s"'<>()]+/, '')
+    .replace(/[\s"'<>()]+$/, '')
+    .replace(/^\/+|\/+$/g, '')
+    .trim();
+
   /* Preferred path: a clean https:// invite parses cleanly with URL()'s own
      searchParams so decoding is handed to the browser rather than a hand-rolled
      regex. Falls through to the regex sweep below when the pasted text is a
-     bare "?id=…&token=…" tail, a bag of chat cruft around the link, or a
-     scheme URL() rejects. */
+     relative path ("app/?id=…&token=…"), a bare "?id=…&token=…" tail, a bag
+     of chat cruft around the link, or a scheme URL() rejects. */
   const readFromUrl = (input)=>{
     try{
       const parsed = new URL(input);
@@ -6714,9 +6725,11 @@ function parseLeagueInviteInput(value){
         parsed.searchParams.get('leagueId') || '';
       const tokenParam = parsed.searchParams.get('token') ||
         parsed.searchParams.get('share_token') || '';
+      const cleanedId = scrub(idParam);
+      const cleanedToken = scrub(tokenParam);
       return {
-        leagueId: /^\d{1,20}$/.test(String(idParam).trim()) ? String(idParam).trim() : '',
-        token: normalizeLeagueShareToken(tokenParam),
+        leagueId: /^\d{1,20}$/.test(cleanedId) ? cleanedId : '',
+        token: normalizeLeagueShareToken(cleanedToken),
       };
     }catch(err){
       return null;
@@ -6726,9 +6739,19 @@ function parseLeagueInviteInput(value){
   if(fromUrl && (fromUrl.leagueId || fromUrl.token)){
     return fromUrl;
   }
+  /* One more try: the raw string is not a valid URL but might be a relative
+     path like "app/?id=…&token=…" or "/?id=…&token=…". Prefixing a synthetic
+     origin lets URL() do the decoding without changing the extracted values. */
+  if(/[?&]id=|[?&]league_?[Ii]d=/.test(raw)){
+    const fromRel = readFromUrl('https://x.invalid/' + raw.replace(/^\/+/, ''));
+    if(fromRel && (fromRel.leagueId || fromRel.token)) return fromRel;
+  }
 
   const readParam = (name)=>{
-    const match = new RegExp('(?:^|[?&#])' + name + '=([^&#\\s\"<>]+)').exec(raw);
+    /* Capture stops at whitespace, quotes, angle brackets, ampersands, hashes,
+       or trailing slashes so a pasted URL that ends with "…&token=XYZ/" or
+       "…&token=XYZ " never leaves those characters glued to the value. */
+    const match = new RegExp('(?:^|[?&#/])' + name + '=([^&#/\\s\"\'<>]+)').exec(raw);
     if(!match) return '';
     try{ return decodeURIComponent(match[1]); }
     catch(err){
@@ -6741,9 +6764,9 @@ function parseLeagueInviteInput(value){
     }
   };
 
-  const idParam = readParam('id') || readParam('league_id') || readParam('leagueId');
-  const token = normalizeLeagueShareToken(readParam('token') || readParam('share_token'));
-  const leagueId = /^\d{1,20}$/.test(String(idParam).trim()) ? String(idParam).trim() : '';
+  const idParam = scrub(readParam('id') || readParam('league_id') || readParam('leagueId'));
+  const token = normalizeLeagueShareToken(scrub(readParam('token') || readParam('share_token')));
+  const leagueId = /^\d{1,20}$/.test(idParam) ? idParam : '';
   return { leagueId, token };
 }
 
@@ -6893,6 +6916,10 @@ async function espnRelayError(res, apiUrl){
   err.relayCode = payload && typeof payload.code === 'string' ? payload.code : '';
   err.relayLeagueId = payload && payload.league_id != null ? String(payload.league_id) : '';
   err.espnPayload = payload && payload.espn ? payload.espn : null;
+  /* Raw upstream body preview (truncated by the relay). Surfaced by the
+     invite modal's stage-tagged diagnostics as the ESPN Response value, so a
+     tester sees what ESPN actually said rather than the relay's paraphrase. */
+  err.relayBody = payload && typeof payload.espn_body === 'string' ? payload.espn_body : '';
   /* Log the exact upstream payload once, loudly. On a private-league failure
      this is the only record of what ESPN actually said. */
   if(res.status === 401 || res.status === 403 || res.status === 404){
@@ -22239,6 +22266,12 @@ const ui = {
   seasonFetchSeq: 0,
   seasonLoading: null,
   cloudHydrateSeq: 0,
+  /* Set by fetchLeagueData whenever the /api/espn relay answers 401/403 with
+     a machine-readable verdict (SHARE_TOKEN_INVALID / SHARE_TOKEN_REQUIRED /
+     PRIVATE_LEAGUE_LOGIN_REJECTED / …). handlePrivateLeagueAuthInvite reads
+     it to attribute a failure to its correct stage. Cleared on the next
+     successful load. */
+  lastRelayError: null,
   /* The single in-flight shared-archive read, as { key:'<league>:<season>',
      promise }. Boot (invite link) and fetchLeagueData both ask for one; they
      must share it, or the loser's sequence check discards a record it already
@@ -27326,6 +27359,7 @@ async function fetchLeagueData(options){
     }
 
     if(!silent) toast(`2026 league connected · Week ${liveInfo.activeWeek}`);
+    ui.lastRelayError = null;
     return true;
   }catch(err){
     console.error('[ESPN live fetch]', err);
@@ -27370,6 +27404,17 @@ async function fetchLeagueData(options){
       const relayCode = String((err && err.relayCode) || '').trim();
       const isCookieRejection = relayCode === 'PRIVATE_LEAGUE_LOGIN_REJECTED' ||
         (credReport.state === 'ready' && !relayCode);
+      /* Stash the machine-readable relay verdict so the invite modal can
+         attribute the failure to its correct stage (Supabase lookup vs. ESPN
+         relay). Written on every relay 401/403, cleared on the next successful
+         load — see fetchLeagueData's happy path. */
+      ui.lastRelayError = {
+        code: relayCode,
+        status: (err && err.status) || null,
+        relayDetail: relayDetail,
+        rawBody: (err && err.relayBody) ||
+          ((err && err.espnPayload) ? JSON.stringify(err.espnPayload).slice(0, 400) : ''),
+      };
       if(relayCode === 'SHARE_TOKEN_INVALID'){
         msg = 'This invite link is invalid or expired. Please ask the league host for a new link or sign in with ESPN cookies directly.';
       } else if(relayCode === 'SHARE_TOKEN_REQUIRED'){
@@ -29712,38 +29757,51 @@ function closePrivateLeagueAuthModal(){
 }
 
 let privateLeagueInviteLoading = false;
+
+/* ---- STAGE-TAGGED DIAGNOSTICS ----
+   The invite flow is meant to feel like one click — but when it fails in test,
+   we need the failure to name itself. Three named stages, each surfaced both
+   in the modal banner and in the console with a matching subsystem tag, so a
+   tester never has to guess whether the paste, the Supabase lookup, or the
+   ESPN read is the one that fell over. */
+const PRIVATE_INVITE_STAGE = {
+  PARSE: 'Parsing Stage',
+  SUPABASE: 'Supabase Lookup Stage',
+  ESPN: 'ESPN Relay Stage',
+};
+function reportPrivateInviteFailure(stage, message, err){
+  const banner = '[' + stage + '] ' + message;
+  console.error('[Private League Auth][' + stage + '] ' + message, err || '');
+  setPrivateLeagueAuthStatus('privateLeagueAuthInviteStatus', banner, 'error');
+}
+
 async function handlePrivateLeagueAuthInvite(value){
   if(privateLeagueInviteLoading) return;
   const input = $('privateLeagueAuthInviteInput');
   const raw = String(value == null ? ((input && input.value) || '') : value).trim();
   if(!raw){
-    setPrivateLeagueAuthStatus('privateLeagueAuthInviteStatus', 'Paste the whole invite link first.', 'error');
+    setPrivateLeagueAuthStatus('privateLeagueAuthInviteStatus', 'Paste an invite link to continue.', 'idle');
     return;
   }
   let parsed;
   try{
     parsed = parseLeagueInviteInput(raw);
   }catch(err){
-    console.error('[Private League Auth] Could not parse the pasted invite link.', err);
-    setPrivateLeagueAuthStatus('privateLeagueAuthInviteStatus',
-      'That does not look like a valid invite link. Paste the whole https://… URL a league-mate sent you.', 'error');
+    reportPrivateInviteFailure(PRIVATE_INVITE_STAGE.PARSE,
+      'Invalid parameter string — could not extract League ID or Share Token.', err);
     return;
   }
-  if(!parsed.leagueId){
-    setPrivateLeagueAuthStatus('privateLeagueAuthInviteStatus',
-      'No League ID found in that link. Paste the whole https://… URL a league-mate sent you.', 'error');
-    return;
-  }
-  if(!parsed.token){
-    setPrivateLeagueAuthStatus('privateLeagueAuthInviteStatus',
-      'That link carried the League ID but no share token. Ask a league-mate to re-send the full invite link.', 'error');
+  if(!parsed.leagueId || !parsed.token){
+    reportPrivateInviteFailure(PRIVATE_INVITE_STAGE.PARSE,
+      'Invalid parameter string — could not extract League ID or Share Token. ' +
+      '(leagueId=' + (parsed.leagueId || '∅') + ', token=' + (parsed.token ? 'present' : '∅') + ')');
     return;
   }
   setLeagueShareToken(parsed.leagueId, parsed.token);
   // FSNStore retains a session copy when persistent storage is unavailable.
   if(getLeagueShareToken(parsed.leagueId) !== parsed.token){
-    setPrivateLeagueAuthStatus('privateLeagueAuthInviteStatus',
-      'Could not store that invite token on this device. Try again, or paste your own ESPN cookies instead.', 'error');
+    reportPrivateInviteFailure(PRIVATE_INVITE_STAGE.PARSE,
+      'Parsed token could not be stored on this device (private mode or blocked storage).');
     return;
   }
   privateLeagueInviteLoading = true;
@@ -29762,22 +29820,46 @@ async function handlePrivateLeagueAuthInvite(value){
     FSNStore.set(SAVED_LEAGUE_ID_KEY, parsed.leagueId);
     savePrefs();
     $('fetchStatus').style.color = 'var(--dim)';
-    $('fetchStatus').textContent = 'Invite link accepted — loading the league…';
-    setPrivateLeagueAuthStatus('privateLeagueAuthInviteStatus', 'Invite link accepted — loading the league…', 'ok');
+    $('fetchStatus').textContent = 'Joining league…';
+    setPrivateLeagueAuthStatus('privateLeagueAuthInviteStatus', 'Joining league…', 'ok');
     updateShareInviteUI();
+    /* One-click join: fetchLeagueData already loads, hydrates and navigates
+       to the league dashboard on success. On failure the relay-error routing
+       inside it opens the auth modal with the correct SHARE_TOKEN_* /
+       PRIVATE_LEAGUE_* code, which reroutes here for the stage-tagged
+       message. Nothing else in this handler needs to run to complete the
+       happy path. */
     const ok = await fetchLeagueData({ leagueId: parsed.leagueId, silent:false, navigate:true });
     if(ok){
       setPrivateLeagueAuthStatus('privateLeagueAuthInviteStatus', '', null);
       closePrivateLeagueAuthModal();
       toast('League loaded via invite link');
-    } else {
-      setPrivateLeagueAuthStatus('privateLeagueAuthInviteStatus',
-        $('fetchStatus').textContent || 'The league could not be loaded. Please retry.', 'error');
+      return;
     }
+    /* fetchLeagueData sets its own English on #fetchStatus. Prefix it with a
+       stage tag so a tester can tell at a glance whether the token lookup or
+       the ESPN read was the one that refused. */
+    const relayCode = String((ui.lastRelayError && ui.lastRelayError.code) || '').trim();
+    const relayStatus = ui.lastRelayError && ui.lastRelayError.status;
+    const relayBody = ui.lastRelayError && ui.lastRelayError.rawBody;
+    if(relayCode === 'SHARE_TOKEN_INVALID' || relayCode === 'SHARE_TOKEN_REQUIRED' ||
+       relayCode === 'SHARE_TOKEN_NOT_MINTED' || relayCode === 'SHARE_TOKEN_MISSING'){
+      reportPrivateInviteFailure(PRIVATE_INVITE_STAGE.SUPABASE,
+        'Token lookup failed in database — no host espn_s2/SWID credentials found for token [' +
+        parsed.token.slice(0, 8) + '…]. Server code: ' + relayCode);
+      return;
+    }
+    if(relayStatus){
+      const bodyPreview = relayBody ? String(relayBody).slice(0, 400) : (ui.lastRelayError.relayDetail || '');
+      reportPrivateInviteFailure(PRIVATE_INVITE_STAGE.ESPN,
+        'ESPN Relay failed with HTTP status ' + relayStatus + '. Response: ' + (bodyPreview || '(empty body)'));
+      return;
+    }
+    reportPrivateInviteFailure(PRIVATE_INVITE_STAGE.ESPN,
+      $('fetchStatus').textContent || 'The league could not be loaded. Please retry.');
   }catch(err){
-    console.error('[Private League Auth] fetchLeagueData failed after invite paste', err);
-    setPrivateLeagueAuthStatus('privateLeagueAuthInviteStatus',
-      'Invite token stored, but the fetch failed: ' + String((err && err.message) || err), 'error');
+    reportPrivateInviteFailure(PRIVATE_INVITE_STAGE.ESPN,
+      'fetchLeagueData threw: ' + String((err && err.message) || err), err);
   }finally{
     privateLeagueInviteLoading = false;
     if(button) button.disabled = false;
@@ -29858,17 +29940,26 @@ if($('privateLeagueAuthUseInvite')){
     });
   });
 }
-// A paste is a complete input action; typing partial IDs/tokens does not submit.
+/* Auto-fire on any input action — paste, drop, type, autofill — the instant
+   a valid { leagueId, token } pair can be extracted. This is what makes the
+   invite a true one-click join: pasting the link is the click. A partial
+   value (still typing, still pasting) leaves the field alone; the extractor
+   only returns both values when both are complete and valid. */
 if($('privateLeagueAuthInviteInput')){
-  $('privateLeagueAuthInviteInput').addEventListener('paste', function(){
+  const inviteField = $('privateLeagueAuthInviteInput');
+  const tryAutoJoin = ()=>{
     setTimeout(()=>{
-      const parsed = parseLeagueInviteInput(this.value);
+      if(privateLeagueInviteLoading) return;
+      const parsed = parseLeagueInviteInput(inviteField.value);
       if(parsed.leagueId && parsed.token){
         handlePrivateLeagueAuthInvite().catch(err=>
-          console.error('[Private League Auth] pasted invite handler failed.', err));
+          console.error('[Private League Auth] auto-join handler failed.', err));
       }
     }, 0);
-  });
+  };
+  inviteField.addEventListener('paste', tryAutoJoin);
+  inviteField.addEventListener('drop', tryAutoJoin);
+  inviteField.addEventListener('input', tryAutoJoin);
 }
 if($('privateLeagueAuthUseCookies')){
   $('privateLeagueAuthUseCookies').addEventListener('click', function(){
