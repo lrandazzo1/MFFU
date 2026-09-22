@@ -419,13 +419,27 @@ module.exports = async function handler(req, res) {
       SUPABASE_CLIENT_UNAVAILABLE: 'League storage is unavailable on this deployment. This is a server problem, not a problem with your link.',
       NO_LEAGUE_ROW: 'No saved league data exists for this League ID yet. Ask the league host to open Setup and save the league once, then send you a fresh invite link.',
       NO_STORED_COOKIES: 'The league host saved this league without their ESPN sign-in, so there is no access to share. Ask them to re-save it from Setup with their ESPN cookies entered.',
-      COOKIES_UNDECRYPTABLE: 'The host\'s saved ESPN access could not be unlocked on this deployment. Ask the league host to re-save the league from Setup.',
+      COOKIES_UNDECRYPTABLE: 'This invite link has expired or requires the league host to re-authenticate.',
       COOKIES_INCOMPLETE: 'The league host\'s saved ESPN access is incomplete. Ask them to re-save the league from Setup.',
       COOKIES_UNUSABLE: 'The league host\'s saved ESPN access is stored in a form that cannot be used. Ask them to re-save the league from Setup.',
       STORAGE_ERROR: 'League storage could not be reached right now. Please try again in a moment.',
     };
     const readerMessage = READER_MESSAGE[code] ||
       'Unable to join this league with this link. Check the link or ask your commissioner for a fresh invite.';
+
+    /* ---- WHAT THE READER IS ALLOWED TO BE TOLD ----
+       `detail` is echoed straight into the browser and into the in-app testing
+       banner. For a credential fault that is a decryption post-mortem — the
+       envelope version, the candidate-key labels, how many were tried — which
+       describes this deployment's key configuration to anybody who can guess a
+       league id, and tells the person reading it nothing they can act on.
+       api/league.js already returns a sanitized sentence for these codes; this
+       is the second belt, so a future reason string cannot leak through here.
+       The full diagnostic is in the console.error below and in the Vercel log
+       for /api/league, which is where it is useful. */
+    const INTERNAL_DETAIL_CODES = ['COOKIES_UNDECRYPTABLE', 'COOKIES_INCOMPLETE', 'COOKIES_UNUSABLE',
+      'STORAGE_ERROR'];
+    const readerDetail = INTERNAL_DETAIL_CODES.indexOf(code) !== -1 ? readerMessage : detail;
 
     console.error('[api/espn] REFUSING ANONYMOUS READ of ' + target.pathname + ' for league ' +
       (leagueId || '(unknown)') + '. A share token was presented but no ESPN session could be ' +
@@ -453,7 +467,7 @@ module.exports = async function handler(req, res) {
       error: readerMessage,
       code: code,
       league_id: leagueId,
-      detail: detail,
+      detail: readerDetail,
       /* Full stage diagnostics for the in-app testing banner. */
       stage: 'supabase-lookup',
       lookup_status: (lookup && lookup.status) || 'unknown',
