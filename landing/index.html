@@ -124,14 +124,15 @@ a{ color:inherit; text-decoration:none; }
    "Download on the" small over "App Store" large, both left-aligned and
    optically centered against the icon. */
 .btn-appstore{
-  display:inline-flex; align-items:center; gap:12px;
+  display:inline-flex; align-items:center; gap:14px;
   background:#000; color:#fff;
-  padding:10px 22px; border-radius:12px;
+  padding:10px 24px 10px 22px; border-radius:12px;
   border:1px solid rgba(255,255,255,.14);
   font-family:'Oswald',sans-serif;
   box-shadow:0 12px 40px rgba(0,0,0,.4), 0 0 0 1px rgba(255,255,255,.04);
   transition:transform .12s ease, box-shadow .16s ease, background .12s ease;
   letter-spacing:normal; text-transform:none; white-space:nowrap;
+  overflow:visible;
 }
 .btn-appstore:hover{
   background:#0b0b0d;
@@ -141,9 +142,11 @@ a{ color:inherit; text-decoration:none; }
 .btn-appstore .appstore-icon{
   display:inline-flex; flex:0 0 auto;
   width:30px; height:30px; align-items:center; justify-content:center;
-  color:#fff;
+  color:#fff; overflow:visible;
 }
-.btn-appstore .appstore-icon svg{ width:100%; height:100%; display:block; }
+.btn-appstore .appstore-icon svg{
+  width:100%; height:100%; display:block; overflow:visible;
+}
 .btn-appstore .appstore-copy{
   display:inline-flex; flex-direction:column; align-items:flex-start;
   line-height:1; gap:2px;
@@ -489,7 +492,7 @@ footer{ border-top:1px solid var(--line); padding:34px 0 46px; color:var(--dim);
     <div class="cta-row">
       <a class="btn btn-appstore" id="heroAppStoreCta" href="#" data-appstore aria-label="Download Fantasy Sports Network on the App Store">
         <span class="appstore-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.365 1.43c0 1.14-.465 2.24-1.226 3.055-.82.879-2.163 1.552-3.27 1.462-.135-1.14.42-2.323 1.19-3.076C13.933 1.897 15.35 1.42 16.365 1.43zm4.213 16.47c-.578 1.337-.855 1.935-1.6 3.116-1.037 1.64-2.499 3.685-4.31 3.7-1.61.016-2.024-1.049-4.212-1.038-2.187.011-2.643 1.057-4.255 1.041-1.811-.017-3.196-1.86-4.233-3.5-2.9-4.585-3.205-9.966-1.415-12.828 1.273-2.033 3.281-3.22 5.168-3.22 1.921 0 3.129 1.052 4.716 1.052 1.54 0 2.478-1.053 4.7-1.053 1.681 0 3.463.916 4.731 2.499-4.157 2.28-3.48 8.219-1.29 10.231z"/></svg>
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 3.82c.62-.75 1.04-1.8.92-2.82-.9.04-2 .61-2.65 1.37-.58.67-.99 1.74-.85 2.76 1.02.08 2.05-.56 2.58-1.31z"/></svg>
         </span>
         <span class="appstore-copy">
           <span class="kicker">Download on the</span>
@@ -707,7 +710,7 @@ footer{ border-top:1px solid var(--line); padding:34px 0 46px; color:var(--dim);
       <div class="cta-row">
         <a class="btn btn-appstore" id="finalAppStoreCta" href="#" data-appstore aria-label="Download Fantasy Sports Network on the App Store">
           <span class="appstore-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.365 1.43c0 1.14-.465 2.24-1.226 3.055-.82.879-2.163 1.552-3.27 1.462-.135-1.14.42-2.323 1.19-3.076C13.933 1.897 15.35 1.42 16.365 1.43zm4.213 16.47c-.578 1.337-.855 1.935-1.6 3.116-1.037 1.64-2.499 3.685-4.31 3.7-1.61.016-2.024-1.049-4.212-1.038-2.187.011-2.643 1.057-4.255 1.041-1.811-.017-3.196-1.86-4.233-3.5-2.9-4.585-3.205-9.966-1.415-12.828 1.273-2.033 3.281-3.22 5.168-3.22 1.921 0 3.129 1.052 4.716 1.052 1.54 0 2.478-1.053 4.7-1.053 1.681 0 3.463.916 4.731 2.499-4.157 2.28-3.48 8.219-1.29 10.231z"/></svg>
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 3.82c.62-.75 1.04-1.8.92-2.82-.9.04-2 .61-2.65 1.37-.58.67-.99 1.74-.85 2.76 1.02.08 2.05-.56 2.58-1.31z"/></svg>
           </span>
           <span class="appstore-copy">
             <span class="kicker">Download on the</span>
