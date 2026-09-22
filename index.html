@@ -27189,6 +27189,16 @@ async function fetchLeagueData(options){
         relayErr.relayDetail = detail;
         relayErr.relayCode = relayCode;
         relayErr.relayLeagueId = relayBody && relayBody.league_id != null ? String(relayBody.league_id) : '';
+        /* Carry the stage and the long-form detail, exactly as espnRelayError
+           does for the archive path. Without these the catch below cannot tell
+           a token-lookup refusal from an ESPN outage, and a relay verdict that
+           arrives as 4xx/5xx falls through to the generic "try again in a
+           moment" arm — advice that is wrong for every case the relay refuses
+           on its own. */
+        relayErr.relayStage = relayBody && typeof relayBody.stage === 'string' ? relayBody.stage : '';
+        relayErr.relayDetailFull = relayBody && typeof relayBody.detail === 'string' ? relayBody.detail : '';
+        relayErr.espnPayload = (relayBody && relayBody.espn) || null;
+        relayErr.relayBody = relayBody && typeof relayBody.espn_body === 'string' ? relayBody.espn_body : '';
         throw relayErr;
       }
     }catch(err){
@@ -27408,6 +27418,13 @@ async function fetchLeagueData(options){
          already reader-ready and never mentions cookies. */
       msg = String((err && err.relayDetail) || '').trim() ||
         'Unable to join this league with this link. Check the link or ask your commissioner for a fresh invite.';
+      /* The host reaching this from Setup (rather than from an invite link) is
+         the one person who can actually fix a COOKIES_* fault, and the generic
+         sentence does not tell them how. Append the concrete step. */
+      if(/^COOKIES_/.test(String((err && err.relayCode) || '')) && credReport.state === 'ready'){
+        msg += ' Your own ESPN cookies are saved on this device, so you can repair it now: press SAVE LEAGUE DATA ' +
+          'to re-encrypt the league’s stored access with this deployment’s current key.';
+      }
       ui.lastRelayError = {
         code: String((err && err.relayCode) || ''),
         status: (err && err.status) || null,

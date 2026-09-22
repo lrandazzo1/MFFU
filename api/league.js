@@ -192,49 +192,121 @@ function requestCookies(req, body) {
 
 let warnedAboutFallbackKey = false;
 
+/* ============================================================
+   COOKIE ENCRYPTION KEYS — WRITE ONE, READ MANY
+
+   Envelopes are ALWAYS written with a single active key (encryptionKey()), so
+   there is never ambiguity about what a new row holds. They are READ against
+   every key this deployment could plausibly have written with, because the
+   set of "plausible" keys changes underneath a running deployment in two
+   entirely routine ways:
+
+     1. LEAGUE_COOKIE_ENCRYPTION_KEY gets SET for the first time.
+        Before it was set, rows were encrypted with the derived fallback, whose
+        seed includes that (then-empty) variable. Setting it — exactly what the
+        warning below tells an operator to do — changes the active key to the
+        configured one AND changes the derived fallback, because the variable
+        is part of its seed. Every row written before that moment becomes
+        undecryptable, permanently and silently. That is this bug: the relay
+        reported COOKIES_UNDECRYPTABLE and told the host to re-save, and a
+        re-save is a real fix, but nothing should have broken in the first
+        place.
+
+     2. SUPABASE_SERVICE_ROLE_KEY gets rotated. It is also part of the
+        fallback seed, so rotating it (routine security hygiene) orphans every
+        row written under the old one.
+
+   Trying each candidate is safe: AES-256-GCM is authenticated, so a wrong key
+   fails the tag check and throws rather than returning plausible garbage. The
+   first key whose tag verifies is, with cryptographic certainty, the key the
+   envelope was written with.
+============================================================ */
+
+// Parse a 32-byte key from a hex or base64 environment value; null if unusable.
+function parseEncryptionKeyValue(raw) {
+  const value = String(raw || '').trim();
+  if (!value) return null;
+  if (/^[a-f0-9]{64}$/i.test(value)) return Buffer.from(value, 'hex');
+  // Buffer.from(..., 'base64') never throws — it silently drops invalid
+  // characters — so validate the decoded length rather than relying on a
+  // try/catch to reject a malformed value.
+  const decoded = Buffer.from(value, 'base64');
+  return decoded.length === 32 ? decoded : null;
+}
+
 // Deterministic 32-byte fallback so cookie encryption never hard-crashes cloud
-// sync when LEAGUE_COOKIE_ENCRYPTION_KEY is missing or malformed. The seed
-// prefers other stable per-deployment secrets so the derived key is unique to
-// this environment and stays identical across serverless invocations — data
-// encrypted with it can therefore always be decrypted again. A fixed suffix
-// keeps it valid even when nothing else is configured.
-function deriveFallbackEncryptionKey() {
+// sync when LEAGUE_COOKIE_ENCRYPTION_KEY is missing or malformed. `overrides`
+// lets a caller reconstruct the key this deployment WOULD have derived under a
+// different environment — which is how a row written before
+// LEAGUE_COOKIE_ENCRYPTION_KEY was set stays readable after it is set.
+function deriveFallbackEncryptionKey(overrides) {
+  const o = overrides || {};
   const seed = [
-    String(process.env.LEAGUE_COOKIE_ENCRYPTION_KEY || ''),
-    String(process.env.SUPABASE_SERVICE_ROLE_KEY || ''),
-    String(process.env.SUPABASE_URL || ''),
+    o.leagueKey !== undefined ? String(o.leagueKey) : String(process.env.LEAGUE_COOKIE_ENCRYPTION_KEY || ''),
+    o.serviceKey !== undefined ? String(o.serviceKey) : String(process.env.SUPABASE_SERVICE_ROLE_KEY || ''),
+    o.supabaseUrl !== undefined ? String(o.supabaseUrl) : String(process.env.SUPABASE_URL || ''),
     'mffu-league-cookie-fallback-v1',
   ].join('|');
   return crypto.createHash('sha256').update(seed).digest(); // exactly 32 bytes
 }
 
+// The ONE key every new envelope is written with.
 function encryptionKey() {
-  const raw = String(process.env.LEAGUE_COOKIE_ENCRYPTION_KEY || '').trim();
-  let key = null;
-  if (/^[a-f0-9]{64}$/i.test(raw)) {
-    key = Buffer.from(raw, 'hex');
-  } else if (raw) {
-    // Buffer.from(..., 'base64') never throws — it silently drops invalid
-    // characters — so validate the decoded length rather than relying on a
-    // try/catch to reject a malformed value.
-    const decoded = Buffer.from(raw, 'base64');
-    if (decoded.length === 32) key = decoded;
+  const configured = parseEncryptionKeyValue(process.env.LEAGUE_COOKIE_ENCRYPTION_KEY);
+  if (configured) return configured;
+  if (!warnedAboutFallbackKey) {
+    warnedAboutFallbackKey = true;
+    console.warn(
+      '[api/league] LEAGUE_COOKIE_ENCRYPTION_KEY is missing or not a valid ' +
+      '32-byte base64 / 64-character hex value; using a derived fallback key. ' +
+      'Set a proper key for stable cross-deployment cookie encryption — rows ' +
+      'written under the fallback stay readable afterwards (see decryptCookies).'
+    );
   }
-  if (!key || key.length !== 32) {
-    // Missing or incorrectly formatted key: fall back to a valid derived
-    // 32-byte key instead of throwing, so cloud sync keeps working. Warn once
-    // so operators still know to set a real key for cross-deployment stability.
-    if (!warnedAboutFallbackKey) {
-      warnedAboutFallbackKey = true;
-      console.warn(
-        '[api/league] LEAGUE_COOKIE_ENCRYPTION_KEY is missing or not a valid ' +
-        '32-byte base64 / 64-character hex value; using a derived fallback key. ' +
-        'Set a proper key for stable cross-deployment cookie encryption.'
-      );
-    }
-    key = deriveFallbackEncryptionKey();
-  }
-  return key;
+  return deriveFallbackEncryptionKey();
+}
+
+/* Every key an envelope in this deployment could have been written with,
+   most-likely first. Deduplicated, so a deployment with no configured key
+   does not try the same derived key three times. */
+function encryptionKeyCandidates() {
+  const candidates = [];
+  const seen = new Set();
+  const push = (key, label) => {
+    if (!key || key.length !== 32) return;
+    const fingerprint = key.toString('base64');
+    if (seen.has(fingerprint)) return;
+    seen.add(fingerprint);
+    candidates.push({ key: key, label: label });
+  };
+
+  // 1. The configured key — what this deployment writes with today.
+  push(parseEncryptionKeyValue(process.env.LEAGUE_COOKIE_ENCRYPTION_KEY),
+    'LEAGUE_COOKIE_ENCRYPTION_KEY');
+
+  // 2. An explicitly retired key, for a deliberate rotation. Set this to the
+  //    previous LEAGUE_COOKIE_ENCRYPTION_KEY when rotating and existing rows
+  //    keep working until they are next saved.
+  push(parseEncryptionKeyValue(process.env.LEAGUE_COOKIE_ENCRYPTION_KEY_PREVIOUS),
+    'LEAGUE_COOKIE_ENCRYPTION_KEY_PREVIOUS');
+
+  // 3. The derived fallback under the CURRENT environment.
+  push(deriveFallbackEncryptionKey(), 'derived fallback (current environment)');
+
+  // 4. THE FIX FOR THIS BUG: the derived fallback as it was BEFORE
+  //    LEAGUE_COOKIE_ENCRYPTION_KEY was set. Identical to (3) on a deployment
+  //    that never set the variable, and deduplicated away there.
+  push(deriveFallbackEncryptionKey({ leagueKey: '' }),
+    'derived fallback (before LEAGUE_COOKIE_ENCRYPTION_KEY was set)');
+
+  // 5. The same, for a deployment that also set the variable to something
+  //    unusable (a truncated paste), which parseEncryptionKeyValue rejects but
+  //    which still contributed to the seed at write time.
+  push(deriveFallbackEncryptionKey({
+    leagueKey: String(process.env.LEAGUE_COOKIE_ENCRYPTION_KEY || '').trim(),
+  }), 'derived fallback (trimmed LEAGUE_COOKIE_ENCRYPTION_KEY in seed)');
+
+  return candidates;
 }
 
 function encryptCookies(cookies) {
@@ -251,25 +323,79 @@ function encryptCookies(cookies) {
   };
 }
 
+/* Never throws. Returns { espn_s2, swid, ok, reason, keyLabel }:
+
+     ok:false with an empty pair when the envelope is absent, malformed, or
+     could not be opened by ANY candidate key. The caller decides what that
+     means — it is not this function's job to take a request down, and the
+     previous version throwing here is what produced the HTTP 502 the reader
+     saw instead of an actionable message.
+
+   AES-256-GCM authenticates, so a wrong key throws on final() rather than
+   returning garbage. The first candidate whose tag verifies is certainly the
+   key the envelope was written with. */
 function decryptCookies(envelope) {
-  if (!envelope || typeof envelope !== 'object') return { espn_s2: '', swid: '' };
+  const empty = { espn_s2: '', swid: '', ok: false, reason: '', keyLabel: '' };
+  if (!envelope || typeof envelope !== 'object') {
+    return Object.assign({}, empty, { reason: 'no cookie envelope was stored' });
+  }
 
   // Read legacy plaintext JSON rows once so existing deployments can migrate
   // naturally on the next authenticated-member save. New writes are encrypted.
-  if (envelope.espn_s2 || envelope.s2) return cleanCookies(envelope);
-  if (envelope.v !== 1 || envelope.alg !== 'A256GCM') return { espn_s2: '', swid: '' };
+  if (envelope.espn_s2 || envelope.s2) {
+    const legacy = cleanCookies(envelope);
+    return Object.assign({}, legacy, { ok: true, reason: '', keyLabel: 'legacy plaintext row' });
+  }
+  if (envelope.v !== 1 || envelope.alg !== 'A256GCM') {
+    return Object.assign({}, empty, {
+      reason: 'the stored envelope is not in a format this build can read (v=' +
+        JSON.stringify(envelope.v) + ', alg=' + JSON.stringify(envelope.alg) + ')',
+    });
+  }
 
-  const decipher = crypto.createDecipheriv(
-    'aes-256-gcm',
-    encryptionKey(),
-    Buffer.from(String(envelope.iv || ''), 'base64')
-  );
-  decipher.setAuthTag(Buffer.from(String(envelope.tag || ''), 'base64'));
-  const plaintext = Buffer.concat([
-    decipher.update(Buffer.from(String(envelope.data || ''), 'base64')),
-    decipher.final(),
-  ]).toString('utf8');
-  return cleanCookies(JSON.parse(plaintext));
+  const iv = Buffer.from(String(envelope.iv || ''), 'base64');
+  const tag = Buffer.from(String(envelope.tag || ''), 'base64');
+  const data = Buffer.from(String(envelope.data || ''), 'base64');
+  if (!iv.length || !tag.length || !data.length) {
+    return Object.assign({}, empty, {
+      reason: 'the stored envelope is truncated (iv ' + iv.length + 'B, tag ' +
+        tag.length + 'B, data ' + data.length + 'B)',
+    });
+  }
+
+  const candidates = encryptionKeyCandidates();
+  const tried = [];
+  for (const candidate of candidates) {
+    try {
+      const decipher = crypto.createDecipheriv('aes-256-gcm', candidate.key, iv);
+      decipher.setAuthTag(tag);
+      const plaintext = Buffer.concat([decipher.update(data), decipher.final()]).toString('utf8');
+      const cookies = cleanCookies(JSON.parse(plaintext));
+      if (candidate.label !== 'LEAGUE_COOKIE_ENCRYPTION_KEY') {
+        /* Opened with something other than the key we write with today. The
+           row still works, and the next member save re-encrypts it with the
+           active key, healing it permanently. Say so once, loudly enough to
+           be actionable but not as an error — nothing is broken. */
+        console.warn('[api/league] Stored cookies opened with "' + candidate.label + '" rather than the ' +
+          'currently-active key. This row predates the current LEAGUE_COOKIE_ENCRYPTION_KEY configuration; ' +
+          'it will be re-encrypted with the active key the next time a league member saves this league.');
+      }
+      return Object.assign({}, cookies, { ok: true, reason: '', keyLabel: candidate.label });
+    } catch (error) {
+      // Wrong key — the GCM tag check failed. Expected while walking the list.
+      tried.push(candidate.label);
+    }
+  }
+
+  console.error('[api/league] The stored cookie envelope could not be decrypted with any known key. ' +
+    'Tried: ' + (tried.join(', ') || '(none available)') + '. The row was written by a deployment whose ' +
+    'LEAGUE_COOKIE_ENCRYPTION_KEY (or SUPABASE_SERVICE_ROLE_KEY, which seeds the derived fallback) differs ' +
+    'from this one. Set LEAGUE_COOKIE_ENCRYPTION_KEY_PREVIOUS to the retired key to recover these rows, ' +
+    'or have a league member re-save the league from Setup to rewrite it with the active key.');
+  return Object.assign({}, empty, {
+    reason: 'the stored ESPN session was encrypted with a key this deployment no longer has (tried ' +
+      tried.length + ' candidate key' + (tried.length === 1 ? '' : 's') + ')',
+  });
 }
 
 async function readBody(req) {
@@ -684,21 +810,19 @@ async function resolveStoredLeagueAccess(leagueId, seasonYear, shareToken) {
       };
     }
 
-    let cookies;
-    try {
-      cookies = decryptCookies(row.cookies);
-    } catch (decryptError) {
-      /* A wrong LEAGUE_COOKIE_ENCRYPTION_KEY (rotated, or the derived fallback
-         differing between deployments) throws here rather than returning an
-         empty pair, and used to be swallowed by the outer catch as a generic
-         storage failure. It is a distinct, fixable deployment problem. */
+    /* decryptCookies never throws: it walks every candidate key and reports
+       which one opened the envelope (or that none did). A failure here is a
+       deployment-key problem, not a request problem, and must not take the
+       request down with a 502. */
+    const cookies = decryptCookies(row.cookies);
+    if (!cookies.ok) {
       console.error('[api/league] The stored cookie envelope for league ' + id + '/' +
-        (row.season_year || year || 'latest') + ' failed to decrypt. This usually means ' +
-        'LEAGUE_COOKIE_ENCRYPTION_KEY differs from the value used when the cookies were saved.', decryptError);
+        (row.season_year || year || 'latest') + ' could not be opened — ' + cookies.reason);
       return {
         status: 'none',
         cookies: null,
-        reason: 'the stored ESPN session could not be decrypted with this deployment\'s encryption key',
+        reason: cookies.reason ||
+          'the stored ESPN session could not be decrypted with this deployment\'s encryption key',
         code: 'COOKIES_UNDECRYPTABLE',
       };
     }

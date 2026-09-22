@@ -433,11 +433,21 @@ module.exports = async function handler(req, res) {
       'anonymously (an anonymous 401 would be reported to the reader as "this league is private", ' +
       'which is not what happened).');
 
-    /* 401 only for a token that was genuinely rejected; everything else is a
-       server-side / data-side failure and gets 502 so it is never mistaken for
-       an authentication verdict about the reader. */
-    const httpStatus = (code === 'SHARE_TOKEN_INVALID' || code === 'SHARE_TOKEN_MISSING' ||
-      code === 'SHARE_TOKEN_NOT_MINTED') ? 401 : 502;
+    /* NEVER 5xx here. Every case in this branch is a definite, actionable
+       verdict the relay reached on its own — the ESPN request was never made,
+       so there is no gateway failure to report. A 502 also actively misleads:
+       the client's 5xx arm reads it as "transient ESPN outage — try again in a
+       moment", and none of these resolve by retrying.
+
+         401  the reader's authorization is the thing that failed or is absent
+              (bad token, no token, no link minted yet)
+         400  the stored data or this deployment's configuration is at fault;
+              the request itself was well-formed but cannot be served
+         503  storage was momentarily unreachable — the ONE case here that a
+              retry can genuinely fix */
+    const AUTH_CODES = ['SHARE_TOKEN_INVALID', 'SHARE_TOKEN_MISSING', 'SHARE_TOKEN_NOT_MINTED'];
+    const httpStatus = AUTH_CODES.indexOf(code) !== -1 ? 401
+      : (code === 'STORAGE_ERROR' ? 503 : 400);
 
     return res.status(httpStatus).json({
       error: readerMessage,
