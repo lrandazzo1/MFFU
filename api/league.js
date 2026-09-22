@@ -60,12 +60,28 @@ function applyHeaders(res) {
   res.setHeader('Cache-Control', 'no-store');
 }
 
-function getSupabase() {
+/* Which of the two required environment variables are actually present in this
+   deployment. Returned as a structure rather than logged here so a caller can
+   name the missing one in a reader-facing diagnostic — "Supabase is not
+   configured" is useless on Vercel without saying WHICH variable is absent. */
+function supabaseEnvStatus() {
   const url = String(process.env.SUPABASE_URL || '').replace(/\/$/, '');
   const key = String(process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
-  if (!url || !key) return null;
+  return {
+    url: url,
+    key: key,
+    hasUrl: !!url,
+    hasKey: !!key,
+    ok: !!(url && key),
+    missing: [!url ? 'SUPABASE_URL' : '', !key ? 'SUPABASE_SERVICE_ROLE_KEY' : ''].filter(Boolean),
+  };
+}
+
+function getSupabase() {
+  const env = supabaseEnvStatus();
+  if (!env.ok) return null;
   if (!supabaseClient) {
-    supabaseClient = createClient(url, key, {
+    supabaseClient = createClient(env.url, env.key, {
       auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
       global: { headers: { 'X-Client-Info': 'mffu-vercel-league-storage' } },
     });
@@ -557,16 +573,80 @@ function shareTokenAccepted(tokens, supplied) {
    may leave a public league reading anonymously, but it can never be talked
    into handing out credentials. */
 async function resolveStoredLeagueAccess(leagueId, seasonYear, shareToken) {
-  const client = getSupabase();
   const id = cleanLeagueId(leagueId);
   const year = cleanSeasonYear(seasonYear, 0);
   const supplied = cleanShareToken(shareToken);
-  if (!client || !id) return { status: 'none', cookies: null, reason: '' };
+  const rawToken = String(shareToken == null ? '' : shareToken).trim();
+
+  /* ---- DIAGNOSTIC LOG: what this lookup was actually asked for ----
+     The token is masked to its first 8 characters. That is enough to
+     correlate a Vercel log line with the link a tester pasted, and not
+     enough to replay the invite from the log. */
+  const maskedToken = supplied
+    ? supplied.slice(0, 8) + '…(' + supplied.length + ' chars)'
+    : (rawToken ? '(malformed, ' + rawToken.length + ' chars)' : '(none)');
+  console.log('[api/league] resolveStoredLeagueAccess league=' + (id || '(invalid)') +
+    ' season=' + (year || 'latest') + ' token=' + maskedToken);
+
+  const env = supabaseEnvStatus();
+  if (!env.ok) {
+    /* The single most likely production cause of "ESPN denied the anonymous
+       request" on a link that carries a perfectly good token: the relay could
+       never reach Supabase at all, so it had no cookies to attach and fell
+       through to an anonymous read. Name the missing variable. */
+    console.error('[api/league] Supabase is not configured in this deployment — missing ' +
+      env.missing.join(' and ') + '. No stored ESPN session can be looked up for league ' +
+      (id || '(invalid)') + '.');
+    return {
+      status: 'none',
+      cookies: null,
+      reason: 'league storage is not configured in this deployment (missing ' + env.missing.join(' and ') + ')',
+      code: 'SUPABASE_NOT_CONFIGURED',
+    };
+  }
+  const client = getSupabase();
+  if (!client) {
+    return {
+      status: 'none',
+      cookies: null,
+      reason: 'the Supabase client could not be created',
+      code: 'SUPABASE_CLIENT_UNAVAILABLE',
+    };
+  }
+  if (!id) {
+    return {
+      status: 'none',
+      cookies: null,
+      reason: 'no valid numeric league id was present in the requested ESPN URL',
+      code: 'INVALID_LEAGUE_ID',
+    };
+  }
 
   try {
     let row = await findLeagueRow(client, id, year, true);
     if (!row && year) row = await findLeagueRow(client, id, 0, true);
-    if (!row || !row.cookies) return { status: 'none', cookies: null, reason: '' };
+    if (!row) {
+      console.warn('[api/league] No stored league row exists for league ' + id + '/' + (year || 'latest') +
+        '. Nothing to lend; the read will be anonymous unless the caller supplied their own cookies.');
+      return {
+        status: 'none',
+        cookies: null,
+        reason: 'no league record is stored for this league id — a league member must open Setup and save the league once',
+        code: 'NO_LEAGUE_ROW',
+      };
+    }
+    if (!row.cookies) {
+      console.warn('[api/league] League ' + id + '/' + (row.season_year || year || 'latest') +
+        ' has a stored row but an empty cookies column; no ESPN session to lend.');
+      return {
+        status: 'none',
+        cookies: null,
+        reason: 'the stored league record holds no ESPN session — the member who saved it did not have both cookies saved at the time',
+        code: 'NO_STORED_COOKIES',
+      };
+    }
+    console.log('[api/league] League ' + id + ' row found (season ' + (row.season_year || 'latest') +
+      '), cookie envelope present. Checking the share token.');
 
     const tokens = await leagueShareTokens(client, id);
 
@@ -604,18 +684,48 @@ async function resolveStoredLeagueAccess(leagueId, seasonYear, shareToken) {
       };
     }
 
-    const cookies = decryptCookies(row.cookies);
+    let cookies;
+    try {
+      cookies = decryptCookies(row.cookies);
+    } catch (decryptError) {
+      /* A wrong LEAGUE_COOKIE_ENCRYPTION_KEY (rotated, or the derived fallback
+         differing between deployments) throws here rather than returning an
+         empty pair, and used to be swallowed by the outer catch as a generic
+         storage failure. It is a distinct, fixable deployment problem. */
+      console.error('[api/league] The stored cookie envelope for league ' + id + '/' +
+        (row.season_year || year || 'latest') + ' failed to decrypt. This usually means ' +
+        'LEAGUE_COOKIE_ENCRYPTION_KEY differs from the value used when the cookies were saved.', decryptError);
+      return {
+        status: 'none',
+        cookies: null,
+        reason: 'the stored ESPN session could not be decrypted with this deployment\'s encryption key',
+        code: 'COOKIES_UNDECRYPTABLE',
+      };
+    }
     if (!cookies.espn_s2 || !cookies.swid) {
       console.warn('[api/league] The stored cookie envelope for league ' + id + '/' +
-        (row.season_year || year || 'latest') + ' did not decrypt into a complete SWID + espn_s2 pair; ' +
-        'treating this league as having no stored session.');
-      return { status: 'none', cookies: null, reason: '' };
+        (row.season_year || year || 'latest') + ' did not decrypt into a complete SWID + espn_s2 pair ' +
+        '(espn_s2 present: ' + !!cookies.espn_s2 + ', SWID present: ' + !!cookies.swid + ').');
+      return {
+        status: 'none',
+        cookies: null,
+        reason: 'the stored ESPN session is incomplete — it is missing ' +
+          (cookies.espn_s2 ? 'the SWID' : 'the espn_s2') + ' half of the pair',
+        code: 'COOKIES_INCOMPLETE',
+      };
     }
-    return { status: 'ok', cookies: cookies, reason: '' };
+    console.log('[api/league] Share token accepted for league ' + id +
+      '; lending the stored ESPN session (SWID and espn_s2 both present).');
+    return { status: 'ok', cookies: cookies, reason: '', code: 'OK' };
   } catch (error) {
     console.error('[api/league] stored-cookie lookup failed for league ' + id + '/' + (year || 'latest') +
-      '; treating this league as having no stored session (it will be read anonymously).', error);
-    return { status: 'none', cookies: null, reason: '' };
+      '.', error);
+    return {
+      status: 'none',
+      cookies: null,
+      reason: 'the league storage lookup failed: ' + String((error && error.message) || error),
+      code: 'STORAGE_ERROR',
+    };
   }
 }
 

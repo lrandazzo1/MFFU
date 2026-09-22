@@ -6916,6 +6916,12 @@ async function espnRelayError(res, apiUrl){
   err.relayCode = payload && typeof payload.code === 'string' ? payload.code : '';
   err.relayLeagueId = payload && payload.league_id != null ? String(payload.league_id) : '';
   err.espnPayload = payload && payload.espn ? payload.espn : null;
+  /* Which stage of the relay produced this verdict. 'supabase-lookup' means
+     the token-to-cookie lookup never yielded a session, so the read was
+     REFUSED rather than sent to ESPN anonymously — the reader must not be
+     told their league is private or be sent hunting for ESPN cookies. */
+  err.relayStage = payload && typeof payload.stage === 'string' ? payload.stage : '';
+  err.relayDetailFull = payload && typeof payload.detail === 'string' ? payload.detail : '';
   /* Raw upstream body preview (truncated by the relay). Surfaced by the
      invite modal's stage-tagged diagnostics as the ESPN Response value, so a
      tester sees what ESPN actually said rather than the relay's paraphrase. */
@@ -27393,6 +27399,32 @@ async function fetchLeagueData(options){
       msg = 'Your saved private-league cookies could not be sent — ' + credReport.reason +
         '. Open Private League Access and re-paste espn_s2 and SWID (paste just the value; the app strips a ' +
         '“SWID=” prefix, quotes and stray braces for you).';
+    } else if(String((err && err.relayStage) || '') === 'supabase-lookup'){
+      /* The relay REFUSED to ask ESPN because the invite token produced no
+         host session. Checked before the HTTP-status branches: these arrive
+         as 502 as well as 401, and a 502 would otherwise fall through to the
+         "transient ESPN outage" arm and tell the reader to try again — for a
+         failure that retrying can never fix. The relay's own sentence is
+         already reader-ready and never mentions cookies. */
+      msg = String((err && err.relayDetail) || '').trim() ||
+        'Unable to join this league with this link. Check the link or ask your commissioner for a fresh invite.';
+      ui.lastRelayError = {
+        code: String((err && err.relayCode) || ''),
+        status: (err && err.status) || null,
+        stage: 'supabase-lookup',
+        relayDetail: msg,
+        rawBody: String((err && err.relayDetailFull) || ''),
+      };
+      console.error('[ESPN live fetch] Relay refused the read at the Supabase lookup stage [' +
+        String((err && err.relayCode) || 'UNKNOWN') + ']: ' + String((err && err.relayDetailFull) || ''), err);
+      try{
+        openPrivateLeagueAuthModal({
+          leagueId: (err && err.relayLeagueId) || league,
+          reason: String((err && err.relayCode) || 'SHARE_TOKEN_INVALID'),
+        });
+      }catch(modalErr){
+        console.error('[ESPN live fetch] Could not open the Private League Auth modal.', modalErr);
+      }
     } else if(/\bHTTP 40[13]\b/.test(message)){
       // Tailor the guidance to whether the user has already supplied cookies:
       // present-but-rejected almost always means an invalid or expired paste,
@@ -29842,11 +29874,15 @@ async function handlePrivateLeagueAuthInvite(value){
     const relayCode = String((ui.lastRelayError && ui.lastRelayError.code) || '').trim();
     const relayStatus = ui.lastRelayError && ui.lastRelayError.status;
     const relayBody = ui.lastRelayError && ui.lastRelayError.rawBody;
-    if(relayCode === 'SHARE_TOKEN_INVALID' || relayCode === 'SHARE_TOKEN_REQUIRED' ||
-       relayCode === 'SHARE_TOKEN_NOT_MINTED' || relayCode === 'SHARE_TOKEN_MISSING'){
+    const relayStage = String((ui.lastRelayError && ui.lastRelayError.stage) || '').trim();
+    /* The relay tags a token-lookup refusal with stage='supabase-lookup'. Key
+       off that rather than an enumerated code list, so a new server-side code
+       is attributed to the right stage without a matching client release. */
+    if(relayStage === 'supabase-lookup' || /^SHARE_TOKEN_|^SUPABASE_|^NO_LEAGUE_ROW$|^NO_STORED_COOKIES$|^COOKIES_|^STORAGE_ERROR$/.test(relayCode)){
       reportPrivateInviteFailure(PRIVATE_INVITE_STAGE.SUPABASE,
         'Token lookup failed in database — no host espn_s2/SWID credentials found for token [' +
-        parsed.token.slice(0, 8) + '…]. Server code: ' + relayCode);
+        parsed.token.slice(0, 8) + '…]. Server code: ' + (relayCode || 'UNKNOWN') +
+        (relayBody ? '. Detail: ' + relayBody : ''));
       return;
     }
     if(relayStatus){
