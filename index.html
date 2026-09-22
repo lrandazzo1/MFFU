@@ -3318,6 +3318,20 @@ body.fsn-dd-lock{ overflow:hidden; }
       </div>
     </div>
 
+    <!-- The league IS connected; the selected season is not stored for it. A
+         separate panel from #homeNoData on purpose: "no data for 2025 in your
+         league" and "no league connected" are different facts, and showing the
+         second for the first is what made a missing season look like a lost
+         connection. -->
+    <div id="homeSeasonGap" class="px-4 hidden">
+      <div class="card p-6 text-center">
+        <div class="glyph font-display text-[30px] text-[#232c3b]" id="homeSeasonGapTitle">SEASON NOT SYNCED</div>
+        <p class="text-[13px] text-[var(--dim)] mt-2 leading-relaxed" id="homeSeasonGapText"></p>
+        <p class="text-[12px] text-[var(--dim)] mt-2 leading-relaxed" id="homeSeasonGapDetail"></p>
+        <button class="btn-ghost mt-4" data-goto="setup">OPEN SETUP</button>
+      </div>
+    </div>
+
     <div id="homeContent" class="hidden">
       <!-- TOP STORY CAROUSEL — the News Desk's lead, on the Desk itself -->
       <div id="homeTopStory" class="mb-4">
@@ -5477,6 +5491,87 @@ function setHistoryProbeState(provider, leagueId, status){
     status:String(status || 'idle'),
   };
   return true;
+}
+
+/* ---- ARCHIVE LEAGUE SCOPE  (global scope — first block) ----
+   window._franchiseYearsData is a bare array of { year, leagueData } rows. It
+   carries no league identity of its own, and the season picker used to look a
+   year up in it by YEAR ALONE. That is how selecting 2025 while league B was on
+   screen could hand back league A's 2025 season: the archive outlives the
+   league it was built for, and nothing in the lookup could tell the difference.
+
+   The scope is stamped by the accessor below rather than at each assignment
+   site on purpose. The multi-season hydrators that write this array are
+   historical pipelines, and an accessor records the owning league for every
+   writer — the ESPN hydrator, the Sleeper walk, the cloud record, the league
+   switcher's runtime cache, an uploaded .json — without editing one of them.
+
+   Both the global block and the UI layer read it, so the helpers are global per
+   rule 1. LeagueData.scopeToken() is the canonical 'provider:leagueId' token
+   every other in-memory cache already namespaces itself with. */
+(function(){
+  let archiveRows = null;
+  let archiveScope = '';
+  function activeArchiveScope(){
+    try{ return String(LeagueData.scopeToken() || ''); }
+    catch(err){
+      /* Reaching here means the store is not available at write time, which is
+         a real defect rather than a missing league. Say so, and record no
+         scope: an unstamped archive stays readable (see below) rather than
+         becoming invisible to the season picker. */
+      console.error('[FSNScope] Could not read the active league scope while storing the ' +
+        'multi-season archive; these rows will not be league-stamped.', err);
+      return '';
+    }
+  }
+  Object.defineProperty(window, '_franchiseYearsData', {
+    configurable: true,
+    enumerable: true,
+    get(){ return archiveRows; },
+    set(value){ archiveRows = value; archiveScope = activeArchiveScope(); },
+  });
+  Object.defineProperty(window, '_franchiseArchiveScope', {
+    configurable: true,
+    enumerable: true,
+    get(){ return archiveScope; },
+  });
+})();
+
+/* '' for a scope that names no real league — an empty token, or the store's
+   'league' placeholder for an empty League ID box. Those cannot be compared
+   against anything, and treating them as a mismatch would hide a league's own
+   archive from its own season picker. */
+function namedLeagueScope(token){
+  const scope = String(token || '').trim();
+  if(!scope) return '';
+  const id = scope.slice(scope.indexOf(':') + 1).trim();
+  return (!id || id === 'league') ? '' : scope;
+}
+
+/* Does the archive in memory belong to the league on screen? Only a definite
+   mismatch — two named scopes that differ — is an answer of no. */
+function archiveBelongsToActiveLeague(){
+  const stamped = namedLeagueScope(window._franchiseArchiveScope);
+  const active = namedLeagueScope(LeagueData.scopeToken());
+  if(!stamped || !active) return true;
+  return stamped === active;
+}
+
+/* The multi-season archive, but only when it belongs to the active league.
+   Every league-scoped read of the season picker goes through this rather than
+   touching window._franchiseYearsData directly, so a year lookup can never
+   cross leagues. Returns [] on a mismatch and says which two leagues it saw —
+   the archive is not discarded, because the league it belongs to may be one
+   the reader switches back to. */
+function scopedArchiveRows(){
+  const rows = Array.isArray(window._franchiseYearsData) ? window._franchiseYearsData : [];
+  if(!rows.length) return [];
+  if(archiveBelongsToActiveLeague()) return rows;
+  console.warn('[FSNScope] The multi-season archive in memory was built for ' +
+    (namedLeagueScope(window._franchiseArchiveScope) || '(unstamped)') + ' but ' +
+    (namedLeagueScope(LeagueData.scopeToken()) || '(no league)') + ' is on screen; ' +
+    'refusing to serve its seasons. Reload this league to rebuild its archive.');
+  return [];
 }
 
 /* ---- INAUGURAL-SEASON PROBE ----
@@ -22271,6 +22366,12 @@ const ui = {
   weekLoading: null,
   seasonFetchSeq: 0,
   seasonLoading: null,
+  /* Set when the reader selects a season this league has neither archived nor
+     can fetch: { year, scope, reason }. It is what turns a miss into "No 2025
+     data synced for this league" instead of the generic disconnected state —
+     or, worse, another league's board. Scoped, so it cannot survive a league
+     switch and mislabel the next league's screens. */
+  seasonUnavailable: null,
   cloudHydrateSeq: 0,
   /* Set by fetchLeagueData whenever the /api/espn relay answers 401/403 with
      a machine-readable verdict (SHARE_TOKEN_INVALID / SHARE_TOKEN_REQUIRED /
@@ -22632,7 +22733,10 @@ function resetWeekContext(force){
 }
 
 function availableSeasonYears(){
-  const loaded = Array.isArray(window._franchiseYearsData) ? window._franchiseYearsData : [];
+  /* scopedArchiveRows(), never window._franchiseYearsData: the dropdown must
+     not offer a season that belongs to a different league, because choosing it
+     is what used to load that league's board. */
+  const loaded = scopedArchiveRows();
   const years = loaded.map(x=> parseInt(x && x.year, 10)).filter(y=> y > 0);
   const active = uiActiveSeasonYear();
   const selected = parseInt(($('seasonYear').value || '').trim(), 10) || active;
@@ -22661,8 +22765,18 @@ function renderWeekScrubber(id){
   const el = $(id);
   if(!el) return;
   const live = LeagueData.hasLive();
-  el.classList.toggle('hidden', !live);
-  if(!live){ el.innerHTML = ''; return; }
+  /* A season this league has not synced has no weeks to scrub — but it MUST
+     keep the season menu, because picking a season that does exist is the only
+     way out of the empty state. Hiding the whole bar (the old behaviour for
+     any payload-less screen) stranded the reader on a dead year. */
+  const seasonGap = live ? 0 : seasonUnavailableYear();
+  el.classList.toggle('hidden', !live && !seasonGap);
+  if(!live){
+    el.innerHTML = seasonGap
+      ? '<div class="season-week-bar">' + seasonSelectMarkup() + '</div>'
+      : '';
+    return;
+  }
 
   const week = effectiveWeek();
   const current = currentLeagueWeek();
@@ -22697,14 +22811,20 @@ function renderWeekScrubbers(){
   renderWeekScrubber('analyticsWeekScrubber');
 }
 
+/* The archived season for THIS league, or null. The league scoping is the
+   whole point: a lookup by year alone is what served another league's payload
+   when the reader changed the year. */
 function seasonCacheEntry(year){
-  const rows = Array.isArray(window._franchiseYearsData) ? window._franchiseYearsData : [];
-  return rows.find(x=> Number(x && x.year) === Number(year)) || null;
+  return scopedArchiveRows().find(x=> Number(x && x.year) === Number(year)) || null;
 }
 
 function upsertSeasonCache(year, leagueData){
   if(!leagueData || !leagueData.teams || !leagueData.teams.length) return;
-  const rows = Array.isArray(window._franchiseYearsData) ? window._franchiseYearsData.slice() : [];
+  /* A payload only ever enters the archive under the league it was fetched
+     for. Merging one that is not this league's would corrupt the Record Book
+     the aggregator builds from these rows, which is the same failure the
+     season picker's scoping exists to prevent — one layer deeper. */
+  const rows = scopedArchiveRows().slice();
   const next = rows.filter(x=> Number(x && x.year) !== Number(year));
   next.push({ year:Number(year), leagueData });
   next.sort((a,b)=> a.year-b.year);
@@ -22712,13 +22832,167 @@ function upsertSeasonCache(year, leagueData){
   try{ LeagueData.setLeagueHistory(computeLeagueHistoryStats(next)); }catch(e){ console.warn('[FSN] Could not refresh archive stats', e); }
 }
 
+/* ---- "no data synced for this league" ----
+   A season the active league has neither archived nor can fetch is an EMPTY
+   state, not a disconnected one, and it is emphatically not a reason to show
+   something else. Before this, a year with no row left the screens on the
+   generic "NO SIGNAL · connect your league" panel — indistinguishable from
+   having no league at all — while the season lookup happily served whatever
+   other league's archive happened to be in memory.
+
+   The flag carries the league scope it was raised under so a league switch can
+   never leave the next league's screens labelled with the previous league's
+   missing season. */
+function markSeasonUnavailable(year, reason){
+  ui.seasonUnavailable = {
+    year: Number(year) || 0,
+    scope: (function(){
+      try{ return String(LeagueData.scopeToken() || ''); }
+      catch(err){
+        console.error('[Season] Could not read the league scope while marking ' + year +
+          ' unavailable; the notice will be shown for the active league only.', err);
+        return '';
+      }
+    })(),
+    reason: String(reason || ''),
+  };
+}
+function clearSeasonUnavailable(){ ui.seasonUnavailable = null; }
+
+/* The year the "not synced" notice applies to right now, or 0. Answers 0 when
+   the flag belongs to another league or another year, so every caller can ask
+   without repeating the scoping. */
+function seasonUnavailableYear(){
+  const flag = ui.seasonUnavailable;
+  if(!flag || !flag.year) return 0;
+  const raised = namedLeagueScope(flag.scope);
+  const active = namedLeagueScope(LeagueData.scopeToken());
+  if(raised && active && raised !== active) return 0;
+  const viewed = parseInt(($('seasonYear').value || '').trim(), 10) || uiActiveSeasonYear();
+  return Number(flag.year) === Number(viewed) ? Number(viewed) : 0;
+}
+
+/* The league's own name when no season payload is loaded to read it from: the
+   saved-league entry this reader connected, then the cloud settings block,
+   then the bare id. Keeping the league named is the difference between "your
+   league has no 2025" and "no league". */
+function leagueDisplayNameForScope(){
+  const id = ($('leagueIdInput').value || '').trim();
+  try{
+    const live = LeagueData.espnData && LeagueData.espnData.settings && LeagueData.espnData.settings.name;
+    if(live) return String(live).toUpperCase();
+    const saved = savedLeagues().find(function(row){
+      return String(row.id) === id && normalizedLeagueProvider(row.provider) === normalizedLeagueProvider(ui.provider);
+    });
+    if(saved && saved.name) return String(saved.name).toUpperCase();
+    const cloudName = (window._fsnCloudSettings || {}).leagueName;
+    if(cloudName) return String(cloudName).toUpperCase();
+  }catch(err){
+    console.warn('[Season] Could not resolve a display name for league ' + id + '; using the id.', err);
+  }
+  return id ? 'LEAGUE ' + id : 'THE DESK';
+}
+
+/* The reader-facing sentence. Names the season and the league, because the
+   whole point is that the app stayed inside the league they chose. */
+function seasonUnavailableMessage(){
+  const year = seasonUnavailableYear();
+  if(!year) return '';
+  const name = (LeagueData.espnData && LeagueData.espnData.settings && LeagueData.espnData.settings.name) ||
+    ((window._fsnCloudSettings || {}).leagueName) || '';
+  return 'No ' + year + ' data synced for ' + (name ? '\u201c' + name + '\u201d' : 'this league') + '.';
+}
+
+/* The screen-level empty state for a season this league has not synced, or ''
+   when that is not the situation. Every screen that would otherwise print
+   "Fetch an ESPN league" asks for this first, so one missing season never
+   reads as a missing league. */
+function seasonUnavailableEmptyState(){
+  const year = seasonUnavailableYear();
+  if(!year) return '';
+  return emptyState(year + ' NOT SYNCED',
+    seasonUnavailableMessage() + ' ' + seasonUnavailableDetail(), 'setup');
+}
+
+/* The panel body. The action is always "go back to a season this league does
+   have", never "connect a league" — the league is connected; this one season
+   is not stored. */
+function seasonUnavailableDetail(){
+  const year = seasonUnavailableYear();
+  if(!year) return '';
+  const stored = availableSeasonYears().filter(y=> Number(y) !== Number(year) && seasonCacheEntry(y));
+  if(stored.length){
+    return 'Synced seasons for this league: ' + stored.slice(0, 12).join(', ') +
+      '. Pick one from the season menu, or sync ' + year + ' from Setup.';
+  }
+  return 'Load this league from Setup with your ESPN credentials to sync ' + year + '.';
+}
+
+/* The league + season a provider payload actually describes. Used to prove a
+   season read came back for the league that was asked for. */
+function payloadLeagueIdentity(data){
+  if(!data || typeof data !== 'object' || Array.isArray(data)) return { leagueId:'', season:0 };
+  const id = data.id != null ? data.id : (data.leagueId != null ? data.leagueId : '');
+  const season = parseInt(data.seasonId != null ? data.seasonId : data.season, 10);
+  return { leagueId:String(id || '').trim(), season:Number.isFinite(season) ? season : 0 };
+}
+
+/* The one season out of an ESPN response that belongs to (league, year), or
+   null. The pre-2018 leagueHistory route answers with an ARRAY of seasons, and
+   the modern route answers with one object — both are checked the same way.
+
+   A payload that names a DIFFERENT league is refused outright: serving it is
+   precisely the cross-league bug this path exists to close. A payload that
+   names no league at all cannot be proven foreign, so it is accepted when its
+   season matches — that is the shape some archive rows come back in. */
+function seasonPayloadForLeague(raw, league, year){
+  const rows = Array.isArray(raw) ? raw : [raw];
+  const wanted = String(league || '').trim();
+  const seen = [];
+  const match = rows.find(function(row){
+    const identity = payloadLeagueIdentity(row);
+    seen.push((identity.leagueId || '(no id)') + '/' + (identity.season || '(no season)'));
+    if(!row || typeof row !== 'object' || Array.isArray(row)) return false;
+    if(identity.leagueId && identity.leagueId !== wanted) return false;
+    if(identity.season && Number(identity.season) !== Number(year)) return false;
+    return true;
+  });
+  if(!match){
+    console.error('[Season] The ' + year + ' read for league ' + wanted + ' came back describing ' +
+      (seen.length ? seen.join(', ') : '(nothing)') + '. Refusing to show it: a season switch must ' +
+      'never leave the selected league.', new Error('SEASON_PAYLOAD_LEAGUE_MISMATCH'));
+    return null;
+  }
+  return match;
+}
+
+/* One credentialed, league-scoped read for exactly (league, year).
+   fetchLeagueDataViaProxies attaches this league's stored espn_s2/SWID through
+   espnCredHeaders, so a private league's history is fetched on demand as the
+   member who owns it. Returns null when ESPN has no such season for this
+   league — never a different league's payload. */
+async function fetchSeasonForLeague(league, year){
+  const url = buildEspnUrlForYear(league, year, null);
+  if(!url){
+    console.warn('[Season] No ESPN URL could be built for league ' + league + ' season ' + year + '.');
+    return null;
+  }
+  const raw = await fetchLeagueDataViaProxies(url);
+  return seasonPayloadForLeague(raw, league, year);
+}
+
 async function switchSeasonYear(nextYear){
   const year = parseInt(nextYear, 10);
   if(!year) return;
   const active = uiActiveSeasonYear();
   const league = ($('leagueIdInput').value || '').trim();
+  /* The selected year changes what is on screen, never WHICH league is on
+     screen. Both are captured here and every read below is scoped to the pair,
+     so nothing this function does can leave the reader's league. */
+  const provider = normalizedLeagueProvider(ui.provider);
   const seq = ++ui.seasonFetchSeq;
 
+  clearSeasonUnavailable();
   $('seasonYear').value = String(year);
   resetWeekContext(true);
   ui.week = year === active ? null : 1;
@@ -22762,10 +23036,50 @@ async function switchSeasonYear(nextYear){
     return;
   }
 
+  /* ---- on-demand fetch, strictly for THIS league ----
+     Only ESPN keeps one league id across seasons, so only ESPN can be asked
+     for a past season by the id on screen. A Sleeper season lives under its
+     own previous_league_id and a Yahoo season under its own game key, so
+     sending this id to the ESPN season route would be asking a different
+     platform about a number that means something else there — the exact shape
+     of "changed the year, got a different league". Those providers answer from
+     their own archive (loaded by their own walk) or not at all. */
+  if(provider !== 'espn'){
+    /* The cached branch above already applied this season from the provider's
+       own archive (its live season is seeded there, and its past seasons come
+       from its own history walk). Nothing left to fetch, and nothing missing —
+       returning here is what keeps a Sleeper reader's CURRENT season from
+       being mislabelled as unsynced. */
+    if(cached && cached.leagueData){
+      ui.seasonLoading = null;
+      renderAll();
+      return;
+    }
+    console.warn('[Season] ' + provider + ' league ' + league + ' has no ' + year +
+      ' season in its loaded archive, and its past seasons are not addressable by this league id. ' +
+      'Showing the not-synced state rather than reading another platform.');
+    ui.seasonLoading = null;
+    markSeasonUnavailable(year, provider + ' archive');
+    setConn('gap');
+    renderAll();
+    toast('No ' + year + ' data synced for this league');
+    return;
+  }
+
   try{
-    const url = buildEspnUrlForYear(league, year, null);
-    const data = await fetchLeagueDataViaProxies(url);
+    const data = await fetchSeasonForLeague(league, year);
     if(seq !== ui.seasonFetchSeq) return;
+    /* ESPN answered, but not with this league's season. Not an error state —
+       a clean, honest empty one that keeps the reader where they are. */
+    if(!data){
+      ui.seasonLoading = null;
+      markSeasonUnavailable(year, 'no ESPN record');
+      LeagueData.setEspnData(null);
+      setConn(year === active ? 'error' : 'gap');
+      renderAll();
+      toast('No ' + year + ' data synced for this league');
+      return;
+    }
 
     upsertSeasonCache(year, data);
     LeagueData.setEspnData(data);
@@ -22790,10 +23104,21 @@ async function switchSeasonYear(nextYear){
     savePrefs();
     renderAll();
   }catch(err){
-    console.warn('[FSN] Season switch failed', err);
+    /* Loud, per rule 3: this is a real failed read (ESPN refused the season,
+       the relay is down, the cookies expired), and the reader is about to be
+       shown an empty season — the console has to say which of those it was. */
+    console.error('[Season] The ' + year + ' read for league ' + league +
+      ' failed; keeping the reader inside this league and showing the not-synced state.', err);
     if(seq === ui.seasonFetchSeq){
-      setConn('error');
-      toast(year === active ? 'Could not refresh the live season' : 'That season is not in the loaded archive');
+      if(year === active){
+        setConn('error');
+        toast('Could not refresh the live season');
+      } else {
+        markSeasonUnavailable(year, (err && err.message) ? String(err.message) : 'read failed');
+        LeagueData.setEspnData(null);
+        setConn('gap');
+        toast('No ' + year + ' data synced for this league');
+      }
     }
   }finally{
     if(seq === ui.seasonFetchSeq){
@@ -23323,13 +23648,33 @@ function leaguePlatformLabel(){
 
 function renderHome(){
   const live = LeagueData.hasLive();
-  $('homeNoData').classList.toggle('hidden', live);
+  /* A season this league has not synced is its own empty state. The league
+     stays named and selected — only the board is empty — so the reader is
+     never told to "connect a league" they are already connected to. */
+  const seasonGap = live ? 0 : seasonUnavailableYear();
+  const gapPanel = $('homeSeasonGap');
+  if(gapPanel) gapPanel.classList.toggle('hidden', !seasonGap);
+  $('homeNoData').classList.toggle('hidden', live || !!seasonGap);
   $('homeContent').classList.toggle('hidden', !live);
   if(!live){
-    $('homeLeagueName').textContent = 'THE DESK';
-    $('homeLeagueMeta').textContent = 'Connect a league to get started';
-    $('homeWeekPill').textContent = 'CONNECT LEAGUE';
-    $('homeSeasonLabel').textContent = '';
+    if(seasonGap){
+      const title = $('homeSeasonGapTitle');
+      const text = $('homeSeasonGapText');
+      const detail = $('homeSeasonGapDetail');
+      if(title) title.textContent = seasonGap + ' NOT SYNCED';
+      if(text) text.textContent = seasonUnavailableMessage();
+      if(detail) detail.textContent = seasonUnavailableDetail();
+      $('homeLeagueName').textContent = leagueDisplayNameForScope();
+      $('homeLeagueMeta').textContent = leaguePlatformLabel() + ' · League ' +
+        (($('leagueIdInput').value || '').trim() || '—');
+      $('homeWeekPill').textContent = 'NO DATA';
+      $('homeSeasonLabel').textContent = seasonGap + ' SEASON';
+    } else {
+      $('homeLeagueName').textContent = 'THE DESK';
+      $('homeLeagueMeta').textContent = 'Connect a league to get started';
+      $('homeWeekPill').textContent = 'CONNECT LEAGUE';
+      $('homeSeasonLabel').textContent = '';
+    }
     try{ refreshDeskLeaguePicker(); }catch(err){ console.warn('[Home] desk league picker refresh failed', err); }
     return;
   }
@@ -23788,7 +24133,8 @@ function compactGameRow(g){
 function renderMatchups(){
   const week = effectiveWeek();
   if(!LeagueData.hasLive()){
-    $('matchupList').innerHTML = emptyState('NO SIGNAL', 'Fetch an ESPN league to see this week’s head-to-head board.', 'setup');
+    $('matchupList').innerHTML = seasonUnavailableEmptyState() ||
+      emptyState('NO SIGNAL', 'Fetch an ESPN league to see this week’s head-to-head board.', 'setup');
     return;
   }
 
@@ -24326,7 +24672,8 @@ function renderAnalytics(){
   if(!hasLive){
     if(seasonPill) seasonPill.textContent = '— SEASON';
     if(updatedLabel) updatedLabel.textContent = 'AWAITING DATA';
-    body.innerHTML = emptyState('NO ANALYTICS FEED', 'Fetch the current ESPN season to activate all six mathematical models.', 'setup');
+    body.innerHTML = seasonUnavailableEmptyState() ||
+      emptyState('NO ANALYTICS FEED', 'Fetch the current ESPN season to activate all six mathematical models.', 'setup');
     return;
   }
 
@@ -25498,6 +25845,10 @@ function setConn(mode){
     none:   { text:'● NO DATA SOURCE', color:'var(--dim)',   border:'rgba(255,255,255,.16)' },
     live:    { text:'● LIVE ' + liveProvider + ' DATA', color:'var(--green)', border:'rgba(57,255,140,.45)' },
     history: { text:'● ARCHIVE SEASON', color:'var(--gold)',  border:'rgba(255,196,0,.45)' },
+    /* The league is connected; the SELECTED SEASON is not stored for it. A
+       distinct chip from 'none' (no league at all) and from 'error' (a read
+       that failed), because the reader's next move is different in each case. */
+    gap:    { text:'● SEASON NOT SYNCED', color:'var(--dim)', border:'rgba(255,196,0,.30)' },
     manual:  { text:'● MANUAL DATA',    color:'var(--cyan)',  border:'rgba(0,224,255,.45)' },
     error:  { text:'● FETCH FAILED',   color:'var(--red)',   border:'rgba(255,45,85,.45)' },
   };
@@ -26777,6 +27128,10 @@ function clearLeagueStateForSwitch(nextLeagueId, nextProvider){
   // A new league invalidates whatever rivalry pair the Vault had on screen and
   // any half-finished cloud hydration aimed at the previous league.
   ui.rivalA = ''; ui.rivalB = '';
+  // …and the previous league's missing-season notice, which says nothing about
+  // this one. seasonUnavailableYear() is scoped too, so this is belt and
+  // braces rather than the only guard.
+  ui.seasonUnavailable = null;
   ui.cloudHydrateSeq = (ui.cloudHydrateSeq || 0) + 1;
   /* Any archive read still in the air belongs to the league being left. Drop
      the handle so the next ensureSharedArchiveHydrated() starts a fresh read
