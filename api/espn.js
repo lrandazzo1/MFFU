@@ -167,7 +167,11 @@ async function resolveEspnCredentials(req, target, shareToken) {
          perfectly well anonymously. Record the denial, keep resolving, and let
          ESPN's own answer decide — see the handler, which reports the
          share-token verdict only once ESPN actually refuses the read. */
-      storedDenied = { leagueId: context.leagueId, reason: access.reason };
+      storedDenied = {
+        leagueId: context.leagueId,
+        reason: access.reason,
+        code: access.code || 'SHARE_TOKEN_REQUIRED',
+      };
       console.warn('[api/espn] Not attaching the stored ESPN session for league ' + context.leagueId +
         ' — ' + access.reason + '. Reading ' + target.pathname + ' without it; if this league is ' +
         'private the caller will be told they need the full invite link.');
@@ -304,6 +308,27 @@ module.exports = async function handler(req, res) {
   const shareToken = requestShareToken(req);
   let creds = await resolveEspnCredentials(req, target, shareToken);
 
+  /* Short-circuit: the caller EXPLICITLY presented a share token and it did
+     not match this league's stored token(s). Without their own reader cookies
+     there is nothing to fall back to — an anonymous retry would only ever
+     answer for a public league that happens to have a cookie envelope on
+     file, and every other case just wastes an ESPN round trip before ending
+     at the same 401. Answer with the invalid-link verdict now so the reader
+     sees a clear message instead of ESPN's generic refusal envelope. */
+  if (shareToken && creds.storedDenied && creds.storedDenied.code === 'SHARE_TOKEN_INVALID' &&
+      creds.mode !== 'private') {
+    console.warn('[api/espn] Short-circuiting 401 SHARE_TOKEN_INVALID for league ' +
+      creds.storedDenied.leagueId + ' on ' + target.pathname +
+      ' — a token was supplied but did not match this league; refusing to attempt an anonymous read.');
+    return res.status(401).json({
+      error: 'This invite link is invalid or expired. Please ask the league host for a new link or sign in with ESPN cookies directly.',
+      code: 'SHARE_TOKEN_INVALID',
+      league_id: creds.storedDenied.leagueId,
+      detail: creds.storedDenied.reason,
+      auth: 'share-token',
+    });
+  }
+
   // A credential that arrived but did not survive resolution is the single most
   // confusing private-league failure there is: the request looks authenticated
   // to the caller and anonymous to ESPN. Name every one of them.
@@ -435,14 +460,27 @@ module.exports = async function handler(req, res) {
          excluded: their refusal is a real credential verdict about them. */
       (creds.mode !== 'private' || creds.pair.source === 'deployment-env'));
     if (shareTokenBlocked) {
-      console.warn('[api/espn] Answering 401 SHARE_TOKEN_REQUIRED for league ' + creds.storedDenied.leagueId +
+      /* Three sub-cases share this branch, and the reader-facing sentence
+         differs for each. Only SHARE_TOKEN_INVALID means "this link was
+         checked and rejected"; the other two mean "no link presented" or
+         "this league never minted one". Keying off storedDenied.code (set
+         by resolveStoredLeagueAccess in api/league.js) so the frontend can
+         open the auth modal for the right case without English-parsing. */
+      const deniedCode = (creds.storedDenied && creds.storedDenied.code) || 'SHARE_TOKEN_REQUIRED';
+      const responseCode = deniedCode === 'SHARE_TOKEN_INVALID'
+        ? 'SHARE_TOKEN_INVALID'
+        : 'SHARE_TOKEN_REQUIRED';
+      const errorMessage = deniedCode === 'SHARE_TOKEN_INVALID'
+        ? 'This invite link is invalid or expired. Please ask the league host for a new link or sign in with ESPN cookies directly.'
+        : 'This league\'s saved ESPN access is protected by a per-league invite link. Open the full ' +
+          'link a league-mate sent you — it carries both the League ID and the share token — or paste ' +
+          'your own espn_s2 and SWID cookies in Setup → Private League Access.';
+      console.warn('[api/espn] Answering 401 ' + responseCode + ' for league ' + creds.storedDenied.leagueId +
         ' on ' + target.pathname + ' — ' + creds.storedDenied.reason +
         ', and ESPN refused the read without the stored session (HTTP ' + upstream.status + ').');
       return res.status(401).json({
-        error: 'This league\'s saved ESPN access is protected by a per-league invite link. Open the full ' +
-          'link a league-mate sent you — it carries both the League ID and the share token — or paste ' +
-          'your own espn_s2 and SWID cookies in Setup → Private League Access.',
-        code: 'SHARE_TOKEN_REQUIRED',
+        error: errorMessage,
+        code: responseCode,
         league_id: creds.storedDenied.leagueId,
         detail: creds.storedDenied.reason,
         espn: payload,

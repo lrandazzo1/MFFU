@@ -582,6 +582,7 @@ async function resolveStoredLeagueAccess(leagueId, seasonYear, shareToken) {
         status: 'unauthorized',
         cookies: null,
         reason: 'this league has no invite link yet — a league member must open Setup and save the league once to mint one',
+        code: 'SHARE_TOKEN_NOT_MINTED',
       };
     }
     if (!supplied) {
@@ -589,6 +590,7 @@ async function resolveStoredLeagueAccess(leagueId, seasonYear, shareToken) {
         status: 'unauthorized',
         cookies: null,
         reason: "this league's stored ESPN session is protected by a share token and the request carried none",
+        code: 'SHARE_TOKEN_MISSING',
       };
     }
     if (!shareTokenAccepted(tokens, supplied)) {
@@ -598,6 +600,7 @@ async function resolveStoredLeagueAccess(leagueId, seasonYear, shareToken) {
         status: 'unauthorized',
         cookies: null,
         reason: 'the share token in this link does not match this league',
+        code: 'SHARE_TOKEN_INVALID',
       };
     }
 
