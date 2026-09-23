@@ -38,6 +38,14 @@ The frontend caches the last successful record in `localStorage`. If Supabase or
 
 View signups in Supabase: **Table Editor → `waitlist_signups`**, or `select email, platform, league_id, created_at from public.waitlist_signups order by created_at desc;`.
 
+## League blog articles
+
+Run [`supabase/blog_articles.sql`](supabase/blog_articles.sql) in the Supabase SQL Editor. It creates `public.blog_articles` with RLS enabled and no browser policies, and it is idempotent, so re-running it is safe.
+
+The table stores one AI-written story per league, week, and day: `league_id` (indexed, so stories are isolated per fantasy league), a unique deterministic `slug`, `title`, `excerpt`, `content_markdown`, `article_type` (`monday_sweat`, `tuesday_verdict`, `friday_tnf_preview`), `season`, `week`, a `tracked_players` JSONB array, and `published_at`.
+
+Rows are written only by the server-side pipeline in `lib/article-generator.ts` using the service-role key, reusing the existing `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` variables. No new environment variables are required. See [`docs/blog-articles.md`](docs/blog-articles.md) for the outcome math and the copy guardrail.
+
 ## Yahoo Fantasy Sports OAuth
 
 1. In the Yahoo Developer Network, create a web application with **Fantasy Sports — Read** permission. Set its callback URL to `https://app.fantasysportsnetwork.app/api/auth/yahoo/callback`.
