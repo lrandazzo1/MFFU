@@ -1,0 +1,26 @@
+{
+  // Scoped to the article pipeline on purpose, and deliberately NOT named
+  // `tsconfig.json`: the repo has no build step (vercel.json sets an empty
+  // buildCommand) and a root tsconfig would change how Vercel treats every
+  // other file in the tree. Run it with `npm run build:articles`.
+  "compilerOptions": {
+    "target": "ES2021",
+    "lib": ["ES2021"],
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "outDir": "lib/dist",
+    "rootDir": "lib",
+    "declaration": true,
+    "strict": true,
+    "noImplicitAny": false,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "types": []
+  },
+  "files": [
+    "lib/article-env.d.ts",
+    "lib/article-math.ts",
+    "lib/article-generator.ts"
+  ]
+}
