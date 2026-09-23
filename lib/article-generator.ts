@@ -22,6 +22,7 @@
 import {
   calculatePlayerOutcomeFlags,
   featuredTrackedPlayers,
+  type GameSlot,
   type KickoffIndex,
   type OutcomeFlag,
   type TrackedPlayer,
@@ -329,47 +330,207 @@ function article(value: number): string {
    asterisk simply would not embolden rather than corrupting the line. */
 const b = (value: string | number): string => `**${value}**`;
 
-/**
- * One row, framed as its flag allows. Exported because it IS the framing
- * contract: `OUTCOME_FRAMING_RULE` tells a model what compliant copy reads
- * like, and this is the executable version of the same thing.
+/* ------------------------------------------------------------------ *
+ * The archetype matrix
  *
- * The GARBAGE_TIME_BLOWOUT branch is no longer reachable from
- * `defaultComposer` (the board drops blowouts as filler) and is kept
- * deliberately: it is the reference wording for that flag, it is what a
- * model-backed composer is shown, and deleting it would leave the only
- * statement of how a blowout must read living in a test.
+ * A bullet used to be one sentence per flag: four shapes for the whole
+ * league, every week, so a board of four game-winners printed the same
+ * sentence four times with the nouns swapped. The matrix splits each flag by
+ * the numbers that actually distinguish one performance from another, and
+ * gives every case two phrasings.
+ *
+ * The triggers are evaluated TOP TO BOTTOM and the first match wins, so the
+ * order below is the specification: a prime-time comeback is a comeback
+ * first, a razor-thin win outranks a rout, and the general swing is what is
+ * left when nothing more specific is true.
+ *
+ * Everything here is still derived from the flag and the margins. No
+ * archetype claims more than `assertOutcomeLanguage` allows, and the three
+ * that credit a player with winning a matchup all require the GAME_WINNER
+ * flag to have been assigned by the math.
+ * ------------------------------------------------------------------ */
+
+export type Archetype =
+  | 'PRIMETIME_COMEBACK'
+  | 'RAZOR_THIN_COMEBACK'
+  | 'SINGLE_HANDED_OVERHAUL'
+  | 'HEAVYWEIGHT_BLOWOUT'
+  | 'WASTED_ERUPTION'
+  | 'HEARTBREAK_LOSS'
+  | 'NECESSARY_INSURANCE'
+  | 'GENERAL_SWING';
+
+/** Two decimals, always. The matrix quotes deficits and margins against each
+ *  other constantly, and "trailed by 4 and finished 58.86 clear" reads as two
+ *  different kinds of number. */
+const num2 = (value: number): string => Number(value).toFixed(2);
+
+/** The prime-time windows. A comeback completed here is the one every league
+ *  chat is still arguing about on Tuesday. */
+const PRIMETIME: GameSlot[] = ['SNF', 'MNF'];
+
+/** How far behind the player's team was when his game kicked off, as a
+ *  positive number. Zero when they were level or ahead. */
+function deficitOf(row: TrackedPlayer): number {
+  const entering = Number(row.entering_margin);
+  return Number.isFinite(entering) && entering < 0 ? Math.abs(entering) : 0;
+}
+
+/** The finishing margin as a positive number, whichever side it fell. */
+function marginOf(row: TrackedPlayer): number {
+  const final = Number(row.final_margin);
+  return Number.isFinite(final) ? Math.abs(final) : 0;
+}
+
+/**
+ * The first archetype whose trigger the row satisfies.
+ *
+ * Note that PRIMETIME_COMEBACK requires the GAME_WINNER flag and not merely
+ * "trailed, then won". Its copy credits the player with erasing the deficit,
+ * and only the flag establishes that his own points covered it. Without that
+ * check a team could come back on somebody else's points and this would hand
+ * the credit to whoever happened to play last, which is the exact overclaim
+ * the outcome contract exists to prevent.
  */
-export function sentenceFor(row: TrackedPlayer): string {
-  const margin = row.final_margin;
-  const gap = margin == null ? null : pts(Math.abs(margin));
-  switch (row.outcome_flag) {
-    case 'GAME_WINNER':
-      return `${b(row.player_name)} won the matchup for ${b(row.owner_team)}. They trailed by ` +
-        `${b(pts(Math.abs(row.entering_margin as number)))} before his game and finished ` +
-        `${b(gap as string)} clear, with his ${b(pts(row.player_points) + ' pts')} covering the deficit.`;
-    case 'GARBAGE_TIME_BLOWOUT':
-      return `${b(row.player_name)} put up ${b(pts(row.player_points) + ' pts')} for ${b(row.owner_team)} in a ` +
-        `game that was already gone: the lead was ${b(pts(row.entering_margin as number))} before he played ` +
-        `and ${b(gap as string)} after. Unneeded stat-padding, nothing more.`;
-    case 'VALIANT_LOSS':
-      return `${b(row.player_name)} went for ${b(pts(row.player_points) + ' pts')} and ${b(row.owner_team)} ` +
-        `lost anyway, by ${b(gap as string)}. A monster game, wasted.`;
-    case 'DUD_COST_WIN':
-      return `${b(row.owner_team)} led by ${b(pts(row.entering_margin as number))} before ` +
-        `${b(row.player_name)} played, then lost by ${b(gap as string)}. He finished on ` +
-        `${b(pts(row.player_points) + ' pts')} against ${article(row.projected_points as number)} ` +
-        `${pts(row.projected_points as number)} point projection, and that gap is the matchup.`;
-    default:
-      return `${b(row.player_name)} finished on ${b(pts(row.player_points) + ' pts')} for ${b(row.owner_team)}` +
-        (row.final_margin == null
-          ? '.'
-          : row.final_margin > 0
-            ? `, who won by ${b(gap as string)}.`
-            : row.final_margin < 0
-              ? `, who lost by ${b(gap as string)}.`
-              : ', in a tie.');
+export function archetypeFor(row: TrackedPlayer): Archetype {
+  const flag = row.outcome_flag;
+  const deficit = deficitOf(row);
+  const margin = marginOf(row);
+  const points = Number(row.player_points) || 0;
+  const primetime = PRIMETIME.includes(row.slot);
+
+  // 1. A comeback finished under the lights.
+  if (flag === 'GAME_WINNER' && primetime && deficit > 0 && margin > 0) return 'PRIMETIME_COMEBACK';
+  // 2. A comeback that came down to a field goal.
+  if (flag === 'GAME_WINNER' && margin <= 3) return 'RAZOR_THIN_COMEBACK';
+  // 3. A comeback that overshot the deficit by half again or more.
+  if (flag === 'GAME_WINNER' && deficit > 0 && points >= deficit * 1.5) return 'SINGLE_HANDED_OVERHAUL';
+  // 4. Padding that turned a win into a demolition.
+  if (flag === 'GARBAGE_TIME_BLOWOUT' && margin >= 25) return 'HEAVYWEIGHT_BLOWOUT';
+  // 5. A huge number in a loss.
+  if (flag === 'VALIANT_LOSS' && points >= 35) return 'WASTED_ERUPTION';
+  // 6. A loss by a field goal or less.
+  if (flag === 'VALIANT_LOSS' && margin <= 3) return 'HEARTBREAK_LOSS';
+  // 7. Padding that kept a win comfortable rather than embarrassing.
+  if (flag === 'GARBAGE_TIME_BLOWOUT' && margin >= 5 && margin < 25) return 'NECESSARY_INSURANCE';
+  return 'GENERAL_SWING';
+}
+
+interface Phrasing {
+  player: string;
+  team: string;
+  opponent: string;
+  points: string;
+  deficit: string;
+  margin: string;
+}
+
+type Template = (p: Phrasing) => string;
+
+/* Two phrasings per archetype. Strictly no em dashes: `assertOutcomeLanguage`
+   throws on one and scripts/build-blog.mjs rejects the whole file, so clauses
+   are broken with colons, commas and periods, which is what that check's own
+   failure message prescribes. */
+const TEMPLATES: Record<Archetype, [Template, Template]> = {
+  PRIMETIME_COMEBACK: [
+    (p) => `${p.player} slammed the door on ${p.opponent} in prime time, dropping ${p.points} to erase a ` +
+      `${p.deficit} deficit and steal a ${p.margin} point win for ${p.team}.`,
+    (p) => `Trailing by ${p.deficit} in the final window, ${p.team} rode a ${p.points} masterpiece from ` +
+      `${p.player} to snatch a ${p.margin} victory.`,
+  ],
+  RAZOR_THIN_COMEBACK: [
+    (p) => `${p.player} delivered a heart-stopping finish for ${p.team}, putting up ${p.points} to overcome ` +
+      `a ${p.deficit} deficit by a razor-thin ${p.margin}.`,
+    (p) => `In a wire-to-wire thriller, ${p.player} provided the decisive ${p.points} needed for ${p.team} ` +
+      `to escape with a ${p.margin} win over ${p.opponent}.`,
+  ],
+  SINGLE_HANDED_OVERHAUL: [
+    (p) => `${p.player} did not just cover the ${p.deficit} deficit for ${p.team}: their ${p.points} ` +
+      `explosion blew the matchup wide open for a ${p.margin} victory.`,
+    (p) => `${p.team} needed ${p.deficit} points to survive; ${p.player} dropped ${p.points}, turning a ` +
+      `close chase into a ${p.margin} rout.`,
+  ],
+  HEAVYWEIGHT_BLOWOUT: [
+    (p) => `Pouring salt in the wound, ${p.player} tacked on ${p.points} for ${p.team}, extending an already ` +
+      `comfortable lead into a ${p.margin} demolition of ${p.opponent}.`,
+    (p) => `${p.team} already had it wrapped up, but ${p.player} padded the score with ${p.points} to cement ` +
+      `a massive ${p.margin} blowout.`,
+  ],
+  WASTED_ERUPTION: [
+    (p) => `${p.player} erupted for ${p.points} for ${p.team}, but a lack of roster support led to a brutal ` +
+      `${p.margin} defeat.`,
+    (p) => `A career-day performance wasted: ${p.player} dropped ${p.points}, but ${p.team} still came up ` +
+      `${p.margin} short.`,
+  ],
+  HEARTBREAK_LOSS: [
+    (p) => `${p.player} rallied ${p.team} with ${p.points}, but they ran out of time, falling short by just ` +
+      `${p.margin}.`,
+    (p) => `Despite a valiant ${p.points} effort from ${p.player}, ${p.team} ended up on the wrong side of a ` +
+      `${p.margin} heartbreaker.`,
+  ],
+  NECESSARY_INSURANCE: [
+    (p) => `${p.player} provided the knockout blow for ${p.team}, scoring ${p.points} to lock down a safe ` +
+      `${p.margin} win.`,
+    (p) => `Securing the perimeter, ${p.player} added ${p.points} to ensure ${p.team} kept ${p.opponent} at ` +
+      `bay by ${p.margin}.`,
+  ],
+  GENERAL_SWING: [
+    (p) => `${p.player} notched ${p.points} for ${p.team}, shifting the final tally to a ${p.margin} finish.`,
+    (p) => `A key contribution from ${p.player} (${p.points}) helped shape ${p.team}'s ${p.margin} outcome.`,
+  ],
+};
+
+/**
+ * Which of the two phrasings this row gets: `(player id + week) % 2`.
+ *
+ * Deterministic, which the whole pipeline requires: a reader who reloads must
+ * get the same article. Keying on the player rather than his position in the
+ * list means the choice does not shuffle when a different performance is
+ * added above him, and adding the week stops the same player reading
+ * identically every single week of the season.
+ *
+ * `player_id` is an ESPN numeric id in practice, but `article-math.ts` falls
+ * back to the player's NAME when a payload carries no id, so a non-numeric id
+ * is hashed rather than dropped. Coercing it to 0 would hand every unnamed
+ * row variant A.
+ */
+export function templateVariant(row: TrackedPlayer, week: number): 0 | 1 {
+  const raw = String(row.player_id == null ? '' : row.player_id);
+  const digits = raw.replace(/\D/g, '');
+  let key: number;
+  if (digits) {
+    key = Number(digits.slice(-9));
+  } else {
+    key = 0;
+    for (let i = 0; i < raw.length; i++) key = (key * 31 + raw.charCodeAt(i)) % 1000000007;
   }
+  return (((key + (Number(week) || 0)) % 2) + 2) % 2 === 0 ? 0 : 1;
+}
+
+/**
+ * One row, framed by its archetype.
+ *
+ * Every entity is emboldened: the player, both fantasy teams, the points (with
+ * "pts"), and the deficit and margin as two-decimal figures. `lbMarkdown()` in
+ * index.html renders `**x**` as <strong>, and its pattern is
+ * `\*\*([^*]+)\*\*`, so a value containing an asterisk simply would not
+ * embolden rather than corrupting the line.
+ *
+ * Exported because it IS the framing contract: `OUTCOME_FRAMING_RULE` tells a
+ * model what compliant copy reads like, and this is the executable version of
+ * the same thing.
+ */
+export function sentenceFor(row: TrackedPlayer, week = 0): string {
+  const archetype = archetypeFor(row);
+  const phrasing: Phrasing = {
+    player: b(row.player_name),
+    team: b(row.owner_team),
+    opponent: b(row.opponent_team || 'their opponent'),
+    points: b(num2(Number(row.player_points) || 0) + ' pts'),
+    deficit: b(num2(deficitOf(row))),
+    margin: b(num2(marginOf(row))),
+  };
+  return TEMPLATES[archetype][templateVariant(row, week)](phrasing);
 }
 
 /* ------------------------------------------------------------------ *
@@ -388,20 +549,31 @@ const MAX_BOARD_ROWS = 4;
  *   DUD_COST_WIN  a matchup in hand was thrown away by one
  *   VALIANT_LOSS  a big score that changed nothing
  *
- * GARBAGE_TIME_BLOWOUT is deliberately NOT here. "Unneeded stat-padding" in a
- * game decided before the player kicked off says nothing happened, at length,
- * and a week with several of them filled the board with repetitions of that.
- * The flag is still assigned, still stored on `tracked_players`, and still
- * shown on the player's chip and in his sheet: it is dropped from the prose,
- * not from the math.
+ * GARBAGE_TIME_BLOWOUT comes LAST, so it fills a remaining slot rather than
+ * competing for one. The old single blowout sentence was cut from the board
+ * for being filler: one bland line repeated as many times as the week had
+ * blowouts. The archetype matrix gives that flag two distinct readings
+ * (HEAVYWEIGHT_BLOWOUT and NECESSARY_INSURANCE) chosen on the finishing
+ * margin, so it is worth a bullet again when nothing more decisive is
+ * competing for it, and the four-row cap still stops a week of padding from
+ * taking the board over.
  *
- * Unflagged rows are dropped for the same reason. "Finished on 22 pts, who won
- * by 30" is a line about a player who did not decide anything.
+ * Unflagged rows are dropped outright. "Notched 22 pts, shifting the final
+ * tally to a 30 point finish" is a line about a player who did not decide
+ * anything.
  *
  * Within a flag the math's own news ranking is preserved, so the board is
  * deterministic for a given league, season and week.
  */
-const BOARD_PRIORITY: OutcomeFlag[] = ['GAME_WINNER', 'DUD_COST_WIN', 'VALIANT_LOSS'];
+const DECISIVE_PRIORITY: OutcomeFlag[] = ['GAME_WINNER', 'DUD_COST_WIN', 'VALIANT_LOSS'];
+const BOARD_PRIORITY: OutcomeFlag[] = [...DECISIVE_PRIORITY, 'GARBAGE_TIME_BLOWOUT'];
+
+/** The rows that actually turned a matchup. What the headline counts, and
+ *  what the callout is allowed to choose from. */
+export function decisiveRows(rows: TrackedPlayer[]): TrackedPlayer[] {
+  return rows.filter((row) => row.outcome_flag != null &&
+    DECISIVE_PRIORITY.includes(row.outcome_flag));
+}
 
 export function boardRows(rows: TrackedPlayer[], limit = MAX_BOARD_ROWS): TrackedPlayer[] {
   const out: TrackedPlayer[] = [];
@@ -464,17 +636,20 @@ export function impactSummary(rows: TrackedPlayer[], articleType: ArticleType): 
 
      GARBAGE_TIME_BLOWOUT is not a candidate: padding in a game decided before
      the player kicked off is the least meaningful thing the math can flag, and
-     it is the one thing a prominent callout should never be.
+     it is the one thing a prominent callout should never be. The board does
+     print it, last and only if a slot is spare.
 
      Within a flag the math's own ranking breaks the tie, so the choice stays
      deterministic for a given league, season and week.
 
-     It is the SAME order the board uses, BOARD_PRIORITY, which is what keeps
-     the two consistent: a week whose only flag is a blowout gets no callout
-     and no bullets, and a headline that says no swings is not contradicted by
-     a callout announcing one. */
+     DECISIVE_PRIORITY, not BOARD_PRIORITY: the board may carry a blowout
+     bullet for colour once nothing decisive is left to print, but the callout
+     is the single most prominent line on the card and must never announce
+     that a game already decided stayed decided. A week whose only flag is a
+     blowout therefore gets no callout, and the headline that says no swings
+     is not contradicted by one. */
   let row: TrackedPlayer | undefined;
-  for (const flag of BOARD_PRIORITY) {
+  for (const flag of DECISIVE_PRIORITY) {
     row = rows.find((candidate) => candidate.outcome_flag === flag);
     if (row) break;
   }
@@ -501,9 +676,13 @@ export const defaultComposer: Composer = (request) => {
   const preview = request.article_type === 'friday_tnf_preview';
   const heading = `${TITLE_BY_TYPE[request.article_type]}: Week ${request.week}`;
   const rows = request.tracked_players;
-  /* What the board will actually carry. The headline counts these rather than
-     every flagged row, or it promises eight results and the body prints four. */
-  const decisive = boardRows(rows);
+  const board = boardRows(rows);
+  /* The headline counts the results that TURNED something, which is what
+     "Results That Turned" claims. That is the board minus any blowout bullet
+     it printed to fill a spare slot: a blowout is a thing that happened, not
+     a thing that turned, and a week with nothing decisive still reads "No
+     Swings To Report" even when the board shows one. */
+  const decisive = decisiveRows(board);
 
   const title = preview
     ? `${heading}, ${rows.length} Lineups On The Clock`
@@ -527,7 +706,7 @@ export const defaultComposer: Composer = (request) => {
   } else {
     body.push('## What the math says', '');
     /* The top few that actually decided something, not every starter. */
-    for (const row of boardRows(rows)) body.push(`- ${sentenceFor(row)}`);
+    for (const row of board) body.push(`- ${sentenceFor(row, request.week)}`);
     const unresolved = rows.filter((row) => row.unresolved_reason);
     if (unresolved.length) {
       body.push(

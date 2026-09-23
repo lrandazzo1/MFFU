@@ -122,22 +122,77 @@ A matchup that was won outranks one thrown away, which outranks a big score
 that changed nothing. Within a flag the math's own news ranking breaks the tie,
 so both stay deterministic for a given league, season and week.
 
-Two things are **not** on the board:
+`GARBAGE_TIME_BLOWOUT` comes **last**, so it fills a remaining slot rather than
+competing for one. The old single blowout sentence was cut from the board for
+being filler: one bland line repeated as many times as the week had blowouts.
+The matrix gives that flag two distinct readings chosen on the finishing margin
+(`HEAVYWEIGHT_BLOWOUT`, `NECESSARY_INSURANCE`), so it earns a bullet again when
+nothing more decisive is competing for it, and the four-row cap still stops a
+week of padding from taking the board over.
 
-- **`GARBAGE_TIME_BLOWOUT`.** "Unneeded stat-padding" in a game decided before
-  the player kicked off says nothing happened, at length, and a week with
-  several of them filled the board with repetitions of that. The flag is still
-  assigned, still stored on `tracked_players`, and still shown on the player's
-  chip and in his sheet: it is dropped from the prose, not from the math.
-- **Unflagged rows.** "Finished on 22 pts, who won by 30" is a line about a
-  player who did not decide anything.
+**Unflagged rows are dropped outright.** "Notched 22 pts, shifting the final
+tally to a 30 point finish" is a line about a player who did not decide
+anything.
 
-Sharing one order is what keeps the three parts consistent: a week whose only
-flag is a blowout gets no callout and no bullets, so a headline reading "No
-Swings To Report" is never contradicted by a callout announcing one.
+The **callout** draws from `DECISIVE_PRIORITY` only, never the blowout. It is
+the single most prominent line on the card and must not announce that a game
+already decided stayed decided. A week whose only flag is a blowout therefore
+gets no callout.
 
-The headline counts what the board carries, not every flagged row, or it
-promises eight results and the body prints four.
+The **headline** counts `decisiveRows(board)`, the results that actually
+turned. That is the board minus any blowout bullet filling a spare slot: a
+blowout is a thing that happened, not a thing that turned, so such a week still
+reads "No Swings To Report" even when the board shows one line.
+
+### The archetype matrix
+
+A bullet used to be one sentence per flag: four shapes for the whole league,
+every week, so a board of four game-winners printed the same sentence four
+times with the nouns swapped. `archetypeFor()` splits each flag by the numbers
+that actually distinguish one performance from another, and every case has two
+phrasings.
+
+Triggers are evaluated **top to bottom, first match wins**, so the order is the
+specification:
+
+| # | Archetype | Trigger |
+|---|---|---|
+| 1 | `PRIMETIME_COMEBACK` | `GAME_WINNER` + slot is `SNF`/`MNF` + trailed + won |
+| 2 | `RAZOR_THIN_COMEBACK` | `GAME_WINNER` + final margin ≤ 3 |
+| 3 | `SINGLE_HANDED_OVERHAUL` | `GAME_WINNER` + points ≥ deficit × 1.5 |
+| 4 | `HEAVYWEIGHT_BLOWOUT` | `GARBAGE_TIME_BLOWOUT` + final margin ≥ 25 |
+| 5 | `WASTED_ERUPTION` | `VALIANT_LOSS` + points ≥ 35 |
+| 6 | `HEARTBREAK_LOSS` | `VALIANT_LOSS` + final margin ≤ 3 |
+| 7 | `NECESSARY_INSURANCE` | `GARBAGE_TIME_BLOWOUT` + 5 ≤ final margin < 25 |
+| 8 | `GENERAL_SWING` | everything else |
+
+Margins and deficits are compared as **absolute** values: `entering_margin` is
+negative when trailing and `final_margin` is negative in a loss, so a deficit
+of 42.5 is `entering_margin: -42.5` and a 2 point defeat is `final_margin: -2`.
+
+**Archetype 1 requires the `GAME_WINNER` flag**, not merely "trailed, then won".
+Its copy credits the player with erasing the deficit, and only the flag
+establishes that *his* points covered it. A team can come back on somebody
+else's points, and crediting whoever happened to play last is the exact
+overclaim the outcome contract exists to prevent. Archetypes 2 and 3 carry the
+same requirement for the same reason.
+
+#### Template rotation
+
+`templateVariant()` picks A or B with `(player id + week) % 2`. Deterministic,
+which the pipeline requires: a reader who reloads must get the same article.
+Keying on the player rather than his position in the list means the choice does
+not shuffle when a performance is added above him, and adding the week stops
+the same player reading identically every week. A non-numeric `player_id` is
+hashed rather than coerced to 0 (`article-math.ts` falls back to the player's
+name when a payload carries no id), or every such row would take variant A.
+
+#### No em dashes, anywhere
+
+`assertOutcomeLanguage` throws on an em dash and `scripts/build-blog.mjs`
+rejects the whole file, so no template may contain one. Archetype 3's clause
+break is a **colon**, which is what the blog build's own failure message
+prescribes.
 
 ### Bold in the bullets
 

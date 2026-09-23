@@ -128,18 +128,50 @@ export declare function buildUserPrompt(request: Omit<ComposeRequest, 'system_pr
  * copy nobody reviewed, and a thrown error means the row is never written.
  */
 export declare function assertOutcomeLanguage(draft: ArticleDraft, tracked: TrackedPlayer[]): void;
+export type Archetype = 'PRIMETIME_COMEBACK' | 'RAZOR_THIN_COMEBACK' | 'SINGLE_HANDED_OVERHAUL' | 'HEAVYWEIGHT_BLOWOUT' | 'WASTED_ERUPTION' | 'HEARTBREAK_LOSS' | 'NECESSARY_INSURANCE' | 'GENERAL_SWING';
 /**
- * One row, framed as its flag allows. Exported because it IS the framing
- * contract: `OUTCOME_FRAMING_RULE` tells a model what compliant copy reads
- * like, and this is the executable version of the same thing.
+ * The first archetype whose trigger the row satisfies.
  *
- * The GARBAGE_TIME_BLOWOUT branch is no longer reachable from
- * `defaultComposer` (the board drops blowouts as filler) and is kept
- * deliberately: it is the reference wording for that flag, it is what a
- * model-backed composer is shown, and deleting it would leave the only
- * statement of how a blowout must read living in a test.
+ * Note that PRIMETIME_COMEBACK requires the GAME_WINNER flag and not merely
+ * "trailed, then won". Its copy credits the player with erasing the deficit,
+ * and only the flag establishes that his own points covered it. Without that
+ * check a team could come back on somebody else's points and this would hand
+ * the credit to whoever happened to play last, which is the exact overclaim
+ * the outcome contract exists to prevent.
  */
-export declare function sentenceFor(row: TrackedPlayer): string;
+export declare function archetypeFor(row: TrackedPlayer): Archetype;
+/**
+ * Which of the two phrasings this row gets: `(player id + week) % 2`.
+ *
+ * Deterministic, which the whole pipeline requires: a reader who reloads must
+ * get the same article. Keying on the player rather than his position in the
+ * list means the choice does not shuffle when a different performance is
+ * added above him, and adding the week stops the same player reading
+ * identically every single week of the season.
+ *
+ * `player_id` is an ESPN numeric id in practice, but `article-math.ts` falls
+ * back to the player's NAME when a payload carries no id, so a non-numeric id
+ * is hashed rather than dropped. Coercing it to 0 would hand every unnamed
+ * row variant A.
+ */
+export declare function templateVariant(row: TrackedPlayer, week: number): 0 | 1;
+/**
+ * One row, framed by its archetype.
+ *
+ * Every entity is emboldened: the player, both fantasy teams, the points (with
+ * "pts"), and the deficit and margin as two-decimal figures. `lbMarkdown()` in
+ * index.html renders `**x**` as <strong>, and its pattern is
+ * `\*\*([^*]+)\*\*`, so a value containing an asterisk simply would not
+ * embolden rather than corrupting the line.
+ *
+ * Exported because it IS the framing contract: `OUTCOME_FRAMING_RULE` tells a
+ * model what compliant copy reads like, and this is the executable version of
+ * the same thing.
+ */
+export declare function sentenceFor(row: TrackedPlayer, week?: number): string;
+/** The rows that actually turned a matchup. What the headline counts, and
+ *  what the callout is allowed to choose from. */
+export declare function decisiveRows(rows: TrackedPlayer[]): TrackedPlayer[];
 export declare function boardRows(rows: TrackedPlayer[], limit?: number): TrackedPlayer[];
 export declare const CATEGORY_BY_TYPE: Record<ArticleType, string>;
 export declare const DEFAULT_AUTHOR = "FSN News Desk";
