@@ -130,26 +130,50 @@ const origin = 'http://web-league.test';
    plays the first-run intro on every load; the first live payload then opens
    the team-profile chooser. Both are modal. Answer them the way a reader would
    before touching anything underneath. */
-async function dismissOverlays(page) {
+/* The first-run walkthrough is opened 450ms AFTER the boot curtain lifts, and
+   the curtain lifts whenever boot finishes — which on a loaded machine serving
+   a 1.8MB index.html is well after any fixed wait this file could take before
+   calling here. So "nothing is open on this poll" does not mean "nothing is
+   coming": sampling once let the intro arrive afterwards and put its backdrop
+   over the tab bar, and the next click in the caller died on a 30s timeout
+   pointing at an overlay instead of at whatever it was testing.
+
+   Poll instead, and only return once several consecutive polls have come back
+   clean, so a deferred overlay is caught rather than raced. An overlay still up
+   at the deadline is reported here, where the cause is legible. */
+const OVERLAY_QUIET_POLLS = 6;
+const OVERLAY_POLL_MS = 250;
+async function dismissOverlays(page, options) {
+  const opts = options || {};
+  const deadline = Date.now() + (opts.timeoutMs || 10000);
   const isOpen = (id) => page.evaluate((el) => {
     const node = document.getElementById(el);
     return !!(node && node.dataset.open === 'true');
   }, id);
-  for (let pass = 0; pass < 4; pass += 1) {
+  let quiet = 0;
+  let last = '';
+  while (Date.now() < deadline) {
     // The profile chooser sits on top of the intro, so it answers first —
     // clicking through it is what a reader cannot do either.
     const pickerOpen = await isOpen('profilePicker');
     if (pickerOpen) {
+      last = 'profilePicker';
       await page.click('#profileGuest');
-      await page.waitForTimeout(250);
+      await page.waitForTimeout(OVERLAY_POLL_MS);
     }
     const ftuOpen = await isOpen('ftuModal');
     if (ftuOpen) {
+      last = 'ftuModal';
       await page.click('#ftuSkip');
-      await page.waitForTimeout(250);
+      await page.waitForTimeout(OVERLAY_POLL_MS);
     }
-    if (!ftuOpen && !pickerOpen) break;
+    if (pickerOpen || ftuOpen) { quiet = 0; continue; }
+    quiet += 1;
+    if (quiet >= OVERLAY_QUIET_POLLS) return;
+    await page.waitForTimeout(OVERLAY_POLL_MS);
   }
+  throw new Error('a boot overlay would not stay dismissed' + (last ? ' (last seen: #' + last + ')' : '') +
+    '; every click after this point would have timed out on its backdrop');
 }
 
 /* Drive the REAL control the reader touches. The app upgrades every <select>
@@ -177,7 +201,7 @@ const browser = await chromium.launch({ executablePath });
 async function openPage(options) {
   const opts = options || {};
   const page = await browser.newPage({ serviceWorkers: 'block' });
-  const state = { espnReads: [], leagueReads: [], errors: [] };
+  const state = { espnReads: [], leagueReads: [], errors: [], navigating: false };
   await page.addInitScript(() => {
     try { localStorage.setItem('hasCompletedOnboarding', 'true'); } catch (err) { /* about to be blocked */ }
     Storage.prototype.setItem = function () { throw new DOMException('blocked', 'QuotaExceededError'); };
@@ -191,6 +215,14 @@ async function openPage(options) {
     // the behaviour other checks already assert, not a failure here.
     if (/^\[FSNStore\]/.test(text)) return;
     if (/LEAGUE_RECORD_NOT_PERSISTED/.test(text)) return;
+    /* A read cancelled because THIS check navigated the page out from under it.
+       Async paints keep firing after a repaint — FSNTransactionWire.refresh()
+       calls paint() when its request settles, which re-enters renderNews and
+       starts the League Blog read — so a reload can land mid-flight and the
+       browser rejects the pending fetch with "Failed to fetch". That is the
+       document being torn down, not a fault in the code under test, and it is
+       only ignored inside a navigation this file asked for. */
+    if (state.navigating && /Failed to fetch|NetworkError|The operation was aborted/i.test(text)) return;
     if (opts.expectNoLeague && /NO_ACTIVE_LEAGUE/.test(text)) { state.errors.noLeague = true; return; }
     if (/\[(FSN|NewsDesk|Standings|Matchups|League Storage|Season|FSNScope)/.test(text)) state.errors.push(text);
   });
@@ -223,10 +255,27 @@ async function openPage(options) {
   return { page, state };
 }
 
+/* Every navigation this file performs goes through one of these, so the console
+   filter in openPage() knows a document teardown is in progress and an async
+   read cancelled by it is not counted as a fault. The flag is held a beat past
+   `load` because the cancellation message arrives while the old document is
+   being discarded. */
+async function navigateTo(target, url, options) {
+  target.state.navigating = true;
+  try { return await target.page.goto(url, options); }
+  finally { await target.page.waitForTimeout(200); target.state.navigating = false; }
+}
+async function reloadPage(target, options) {
+  target.state.navigating = true;
+  try { return await target.page.reload(options); }
+  finally { await target.page.waitForTimeout(200); target.state.navigating = false; }
+}
+
 try {
   /* ---- a league opened from an invite link survives a hard refresh ---- */
-  const { page, state } = await openPage();
-  await page.goto(origin + '/?id=' + LEAGUE + '&token=' + TOKEN, { waitUntil: 'load' });
+  const main = await openPage();
+  const { page, state } = main;
+  await navigateTo(main, origin + '/?id=' + LEAGUE + '&token=' + TOKEN, { waitUntil: 'load' });
   await page.waitForFunction(() => /Live ESPN Data|LIVE ESPN DATA/i.test(document.getElementById('connStatus').textContent || ''), null, { timeout: 30000 });
   await page.waitForTimeout(700);
   await dismissOverlays(page);
@@ -238,7 +287,7 @@ try {
   assert.ok(!/token=/.test(afterConnect), 'no token parameter of any kind may survive');
   console.log('ok    the URL carries league_id + platform after connecting, and never the share token');
 
-  await page.reload({ waitUntil: 'load' });
+  await reloadPage(main, { waitUntil: 'load' });
   await page.waitForFunction(() => /LIVE ESPN DATA/i.test(document.getElementById('connStatus').textContent || ''), null, { timeout: 30000 });
   await page.waitForTimeout(700);
   await dismissOverlays(page);
@@ -270,7 +319,7 @@ try {
   console.log('ok    switching seasons keeps league_id in the URL and in every read');
 
   // …and the restored URL still survives a refresh taken on the past season.
-  await page.reload({ waitUntil: 'load' });
+  await reloadPage(main, { waitUntil: 'load' });
   await page.waitForFunction(() => document.getElementById('leagueIdInput').value.length > 0, null, { timeout: 30000 });
   assert.equal(await page.evaluate(() => document.getElementById('leagueIdInput').value), LEAGUE);
   console.log('ok    a refresh taken while viewing a past season still restores the league');
@@ -279,7 +328,7 @@ try {
 
   /* ---- no league at all: select or connect, never sample data ---- */
   const cold = await openPage();
-  await cold.page.goto(origin + '/', { waitUntil: 'load' });
+  await navigateTo(cold, origin + '/', { waitUntil: 'load' });
   await cold.page.waitForFunction(() => typeof window.__fsnRender === 'function');
   await cold.page.waitForTimeout(800);
   await dismissOverlays(cold.page);
@@ -334,7 +383,7 @@ try {
 
   /* ---- the server refusing a read is shown, never papered over ---- */
   const refused = await openPage({ refuseLeague: true, expectNoLeague: true });
-  await refused.page.goto(origin + '/?league_id=' + LEAGUE + '&platform=espn', { waitUntil: 'load' });
+  await navigateTo(refused, origin + '/?league_id=' + LEAGUE + '&platform=espn', { waitUntil: 'load' });
   await refused.page.waitForFunction(() => /No league is selected/i.test(
     document.getElementById('cloudSyncStatusText').textContent || ''), null, { timeout: 30000 });
   const refusedState = await refused.page.evaluate(() => ({
