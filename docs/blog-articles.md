@@ -65,6 +65,18 @@ flagged `GAME_WINNER`. Em dashes are rejected too, matching the copy contract in
 A violation throws. Nothing is rewritten in place (that would publish copy
 nobody reviewed) and nothing is written to the table.
 
+`impactSummary()` derives tier 2 from the flag and nothing else, with fixed
+grammar per flag, so the callout can never say more than the math supports:
+only `GAME_WINNER` gets "just enough", and a big score in a loss is "not
+enough" rather than anything warmer. The summary is passed through
+`assertOutcomeLanguage` with the rest of the copy — a callout is the most
+prominent line on a card after the headline, and the last place an unbacked
+hero claim should be able to slip through.
+
+Adding the three tiers left `title`, `excerpt` and `content_markdown` byte for
+byte what they were: a published article's copy does not change because a new
+column was added beside it.
+
 `defaultComposer` is a deterministic, model-free writer used when no composer is
 injected. It keeps the pipeline runnable without model credentials and is the
 reference for what compliant framing reads like: a `VALIANT_LOSS` is "a monster
@@ -282,11 +294,13 @@ required and filters every query, so no parameter combination returns a mixed
 set; `season` and `week` narrow further, and with neither the league's most
 recent articles come back newest first.
 
-The response carries only published columns — `slug`, `title`, `excerpt`,
-`content_markdown`, `article_type`, `tracked_players`, `season`, `week`,
-`published_at`. The table's `id`, `league_id`, `created_at` and `updated_at`
-are never serialized, and the select is an explicit allowlist rather than
-`select('*')` so a column added later is never published by accident.
+The response carries only published columns — the three tiers (`headline`,
+`match_impact_summary`, `content`) and the meta line (`category`, `author`),
+plus `slug`, `article_type`, `tracked_players`, `season`, `week`,
+`published_at` and the legacy `title` / `excerpt` / `content_markdown`. The
+table's `id`, `league_id`, `created_at` and `updated_at` are never serialized,
+and the select is an explicit allowlist rather than `select('*')` so a column
+added later is never published by accident.
 
 A present-but-unparseable filter (`week=banana`) is a 400, never a silently
 dropped filter: returning the whole league would answer a question nobody
@@ -340,6 +354,122 @@ fault and is logged as one.
 The cache key is `league:season:week` and a payload cached under a different
 scope is refused rather than painted, so one week's stories can never appear
 under another's header.
+
+## The three-tier article
+
+A card reads in three tiers, and the schema, both endpoints and the renderer
+all describe them in the same order:
+
+| Tier | Column | What it is |
+|---|---|---|
+| 1 | `headline` | The prominent title at the top of the card. |
+| 2 | `match_impact_summary` | One line: what a performance meant to a matchup. Painted in a highlighted callout directly under the headline. |
+| 3 | `content` | The markdown narrative, below the callout. |
+| meta | `category`, `author` | The editorial shelf ("Matchup Recap", "Waiver Wire") and the byline ("FFU News Desk"). |
+
+### Backward compatibility, in both directions
+
+`title` and `content_markdown` are the original columns and are **kept**. They
+are NOT NULL on the table, they are what the static blog build reads, and
+dropping them to tidy the payload would break a reader this pipeline cannot
+see. So every row carries both namings, and every reader resolves:
+
+```
+headline = article.headline || article.title
+content  = article.content  || article.content_markdown
+```
+
+That fallback is applied in four places on purpose, because each one sees a
+case the others do not:
+
+| Where | The case it covers |
+|---|---|
+| `mffu_sync_blog_article_tiers` (trigger) | A writer that knows only one generation of names. Runs before the NOT NULL checks, so an insert carrying only `headline`/`content` succeeds. |
+| `api/blog/articles.js` | A row written before the columns existed. |
+| `api/blog/articles-publish.js` | A caller written before the columns existed. |
+| `FSNLeagueArticles.normalize()` | A payload cached under the previous shape and read back out of `localStorage` after an app update, or an older deployment's endpoint. |
+
+A row with no `match_impact_summary` paints **no callout at all** rather than
+an empty band, and a row with no `category` falls back to the shelf its
+`article_type` belongs to. `CATEGORY_BY_TYPE` is spelled out identically in
+`lib/article-generator.ts`, `api/blog/articles.js` and block 1 of
+`index.html`; the three must agree.
+
+### A database that has not been migrated yet
+
+`vercel.json` sets an empty `buildCommand`, so a deploy can reach production
+before `supabase/blog_articles.sql` has been run against its database. All
+three touch points (the read route, the publish route and the pipeline's own
+`store()`) detect PostgREST's `42703` "column does not exist", log a warning
+naming the file to run, and retry against the legacy columns. An unmigrated
+database therefore serves and stores the same stories in the legacy shape
+instead of 502-ing over articles that are sitting right there.
+
+`public.articles` is a `security_invoker` view over `blog_articles` that
+resolves the fallbacks in SQL, for anything that would rather select `headline`
+than `coalesce(headline, title)`. The table keeps its name: a rename would
+break every route, index name and compiled module for cosmetics.
+
+---
+
+# Publishing
+
+```
+POST /api/blog/articles/publish
+Authorization: Bearer $CRON_SECRET
+Content-Type: application/json
+
+{
+  "league_id": "123456",
+  "season": 2026,
+  "week": 3,
+  "headline": "Ridgeback FC Survive The Late Window",
+  "match_impact_summary": "Monday Back scored 20 points, just enough for Ridgeback FC.",
+  "content": "# The late window\n\n...",
+  "category": "Matchup Recap",
+  "author": "FFU News Desk"
+}
+```
+
+| Piece | Role |
+|---|---|
+| `api/blog/articles-publish.js` | The handler. |
+| `vercel.json` rewrite | Maps `/api/blog/articles/publish` onto it, the same way `/api/auth/yahoo/callback` is mapped. |
+| `lib/blog-publish-selftest.js` | Covered by `npm run test:articles`. |
+
+The write boundary onto `blog_articles`, and the counterpart to the public
+read. The table is RLS-protected with no browser policies, so the only two ways
+in are the server-side pipeline (which holds the service-role key directly) and
+this route.
+
+**Auth** is `CRON_SECRET`, as `Authorization: Bearer $CRON_SECRET` or
+`x-cron-secret`, compared in constant time by the same helper the scheduled
+generator uses. With no secret configured the route refuses every caller rather
+than defaulting open, and the check happens **before the body is parsed**, so
+the route cannot be probed for valid inputs. There is deliberately no CORS
+allowance: the read is public because published articles are public, and a
+browser has no business holding a publishing secret.
+
+**Fields.** `league_id`, `season`, `week` and a headline and body are required;
+the headline and body may arrive under either generation of names. Everything
+else is optional. `author` defaults to `FFU News Desk`, `category` to empty
+(the reader then falls back to the article type's shelf), `article_type` to
+`league_dispatch` — the type for a story published outside the
+Monday/Tuesday/Friday schedule, and the one value the check constraint in
+`supabase/blog_articles.sql` was widened to allow. Every field is bounded, and
+a present-but-unusable one is a 400 that never reaches the table.
+
+The markdown body is stored **verbatim**, not trimmed: a trailing newline is
+part of what the generator wrote, and a story read back out of the table should
+be byte for byte the story that was published.
+
+**Idempotency** is an upsert on `slug`, exactly as the pipeline's is. With no
+slug supplied the deterministic
+`<season>-week-<n>-<category-slug>-<league_id>` is used, so re-publishing the
+same story overwrites its own row instead of stacking duplicates and a retry
+after a timeout costs nothing.
+
+---
 
 ## The News Desk section
 

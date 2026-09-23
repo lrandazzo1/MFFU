@@ -45,6 +45,17 @@ export interface GenerateInput {
 export interface BlogArticleRecord {
   league_id: string;
   slug: string;
+
+  /* The three tiers a card reads in order, plus its meta line. Written
+     alongside the legacy `title` / `content_markdown` below, never instead of
+     them: the static blog build and any client older than the three-tier
+     layout read those, and the table declares both NOT NULL. */
+  headline: string;
+  match_impact_summary: string;
+  content: string;
+  category: string;
+  author: string;
+
   title: string;
   excerpt: string;
   content_markdown: string;
@@ -72,6 +83,15 @@ export interface ArticleDraft {
   title: string;
   excerpt: string;
   content_markdown: string;
+  /** Tier 2: the one line callout under the headline. Optional so a composer
+   *  written before the three-tier layout still satisfies the type; the
+   *  pipeline derives one from the math when a composer omits it, and never
+   *  from the composer's prose. */
+  match_impact_summary?: string;
+  /** The editorial shelf. Defaults to the one this article type belongs to. */
+  category?: string;
+  /** The byline. Defaults to the desk. */
+  author?: string;
 }
 
 export type Composer = (request: ComposeRequest) => ArticleDraft | Promise<ArticleDraft>;
@@ -247,7 +267,11 @@ export function assertOutcomeLanguage(draft: ArticleDraft, tracked: TrackedPlaye
   const winners = tracked.filter((row) => row.outcome_flag === 'GAME_WINNER');
   const winnerNames = winners.map((row) => row.player_name).filter(Boolean);
 
-  const prose = `${draft.title}. ${draft.excerpt}. ${draft.content_markdown}`;
+  /* The impact summary is copy like any other and is checked with the rest of
+     it. A callout is the most prominent line on the card after the headline,
+     so it is the last place an unbacked hero claim should be able to slip
+     through. */
+  const prose = `${draft.title}. ${draft.excerpt}. ${draft.match_impact_summary || ''}. ${draft.content_markdown}`;
   if (BANNED_CHARS.test(prose)) {
     throw fail('Blog article copy contains a banned em dash', 422);
   }
@@ -329,6 +353,56 @@ function previewSentence(row: TrackedPlayer): string {
       : ` on ${article(row.projected_points)} ${pts(row.projected_points)} point projection.`);
 }
 
+/* The editorial shelf each article type belongs to. The read route resolves
+   the same mapping for rows written before the column existed, so the two must
+   agree; they are the same three strings in both places. */
+export const CATEGORY_BY_TYPE: Record<ArticleType, string> = {
+  monday_sweat: 'Matchup Recap',
+  tuesday_verdict: 'Matchup Recap',
+  friday_tnf_preview: 'Matchup Preview',
+};
+
+export const DEFAULT_AUTHOR = 'FFU News Desk';
+
+/**
+ * Tier 2: what one performance meant to one matchup, in a single line.
+ *
+ * Derived from the flag and nothing else, exactly like the body sentences. The
+ * grammar is fixed per flag, so the callout can never say more than the math
+ * supports: only GAME_WINNER gets "just enough", and a big score in a loss is
+ * "not enough" rather than anything warmer.
+ */
+export function impactSummary(rows: TrackedPlayer[], articleType: ArticleType): string {
+  if (articleType === 'friday_tnf_preview') {
+    const top = rows
+      .filter((row) => row.projected_points != null)
+      .sort((a, b) => (b.projected_points as number) - (a.projected_points as number))[0];
+    if (!top) return '';
+    return `${top.owner_team} start ${top.player_name} on ${article(top.projected_points as number)} ` +
+      `${pts(top.projected_points as number)} point projection.`;
+  }
+
+  /* The decisive rows lead, in the order the math ranks them. With nothing
+     decisive there is nothing to call out, and an invented one would be the
+     exact overclaim this module exists to prevent. */
+  const row = rows.find((candidate) => candidate.outcome_flag);
+  if (!row) return '';
+
+  const scored = `${row.player_name} scored ${pts(row.player_points)} points`;
+  switch (row.outcome_flag) {
+    case 'GAME_WINNER':
+      return `${scored}, just enough for ${row.owner_team}.`;
+    case 'VALIANT_LOSS':
+      return `${scored}, not enough for ${row.owner_team}.`;
+    case 'GARBAGE_TIME_BLOWOUT':
+      return `${scored}, which did not affect the blowout for ${row.owner_team}.`;
+    case 'DUD_COST_WIN':
+      return `${scored}, well under projection, and ${row.owner_team} lost a game they led.`;
+    default:
+      return '';
+  }
+}
+
 export const defaultComposer: Composer = (request) => {
   const preview = request.article_type === 'friday_tnf_preview';
   const heading = `${TITLE_BY_TYPE[request.article_type]}: Week ${request.week}`;
@@ -369,7 +443,17 @@ export const defaultComposer: Composer = (request) => {
     }
   }
 
-  return { title, excerpt, content_markdown: body.join('\n') + '\n' };
+  return {
+    title,
+    excerpt,
+    content_markdown: body.join('\n') + '\n',
+    /* The existing three fields are byte for byte what they were before the
+       three-tier layout: a published article's copy does not change because a
+       new column was added beside it. */
+    match_impact_summary: impactSummary(rows, request.article_type),
+    category: CATEGORY_BY_TYPE[request.article_type],
+    author: DEFAULT_AUTHOR,
+  };
 };
 
 /* ------------------------------------------------------------------ *
@@ -417,12 +501,44 @@ async function defaultFetchBoxScores(input: GenerateInput & { req?: any }): Prom
   return body;
 }
 
+/* The columns added by the three-tier block of `supabase/blog_articles.sql`.
+   A database that has not run it yet rejects the write with PostgREST's
+   "column does not exist"; the retry below drops exactly these and publishes
+   the story in the legacy columns rather than losing a morning's run to a
+   pending migration. */
+const TIER_COLUMNS = ['headline', 'match_impact_summary', 'content', 'category', 'author'];
+const UNDEFINED_COLUMN = '42703';
+
+function isMissingColumn(err: any): boolean {
+  if (!err) return false;
+  if (String(err.code || '') === UNDEFINED_COLUMN) return true;
+  return /column .* does not exist/i.test(String(err.message || ''));
+}
+
+function withoutTierColumns(record: BlogArticleRecord): Record<string, unknown> {
+  const legacy: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(record)) {
+    if (!TIER_COLUMNS.includes(key)) legacy[key] = value;
+  }
+  return legacy;
+}
+
 async function store(db: any, record: BlogArticleRecord): Promise<BlogArticleRecord> {
-  const result = await db
+  const write = (row: any) => db
     .from('blog_articles')
-    .upsert(record, { onConflict: 'slug' })
+    .upsert(row, { onConflict: 'slug' })
     .select()
     .single();
+
+  let result = await write(record);
+  if (result.error && isMissingColumn(result.error)) {
+    console.warn(
+      '[ArticleGenerator] the three-tier columns are not on this database yet; storing "' +
+        record.slug + '" in the legacy columns. Run supabase/blog_articles.sql.',
+      result.error,
+    );
+    result = await write(withoutTierColumns(record));
+  }
   if (result.error) throw result.error;
   if (!result.data) throw fail('Blog article write returned no row', 502);
   return result.data as BlogArticleRecord;
@@ -494,12 +610,26 @@ export async function generateAndPublishBlogArticle(
   assertOutcomeLanguage(draft, tracked);
 
   const now = dependencies.now ? dependencies.now() : Date.now();
+  const headline = String(draft.title).trim();
+  const content = String(draft.content_markdown);
   const record: BlogArticleRecord = {
     league_id: scope.league_id,
     slug: articleSlug(scope),
-    title: String(draft.title).trim(),
+
+    /* Tier 1, 2, 3 and the meta line. A composer that supplies no summary,
+       category or author gets the deterministic ones derived from the flags
+       and the article type, so every row carries a full three tiers whichever
+       writer produced it. */
+    headline,
+    match_impact_summary: String(draft.match_impact_summary || '').trim() || impactSummary(tracked, articleType),
+    content,
+    category: String(draft.category || '').trim() || CATEGORY_BY_TYPE[articleType],
+    author: String(draft.author || '').trim() || DEFAULT_AUTHOR,
+
+    /* The legacy columns, in lockstep. */
+    title: headline,
     excerpt: String(draft.excerpt || '').trim(),
-    content_markdown: String(draft.content_markdown),
+    content_markdown: content,
     article_type: articleType,
     season: scope.season,
     week: scope.week,

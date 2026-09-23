@@ -15,9 +15,15 @@
 
      EMPTY      a league with nothing published hides the section outright, so
                 the desk renders exactly as it did before this feature
-     RENDER     a published article paints its title, its markdown (headings,
-                bullets, bold) and its tracked-player chips
-     SAFETY     markup inside content_markdown is escaped, never injected
+     RENDER     a published article paints its headline, its markdown
+                (headings, bullets, bold) and its tracked-player chips
+     TIERS      the three tiers land in order: headline, then the match impact
+                callout, then the narrative, with the category badge and the
+                author credit as the meta line
+     LEGACY     an article carrying only title / content_markdown still paints
+                a complete card, with no empty callout band
+     SAFETY     markup inside the narrative and the callout is escaped, never
+                injected
      CHIPS      "N PLAYERS TRACKED", one chip per row, and a tap opens the
                 player sheet with that row's own numbers
      FRAMING    a chip whose row is not GAME_WINNER never reads as a hero
@@ -62,6 +68,17 @@ function truthy(value, label) { if (value) pass(label); else fail(label); }
 -------------------------------------------------------------------------- */
 const ARTICLE = {
   slug: '2026-week-2-tuesday-verdict-777777',
+
+  /* Tier 1 and tier 2. The headline deliberately differs from `title` so the
+     check can prove which one the card paints, and the callout carries an
+     injection attempt of its own: it is the most prominent line after the
+     headline and is not run through the markdown subset, so it needs its own
+     proof that it is escaped. */
+  headline: 'Ridgeback FC Survive The Late Window',
+  match_impact_summary: 'Monday Back scored 20 points, just enough for Ridgeback FC. <img src=x onerror="window.__lbInjected=1">',
+  category: 'Matchup Recap',
+  author: 'FFU News Desk',
+
   title: 'Tuesday Verdict: Week 2',
   excerpt: 'What the math says about week 2.',
   content_markdown: [
@@ -94,6 +111,26 @@ const ARTICLE = {
     { player_id: 'p1', player_name: 'Early Anchor', owner_team: 'Ridgeback FC', opponent_team: 'Cobalt Kings',
       outcome_flag: null, player_points: 60, projected_points: 58, entering_margin: 0, final_margin: 6, slot: 'SUNDAY' },
   ],
+};
+
+/* Tier 3 under the new name, byte for byte what the legacy column carries, so
+   the check proves the card reads `content` without needing a second body to
+   compare against. */
+ARTICLE.content = ARTICLE.content_markdown;
+
+/* The same story as it was published before the three-tier columns existed:
+   `title` and `content_markdown` and nothing else. Its card must still be
+   complete, and must show no callout at all rather than an empty band. */
+const LEGACY_ARTICLE = {
+  slug: '2026-week-2-monday-sweat-777777',
+  title: 'Monday Sweat: Week 2',
+  excerpt: 'Before the late window.',
+  content_markdown: '# Monday Sweat: Week 2\n\nOne **legacy** paragraph.\n',
+  article_type: 'monday_sweat',
+  season: 2026,
+  week: 2,
+  published_at: '2026-09-14T13:00:00.000Z',
+  tracked_players: [],
 };
 
 const requests = [];
@@ -258,16 +295,50 @@ try {
   await page.waitForTimeout(600);
 
   expect(await page.getAttribute('#leagueBlogWrap', 'hidden'), null, 'the section is visible once an article publishes');
-  expect(await page.textContent('.lb-title'), 'Tuesday Verdict: Week 2', 'the article title renders');
+  expect(await page.textContent('.lb-title'), 'Ridgeback FC Survive The Late Window',
+    'TIER 1: the headline renders, not the legacy title');
   expect(await page.locator('.lb-md h2').first().textContent(), 'What the math says', 'a markdown heading renders as a heading');
   expect(await page.locator('.lb-md li').count(), 2, 'markdown bullets render as list items');
   expect(await page.locator('.lb-md strong').first().textContent(), 'actually', 'markdown bold renders as strong');
+
+  /* ---- 2b. TIERS: headline, callout, narrative, meta ----------------- */
+  expect(await page.locator('.lb-card').first().locator('.lb-impact').count(), 1,
+    'TIER 2: the match impact summary renders in its own callout');
+  truthy((await page.textContent('.lb-impact-text')).includes('just enough for Ridgeback FC'),
+    'the callout carries the impact summary text');
+
+  /* The tiers must be in order in the document, not merely both present: the
+     callout is only a callout if it sits between the headline and the body. */
+  const order = await page.evaluate(() => {
+    const card = document.querySelector('.lb-card');
+    if (!card) return null;
+    const at = (sel) => {
+      const el = card.querySelector(sel);
+      if (!el) return -1;
+      return Array.prototype.indexOf.call(card.querySelectorAll('*'), el);
+    };
+    return { title: at('.lb-title'), impact: at('.lb-impact'), body: at('.lb-md'), meta: at('.lb-meta') };
+  });
+  truthy(order && order.title >= 0 && order.title < order.impact,
+    'the callout sits below the headline');
+  truthy(order && order.impact < order.body, 'the narrative sits below the callout');
+  truthy(order && order.body < order.meta, 'the meta line sits below the narrative');
+
+  const meta = await page.textContent('.lb-meta');
+  truthy(meta.includes('MATCHUP RECAP'), 'the meta line carries the category');
+  truthy(meta.includes('FFU News Desk'), 'the meta line credits the author');
+  truthy((await page.textContent('.lb-kicker')).includes('Matchup Recap'),
+    'the category badge replaces the generic type label on the kicker');
 
   /* ---- 3. SAFETY: markup in the body is escaped, never injected ------- */
   expect(await page.evaluate(() => window.__lbInjected === 1), false, 'an onerror/script payload in the body did not execute');
   expect(await page.locator('.lb-md img').count(), 0, 'an <img> in the body is not rendered as an element');
   expect(await page.locator('.lb-md script').count(), 0, 'a <script> in the body is not rendered as an element');
   truthy((await page.textContent('.lb-md')).includes('<img src=x'), 'the raw markup is shown as text instead');
+  // The callout gets the same proof: it is escaped, and it is not markdown.
+  expect(await page.locator('.lb-impact img').count(), 0, 'an <img> in the callout is not rendered as an element');
+  truthy((await page.textContent('.lb-impact-text')).includes('<img src=x'),
+    'raw markup in the callout is shown as text');
 
   /* ---- 4. CHIPS ------------------------------------------------------ */
   expect(await page.locator('.lb-chip').count(), 5, 'one chip per tracked player');
@@ -309,6 +380,32 @@ try {
   truthy(plain.includes('No decisive swing'), 'an unflagged player claims no swing');
   truthy(!/hero|game-saver|saved the|won the matchup/i.test(plain), 'an unflagged player is never credited with the win');
   await page.click('#lbSheetClose');
+
+  /* ---- 5b. LEGACY: a pre-three-tier article still paints ------------- */
+  serveArticles = [LEGACY_ARTICLE];
+  await page.evaluate(() => window.FSNLeagueArticles.refresh());
+  await page.waitForTimeout(900);
+  await page.evaluate(() => { window.FSNBridge.call('renderLeagueBlog'); });
+  await page.waitForTimeout(600);
+
+  expect(await page.getAttribute('#leagueBlogWrap', 'hidden'), null, 'a legacy article still shows the section');
+  expect(await page.textContent('.lb-title'), 'Monday Sweat: Week 2',
+    'a legacy headline falls back to the title');
+  truthy((await page.textContent('.lb-md')).includes('legacy'), 'a legacy body falls back to content_markdown');
+  expect(await page.locator('.lb-impact').count(), 0,
+    'an article with no summary paints no callout rather than an empty band');
+  truthy((await page.textContent('.lb-meta')).includes('MATCHUP RECAP'),
+    'a legacy article gets the shelf its article type belongs to');
+  truthy((await page.textContent('.lb-meta')).includes('FFU News Desk'),
+    'a legacy article gets the default byline');
+
+  /* Back to the three-tier fixture for the cache and refresh checks. */
+  serveArticles = [ARTICLE];
+  await page.evaluate(() => window.FSNLeagueArticles.refresh());
+  await page.waitForTimeout(900);
+  await page.evaluate(() => { window.FSNBridge.call('renderLeagueBlog'); });
+  await page.waitForTimeout(600);
+  expect(await page.locator('.lb-chip').count(), 5, 'the three-tier fixture is back on screen');
 
   /* ---- 6. CACHE ------------------------------------------------------ */
   const before = requests.length;

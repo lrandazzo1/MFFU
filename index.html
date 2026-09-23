@@ -2600,6 +2600,37 @@ body.fsn-dd-lock{ overflow:hidden; }
   font-family:'Anton',sans-serif; font-size:19px; line-height:1.14;
   letter-spacing:.01em; margin:0 0 6px;
 }
+/* TIER 2 — the match impact callout.
+   Sits directly under the headline and above the narrative, and is the line a
+   reader takes away if they read nothing else: what one performance meant to
+   one matchup. A left rule plus a tinted panel rather than a pill, because the
+   text is a sentence and a pill that wraps to three lines reads as a mistake.
+   Absent entirely when the article carries no summary, so a legacy story is
+   never given an empty band where its callout would be. */
+.lb-impact{
+  display:flex; gap:9px; align-items:flex-start;
+  border-left:3px solid var(--gold);
+  background:linear-gradient(90deg, rgba(255,196,0,.11), rgba(255,196,0,.02));
+  border-radius:0 7px 7px 0;
+  padding:9px 11px; margin:0 0 11px;
+}
+.lb-impact .lb-impact-label{
+  font-size:9.5px; letter-spacing:.1em; line-height:1.5;
+  color:var(--gold); white-space:nowrap; padding-top:1px;
+}
+.lb-impact .lb-impact-text{
+  font-size:12.5px; line-height:1.48; font-weight:600; color:#fff;
+}
+
+/* The meta line: category shelf and byline. Below the narrative, where a
+   masthead credit belongs, and above the tracked-player chips. */
+.lb-meta{
+  display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+  margin-top:12px; padding-top:9px; border-top:1px solid var(--line-2);
+  font-size:10.5px; letter-spacing:.07em; color:var(--dim);
+}
+.lb-meta .lb-author{ color:var(--ink-2, #cfd6e4); }
+
 .lb-md{ font-size:13px; line-height:1.62; color:var(--ink-2, #cfd6e4); }
 .lb-md h1,.lb-md h2,.lb-md h3{
   font-family:'Anton',sans-serif; letter-spacing:.01em; margin:12px 0 5px; line-height:1.16;
@@ -9115,23 +9146,61 @@ window.FSNLeagueArticles = (function(){
 
   /* ---- 4. THE READ ---------------------------------------------------- */
 
-  /* Only the published shape is kept. An article missing a title or a body is
-     dropped rather than painted as an empty card: the endpoint should never
-     send one, and a blank row in the feed is worse than one fewer story. */
+  /* The editorial shelf a row belongs to when it did not record one. Rows
+     published before the `category` column existed have only their article
+     type to go on, and the endpoint resolves the same mapping server side;
+     this is the second line of defence, for a deployment serving the legacy
+     payload shape. */
+  const CATEGORY_BY_TYPE = {
+    monday_sweat: 'Matchup Recap',
+    tuesday_verdict: 'Matchup Recap',
+    friday_tnf_preview: 'Matchup Preview',
+    league_dispatch: 'League Dispatch',
+  };
+  const DEFAULT_AUTHOR = 'FFU News Desk';
+
+  /* Only the published shape is kept, resolved to the three tiers the card
+     paints: headline, the match impact callout, then the markdown narrative.
+
+     Both namings are accepted. An article published before those columns
+     existed carries `title` and `content_markdown` only, and the fallback is
+     applied here as well as in the endpoint, so the renderer downstream reads
+     ONE shape whether it is talking to a current deployment, an older one, or
+     a payload that was cached under the previous shape and is being read back
+     out of localStorage after an app update.
+
+     An article missing both namings of its headline or its body is dropped
+     rather than painted as an empty card: the endpoint should never send one,
+     and a blank row in the feed is worse than one fewer story. */
   function normalize(list){
     const out = [];
     const rows = Array.isArray(list) ? list : [];
     for(let i = 0; i < rows.length; i++){
       const row = rows[i] || {};
       const title = String(row.title == null ? '' : row.title).trim();
-      const body = String(row.content_markdown == null ? '' : row.content_markdown).trim();
-      if(!title || !body) continue;
+      const headline = String(row.headline == null ? '' : row.headline).trim() || title;
+      const legacyBody = String(row.content_markdown == null ? '' : row.content_markdown).trim();
+      const content = String(row.content == null ? '' : row.content).trim() || legacyBody;
+      const articleType = String(row.article_type || '');
+      if(!headline || !content) continue;
       out.push({
         slug: String(row.slug || ''),
-        title,
+
+        /* Tier 1, 2, 3 and the meta line. */
+        headline,
+        match_impact_summary: String(row.match_impact_summary == null ? '' : row.match_impact_summary).trim(),
+        content,
+        category: String(row.category == null ? '' : row.category).trim() || CATEGORY_BY_TYPE[articleType] || '',
+        author: String(row.author == null ? '' : row.author).trim() || DEFAULT_AUTHOR,
+
+        /* The legacy names, kept on the object so nothing that already reads
+           them has to change. `title` falls back to the headline and the body
+           to the content, so both are always populated. */
+        title: title || headline,
         excerpt: String(row.excerpt == null ? '' : row.excerpt).trim(),
-        content_markdown: body,
-        article_type: String(row.article_type || ''),
+        content_markdown: legacyBody || content,
+
+        article_type: articleType,
         tracked_players: Array.isArray(row.tracked_players) ? row.tracked_players : [],
         season: Number(row.season) || null,
         week: Number(row.week) || null,
@@ -27620,6 +27689,16 @@ function clearLeagueStateForSwitch(nextLeagueId, nextProvider){
   // deep-linked story id from the previous league can't resolve after the swap.
   ui.newsCache = null;
 
+  /* The League Blog store, in memory AND in localStorage. Its cache key carries
+     the league id, so a cached payload could not paint under the wrong league
+     even without this; what it does drop is the previous league's `lastScope`,
+     which is what the section's refresh control re-reads, and the previous
+     league's cached scopes, which would otherwise sit in storage until their
+     day-long TTL expired. FSNLeagueArticles is a block 1 global, so this call
+     is legal from here; the scope scan proves it resolves. */
+  try{ FSNLeagueArticles.clear(); }
+  catch(err){ console.error('[LeagueBlog] clearing the article cache for the league switch failed', err); }
+
   /* The crawl is fixed to the top of every screen, so it is the one surface a
      reader can still see while the rest of the app is empty mid-swap. Unmount
      it here, synchronously, alongside the stores it reads from: the store
@@ -32986,18 +33065,51 @@ function lbChips(article, articleIndex){
     '<div class="lb-chips">' + chips + '</div>';
 }
 
+/* The three tiers, in the order a reader takes them in:
+
+     1  headline               the prominent title
+     2  match_impact_summary   a highlighted callout directly beneath it
+     3  content                the markdown narrative
+        meta                   the category shelf and the byline
+
+   Every tier degrades on its own. An article with no summary paints no
+   callout rather than an empty band, and one with no category falls back to
+   the label for its article type, so a story published before the three-tier
+   columns existed renders as a complete card instead of a broken one.
+
+   `esc()` on everything that is not markdown, and `lbMarkdown()` (which
+   escapes first and applies markup to the escaped string) on the narrative.
+   The callout is deliberately NOT run through the markdown subset: it is one
+   sentence, and giving a prominent line its own markup surface buys nothing
+   and widens what a published row can put on the screen. */
 function lbCard(article, index){
   const label = LB_TYPE_LABEL[article.article_type] || 'League Desk';
   const week = Number.isFinite(Number(article.week)) ? 'WEEK ' + article.week : '';
+  const headline = String(article.headline || article.title || '').trim();
+  const impact = String(article.match_impact_summary || '').trim();
+  const body = String(article.content || article.content_markdown || '');
+  const category = String(article.category || '').trim();
+  const author = String(article.author || '').trim();
+
   return '<article class="lb-card">' +
     '<div class="lb-top"></div>' +
     '<div class="lb-body">' +
       '<div class="lb-kicker">' +
-        '<span class="pill pill-gold">' + esc(label) + '</span>' +
+        '<span class="pill pill-gold">' + esc(category || label) + '</span>' +
         (week ? '<span class="kicker text-[var(--dim)]">' + esc(week) + '</span>' : '') +
       '</div>' +
-      '<h3 class="lb-title">' + esc(article.title) + '</h3>' +
-      '<div class="lb-md">' + lbMarkdown(article.content_markdown) + '</div>' +
+      '<h3 class="lb-title">' + esc(headline) + '</h3>' +
+      (impact
+        ? '<div class="lb-impact">' +
+            '<span class="lb-impact-label">IMPACT</span>' +
+            '<span class="lb-impact-text">' + esc(impact) + '</span>' +
+          '</div>'
+        : '') +
+      '<div class="lb-md">' + lbMarkdown(body) + '</div>' +
+      '<div class="lb-meta">' +
+        '<span class="lb-category">' + esc((category || label).toUpperCase()) + '</span>' +
+        (author ? '<span aria-hidden="true">·</span><span class="lb-author">' + esc(author) + '</span>' : '') +
+      '</div>' +
       lbChips(article, index) +
     '</div>' +
   '</article>';
