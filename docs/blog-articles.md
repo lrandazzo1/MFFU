@@ -164,7 +164,16 @@ specification:
 | 5 | `WASTED_ERUPTION` | `VALIANT_LOSS` + points ≥ 35 |
 | 6 | `HEARTBREAK_LOSS` | `VALIANT_LOSS` + final margin ≤ 3 |
 | 7 | `NECESSARY_INSURANCE` | `GARBAGE_TIME_BLOWOUT` + 5 ≤ final margin < 25 |
-| 8 | `GENERAL_SWING` | everything else |
+| 8 | `STRAIGHT_COMEBACK` | any other `GAME_WINNER` with a deficit |
+| 9 | `GENERAL_SWING` | everything else |
+
+Archetype 8 catches the most common game-winner there is: not prime time, not
+down to a field goal, not an overshoot. Without it a 47.50 point comeback that
+erased a 42.50 deficit fell to the general swing and read "notched 47.50 pts,
+shifting the final tally" while the headline called it a result that turned and
+the callout named him the decisive man. It requires a recorded deficit even
+though `GAME_WINNER` implies one, so a math-inconsistent row cannot print
+"erased a 0.00 deficit".
 
 Margins and deficits are compared as **absolute** values: `entering_margin` is
 negative when trailing and `final_margin` is negative in a loss, so a deficit
@@ -179,13 +188,28 @@ same requirement for the same reason.
 
 #### Template rotation
 
-`templateVariant()` picks A or B with `(player id + week) % 2`. Deterministic,
-which the pipeline requires: a reader who reloads must get the same article.
-Keying on the player rather than his position in the list means the choice does
-not shuffle when a performance is added above him, and adding the week stops
-the same player reading identically every week. A non-numeric `player_id` is
-hashed rather than coerced to 0 (`article-math.ts` falls back to the player's
-name when a payload carries no id), or every such row would take variant A.
+`rotateVariants(board, week)` assigns A or B to every row, guaranteeing that
+two bullets of the **same archetype** never read alike. That is the only
+repetition a reader notices; two different archetypes are different sentences
+whichever variant they draw.
+
+`templateVariant()` seeds each archetype's **first** appearance with
+`(player id + week) % 2`, and the rest alternate strictly from there.
+Deterministic, which the pipeline requires: a reader who reloads must get the
+same article. A non-numeric `player_id` is hashed rather than coerced to 0
+(`article-math.ts` falls back to the player's name when a payload carries no
+id), or every such row would take variant A.
+
+**Why alternation is not just another term in the modulo.** Adding an index to
+the per-row sum cannot guarantee the pair differs: a difference in id parity
+simply cancels it. Both shapes were measured against a real week 2 board of
+four game-winners, and both left a duplicate:
+
+| Index | Result |
+|---|---|
+| board position | Lamb (row 1) and Prescott (row 3) are two apart, so their indices share a parity and their odd ids share one: both flipped together, both stayed identical. **3 of 4.** |
+| archetype occurrence | Fixed that pair and broke the other: Adams (even id, occurrence 0) and Mahomes (odd id, occurrence 1) cancelled to the same variant. **3 of 4.** |
+| seed then alternate | **4 of 4.** |
 
 #### No em dashes, anywhere
 

@@ -128,7 +128,7 @@ export declare function buildUserPrompt(request: Omit<ComposeRequest, 'system_pr
  * copy nobody reviewed, and a thrown error means the row is never written.
  */
 export declare function assertOutcomeLanguage(draft: ArticleDraft, tracked: TrackedPlayer[]): void;
-export type Archetype = 'PRIMETIME_COMEBACK' | 'RAZOR_THIN_COMEBACK' | 'SINGLE_HANDED_OVERHAUL' | 'HEAVYWEIGHT_BLOWOUT' | 'WASTED_ERUPTION' | 'HEARTBREAK_LOSS' | 'NECESSARY_INSURANCE' | 'GENERAL_SWING';
+export type Archetype = 'PRIMETIME_COMEBACK' | 'RAZOR_THIN_COMEBACK' | 'SINGLE_HANDED_OVERHAUL' | 'HEAVYWEIGHT_BLOWOUT' | 'WASTED_ERUPTION' | 'HEARTBREAK_LOSS' | 'NECESSARY_INSURANCE' | 'STRAIGHT_COMEBACK' | 'GENERAL_SWING';
 /**
  * The first archetype whose trigger the row satisfies.
  *
@@ -141,20 +141,52 @@ export type Archetype = 'PRIMETIME_COMEBACK' | 'RAZOR_THIN_COMEBACK' | 'SINGLE_H
  */
 export declare function archetypeFor(row: TrackedPlayer): Archetype;
 /**
- * Which of the two phrasings this row gets: `(player id + week) % 2`.
+ * Which of the two phrasings this row gets:
+ * `(player id + week + rotation index) % 2`.
  *
  * Deterministic, which the whole pipeline requires: a reader who reloads must
- * get the same article. Keying on the player rather than his position in the
- * list means the choice does not shuffle when a different performance is
- * added above him, and adding the week stops the same player reading
- * identically every single week of the season.
+ * get the same article. The player id keeps a given player from reading the
+ * same way regardless of where he lands, and the week stops him reading
+ * identically every week of the season.
+ *
+ * This is the SEED for an archetype's first appearance. `rotateVariants()`
+ * below alternates from it, because adding an index to this sum cannot
+ * guarantee anything on its own: see the note there.
  *
  * `player_id` is an ESPN numeric id in practice, but `article-math.ts` falls
  * back to the player's NAME when a payload carries no id, so a non-numeric id
  * is hashed rather than dropped. Coercing it to 0 would hand every unnamed
  * row variant A.
  */
-export declare function templateVariant(row: TrackedPlayer, week: number): 0 | 1;
+export declare function templateVariant(row: TrackedPlayer, week: number, occurrence?: number): 0 | 1;
+/**
+ * The phrasing to use for every row of a board, guaranteeing that two bullets
+ * of the same archetype never read the same way.
+ *
+ * ---- WHY THIS IS NOT JUST `(id + week + index) % 2` ----
+ *
+ * The only repetition a reader notices is two bullets of the SAME archetype
+ * reading alike; two different archetypes are different sentences whichever
+ * variant they draw. Adding an index to the per-row sum cannot guarantee that
+ * pair differs, because a difference in id parity simply cancels it. Both
+ * shapes of index were measured against a real week 2 board of four
+ * game-winners:
+ *
+ *   board position      CeeDee Lamb (row 1) and Dak Prescott (row 3) are two
+ *                       apart, so their indices share a parity and their odd
+ *                       ids share one too: both flipped together, both stayed
+ *                       identical. 3 distinct shapes of 4.
+ *   archetype occurrence  fixed that pair, and broke the other one: Davante
+ *                       Adams (even id, occurrence 0) and Patrick Mahomes
+ *                       (odd id, occurrence 1) cancelled to the same variant.
+ *                       Still 3 of 4.
+ *
+ * So the id seeds each archetype's FIRST appearance and the rest alternate
+ * strictly from there. Consecutive appearances then differ by construction
+ * rather than by arithmetic luck, while the seed keeps the choice varying by
+ * player and by week. 4 of 4 on the same board.
+ */
+export declare function rotateVariants(board: TrackedPlayer[], week: number): Array<0 | 1>;
 /**
  * One row, framed by its archetype.
  *
@@ -168,7 +200,7 @@ export declare function templateVariant(row: TrackedPlayer, week: number): 0 | 1
  * model what compliant copy reads like, and this is the executable version of
  * the same thing.
  */
-export declare function sentenceFor(row: TrackedPlayer, week?: number): string;
+export declare function sentenceFor(row: TrackedPlayer, week?: number, variant?: 0 | 1): string;
 /** The rows that actually turned a matchup. What the headline counts, and
  *  what the callout is allowed to choose from. */
 export declare function decisiveRows(rows: TrackedPlayer[]): TrackedPlayer[];

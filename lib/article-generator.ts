@@ -358,6 +358,7 @@ export type Archetype =
   | 'WASTED_ERUPTION'
   | 'HEARTBREAK_LOSS'
   | 'NECESSARY_INSURANCE'
+  | 'STRAIGHT_COMEBACK'
   | 'GENERAL_SWING';
 
 /** Two decimals, always. The matrix quotes deficits and margins against each
@@ -413,6 +414,18 @@ export function archetypeFor(row: TrackedPlayer): Archetype {
   if (flag === 'VALIANT_LOSS' && margin <= 3) return 'HEARTBREAK_LOSS';
   // 7. Padding that kept a win comfortable rather than embarrassing.
   if (flag === 'GARBAGE_TIME_BLOWOUT' && margin >= 5 && margin < 25) return 'NECESSARY_INSURANCE';
+  /* 8. Any other comeback. The most common game-winner there is: not in prime
+     time, not down to a field goal, not an overshoot. It used to fall to the
+     general swing and read "notched 47.50 pts, shifting the final tally",
+     which describes a non-event while the headline calls it a result that
+     turned and the callout names him the decisive man.
+
+     `deficit > 0` is required even though GAME_WINNER already implies a
+     negative entering margin: the copy says "erased a deficit", and a row
+     carrying the flag with no deficit recorded would print "erased a 0.00
+     deficit". Such a row is math-inconsistent rather than ordinary, so it
+     falls through to the general swing rather than claiming a comeback. */
+  if (flag === 'GAME_WINNER' && deficit > 0) return 'STRAIGHT_COMEBACK';
   return 'GENERAL_SWING';
 }
 
@@ -474,6 +487,12 @@ const TEMPLATES: Record<Archetype, [Template, Template]> = {
     (p) => `Securing the perimeter, ${p.player} added ${p.points} to ensure ${p.team} kept ${p.opponent} at ` +
       `bay by ${p.margin}.`,
   ],
+  STRAIGHT_COMEBACK: [
+    (p) => `${p.player} erased a ${p.deficit} deficit with ${p.points} to secure a ${p.margin} point win ` +
+      `for ${p.team}.`,
+    (p) => `${p.team} were ${p.deficit} down when ${p.player} took the field; his ${p.points} flipped the ` +
+      `matchup into a ${p.margin} win over ${p.opponent}.`,
+  ],
   GENERAL_SWING: [
     (p) => `${p.player} notched ${p.points} for ${p.team}, shifting the final tally to a ${p.margin} finish.`,
     (p) => `A key contribution from ${p.player} (${p.points}) helped shape ${p.team}'s ${p.margin} outcome.`,
@@ -481,20 +500,24 @@ const TEMPLATES: Record<Archetype, [Template, Template]> = {
 };
 
 /**
- * Which of the two phrasings this row gets: `(player id + week) % 2`.
+ * Which of the two phrasings this row gets:
+ * `(player id + week + rotation index) % 2`.
  *
  * Deterministic, which the whole pipeline requires: a reader who reloads must
- * get the same article. Keying on the player rather than his position in the
- * list means the choice does not shuffle when a different performance is
- * added above him, and adding the week stops the same player reading
- * identically every single week of the season.
+ * get the same article. The player id keeps a given player from reading the
+ * same way regardless of where he lands, and the week stops him reading
+ * identically every week of the season.
+ *
+ * This is the SEED for an archetype's first appearance. `rotateVariants()`
+ * below alternates from it, because adding an index to this sum cannot
+ * guarantee anything on its own: see the note there.
  *
  * `player_id` is an ESPN numeric id in practice, but `article-math.ts` falls
  * back to the player's NAME when a payload carries no id, so a non-numeric id
  * is hashed rather than dropped. Coercing it to 0 would hand every unnamed
  * row variant A.
  */
-export function templateVariant(row: TrackedPlayer, week: number): 0 | 1 {
+export function templateVariant(row: TrackedPlayer, week: number, occurrence = 0): 0 | 1 {
   const raw = String(row.player_id == null ? '' : row.player_id);
   const digits = raw.replace(/\D/g, '');
   let key: number;
@@ -504,7 +527,47 @@ export function templateVariant(row: TrackedPlayer, week: number): 0 | 1 {
     key = 0;
     for (let i = 0; i < raw.length; i++) key = (key * 31 + raw.charCodeAt(i)) % 1000000007;
   }
-  return (((key + (Number(week) || 0)) % 2) + 2) % 2 === 0 ? 0 : 1;
+  const sum = key + (Number(week) || 0) + (Number(occurrence) || 0);
+  return (((sum % 2) + 2) % 2) === 0 ? 0 : 1;
+}
+
+/**
+ * The phrasing to use for every row of a board, guaranteeing that two bullets
+ * of the same archetype never read the same way.
+ *
+ * ---- WHY THIS IS NOT JUST `(id + week + index) % 2` ----
+ *
+ * The only repetition a reader notices is two bullets of the SAME archetype
+ * reading alike; two different archetypes are different sentences whichever
+ * variant they draw. Adding an index to the per-row sum cannot guarantee that
+ * pair differs, because a difference in id parity simply cancels it. Both
+ * shapes of index were measured against a real week 2 board of four
+ * game-winners:
+ *
+ *   board position      CeeDee Lamb (row 1) and Dak Prescott (row 3) are two
+ *                       apart, so their indices share a parity and their odd
+ *                       ids share one too: both flipped together, both stayed
+ *                       identical. 3 distinct shapes of 4.
+ *   archetype occurrence  fixed that pair, and broke the other one: Davante
+ *                       Adams (even id, occurrence 0) and Patrick Mahomes
+ *                       (odd id, occurrence 1) cancelled to the same variant.
+ *                       Still 3 of 4.
+ *
+ * So the id seeds each archetype's FIRST appearance and the rest alternate
+ * strictly from there. Consecutive appearances then differ by construction
+ * rather than by arithmetic luck, while the seed keeps the choice varying by
+ * player and by week. 4 of 4 on the same board.
+ */
+export function rotateVariants(board: TrackedPlayer[], week: number): Array<0 | 1> {
+  const seeds: Partial<Record<Archetype, 0 | 1>> = {};
+  const seen: Partial<Record<Archetype, number>> = {};
+  return board.map((row) => {
+    const archetype = archetypeFor(row);
+    if (seeds[archetype] === undefined) seeds[archetype] = templateVariant(row, week);
+    const occurrence = seen[archetype] || 0;
+    seen[archetype] = occurrence + 1;
+    return (((seeds[archetype] as number) + occurrence) % 2) === 0 ? 0 : 1;
+  });
 }
 
 /**
@@ -520,7 +583,11 @@ export function templateVariant(row: TrackedPlayer, week: number): 0 | 1 {
  * model what compliant copy reads like, and this is the executable version of
  * the same thing.
  */
-export function sentenceFor(row: TrackedPlayer, week = 0): string {
+export function sentenceFor(
+  row: TrackedPlayer,
+  week = 0,
+  variant: 0 | 1 = templateVariant(row, week),
+): string {
   const archetype = archetypeFor(row);
   const phrasing: Phrasing = {
     player: b(row.player_name),
@@ -530,7 +597,7 @@ export function sentenceFor(row: TrackedPlayer, week = 0): string {
     deficit: b(num2(deficitOf(row))),
     margin: b(num2(marginOf(row))),
   };
-  return TEMPLATES[archetype][templateVariant(row, week)](phrasing);
+  return TEMPLATES[archetype][variant](phrasing);
 }
 
 /* ------------------------------------------------------------------ *
@@ -706,7 +773,10 @@ export const defaultComposer: Composer = (request) => {
   } else {
     body.push('## What the math says', '');
     /* The top few that actually decided something, not every starter. */
-    for (const row of board) body.push(`- ${sentenceFor(row, request.week)}`);
+    /* Each archetype counts its own appearances, so a second overhaul in the
+       same article never repeats the first one's phrasing. */
+    const variants = rotateVariants(board, request.week);
+    board.forEach((row, i) => body.push(`- ${sentenceFor(row, request.week, variants[i])}`));
     const unresolved = rows.filter((row) => row.unresolved_reason);
     if (unresolved.length) {
       body.push(
