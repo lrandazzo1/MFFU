@@ -6,22 +6,44 @@
   "cleanUrls": true,
   "trailingSlash": false,
   "rewrites": [
-    { "source": "/blog", "destination": "/blog/index.html" },
-    { "source": "/blog/:slug", "destination": "/blog/reader.html" }
+    {
+      "source": "/api/blog/articles",
+      "destination": "https://app.fantasysportsnetwork.app/api/blog/articles"
+    },
+    {
+      "source": "/blog",
+      "destination": "/blog/index.html"
+    },
+    {
+      "source": "/blog/:slug",
+      "destination": "/blog/reader.html"
+    }
   ],
   "headers": [
     {
       "source": "/.well-known/apple-app-site-association",
       "headers": [
-        { "key": "Content-Type", "value": "application/json" }
+        {
+          "key": "Content-Type",
+          "value": "application/json"
+        }
       ]
     },
     {
       "source": "/content/generated/blog/(.*)",
       "headers": [
-        { "key": "Access-Control-Allow-Origin", "value": "*" },
-        { "key": "Access-Control-Allow-Methods", "value": "GET, HEAD, OPTIONS" },
-        { "key": "Cache-Control", "value": "public, max-age=300, s-maxage=300, stale-while-revalidate=86400" }
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        },
+        {
+          "key": "Access-Control-Allow-Methods",
+          "value": "GET, HEAD, OPTIONS"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=300, s-maxage=300, stale-while-revalidate=86400"
+        }
       ]
     }
   ]

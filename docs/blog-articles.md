@@ -256,3 +256,128 @@ select league_id, error_message
 from public.cron_article_logs
 where run_id = '2026-w3-mon-2026-09-21' and status = 'failed';
 ```
+
+---
+
+# In the app
+
+The News Desk reads the league's own published articles and paints them above
+the deterministic timeline.
+
+| Piece | Role |
+|---|---|
+| `api/blog/articles.js` | Public `GET /api/blog/articles`, the one read boundary onto `blog_articles`. |
+| `window.FSNLeagueArticles` (index.html, block 1) | Fetch, cache and state. The data half. |
+| `renderLeagueBlog()` (index.html, last block) | The paint: cards, markdown, player chips, the player sheet. |
+| `scripts/league-blog-check.mjs` | `npm run check:leagueblog`, a real Chromium render against a stubbed endpoint. |
+
+## The endpoint
+
+```
+GET /api/blog/articles?league_id=123456&season=2026&week=3&limit=10
+```
+
+Public, no auth. These rows are published by definition. `league_id` is
+required and filters every query, so no parameter combination returns a mixed
+set; `season` and `week` narrow further, and with neither the league's most
+recent articles come back newest first.
+
+The response carries only published columns — `slug`, `title`, `excerpt`,
+`content_markdown`, `article_type`, `tracked_players`, `season`, `week`,
+`published_at`. The table's `id`, `league_id`, `created_at` and `updated_at`
+are never serialized, and the select is an explicit allowlist rather than
+`select('*')` so a column added later is never published by accident.
+
+A present-but-unparseable filter (`week=banana`) is a 400, never a silently
+dropped filter: returning the whole league would answer a question nobody
+asked. Bad requests and failures are `no-store`; a successful read is cached
+for five minutes at the edge with a day of stale-while-revalidate, matching the
+static blog payload.
+
+It is also reachable at `https://fantasysportsnetwork.app/api/blog/articles`.
+The `fsn-landing` project has no `api/` of its own and no Supabase credentials,
+so `landing/vercel.json` proxies that path to the app project rather than
+duplicating the service-role key into a second deployment.
+
+## FSNLeagueArticles
+
+The data layer, at global scope in the first script block per the rule at the
+top of `index.html`: the state is owned there and the paint lives in the last
+block, which is a closed scope.
+
+```js
+FSNLeagueArticles.read(leagueId, week, season)   // what is known now, no network
+FSNLeagueArticles.load(leagueId, week, season)   // fetch, using cache when fresh
+FSNLeagueArticles.refresh()                      // pull to refresh: force a read
+FSNLeagueArticles.subscribe(fn)                  // repaint on state changes
+FSNLeagueArticles.clear()                        // drop every cached scope
+```
+
+Every read resolves to one of five states, so the renderer never has to infer
+"nothing published yet" from an empty array plus a null error:
+
+| State | Meaning |
+|---|---|
+| `idle` | Nothing asked for yet, or the scope is incomplete. |
+| `loading` | In flight, with no cached copy to stand in. |
+| `ready` | Articles in hand, possibly from cache. |
+| `empty` | This league has nothing published for this scope. Not an error. |
+| `error` | The read failed and there is no cached copy to fall back on. |
+
+A cached payload paints immediately and refreshes behind the reader, so a
+repeat visit is instant; `stale` says what is on screen came from cache while a
+refresh runs, which is what drives the quiet updating hint instead of a
+blocking spinner. A read that fails while a cached copy exists keeps the cached
+copy: the reader would rather see this morning's story than a failure they
+cannot act on.
+
+An HTTP 404 is treated as `empty`, not `error`, and logged as a warning. It
+means the endpoint is not on this deployment at all — a static preview, a local
+harness, or a build predating this feature — and the app shipped for years
+without a league blog. Any other status, a network fault or a timeout is a real
+fault and is logged as one.
+
+The cache key is `league:season:week` and a payload cached under a different
+scope is refused rather than painted, so one week's stories can never appear
+under another's header.
+
+## The News Desk section
+
+`renderLeagueBlog()` paints `#leagueBlogWrap`, which is hidden outright until
+the league has something published for the viewed week. Everything below it —
+the lead story, the timeline, the topic bar — is the existing deterministic
+News Desk and is untouched. The call sits behind its own `try` inside
+`renderNews()`, so a failure in the remote feed can never stop the desk from
+rendering.
+
+Unlike the desk wire, this section needs **no season/week gate**. The desk wire
+reads the root-domain blog, which publishes real-world NFL copy dated to today
+and would misrepresent itself in a historical view. Every article here is
+stored against an explicit league, season and week and is requested by those
+three coordinates, so a Week 3 article is correct on the Week 3 view and
+nowhere else by construction.
+
+### Markdown
+
+A deliberately small subset: headings, bold, italic, inline code, links,
+unordered lists and paragraphs. That is everything the generator emits. Text is
+escaped **first** and markup applied to the escaped string, so no article body
+can inject markup whatever the pipeline wrote into it; links are rewritten to
+`http(s)` only. `scripts/league-blog-check.mjs` puts an `<img onerror>` and a
+`<script>` in a fixture body and asserts neither becomes an element.
+
+### Tracked player chips
+
+`tracked_players` renders as "N PLAYERS TRACKED" and one chip per row, dot
+coloured by outcome flag. A tap opens the shared player sheet with that row's
+own numbers: points, projection, the margin before his game, and the final
+margin.
+
+Chips are keyed by position in the array, not by player id: two rows can
+legitimately name the same player (one per side of a matchup), and the sheet
+must open the row that was tapped.
+
+The sheet's verdict line restates the outcome flag and nothing more. A player
+who is not flagged `GAME_WINNER` is never described as having won anything,
+exactly as in the generator that wrote the article, and the check asserts that
+in both directions for all four flags plus the unflagged case.
