@@ -21,6 +21,7 @@
   "files": [
     "lib/article-env.d.ts",
     "lib/article-math.ts",
-    "lib/article-generator.ts"
+    "lib/article-generator.ts",
+    "lib/article-cron.ts"
   ]
 }

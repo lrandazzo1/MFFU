@@ -1,0 +1,127 @@
+# Scheduled league blog articles.
+#
+# Three weekly runs, each a POST to /api/cron/generate-articles, which writes
+# one article per active league that does not already have this week's story.
+# The route is idempotent, so a retry or a double fire costs nothing.
+#
+# Why GitHub Actions rather than vercel.json crons:
+#   - Vercel cron jobs are always issued as GET; this schedule POSTs.
+#   - Day-of-week schedules and more than a couple of cron jobs need a paid
+#     Vercel plan, and the project already spends two on the transaction wire
+#     and the notification dispatch.
+# The equivalent vercel.json configuration is written out in
+# docs/blog-articles.md if you would rather run it there.
+#
+# Required repository secret:
+#   CRON_SECRET  — must equal the CRON_SECRET set in the Vercel project.
+# Optional repository variable:
+#   ARTICLE_CRON_BASE_URL — defaults to the production app domain.
+
+name: League blog articles
+
+on:
+  schedule:
+    # 10:00 UTC is 06:00 ET during the NFL season (EDT, UTC-4).
+    - cron: '0 10 * * 1'   # Monday: recap the Sunday slate, preview MNF.
+    - cron: '0 10 * * 2'   # Tuesday: recap the Monday night final.
+    - cron: '0 10 * * 5'   # Friday: recap TNF, preview the weekend slate.
+  workflow_dispatch:
+    inputs:
+      day:
+        description: Which article to generate.
+        type: choice
+        options: [mon, tue, fri]
+        required: true
+      dry_run:
+        description: Resolve the leagues and report what would be written, without writing.
+        type: boolean
+        default: false
+      season:
+        description: Season override for a backfill. Leave blank for the live week.
+        type: string
+        required: false
+      week:
+        description: Week override for a backfill. Leave blank for the live week.
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+# A manual run must never race the scheduled one into the same league week.
+concurrency:
+  group: generate-articles
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Resolve the day from the schedule that fired
+        id: scope
+        env:
+          SCHEDULE: ${{ github.event.schedule }}
+          INPUT_DAY: ${{ inputs.day }}
+        run: |
+          set -euo pipefail
+          case "${SCHEDULE:-}" in
+            '0 10 * * 1') day=mon ;;
+            '0 10 * * 2') day=tue ;;
+            '0 10 * * 5') day=fri ;;
+            '')           day="${INPUT_DAY:-}" ;;
+            *)            day='' ;;
+          esac
+          if [ -z "$day" ]; then
+            echo "::error title=No day resolved::Schedule '${SCHEDULE:-}' maps to no article day."
+            exit 1
+          fi
+          echo "day=$day" >> "$GITHUB_OUTPUT"
+
+      - name: Generate and publish
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          BASE_URL: ${{ vars.ARTICLE_CRON_BASE_URL || 'https://app.fantasysportsnetwork.app' }}
+          DAY: ${{ steps.scope.outputs.day }}
+          DRY_RUN: ${{ inputs.dry_run && '1' || '0' }}
+          SEASON: ${{ inputs.season }}
+          WEEK: ${{ inputs.week }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CRON_SECRET:-}" ]; then
+            echo "::error title=CRON_SECRET missing::Set the CRON_SECRET repository secret to the value used in the Vercel project."
+            exit 1
+          fi
+
+          url="${BASE_URL%/}/api/cron/generate-articles?day=${DAY}&dry_run=${DRY_RUN}"
+          [ -n "${SEASON:-}" ] && url="${url}&season=${SEASON}"
+          [ -n "${WEEK:-}" ] && url="${url}&week=${WEEK}"
+
+          # The secret is passed as a header, never in the URL, so it stays out
+          # of access logs and out of this job's own echoed command line.
+          status=$(curl -sS -X POST "$url" \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            -H 'Content-Type: application/json' \
+            --max-time 600 \
+            -o response.json -w '%{http_code}')
+
+          echo "HTTP $status"
+          jq '.' response.json || cat response.json
+
+          if [ "$status" != "200" ]; then
+            echo "::error title=Article run failed::The endpoint returned HTTP $status."
+            exit 1
+          fi
+
+          # A 200 still reports per-league failures. Surface them rather than
+          # letting a morning where every league threw look like a green run.
+          failed=$(jq -r '.failed // 0' response.json)
+          created=$(jq -r '.created // 0' response.json)
+          skipped=$(jq -r '.skipped // 0' response.json)
+          echo "created=$created skipped=$skipped failed=$failed"
+          echo "### ${DAY}: $created created, $skipped skipped, $failed failed" >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$failed" != "0" ]; then
+            echo "::error title=Some leagues failed::$failed league(s) did not publish. See cron_article_logs."
+            exit 1
+          fi
