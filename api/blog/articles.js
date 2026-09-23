@@ -122,7 +122,7 @@ const CATEGORY_BY_TYPE = {
   league_dispatch: 'League Dispatch',
 };
 
-const DEFAULT_AUTHOR = 'FFU News Desk';
+const DEFAULT_AUTHOR = 'FSN News Desk';
 
 const DEFAULT_LIMIT = 10;
 const MAX_LIMIT = 50;

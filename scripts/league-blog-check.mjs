@@ -26,12 +26,12 @@
                 the card does not print the same words twice, while a heading
                 that says something different is kept
      ACTIVE     FSNSupabaseArticles.fetch() asks /api/blog/articles with
-                active=1 and no week, and its stories stand in under a LATEST
-                label when the week on screen has none of its own
-     PRIORITY   the week on screen wins when it has coverage, so no article is
-                ever painted twice
-     GATE       the active feed is held back off the live season, where one
-                season's copy would appear under another's name
+                active=1 and no week, and its stories are a SECOND SOURCE for
+                the week on screen, never a stand-in for another week
+     PRIORITY   the week-scoped read wins when it has coverage, so no article
+                is ever painted twice
+     WEEKFILTER an article for another week or another season is never painted,
+                whichever feed carried it, and switching weeks re-reads
      SAFETY     markup inside the narrative and the callout is escaped, never
                 injected
      CHIPS      "N PLAYERS TRACKED", one chip per row, and a tap opens the
@@ -87,7 +87,7 @@ const ARTICLE = {
   headline: 'Ridgeback FC Survive The Late Window',
   match_impact_summary: 'Monday Back scored 20 points, just enough for Ridgeback FC. <img src=x onerror="window.__lbInjected=1">',
   category: 'Matchup Recap',
-  author: 'FFU News Desk',
+  author: 'FSN News Desk',
 
   title: 'Tuesday Verdict: Week 2',
   excerpt: 'What the math says about week 2.',
@@ -140,7 +140,7 @@ const ACTIVE_ARTICLE = {
   match_impact_summary: 'Sunday Wideout scored 40 points, not enough for Cobalt Kings.',
   content: '# Week 1 in the books\n\nThe **active** read carried this one.\n',
   category: 'Waiver Wire',
-  author: 'FFU News Desk',
+  author: 'FSN News Desk',
   article_type: 'monday_sweat',
   season: 2026,
   week: 1,
@@ -398,7 +398,7 @@ try {
 
   const meta = await page.textContent('.lb-meta');
   truthy(meta.includes('MATCHUP RECAP'), 'the meta line carries the category');
-  truthy(meta.includes('FFU News Desk'), 'the meta line credits the author');
+  truthy(meta.includes('FSN News Desk'), 'the meta line credits the author');
   truthy((await page.textContent('.lb-kicker')).includes('Matchup Recap'),
     'the category badge replaces the generic type label on the kicker');
 
@@ -477,35 +477,48 @@ try {
     'an article with no summary paints no callout rather than an empty band');
   truthy((await page.textContent('.lb-meta')).includes('MATCHUP RECAP'),
     'a legacy article gets the shelf its article type belongs to');
-  truthy((await page.textContent('.lb-meta')).includes('FFU News Desk'),
+  truthy((await page.textContent('.lb-meta')).includes('FSN News Desk'),
     'a legacy article gets the default byline');
 
-  /* ---- 5c. ACTIVE: the stand-in when this week has nothing ----------- */
+  /* ---- 5c. WEEKFILTER: another week's story is never painted --------- */
+  /* ACTIVE_ARTICLE is a WEEK 1 story and the view is on week 2. The active
+     read is deliberately not week-scoped, so before the filter existed this
+     painted the week 1 recap under a WEEK 2 header. */
   serveArticles = [];
   await page.evaluate(() => window.FSNLeagueArticles.refresh());
   await page.waitForTimeout(900);
   await page.evaluate(() => { window.FSNBridge.call('renderLeagueBlog'); });
   await page.waitForTimeout(600);
 
-  expect(await page.getAttribute('#leagueBlogWrap', 'hidden'), null,
-    'ACTIVE: a week with nothing of its own no longer hides the section');
-  expect(await page.textContent('.lb-title'), 'Cobalt Kings Open On A Thin Bench',
-    'the active feed paints its own headline');
-  truthy((await page.textContent('.lb-impact-text')).includes('not enough for Cobalt Kings'),
-    'the active feed paints tier 2 in the callout');
-  truthy((await page.textContent('.lb-md')).includes('active'),
-    'the active feed paints tier 3 as markdown');
-  expect(await page.locator('.lb-md strong').first().textContent(), 'active',
-    'the markdown subset applies to the active feed too');
-  truthy((await page.textContent('.lb-meta')).includes('WAIVER WIRE'),
-    'the active feed carries its own category');
-  truthy((await page.textContent('#leagueBlogState')).includes('LATEST'),
-    'the header says LATEST so the reader knows it is not this week');
-  truthy((await page.textContent('.lb-kicker')).includes('WEEK 1'),
-    'the card names the week the story actually belongs to');
-  expect(await page.locator('.lb-chip').count(), 1, 'the active feed keeps its tracked-player chips');
+  expect(await page.getAttribute('#leagueBlogWrap', 'hidden') !== null, true,
+    'WEEKFILTER: a week with nothing of its own hides the section, even though ' +
+    'the active feed is holding another week\'s article');
+  expect(await page.evaluate(() => document.body.innerText.includes('Cobalt Kings Open On A Thin Bench')), false,
+    'and week 1\'s headline is nowhere on the page');
 
-  /* A tap still opens the sheet from the active feed's own row. */
+  /* ---- 5d. ACTIVE as a SECOND SOURCE for the same week --------------- */
+  /* The same active read, now carrying a story FOR the week on screen. The
+     week-scoped read still has nothing, so this is what the section shows. */
+  serveActive = [{ ...ACTIVE_ARTICLE, slug: 'active-week-2', week: 2 }];
+  await page.evaluate(() => window.FSNSupabaseArticles.refresh());
+  await page.waitForTimeout(900);
+  await page.evaluate(() => { window.FSNBridge.call('renderLeagueBlog'); });
+  await page.waitForTimeout(600);
+
+  expect(await page.getAttribute('#leagueBlogWrap', 'hidden'), null,
+    'the active feed answers when its story is for this week');
+  expect(await page.textContent('.lb-title'), 'Cobalt Kings Open On A Thin Bench',
+    'and paints its own headline');
+  truthy((await page.textContent('.lb-impact-text')).includes('not enough for Cobalt Kings'),
+    'with tier 2 in the callout');
+  expect(await page.locator('.lb-md strong').first().textContent(), 'active',
+    'and the markdown subset applied to tier 3');
+  truthy((await page.textContent('.lb-meta')).includes('WAIVER WIRE'),
+    'carrying its own category');
+  truthy((await page.textContent('#leagueBlogState')).includes('WEEK 2'),
+    'under the viewed week, never a LATEST label for another week');
+  expect(await page.locator('.lb-chip').count(), 1, 'and its tracked-player chips');
+
   await page.locator('.lb-chip', { hasText: 'Sunday Wideout' }).first().click();
   await page.waitForTimeout(300);
   expect(await page.textContent('#lbSheetName'), 'Sunday Wideout', 'a chip on an active-feed card opens its own row');
@@ -513,25 +526,37 @@ try {
   await page.click('#lbSheetClose');
   await page.waitForTimeout(250);
 
-  /* ---- 5d. GATE: the active feed stays out of another season --------- */
-  const activeBeforeGate = activeRequests().length;
-  await page.evaluate(() => {
-    document.getElementById('seasonYear').value = '2019';
-    window.FSNBridge.call('renderLeagueBlog');
-  });
+  /* ---- 5e. Another SEASON's week 2 is not this week 2 ---------------- */
+  serveActive = [{ ...ACTIVE_ARTICLE, slug: 'active-2019-week-2', week: 2, season: 2019 }];
+  await page.evaluate(() => window.FSNSupabaseArticles.refresh());
+  await page.waitForTimeout(900);
+  await page.evaluate(() => { window.FSNBridge.call('renderLeagueBlog'); });
   await page.waitForTimeout(600);
   expect(await page.getAttribute('#leagueBlogWrap', 'hidden') !== null, true,
-    'GATE: a retro season view paints no active coverage');
-  expect(activeRequests().length, activeBeforeGate,
-    'and does not even ask for it');
+    'a 2019 week 2 story is not painted on a 2026 week 2 view');
 
+  /* ---- 5f. Switching weeks re-reads for the new week ----------------- */
+  serveActive = [];
+  const weekAsked = [];
+  serveArticles = [{ ...ARTICLE, slug: 'week-1-story', week: 1, headline: 'The Week One Board' }];
   await page.evaluate(() => {
-    document.getElementById('seasonYear').value = '2026';
+    document.getElementById('weekNum').value = '1';
     window.FSNBridge.call('renderLeagueBlog');
   });
-  await page.waitForTimeout(600);
-  truthy((await page.textContent('#leagueBlogState')).includes('LATEST'),
-    'returning to the live season brings the active coverage back');
+  await page.waitForTimeout(1200);
+  weekAsked.push(...weekRequests().slice(-1));
+
+  expect(weekAsked[0] && weekAsked[0].week, '1', 'switching weeks asks the endpoint for that week');
+  expect(await page.textContent('.lb-title'), 'The Week One Board', 'and paints week 1\'s own story');
+  truthy((await page.textContent('#leagueBlogState')).includes('WEEK 1'), 'under a WEEK 1 header');
+  expect(await page.evaluate(() => document.body.innerText.includes('Ridgeback FC Survive The Late Window')), false,
+    'with week 2\'s story gone from the screen');
+
+  await page.evaluate(() => {
+    document.getElementById('weekNum').value = '2';
+    window.FSNBridge.call('renderLeagueBlog');
+  });
+  await page.waitForTimeout(900);
 
   /* Back to the three-tier fixture for the cache and refresh checks. */
   serveArticles = [ARTICLE];

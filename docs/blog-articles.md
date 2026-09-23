@@ -111,16 +111,47 @@ grammar per flag, so the callout can never say more than the math supports:
 only `GAME_WINNER` gets "just enough", and a big score in a loss is "not
 enough" rather than anything warmer.
 
-When a week carries several flagged performances, the callout picks by a stated
-order rather than inheriting `featuredTrackedPlayers`' news ranking, which put a
-wasted 74 ahead of the player who actually swung a matchup:
+### The board, and the one order it shares with the callout
 
-    GAME_WINNER  >  DUD_COST_WIN  >  VALIANT_LOSS  >  GARBAGE_TIME_BLOWOUT
+`boardRows()` decides which performances become bullets under "What the math
+says", and `impactSummary()` picks the callout from the same list:
+
+    GAME_WINNER  >  DUD_COST_WIN  >  VALIANT_LOSS        (max 4 bullets)
 
 A matchup that was won outranks one thrown away, which outranks a big score
-that changed nothing, which outranks padding in a game already decided. Within
-a flag the math's own ranking breaks the tie, so the choice stays deterministic
-for a given league, season and week. The summary is passed through
+that changed nothing. Within a flag the math's own news ranking breaks the tie,
+so both stay deterministic for a given league, season and week.
+
+Two things are **not** on the board:
+
+- **`GARBAGE_TIME_BLOWOUT`.** "Unneeded stat-padding" in a game decided before
+  the player kicked off says nothing happened, at length, and a week with
+  several of them filled the board with repetitions of that. The flag is still
+  assigned, still stored on `tracked_players`, and still shown on the player's
+  chip and in his sheet: it is dropped from the prose, not from the math.
+- **Unflagged rows.** "Finished on 22 pts, who won by 30" is a line about a
+  player who did not decide anything.
+
+Sharing one order is what keeps the three parts consistent: a week whose only
+flag is a blowout gets no callout and no bullets, so a headline reading "No
+Swings To Report" is never contradicted by a callout announcing one.
+
+The headline counts what the board carries, not every flagged row, or it
+promises eight results and the body prints four.
+
+### Bold in the bullets
+
+Each bullet emboldens the three things a reader scans for: the **player**, the
+**fantasy team**, and the **numbers** (points, deficits, final margins).
+`lbMarkdown()` in `index.html` renders `**x**` as `<strong>`, and its pattern is
+`\*\*([^*]+)\*\*`, so a value containing an asterisk simply would not embolden
+rather than corrupting the line.
+
+`sentenceFor()` is exported because it **is** the framing contract:
+`OUTCOME_FRAMING_RULE` tells a model what compliant copy reads like, and this is
+the executable version. Its `GARBAGE_TIME_BLOWOUT` branch is no longer reachable
+from `defaultComposer` and is kept deliberately, since deleting it would leave
+the only statement of how a blowout must read living in a test. The summary is passed through
 `assertOutcomeLanguage` with the rest of the copy — a callout is the most
 prominent line on a card after the headline, and the last place an unbacked
 hero claim should be able to slip through.
@@ -439,7 +470,7 @@ all describe them in the same order:
 | 1 | `headline` | The prominent title at the top of the card. |
 | 2 | `match_impact_summary` | One line: what a performance meant to a matchup. Painted in a highlighted callout directly under the headline. |
 | 3 | `content` | The markdown narrative, below the callout. |
-| meta | `category`, `author` | The editorial shelf ("Matchup Recap", "Waiver Wire") and the byline ("FFU News Desk"). |
+| meta | `category`, `author` | The editorial shelf ("Matchup Recap", "Waiver Wire") and the byline ("FSN News Desk"). |
 
 ### Backward compatibility, in both directions
 
@@ -501,7 +532,7 @@ Content-Type: application/json
   "match_impact_summary": "Monday Back scored 20 points, just enough for Ridgeback FC.",
   "content": "# The late window\n\n...",
   "category": "Matchup Recap",
-  "author": "FFU News Desk"
+  "author": "FSN News Desk"
 }
 ```
 
@@ -548,7 +579,7 @@ browser has no business holding a publishing secret.
 
 **Fields.** `league_id`, `season`, `week` and a headline and body are required;
 the headline and body may arrive under either generation of names. Everything
-else is optional. `author` defaults to `FFU News Desk`, `category` to empty
+else is optional. `author` defaults to `FSN News Desk`, `category` to empty
 (the reader then falls back to the article type's shelf), `article_type` to
 `league_dispatch` — the type for a story published outside the
 Monday/Tuesday/Friday schedule, and the one value the check constraint in
@@ -611,41 +642,50 @@ be invisible to the other and let the two feeds drift on what an article is.
 `renderLeagueBlog()` paints `#leagueBlogWrap` from **both** feeds, and only
 ever one of them at a time, so no article can be painted twice:
 
-1. **The week on screen leads.** When `FSNLeagueArticles` has stories for it,
-   those are the section, under a `WEEK n` label. This is exactly what the
-   section did before the active feed existed.
-2. **The active feed stands in** when the week has nothing, under a `LATEST`
-   label: the league's most recent coverage, whatever week it belongs to.
+1. **The week-scoped read leads.** It asked the endpoint for exactly the league,
+   season and week on screen.
+2. **The active read answers** when it happens to carry that same week's story
+   and the week-scoped one came back with nothing. A second source for the same
+   view, never another view's content.
 3. Both still loading with nothing to stand in → one loading line. Both done
    with nothing, and either read failed → one honest sentence saying the
    coverage could not be reached. Both done and genuinely empty → the section
-   is hidden outright, as before.
+   is hidden outright.
 
-The header label always says which of the two is on screen, and each card names
-the week its own story belongs to.
+### The week filter
+
+**Both feeds are filtered to the season and week on screen before anything is
+painted** (`lbForViewedWeek()`). Every article is stored against an explicit
+league, season and week, so whether a story belongs on this view is a fact the
+row states rather than something to infer.
+
+The week-scoped feed already asks for those coordinates, so for it this is a
+second check. For the active feed it is the only one: that read is deliberately
+not week-scoped, and without the filter it painted week 2's recap under a week
+1 header. It is not season-scoped either, so the season is compared as well, or
+a 2019 week 2 story would match a 2026 week 2 view.
+
+A `ready` snapshot whose articles all filter out becomes `empty`, which is what
+it means for this view: the read succeeded and this week has nothing in it.
+
+### Why the view is re-derived on every paint
+
+The store subscriptions are registered **once** and live for the rest of the
+session, so anything they close over is frozen at first render. A subscription
+that repainted using a captured `week` kept painting week 2 after the reader
+moved to week 1. `lbViewScope()` reads the league, season and week fresh from
+the DOM and `lbPaint()` calls it every time, so there is nothing to go stale.
+The subscription guards only ask whether the update that woke them is for the
+scope on screen, and drop a late response for a week the reader has left.
 
 Everything below the section — the lead story, the timeline, the topic bar — is
 the existing deterministic News Desk and is untouched. The call sits behind its
 own `try` inside `renderNews()`, so a failure in either remote feed can never
 stop the desk from rendering.
 
-**The gate.** The week-scoped feed needs none: every article it returns was
-requested by the exact season and week on screen. The active feed is held back
-outside the live season (`lbOnLiveSeason()`), because it is not season-scoped
-and would otherwise offer 2026 stories on a 2019 retro view, which a reader
-only reaches by choosing it.
-
-Within the live season it is deliberately **not** gated on the week. Each card
-names its story's week and the header says `LATEST`, so nothing is presented as
-the viewed week's own coverage, and the app's default landing week can
-legitimately sit behind the week the league has rolled forward to
-(`effectiveWeek()` 2 while `currentLeagueWeek()` reads 3 is an ordinary
-Tuesday). A week comparison would suppress the feed on exactly the view where a
-reader who has navigated nowhere most wants it.
-
-A gate that throws returns false: holding the fallback back costs the reader a
-section they were not promised, while guessing wrong puts one season's copy
-under another's name.
+**No view gate on the reads.** What makes the active read's result safe to
+paint is the filter, not where the reader happens to be standing, so it fires
+whenever there is a league: one cached request per league per freshness window.
 
 **The refresh control** drives both feeds through `Promise.allSettled`, because
 refreshing one and not the other would leave the reader looking at a stale

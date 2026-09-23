@@ -9065,7 +9065,7 @@ window.FSN_ARTICLE_CATEGORY_BY_TYPE = {
   friday_tnf_preview: 'Matchup Preview',
   league_dispatch: 'League Dispatch',
 };
-window.FSN_ARTICLE_DEFAULT_AUTHOR = 'FFU News Desk';
+window.FSN_ARTICLE_DEFAULT_AUTHOR = 'FSN News Desk';
 
 /* One row in, one card-ready article out, or null when the row carries no
    headline or no body under either naming. A blank card is worse than one
@@ -33510,40 +33510,30 @@ function lbWire(){
   lbSheetWired = true;
 }
 
-/* Is the reader in the league's live season?
+/* The section shows the week on screen, and only the week on screen.
 
-   The active feed is not week-scoped by design, and it is not season-scoped
-   either, so on a 2019 retro view it would offer 2026 stories. A reader only
-   reaches another season by choosing it, and a LATEST module is noise in a
-   view they opened to read history, so the fallback is held back there.
+   Every article is stored against an explicit league, SEASON and WEEK, so
+   "does this story belong on this view" is a fact the row states rather than
+   something to infer. Both feeds are filtered through here before anything is
+   painted.
 
-   Within the live season it is NOT gated on the week, deliberately. Each card
-   names the week its story belongs to and the section header says LATEST, so
-   nothing is presented as the viewed week's own coverage. And the app's
-   default landing week can legitimately sit behind the week the league has
-   rolled forward to (effectiveWeek() 2 while currentLeagueWeek() reads 3 is an
-   ordinary Tuesday), so a week comparison would suppress the feed on exactly
-   the view where a reader who has navigated nowhere most wants it.
+   The week-scoped feed already asks the endpoint for these coordinates, so
+   this is a second check on it. For the active feed it is the only one: that
+   read is deliberately not week-scoped (it answers "what has this league
+   published lately"), and without this filter it painted week 2's recap under
+   a week 1 header, which is the bug this exists to close. It is not season
+   scoped either, so the season is compared as well or a 2019 week 2 story
+   would match a 2026 week 2 view.
 
-   The week-scoped feed above needs no gate at all: every article it returns
-   was requested by the exact season and week on screen.
-
-   A gate that cannot answer returns false. Holding the fallback back costs the
-   reader a section they were not promised; guessing wrong puts one season's
-   copy under another's name. */
-function lbOnLiveSeason(){
-  try{
-    const viewed = Number(($('seasonYear').value || '').trim()) || 0;
-    const active = (typeof NewsDesk !== 'undefined' && typeof NewsDesk.activeSeasonYear === 'function')
-      ? Number(NewsDesk.activeSeasonYear())
-      : Number(uiActiveSeasonYear());
-    if(viewed && active && viewed !== active) return false;
-    return true;
-  }catch(err){
-    console.warn('[LeagueBlog] the live-season gate failed; holding the active feed back rather than ' +
-      'painting one season\u2019s copy under another\u2019s name.', err);
-    return false;
-  }
+   A row with no season or week cannot be placed and is dropped. The pipeline
+   writes both on every row and the columns are NOT NULL, so that is a
+   malformed payload rather than an ordinary case. */
+function lbForViewedWeek(articles, season, week){
+  const rows = Array.isArray(articles) ? articles : [];
+  if(!week || !season) return [];
+  return rows.filter((article)=>
+    Number(article && article.season) === Number(season) &&
+    Number(article && article.week) === Number(week));
 }
 
 /* ---- THE SECTION, FROM TWO FEEDS ----------------------------------------
@@ -33566,132 +33556,162 @@ function lbOnLiveSeason(){
    is untouched.
 ------------------------------------------------------------------------- */
 
-function renderLeagueBlog(){
+/* The league, season and week on screen, read fresh from the DOM.
+
+   Deliberately a function rather than three constants captured when the
+   renderer last ran. The store subscriptions below are registered ONCE and
+   live for the rest of the session, so anything they close over is frozen at
+   first render: a subscription that repainted using a captured `week` kept
+   painting week 2 after the reader moved to week 1, which is the bug this
+   section was reported for. Every paint re-derives. */
+function lbViewScope(){
+  const leagueId = selectedLeagueId();
+  const week = Number(effectiveWeek()) || 0;
+  const season = parseInt(($('seasonYear').value || '').trim(), 10) || uiActiveSeasonYear();
+  return {
+    leagueId,
+    week,
+    season,
+    weekScope: FSNLeagueArticles.scopeOf(leagueId, week, season),
+    activeScope: FSNSupabaseArticles.scopeOf(leagueId),
+  };
+}
+
+/* One paint, from whatever both stores hold right now for whatever is on
+   screen right now. Called by the renderer and by both subscriptions. */
+function lbPaint(){
   const wrap = $('leagueBlogWrap');
   const feed = $('leagueBlogFeed');
   if(!wrap || !feed) return;
-
-  lbWire();
 
   const hide = ()=>{
     wrap.hidden = true;
     feed.innerHTML = '';
     lbRendered = [];
   };
-
-  const leagueId = selectedLeagueId();
-  const week = Number(effectiveWeek()) || 0;
-  const season = parseInt(($('seasonYear').value || '').trim(), 10) || uiActiveSeasonYear();
-  const weekScope = FSNLeagueArticles.scopeOf(leagueId, week, season);
-  const activeScope = FSNSupabaseArticles.scopeOf(leagueId);
-  /* No league at all is nothing to read either feed for. A league with no
-     usable week still has active articles, so the section is not abandoned
-     the way it was when the week-scoped read was the only one. */
-  if(!weekScope && !activeScope){ hide(); return; }
-
-  /* Repaint whenever either store moves. Registered once, and each
-     subscription re-derives the scope on screen: a late response for a week
-     the reader has since navigated away from must not overwrite what they are
-     looking at. */
-  if(!lbSubscribed){
-    lbSubscribed = true;
-    FSNLeagueArticles.subscribe((snap)=>{
-      const live = FSNLeagueArticles.scopeOf(
-        selectedLeagueId(), Number(effectiveWeek()) || 0,
-        parseInt(($('seasonYear').value || '').trim(), 10) || uiActiveSeasonYear());
-      if(!live || !snap || snap.leagueId !== live.leagueId || snap.week !== live.week || snap.season !== live.season) return;
-      repaint();
-    });
-    FSNSupabaseArticles.subscribe((snap)=>{
-      const live = FSNSupabaseArticles.scopeOf(selectedLeagueId());
-      if(!live || !snap || snap.leagueId !== live.leagueId) return;
-      repaint();
-    });
-  }
-
-  /* Both stores are read on every paint rather than the snapshot being handed
-     in, so whichever feed woke the repaint, the decision below is made on the
-     current state of both. */
-  function repaint(){
-    const weekSnap = weekScope
-      ? FSNLeagueArticles.read(leagueId, week, season)
-      : { status: 'idle', articles: [], stale: false };
-    const onLive = lbOnLiveSeason();
-    const activeSnap = (activeScope && onLive)
-      ? FSNSupabaseArticles.read(leagueId)
-      : { status: 'idle', articles: [], stale: false };
-    paint(weekSnap, activeSnap);
-  }
-
-  function label(text){
+  const label = (text)=>{
     const state = $('leagueBlogState');
     if(state) state.textContent = text;
-  }
-
-  function show(articles, tag, stale){
+  };
+  const show = (articles, tag, stale)=>{
     lbRendered = articles;
     feed.innerHTML = articles.map(lbCard).join('');
-    label(stale ? '● UPDATING' : tag);
+    label(stale ? '\u25cf UPDATING' : tag);
     wrap.hidden = false;
-  }
-
-  function notice(text){
+  };
+  const notice = (text)=>{
     lbRendered = [];
     feed.innerHTML = '<div class="empty"><p class="text-[12.5px] leading-relaxed">' + esc(text) + '</p></div>';
     wrap.hidden = false;
+  };
+
+  const view = lbViewScope();
+  if(!view.weekScope && !view.activeScope){ label(''); hide(); return; }
+
+  /* A snapshot with its articles narrowed to the week on screen. The status is
+     carried through untouched EXCEPT that a 'ready' whose articles were all
+     filtered out becomes 'empty', which is what it now means for this view:
+     the read succeeded and this week has nothing in it. */
+  const forThisWeek = (snap)=>{
+    const articles = lbForViewedWeek(snap.articles, view.season, view.week);
+    return {
+      status: (snap.status === 'ready' && !articles.length) ? 'empty' : snap.status,
+      articles,
+      stale: !!snap.stale,
+    };
+  };
+
+  const idle = { status: 'idle', articles: [], stale: false };
+  const weekSnap = view.weekScope
+    ? forThisWeek(FSNLeagueArticles.read(view.leagueId, view.week, view.season))
+    : idle;
+  const activeSnap = view.activeScope
+    ? forThisWeek(FSNSupabaseArticles.read(view.leagueId))
+    : idle;
+
+  /* Both snapshots have already been narrowed to the week on screen, so
+     whichever answers, the header names that week and nothing else. */
+  const tag = view.week ? 'WEEK ' + view.week : '';
+
+  /* 1. The week-scoped read, which asked for exactly these coordinates. */
+  if(weekSnap.status === 'ready' && weekSnap.articles.length){
+    show(weekSnap.articles, tag, weekSnap.stale);
+    return;
   }
 
-  function paint(weekSnap, activeSnap){
-    /* 1. The week on screen, when it has its own coverage. */
-    if(weekSnap.status === 'ready' && weekSnap.articles.length){
-      show(weekSnap.articles, week ? 'WEEK ' + week : '', weekSnap.stale);
-      return;
-    }
+  /* 2. The active read, when it happens to carry this week's story and the
+     week-scoped one came back with nothing. Same week, so this is a second
+     source for the same view rather than a different view's content. */
+  if(activeSnap.status === 'ready' && activeSnap.articles.length){
+    show(activeSnap.articles, tag, activeSnap.stale);
+    return;
+  }
 
-    /* 2. The active feed, as the stand-in. Gated to the live view by
-       repaint() above, so `ready` here already means it is allowed. */
-    if(activeSnap.status === 'ready' && activeSnap.articles.length){
-      show(activeSnap.articles, 'LATEST', activeSnap.stale);
-      return;
-    }
-
-    /* 3. Something is still in flight with nothing to stand in for it. */
-    if(weekSnap.status === 'loading' || activeSnap.status === 'loading'){
-      lbRendered = [];
-      feed.innerHTML = '<div class="empty"><p class="text-[12.5px] leading-relaxed">Loading this league’s coverage…</p></div>';
-      label('');
-      wrap.hidden = false;
-      return;
-    }
-
-    /* 4. Both reads are done and neither has anything. An error in either is
-       worth saying out loud, honestly and specifically, rather than leaving a
-       bare hiccup screen; the deterministic timeline below is unaffected and
-       still has the week covered. */
-    if(weekSnap.status === 'error' || activeSnap.status === 'error'){
-      label('');
-      notice('This league’s published coverage could not be reached. The timeline below is unaffected.');
-      return;
-    }
-
-    /* 5. Nothing published for this week, and nothing active either. Say
-       nothing at all rather than occupying the screen with an absence. */
+  /* 3. Something is still in flight with nothing to stand in for it. */
+  if(weekSnap.status === 'loading' || activeSnap.status === 'loading'){
+    lbRendered = [];
+    feed.innerHTML = '<div class="empty"><p class="text-[12.5px] leading-relaxed">Loading this league\u2019s coverage\u2026</p></div>';
     label('');
-    hide();
+    wrap.hidden = false;
+    return;
   }
 
-  repaint();
+  /* 4. Both reads are done and neither has anything. An error in either is
+     worth saying out loud, honestly and specifically, rather than leaving a
+     bare hiccup screen; the deterministic timeline below is unaffected and
+     still has the week covered. */
+  if(weekSnap.status === 'error' || activeSnap.status === 'error'){
+    label('');
+    notice('This league\u2019s published coverage could not be reached. The timeline below is unaffected.');
+    return;
+  }
 
-  if(weekScope){
-    Promise.resolve(FSNLeagueArticles.load(leagueId, week, season)).catch((err)=>{
-      console.error('[LeagueBlog] the week-scoped article load failed for ' + leagueId + ' ' + season + ' week ' + week, err);
+  /* 5. Nothing published for this week from either feed. Say nothing at all
+     rather than occupying the screen with an absence. */
+  label('');
+  hide();
+}
+
+function renderLeagueBlog(){
+  if(!$('leagueBlogWrap') || !$('leagueBlogFeed')) return;
+
+  lbWire();
+
+  /* Registered once and never re-registered, which is exactly why neither
+     closes over the view: lbPaint() re-derives it. The guards only ask whether
+     the update that woke them is for the league on screen, so a late response
+     for a week the reader has navigated away from is dropped rather than
+     repainting over what they are looking at. */
+  if(!lbSubscribed){
+    lbSubscribed = true;
+    FSNLeagueArticles.subscribe((snap)=>{
+      const live = lbViewScope();
+      if(!live.weekScope || !snap || snap.leagueId !== live.weekScope.leagueId) return;
+      if(snap.week !== live.weekScope.week || snap.season !== live.weekScope.season) return;
+      lbPaint();
+    });
+    FSNSupabaseArticles.subscribe((snap)=>{
+      const live = lbViewScope();
+      if(!live.activeScope || !snap || snap.leagueId !== live.activeScope.leagueId) return;
+      lbPaint();
     });
   }
-  /* The active read is only worth making on the live view, which is the only
-     place its result can be painted. */
-  if(activeScope && lbOnLiveSeason()){
-    Promise.resolve(FSNSupabaseArticles.fetch(leagueId)).catch((err)=>{
-      console.error('[LeagueBlog] the active article load failed for league ' + leagueId, err);
+
+  lbPaint();
+
+  const view = lbViewScope();
+  if(view.weekScope){
+    Promise.resolve(FSNLeagueArticles.load(view.leagueId, view.week, view.season)).catch((err)=>{
+      console.error('[LeagueBlog] the week-scoped article load failed for ' + view.leagueId +
+        ' ' + view.season + ' week ' + view.week, err);
+    });
+  }
+  /* No season or week gate on the read itself: what makes its result safe to
+     paint is the filter in lbPaint(), not where the reader happens to be
+     standing. It is one cached request per league per freshness window. */
+  if(view.activeScope){
+    Promise.resolve(FSNSupabaseArticles.fetch(view.leagueId)).catch((err)=>{
+      console.error('[LeagueBlog] the active article load failed for league ' + view.leagueId, err);
     });
   }
 }

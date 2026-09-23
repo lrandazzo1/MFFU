@@ -108,7 +108,7 @@ for each row execute function public.mffu_touch_blog_article_updated_at();
 --   match_impact_summary   tier 2 — the one-line callout under the headline
 --   content                tier 3 — the markdown narrative
 --   category               editorial shelf ("Matchup Recap", "Waiver Wire")
---   author                 the byline ("FFU News Desk")
+--   author                 the byline ("FSN News Desk")
 --
 -- Nullable on purpose. A NOT NULL headline would reject every existing row at
 -- migration time, and a default would invent a headline for stories that
@@ -119,7 +119,16 @@ alter table public.blog_articles add column if not exists headline text;
 alter table public.blog_articles add column if not exists match_impact_summary text not null default '';
 alter table public.blog_articles add column if not exists content text;
 alter table public.blog_articles add column if not exists category text not null default '';
-alter table public.blog_articles add column if not exists author text not null default 'FFU News Desk';
+alter table public.blog_articles add column if not exists author text not null default 'FSN News Desk';
+
+-- The byline was "FFU News Desk" when the column was added. `add column if not
+-- exists` is a no-op once the column exists, so it cannot correct the default
+-- on a database that already ran this file: that needs an explicit set, and
+-- the rows written under the old default need moving too. Both are safe to
+-- re-run, and only the exact old string is touched, so a hand-set byline on
+-- any row is left alone.
+alter table public.blog_articles alter column author set default 'FSN News Desk';
+update public.blog_articles set author = 'FSN News Desk' where author = 'FFU News Desk';
 
 -- The blog index filtered to one shelf, newest first.
 create index if not exists blog_articles_category_idx

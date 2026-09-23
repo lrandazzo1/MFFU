@@ -128,8 +128,21 @@ export declare function buildUserPrompt(request: Omit<ComposeRequest, 'system_pr
  * copy nobody reviewed, and a thrown error means the row is never written.
  */
 export declare function assertOutcomeLanguage(draft: ArticleDraft, tracked: TrackedPlayer[]): void;
+/**
+ * One row, framed as its flag allows. Exported because it IS the framing
+ * contract: `OUTCOME_FRAMING_RULE` tells a model what compliant copy reads
+ * like, and this is the executable version of the same thing.
+ *
+ * The GARBAGE_TIME_BLOWOUT branch is no longer reachable from
+ * `defaultComposer` (the board drops blowouts as filler) and is kept
+ * deliberately: it is the reference wording for that flag, it is what a
+ * model-backed composer is shown, and deleting it would leave the only
+ * statement of how a blowout must read living in a test.
+ */
+export declare function sentenceFor(row: TrackedPlayer): string;
+export declare function boardRows(rows: TrackedPlayer[], limit?: number): TrackedPlayer[];
 export declare const CATEGORY_BY_TYPE: Record<ArticleType, string>;
-export declare const DEFAULT_AUTHOR = "FFU News Desk";
+export declare const DEFAULT_AUTHOR = "FSN News Desk";
 /**
  * Tier 2: what one performance meant to one matchup, in a single line.
  *

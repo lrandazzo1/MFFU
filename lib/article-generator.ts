@@ -323,36 +323,96 @@ function article(value: number): string {
   return /^(?:8|11|18)(?:\.|$)/.test(spoken) ? 'an' : 'a';
 }
 
-function sentenceFor(row: TrackedPlayer): string {
+/* Bold markdown for the three things a reader scans a bullet for: who, which
+   team, and the number. `lbMarkdown()` in index.html renders `**x**` as
+   <strong>, and its pattern is `\*\*([^*]+)\*\*`, so a value containing an
+   asterisk simply would not embolden rather than corrupting the line. */
+const b = (value: string | number): string => `**${value}**`;
+
+/**
+ * One row, framed as its flag allows. Exported because it IS the framing
+ * contract: `OUTCOME_FRAMING_RULE` tells a model what compliant copy reads
+ * like, and this is the executable version of the same thing.
+ *
+ * The GARBAGE_TIME_BLOWOUT branch is no longer reachable from
+ * `defaultComposer` (the board drops blowouts as filler) and is kept
+ * deliberately: it is the reference wording for that flag, it is what a
+ * model-backed composer is shown, and deleting it would leave the only
+ * statement of how a blowout must read living in a test.
+ */
+export function sentenceFor(row: TrackedPlayer): string {
   const margin = row.final_margin;
   const gap = margin == null ? null : pts(Math.abs(margin));
   switch (row.outcome_flag) {
     case 'GAME_WINNER':
-      return `${row.player_name} won the matchup for ${row.owner_team}. They trailed by ` +
-        `${pts(Math.abs(row.entering_margin as number))} before his game and finished ${gap} clear, and his ` +
-        `${pts(row.player_points)} covered the whole deficit.`;
+      return `${b(row.player_name)} won the matchup for ${b(row.owner_team)}. They trailed by ` +
+        `${b(pts(Math.abs(row.entering_margin as number)))} before his game and finished ` +
+        `${b(gap as string)} clear, with his ${b(pts(row.player_points) + ' pts')} covering the deficit.`;
     case 'GARBAGE_TIME_BLOWOUT':
-      return `${row.player_name} put up ${pts(row.player_points)} for ${row.owner_team} in a game that was ` +
-        `already gone: the lead was ${pts(row.entering_margin as number)} before he played and ${gap} after. ` +
-        `Unneeded stat-padding, nothing more.`;
+      return `${b(row.player_name)} put up ${b(pts(row.player_points) + ' pts')} for ${b(row.owner_team)} in a ` +
+        `game that was already gone: the lead was ${b(pts(row.entering_margin as number))} before he played ` +
+        `and ${b(gap as string)} after. Unneeded stat-padding, nothing more.`;
     case 'VALIANT_LOSS':
-      return `${row.player_name} went for ${pts(row.player_points)} and ${row.owner_team} lost anyway, by ` +
-        `${gap}. A monster game, wasted.`;
+      return `${b(row.player_name)} went for ${b(pts(row.player_points) + ' pts')} and ${b(row.owner_team)} ` +
+        `lost anyway, by ${b(gap as string)}. A monster game, wasted.`;
     case 'DUD_COST_WIN':
-      return `${row.owner_team} led by ${pts(row.entering_margin as number)} before ${row.player_name} played, ` +
-        `then lost by ${gap}. He finished on ${pts(row.player_points)} against ` +
-        `${article(row.projected_points as number)} ${pts(row.projected_points as number)} point projection, ` +
-        `and that gap is the matchup.`;
+      return `${b(row.owner_team)} led by ${b(pts(row.entering_margin as number))} before ` +
+        `${b(row.player_name)} played, then lost by ${b(gap as string)}. He finished on ` +
+        `${b(pts(row.player_points) + ' pts')} against ${article(row.projected_points as number)} ` +
+        `${pts(row.projected_points as number)} point projection, and that gap is the matchup.`;
     default:
-      return `${row.player_name} finished on ${pts(row.player_points)} for ${row.owner_team}` +
+      return `${b(row.player_name)} finished on ${b(pts(row.player_points) + ' pts')} for ${b(row.owner_team)}` +
         (row.final_margin == null
           ? '.'
           : row.final_margin > 0
-            ? `, who won by ${gap}.`
+            ? `, who won by ${b(gap as string)}.`
             : row.final_margin < 0
-              ? `, who lost by ${gap}.`
+              ? `, who lost by ${b(gap as string)}.`
               : ', in a tie.');
   }
+}
+
+/* ------------------------------------------------------------------ *
+ * Which performances make the board
+ * ------------------------------------------------------------------ */
+
+/** At most this many bullets under "What the math says". A recap that lists
+ *  every starter is a table, not a story, and the eight-row version buried the
+ *  one result that actually turned. */
+const MAX_BOARD_ROWS = 4;
+
+/**
+ * The bullets, in the order they earn their place.
+ *
+ *   GAME_WINNER   a matchup was won by this performance
+ *   DUD_COST_WIN  a matchup in hand was thrown away by one
+ *   VALIANT_LOSS  a big score that changed nothing
+ *
+ * GARBAGE_TIME_BLOWOUT is deliberately NOT here. "Unneeded stat-padding" in a
+ * game decided before the player kicked off says nothing happened, at length,
+ * and a week with several of them filled the board with repetitions of that.
+ * The flag is still assigned, still stored on `tracked_players`, and still
+ * shown on the player's chip and in his sheet: it is dropped from the prose,
+ * not from the math.
+ *
+ * Unflagged rows are dropped for the same reason. "Finished on 22 pts, who won
+ * by 30" is a line about a player who did not decide anything.
+ *
+ * Within a flag the math's own news ranking is preserved, so the board is
+ * deterministic for a given league, season and week.
+ */
+const BOARD_PRIORITY: OutcomeFlag[] = ['GAME_WINNER', 'DUD_COST_WIN', 'VALIANT_LOSS'];
+
+export function boardRows(rows: TrackedPlayer[], limit = MAX_BOARD_ROWS): TrackedPlayer[] {
+  const out: TrackedPlayer[] = [];
+  for (const flag of BOARD_PRIORITY) {
+    for (const row of rows) {
+      if (row.outcome_flag !== flag) continue;
+      out.push(row);
+      if (out.length >= limit) return out;
+    }
+  }
+  return out;
 }
 
 function previewSentence(row: TrackedPlayer): string {
@@ -371,7 +431,7 @@ export const CATEGORY_BY_TYPE: Record<ArticleType, string> = {
   friday_tnf_preview: 'Matchup Preview',
 };
 
-export const DEFAULT_AUTHOR = 'FFU News Desk';
+export const DEFAULT_AUTHOR = 'FSN News Desk';
 
 /**
  * Tier 2: what one performance meant to one matchup, in a single line.
@@ -398,19 +458,23 @@ export function impactSummary(rows: TrackedPlayer[], articleType: ArticleType): 
      actually swung a matchup. The callout is the one line a reader takes away,
      so the order it picks by is stated here rather than inherited:
 
-       GAME_WINNER           a matchup was won by this performance
-       DUD_COST_WIN          a matchup in hand was thrown away by one
-       VALIANT_LOSS          a big score that changed nothing
-       GARBAGE_TIME_BLOWOUT  padding in a game already decided, the least
-                             meaningful thing the math can flag
+       GAME_WINNER   a matchup was won by this performance
+       DUD_COST_WIN  a matchup in hand was thrown away by one
+       VALIANT_LOSS  a big score that changed nothing
+
+     GARBAGE_TIME_BLOWOUT is not a candidate: padding in a game decided before
+     the player kicked off is the least meaningful thing the math can flag, and
+     it is the one thing a prominent callout should never be.
 
      Within a flag the math's own ranking breaks the tie, so the choice stays
-     deterministic for a given league, season and week. */
-  const CALLOUT_PRIORITY: OutcomeFlag[] = [
-    'GAME_WINNER', 'DUD_COST_WIN', 'VALIANT_LOSS', 'GARBAGE_TIME_BLOWOUT',
-  ];
+     deterministic for a given league, season and week.
+
+     It is the SAME order the board uses, BOARD_PRIORITY, which is what keeps
+     the two consistent: a week whose only flag is a blowout gets no callout
+     and no bullets, and a headline that says no swings is not contradicted by
+     a callout announcing one. */
   let row: TrackedPlayer | undefined;
-  for (const flag of CALLOUT_PRIORITY) {
+  for (const flag of BOARD_PRIORITY) {
     row = rows.find((candidate) => candidate.outcome_flag === flag);
     if (row) break;
   }
@@ -437,7 +501,9 @@ export const defaultComposer: Composer = (request) => {
   const preview = request.article_type === 'friday_tnf_preview';
   const heading = `${TITLE_BY_TYPE[request.article_type]}: Week ${request.week}`;
   const rows = request.tracked_players;
-  const decisive = rows.filter((row) => row.outcome_flag);
+  /* What the board will actually carry. The headline counts these rather than
+     every flagged row, or it promises eight results and the body prints four. */
+  const decisive = boardRows(rows);
 
   const title = preview
     ? `${heading}, ${rows.length} Lineups On The Clock`
@@ -460,7 +526,8 @@ export const defaultComposer: Composer = (request) => {
     for (const row of rows) body.push(`- ${previewSentence(row)}`);
   } else {
     body.push('## What the math says', '');
-    for (const row of rows) body.push(`- ${sentenceFor(row)}`);
+    /* The top few that actually decided something, not every starter. */
+    for (const row of boardRows(rows)) body.push(`- ${sentenceFor(row)}`);
     const unresolved = rows.filter((row) => row.unresolved_reason);
     if (unresolved.length) {
       body.push(

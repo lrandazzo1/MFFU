@@ -68,7 +68,7 @@ const ARTICLE = {
     'One lineup spot could not be placed in time against the scoreboard, so no swing is claimed for it.',
   ].join('\n'),
   category: 'Matchup Recap',
-  author: 'FFU News Desk',
+  author: 'FSN News Desk',
   article_type: 'tuesday_verdict',
   season: 2026,
   week: 3,
