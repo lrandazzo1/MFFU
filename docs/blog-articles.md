@@ -284,6 +284,7 @@ the deterministic timeline.
 | `fsnNormalizeArticles()` (index.html, global, block 1) | The three-tier resolver both engines share. |
 | `renderLeagueBlog()` (index.html, last block) | The paint: cards, markdown, player chips, the player sheet. |
 | `scripts/league-blog-check.mjs` | `npm run check:leagueblog`, a real Chromium render against a stubbed endpoint. |
+| `scripts/news-screen-shot.mjs` | `npm run shot:news`, a PNG of the card. A look, not a check. |
 
 ## The endpoint
 
@@ -600,6 +601,24 @@ fallback after asking for fresh copy, and one feed failing must not cancel the
 other's repaint or leave the button disabled.
 
 **On a league switch**, `clearLeagueStateForSwitch()` clears both stores.
+
+### Seeing the card
+
+```
+npm run shot:news                      # writes news-screen.png
+npm run shot:news -- --out /tmp/a.png
+```
+
+Boots the real `index.html` in Chromium at phone width against a stubbed
+endpoint, opens the News tab and writes a PNG of `#leagueBlogWrap` with a
+three-tier article on it, then prints what landed in each tier. It hides the
+fixed tab bar for the capture, which would otherwise composite over the bottom
+of the section and clip the tracked-player chips.
+
+It is a **look, not a check**: `npm run check:leagueblog` is what asserts. This
+exists so a change to the card can be reviewed on a phone-width viewport
+without a device. Its article is a fixture, read from no one's league and
+written nowhere. `news-screen.png` is gitignored.
 
 ### Markdown
 

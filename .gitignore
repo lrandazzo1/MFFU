@@ -17,3 +17,6 @@ ios/App/App.xcworkspace/xcuserdata/
 ios/App/App.xcodeproj/xcuserdata/
 ios/App/App.xcodeproj/project.xcworkspace/xcuserdata/
 DerivedData/
+
+# npm run shot:news output — a look at the League Blog card, not an artifact.
+news-screen.png
