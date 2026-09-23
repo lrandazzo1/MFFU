@@ -84,6 +84,15 @@
 
 'use strict';
 
+/* The write side. It lives in lib/ rather than as its own file under api/
+   because Vercel makes every file under api/ a Serverless Function and the
+   Hobby plan allows twelve; this project has exactly twelve. A thirteenth
+   builds fine and then fails the DEPLOY, so the publish handler is dispatched
+   from here on ?action=publish and vercel.json rewrites the public
+   /api/blog/articles/publish onto it. Same shape as
+   /api/notifications-register and /api/auth/yahoo/callback. */
+const publishHandler = require('../../lib/blog-publish');
+
 /* The published columns, and only those. Listed explicitly rather than with
    select('*') so a column added to the table later is never published by
    accident. */
@@ -222,6 +231,16 @@ function toArticle(row) {
 }
 
 async function handler(req, res) {
+  /* Routed before any read header is set. The publish path is not public, not
+     cacheable and not CORS-exposed, so it must not inherit this route's
+     permissive Access-Control-Allow-Origin or its five-minute edge cache.
+     Selected only by an explicit action=publish, so a stray POST to the read
+     URL stays the 405 it has always been rather than being taken for a
+     publish attempt. */
+  if (queryParam(req, 'action').toLowerCase() === 'publish') {
+    return publishHandler(req, res);
+  }
+
   applyHeaders(res);
 
   if (req.method === 'OPTIONS') {

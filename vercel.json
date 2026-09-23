@@ -43,7 +43,7 @@
     },
     {
       "source": "/api/blog/articles/publish",
-      "destination": "/api/blog/articles-publish"
+      "destination": "/api/blog/articles?action=publish"
     }
   ],
   "headers": [

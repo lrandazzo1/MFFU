@@ -454,9 +454,31 @@ Content-Type: application/json
 
 | Piece | Role |
 |---|---|
-| `api/blog/articles-publish.js` | The handler. |
-| `vercel.json` rewrite | Maps `/api/blog/articles/publish` onto it, the same way `/api/auth/yahoo/callback` is mapped. |
+| `lib/blog-publish.js` | The handler. |
+| `api/blog/articles.js` | Dispatches to it on `?action=publish`, before any read header is applied. |
+| `vercel.json` rewrite | Maps the public `/api/blog/articles/publish` onto that, the same way `/api/auth/yahoo/callback` is mapped. |
+| `scripts/vercel-functions-check.mjs` | `npm run check:functions`, the budget that keeps this arrangement necessary. |
 | `lib/blog-publish-selftest.js` | Covered by `npm run test:articles`. |
+
+**Why the handler is in `lib/` and not its own file under `api/`.** Vercel makes
+every file under `api/` a Serverless Function and the Hobby plan allows twelve;
+this project has exactly twelve. A thirteenth does not fail the build — the
+build succeeds, prints "Build Completed", and then the *deploy* fails at
+patchBuild with `exceeded_serverless_functions_per_deployment`, taking the whole
+production deployment down rather than just the new route. Adding
+`api/blog/articles-publish.js` did exactly that, with every test green.
+
+So a new endpoint shares an existing route behind an `?action=` rewrite, which
+is why `/api/notifications-register`, `/api/notifications-selftest`,
+`/api/transaction-wire-dispatch` and `/api/auth/yahoo/callback` are shaped that
+way too. `npm run check:functions` enforces the budget and also verifies every
+rewrite destination names a function that exists.
+
+The dispatch happens **before** `applyHeaders()`: the read is public,
+any-origin and edge-cached for five minutes, and the write is none of those.
+Publish is selected only by an explicit `action=publish`, so a stray `POST` to
+the read URL stays the 405 it always was rather than being taken for a publish
+attempt.
 
 The write boundary onto `blog_articles`, and the counterpart to the public
 read. The table is RLS-protected with no browser policies, so the only two ways
