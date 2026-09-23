@@ -7,9 +7,16 @@
 <meta name="description" content="An FSN Blog story.">
 <meta name="theme-color" content="#080a0e">
 
-<!-- Open Graph / Twitter card — rich link previews for iMessage, Slack, X, etc.
-     The reader shell hydrates per-article title/description client-side; these
-     tags are the fallback preview crawlers see on first-fetch. -->
+<!-- Open Graph / Twitter card - rich link previews for iMessage, Slack, X, etc.
+
+     These are the SHELL's values. scripts/build-blog.mjs stamps each article's
+     own title, description, canonical, og:url and article:published_time into
+     its /blog/<slug>.html at build time, along with the rendered body, so a
+     crawler reads the real article without running any JavaScript. The values
+     here are what is served when the shell itself is reached, which is the
+     /blog/:slug rewrite for a slug that has no stamped page. Do not remove or
+     rename these tags: the stamp matches on them and the build throws if one
+     is missing. -->
 <meta property="og:site_name" content="Fantasy Sports Network">
 <meta property="og:title" content="FSN Blog">
 <meta property="og:description" content="Waiver wire reads, trade analysis, and matchup breakdowns for your fantasy league.">
@@ -193,7 +200,7 @@ footer a:hover{ color:var(--cyan); }
       '<div class="state"><strong>Story not found</strong>' +
       'We could not find that article. It may have moved. ' +
       '<a href="/blog">Back to all stories</a>.</div>';
-    document.title = 'Story not found | FSN Blog';
+    document.title = 'Story not found | Fantasy Sports Network';
   }
   function loadError(err, slug){
     console.error('[Blog] reader failed to load slug: ' + slug, err);
@@ -230,7 +237,9 @@ footer a:hover{ color:var(--cyan); }
       entityBlock +
       '<div class="more"><a href="/blog">&lsaquo; All stories</a></div>';
 
-    document.title = post.title + ' | FSN Blog';
+    /* The same suffix the build stamps into the static page, or the tab
+       title would change under the reader the moment hydration ran. */
+    document.title = post.title + ' | Fantasy Sports Network';
     var md = document.querySelector('meta[name="description"]');
     if (md && post.excerpt) md.setAttribute('content', post.excerpt);
   }

@@ -3,17 +3,29 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>FSN Blog</title>
-<meta name="description" content="An FSN Blog story.">
+<title>Jayden Higgins' torn ACL just reshaped the Texans' passing game | Fantasy Sports Network</title>
+<meta name="description" content="Houston lost a projected starting receiver for the season, and the target share is already moving. Here is who actually benefits, and why the shift is bigger than one fantasy roster spot.">
 <meta name="theme-color" content="#080a0e">
 
-<!-- Open Graph / Twitter card — rich link previews for iMessage, Slack, X, etc.
-     The reader shell hydrates per-article title/description client-side; these
-     tags are the fallback preview crawlers see on first-fetch. -->
+<!-- Open Graph / Twitter card - rich link previews for iMessage, Slack, X, etc.
+
+     These are the SHELL's values. scripts/build-blog.mjs stamps each article's
+     own title, description, canonical, og:url and article:published_time into
+     its /blog/<slug>.html at build time, along with the rendered body, so a
+     crawler reads the real article without running any JavaScript. The values
+     here are what is served when the shell itself is reached, which is the
+     /blog/:slug rewrite for a slug that has no stamped page. Do not remove or
+     rename these tags: the stamp matches on them and the build throws if one
+     is missing. -->
 <meta property="og:site_name" content="Fantasy Sports Network">
-<meta property="og:title" content="FSN Blog">
-<meta property="og:description" content="Waiver wire reads, trade analysis, and matchup breakdowns for your fantasy league.">
+<meta property="og:title" content="Jayden Higgins' torn ACL just reshaped the Texans' passing game | Fantasy Sports Network">
+<meta property="og:description" content="Houston lost a projected starting receiver for the season, and the target share is already moving. Here is who actually benefits, and why the shift is bigger than one fantasy roster spot.">
 <meta property="og:type" content="article">
+<meta property="og:url" content="https://www.fantasysportsnetwork.app/blog/texans-passing-game-after-higgins-acl-tear">
+<meta property="article:published_time" content="2026-09-11">
+<meta property="article:section" content="Analysis">
+<meta property="article:author" content="FSN Desk">
+<link rel="canonical" href="https://www.fantasysportsnetwork.app/blog/texans-passing-game-after-higgins-acl-tear">
 <meta property="og:image" content="https://www.fantasysportsnetwork.app/assets/og-image.png">
 <meta property="og:image:secure_url" content="https://www.fantasysportsnetwork.app/assets/og-image.png">
 <meta property="og:image:type" content="image/png">
@@ -21,8 +33,8 @@
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="Fantasy Sports Network — your league's broadcast desk.">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="FSN Blog">
-<meta name="twitter:description" content="Waiver wire reads, trade analysis, and matchup breakdowns for your fantasy league.">
+<meta name="twitter:title" content="Jayden Higgins' torn ACL just reshaped the Texans' passing game | Fantasy Sports Network">
+<meta name="twitter:description" content="Houston lost a projected starting receiver for the season, and the target share is already moving. Here is who actually benefits, and why the shift is bigger than one fantasy roster spot.">
 <meta name="twitter:image" content="https://www.fantasysportsnetwork.app/assets/og-image.png">
 <meta name="twitter:image:alt" content="Fantasy Sports Network — your league's broadcast desk.">
 
@@ -143,13 +155,15 @@ footer a:hover{ color:var(--cyan); }
 </header>
 
 <main class="wrap">
-  <article id="article" aria-live="polite">
-    <div class="skeleton-line short"></div>
-    <div class="skeleton-line title"></div>
-    <div class="skeleton-line"></div>
-    <div class="skeleton-line"></div>
-    <div class="skeleton-line short"></div>
-  </article>
+  <article id="article" aria-live="polite"><div class="art-meta"><span class="chip">Analysis</span><span class="date">September 11, 2026</span></div><h1 class="title">Jayden Higgins' torn ACL just reshaped the Texans' passing game</h1><div class="byline">By <b>FSN Desk</b></div><div class="body"><p>Houston's receiving corps looked settled two weeks ago. It does not anymore. <strong>Jayden Higgins</strong> tore his ACL in practice and is done for the season, and that single injury is already rerouting targets across the Texans' offense.</p>
+<h2>The hole Higgins leaves behind</h2>
+<p>Higgins was ticketed to start opposite <strong>Nico Collins</strong>, the clear WR1 in Houston's passing game. Losing a starting outside receiver before Week 1 even finished does not just cost the Texans a body, it costs them a route combination. Every target Higgins would have run now has to land somewhere else on the depth chart.</p>
+<h2>Nico Collins does not get easier, he gets more attention</h2>
+<p>The instinct is to assume Collins simply inherits every look Higgins would have drawn. It rarely works that cleanly. Defensive coordinators know Houston has one proven outside threat left, and they will shade extra attention his way on early downs. Collins remains the safest bet in this offense, but the raw target bump is not guaranteed to be as large as the box score projections suggest.</p>
+<h2>Dalton Schultz is the quiet winner</h2>
+<p>The player actually positioned to benefit is <strong>Dalton Schultz</strong>. He was already a high volume target in this offense last season, finishing with 82 receptions for 777 yards, tied for third among tight ends in catches. With an outside receiver spot now empty, Houston's short and intermediate passing game funnels even more directly through its tight end. Schultz was never going to be a league winning name, but a tight end who was already seeing that much volume, working behind a receiver corps that just got thinner, plays like a real weekly starter in most standard formats now, not a streaming option.</p>
+<h2>What to do with this</h2>
+<p>Do not bench Collins, and do not chase a name to directly replace Higgins, since no single Texans receiver profiles as a clean one for one swap. Instead, look at your own tight end spot. If Schultz is sitting on your bench or on the waiver wire, this is the week the role change is real and not just a hot take.</p></div><div class="more"><a href="/blog">&lsaquo; All stories</a></div></article>
 </main>
 
 <footer>
@@ -193,7 +207,7 @@ footer a:hover{ color:var(--cyan); }
       '<div class="state"><strong>Story not found</strong>' +
       'We could not find that article. It may have moved. ' +
       '<a href="/blog">Back to all stories</a>.</div>';
-    document.title = 'Story not found | FSN Blog';
+    document.title = 'Story not found | Fantasy Sports Network';
   }
   function loadError(err, slug){
     console.error('[Blog] reader failed to load slug: ' + slug, err);
@@ -230,7 +244,9 @@ footer a:hover{ color:var(--cyan); }
       entityBlock +
       '<div class="more"><a href="/blog">&lsaquo; All stories</a></div>';
 
-    document.title = post.title + ' | FSN Blog';
+    /* The same suffix the build stamps into the static page, or the tab
+       title would change under the reader the moment hydration ran. */
+    document.title = post.title + ' | Fantasy Sports Network';
     var md = document.querySelector('meta[name="description"]');
     if (md && post.excerpt) md.setAttribute('content', post.excerpt);
   }

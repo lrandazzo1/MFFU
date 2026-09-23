@@ -48,6 +48,21 @@ const READER_TEMPLATE = path.join(PAGES_DIR, 'reader.html');
 // Hand-authored shells in landing/blog that the build must never delete.
 const RESERVED_PAGES = new Set(['index.html', 'reader.html']);
 
+const SITEMAP_PATH = path.join(ROOT, 'landing', 'sitemap.xml');
+
+/* ONE canonical origin for every absolute URL the build emits: the <title>
+   suffix's companion in og:url, the canonical link, and every <loc> in the
+   sitemap. It matches the host already baked into the deployed og:image and
+   the existing sitemap. Canonical, og:url and sitemap MUST agree on the host
+   or a crawler treats www and apex as two sites and splits the ranking, so
+   this is deliberately a single constant rather than a string repeated in
+   five templates. */
+const SITE_ORIGIN = 'https://www.fantasysportsnetwork.app';
+
+/* Pages that exist on the landing deploy and are not articles. Listed here so
+   the generated sitemap carries the whole site rather than only the blog. */
+const STATIC_ROUTES = ['/', '/blog', '/support', '/privacy', '/terms'];
+
 const CHECK_ONLY = process.argv.includes('--check');
 
 // U+2014 EM DASH is banned. U+2015 HORIZONTAL BAR reads the same and is also
@@ -342,6 +357,156 @@ function loadFile(file) {
 /* ------------------------------------------------------------------ *
  * Build
  * ------------------------------------------------------------------ */
+/* ------------------------------------------------------------------------
+   PER-ARTICLE METADATA
+
+   Every slug page used to be a VERBATIM copy of the reader shell, so every
+   article on the site shipped the same <title>FSN Blog</title>, the same
+   description ("An FSN Blog story.") and the same og:title. The shell rewrote
+   them from JSON after load, which a crawler that does not execute the page's
+   JavaScript never sees. Google was being handed one title and one
+   description for the whole blog.
+
+   The fix is to bake each article's own metadata and its rendered body into
+   its page at BUILD time. That is this static site's equivalent of a
+   framework's generateMetadata plus server rendering, and it is strictly
+   better for crawling than either: the HTML is already on disk, so there is
+   no server render and no hydration to wait for.
+
+   The client-side hydration stays exactly as it was. It now re-renders the
+   same content it finds, which costs nothing and keeps the reader working
+   when a slug is opened through the /blog/:slug rewrite rather than its own
+   stamped page.
+------------------------------------------------------------------------ */
+
+/** Escape for an HTML attribute value. Article copy is build-time input from
+ *  the repo, not user input, but a stray quote in a title would still break
+ *  the tag it lands in. */
+function attr(value) {
+  return String(value == null ? '' : value)
+    .replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+/** "September 14, 2026", matching what the reader renders client-side so the
+ *  pre-rendered body and the hydrated body read identically. */
+function longDate(iso) {
+  const date = new Date(String(iso) + 'T00:00:00Z');
+  if (Number.isNaN(date.getTime())) return String(iso == null ? '' : iso);
+  return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+}
+
+/** Replace the FIRST match of a pattern, THROWING if it is absent.
+ *
+ *  Deliberately a throw and not `fail()`. The stamp runs in the write phase,
+ *  after the collected errors have already been reported, so a `fail()` here
+ *  would be noted and then the page written anyway, without its metadata. A
+ *  reader shell that has been restructured must stop the build instead: this
+ *  regression is invisible in review and surfaces weeks later as a ranking
+ *  drop, which is the worst way to find out. */
+function replaceOnce(html, pattern, replacement, what) {
+  if (!pattern.test(html)) {
+    throw new Error(
+      `[blog] reader.html no longer contains ${what}, so per-article metadata cannot be stamped. ` +
+      'Restore that markup in landing/blog/reader.html or update stampArticlePage() to match it.',
+    );
+  }
+  return html.replace(pattern, replacement);
+}
+
+function stampArticlePage(shell, post) {
+  const url = `${SITE_ORIGIN}/blog/${post.slug}`;
+  const title = `${post.title} | Fantasy Sports Network`;
+  let html = shell;
+
+  html = replaceOnce(html, /<title>[^<]*<\/title>/,
+    `<title>${escapeHtml(title)}</title>`, '<title>');
+  html = replaceOnce(html, /<meta name="description" content="[^"]*">/,
+    `<meta name="description" content="${attr(post.excerpt)}">`, 'the description meta');
+  html = replaceOnce(html, /<meta property="og:title" content="[^"]*">/,
+    `<meta property="og:title" content="${attr(title)}">`, 'the og:title meta');
+  html = replaceOnce(html, /<meta property="og:description" content="[^"]*">/,
+    `<meta property="og:description" content="${attr(post.excerpt)}">`, 'the og:description meta');
+  html = replaceOnce(html, /<meta name="twitter:title" content="[^"]*">/,
+    `<meta name="twitter:title" content="${attr(title)}">`, 'the twitter:title meta');
+  html = replaceOnce(html, /<meta name="twitter:description" content="[^"]*">/,
+    `<meta name="twitter:description" content="${attr(post.excerpt)}">`, 'the twitter:description meta');
+
+  /* The tags the shell has no placeholder for. Canonical and og:url share
+     SITE_ORIGIN with the sitemap so a crawler sees one host, not two. */
+  html = replaceOnce(html, /<meta property="og:type" content="article">/,
+    '<meta property="og:type" content="article">\n' +
+    `<meta property="og:url" content="${attr(url)}">\n` +
+    `<meta property="article:published_time" content="${attr(post.publishDate)}">\n` +
+    `<meta property="article:section" content="${attr(post.category)}">\n` +
+    `<meta property="article:author" content="${attr(post.author || 'FSN Desk')}">\n` +
+    `<link rel="canonical" href="${attr(url)}">`,
+    'the og:type meta');
+
+  /* The body itself, so a crawler reads the article rather than a skeleton.
+     Same markup the hydrator builds, minus the entity chips, which are an
+     interactive enhancement rather than content. */
+  const article =
+    '<div class="art-meta">' +
+      `<span class="chip">${escapeHtml(post.category)}</span>` +
+      `<span class="date">${escapeHtml(longDate(post.publishDate))}</span>` +
+    '</div>' +
+    `<h1 class="title">${escapeHtml(post.title)}</h1>` +
+    `<div class="byline">By <b>${escapeHtml(post.author || 'FSN Desk')}</b></div>` +
+    `<div class="body">${post.bodyHtml || ''}</div>` +
+    '<div class="more"><a href="/blog">&lsaquo; All stories</a></div>';
+
+  html = replaceOnce(html, /<article id="article" aria-live="polite">[\s\S]*?<\/article>/,
+    `<article id="article" aria-live="polite">${article}</article>`,
+    'the #article mount point');
+
+  return html;
+}
+
+/* ------------------------------------------------------------------------
+   SITEMAP
+
+   Was hand-maintained, and had already drifted: it listed three articles
+   while landing/blog held four, so the newest story was not discoverable.
+   Generated from the same `posts` the pages are stamped from, which is the
+   only way the two cannot disagree.
+
+   Every URL here is a PUBLIC, file-backed article from landing/content/blog.
+   Nothing in this build reads Supabase, so a league's private recap has no
+   path into this file. See the guard in the check phase.
+------------------------------------------------------------------------ */
+function buildSitemap(posts) {
+  const entry = (loc, lastmod, changefreq) =>
+    '  <url>\n' +
+    `    <loc>${escapeHtml(loc)}</loc>\n` +
+    (lastmod ? `    <lastmod>${escapeHtml(lastmod)}</lastmod>\n` : '') +
+    (changefreq ? `    <changefreq>${changefreq}</changefreq>\n` : '') +
+    '  </url>';
+
+  const newest = posts
+    .map((p) => p.publishDate)
+    .filter(Boolean)
+    .sort()
+    .pop();
+
+  const lines = STATIC_ROUTES.map((route) => entry(
+    SITE_ORIGIN + (route === '/' ? '/' : route),
+    /* The index and the blog list change whenever an article does; the legal
+       pages do not, and claiming otherwise wastes crawl budget. */
+    route === '/' || route === '/blog' ? newest : null,
+    route === '/blog' ? 'weekly' : 'monthly',
+  ));
+
+  for (const post of posts) {
+    lines.push(entry(`${SITE_ORIGIN}/blog/${post.slug}`, post.publishDate, 'weekly'));
+  }
+
+  return '<?xml version="1.0" encoding="UTF-8"?>\n' +
+    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
+    lines.join('\n') + '\n' +
+    '</urlset>\n';
+}
+
 function build() {
   if (!fs.existsSync(SRC_DIR)) {
     console.error(`[blog] source directory not found: ${SRC_DIR}`);
@@ -401,15 +566,93 @@ function build() {
 
   if (CHECK_ONLY) {
     let drift = false;
+    const stale = (what) => { console.error(`[blog] check: ${what} Run: npm run build:blog`); drift = true; };
+
     const manifestPath = path.join(OUT_DIR, 'index.json');
-    if (!fs.existsSync(manifestPath)) { console.error('[blog] check: manifest not generated. Run: npm run build:blog'); drift = true; }
+    if (!fs.existsSync(manifestPath)) stale('manifest not generated.');
     else {
       const existing = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
       const norm = (m) => JSON.stringify(m.posts);
-      if (norm(existing) !== norm(manifest)) { console.error('[blog] check: manifest is stale. Run: npm run build:blog'); drift = true; }
+      if (norm(existing) !== norm(manifest)) stale('manifest is stale.');
     }
+
+    /* Every slug page must carry its OWN metadata. Comparing against a fresh
+       stamp catches both halves of the regression this exists to prevent: a
+       page that was never restamped after its article changed, and a page
+       still holding the shell's generic title because the stamp silently
+       stopped applying. */
+    const readerShell = fs.existsSync(READER_TEMPLATE) ? fs.readFileSync(READER_TEMPLATE, 'utf8') : '';
+    for (const post of posts) {
+      const pagePath = path.join(PAGES_DIR, post.slug + '.html');
+      if (!fs.existsSync(pagePath)) { stale(`landing/blog/${post.slug}.html is missing.`); continue; }
+      const onDisk = fs.readFileSync(pagePath, 'utf8');
+      if (onDisk !== stampArticlePage(readerShell, post)) stale(`landing/blog/${post.slug}.html is stale.`);
+      if (onDisk.includes('<title>FSN Blog</title>')) {
+        stale(`landing/blog/${post.slug}.html still carries the shell's generic title.`);
+      }
+    }
+
+    /* The sitemap is generated from the same posts, so any disagreement means
+       one of the two was written by hand. */
+    const sitemapOnDisk = fs.existsSync(SITEMAP_PATH) ? fs.readFileSync(SITEMAP_PATH, 'utf8') : '';
+    if (sitemapOnDisk !== buildSitemap(posts)) stale('landing/sitemap.xml is stale.');
+
+    /* ---- THE LEAK GUARD --------------------------------------------------
+
+       `blog_articles` in Supabase holds ONE thing: per-league recaps, every
+       row carrying a NOT NULL league_id. There is no such thing as a global
+       row in that table, and /api/blog/articles requires a league_id and
+       refuses the request without one, so it cannot be enumerated.
+
+       The public blog is file-backed from landing/content/blog and reads none
+       of it, which is WHY no private recap can appear on /blog or in the
+       sitemap. That is an architectural guarantee rather than a filter, and
+       the way it would be lost is someone adding a convenience fetch to a
+       blog page later and quietly publishing twelve leagues' private
+       matchups. This fails the build if that read ever appears.
+
+       Scoped to the BLOG surface, and to actual read syntax. The invite page
+       legitimately handles a league id, and the privacy policy legitimately
+       names Supabase in prose; neither is the blog and neither is a read.
+
+       landing/vercel.json's proxy of /api/blog/articles is also allowed: it
+       exists so the APP can serve that route from the root domain, it still
+       demands a league_id, and no blog page calls it.
+    --------------------------------------------------------------------- */
+    const BLOG_SURFACE = [PAGES_DIR, OUT_DIR];
+    const READ_PATTERNS = [
+      [/\/api\/blog\/articles/, 'the league-scoped article endpoint'],
+      [/\bblog_articles\b/, 'the blog_articles table'],
+      [/\bcreateClient\s*\(/, 'a Supabase client'],
+      [/\.supabase\.co/, 'a Supabase host'],
+      [/\bfrom\s*\(\s*['"`]blog_articles/, 'a blog_articles query'],
+    ];
+    let leaks = 0;
+    const scanned = [];
+    const walk = (dir) => {
+      if (!fs.existsSync(dir)) return;
+      for (const name of fs.readdirSync(dir)) {
+        const full = path.join(dir, name);
+        if (fs.statSync(full).isDirectory()) { walk(full); continue; }
+        if (!/\.(html|js|mjs|json)$/.test(name)) continue;
+        const rel = path.relative(ROOT, full);
+        scanned.push(rel);
+        for (const [pattern, what] of READ_PATTERNS) {
+          if (!pattern.test(fs.readFileSync(full, 'utf8'))) continue;
+          console.error(
+            `[blog] LEAK: ${rel} references ${what}. The public blog is file-backed and must never ` +
+            'read league-scoped article storage: every row in it is one league\'s private recap.',
+          );
+          leaks++;
+        }
+      }
+    };
+    for (const dir of BLOG_SURFACE) walk(dir);
+    if (leaks) process.exit(1);
+
     if (drift) process.exit(1);
-    console.log(`[blog] check passed. ${articles.length} article(s), punctuation clean.`);
+    console.log(`[blog] check passed. ${articles.length} article(s), punctuation clean, ` +
+      `per-article metadata stamped, sitemap current, ${scanned.length} landing file(s) free of league-scoped reads.`);
     return;
   }
 
@@ -432,10 +675,13 @@ function build() {
     }
   }
   for (const post of posts) {
-    fs.writeFileSync(path.join(PAGES_DIR, post.slug + '.html'), readerShell);
+    fs.writeFileSync(path.join(PAGES_DIR, post.slug + '.html'), stampArticlePage(readerShell, post));
   }
 
+  fs.writeFileSync(SITEMAP_PATH, buildSitemap(posts));
+
   console.log(`[blog] built ${posts.length} article(s) -> landing/content/generated/blog/ + landing/blog/<slug>.html`);
+  console.log(`[blog] sitemap: ${STATIC_ROUTES.length + posts.length} URL(s) -> landing/sitemap.xml`);
   for (const p of posts) console.log(`  - ${p.slug} (${p.entities.length} entit${p.entities.length === 1 ? 'y' : 'ies'})`);
 }
 

@@ -1,5 +1,15 @@
 # FSN league blog articles
 
+> **The public blog at `fantasysportsnetwork.app/blog` is a different thing
+> from everything below.** It is file-backed from `landing/content/blog`,
+> compiled by `scripts/build-blog.mjs`, and reads no Supabase at all. The
+> table documented here holds only per-league recaps, every row with a NOT
+> NULL `league_id`, and `/api/blog/articles` refuses a request that does not
+> name one. That is why no league's private content can reach the public blog
+> or its sitemap: not a filter, an absence of any read path.
+> `npm run check:blog` fails the build if a blog page ever gains one. See
+> `docs/public-blog-seo.md`.
+
 The foundation for AI-written league stories on the public blog. Three pieces:
 a Supabase table, a math layer that decides what a performance meant, and a
 pipeline service that composes copy against that math and publishes it.

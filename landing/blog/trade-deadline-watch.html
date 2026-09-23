@@ -3,17 +3,29 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>FSN Blog</title>
-<meta name="description" content="An FSN Blog story.">
+<title>Trade deadline watch, the buyers and the sellers | Fantasy Sports Network</title>
+<meta name="description" content="Three contenders should be buying now, before prices climb. Two rebuilds should be selling veterans while the names still carry weight.">
 <meta name="theme-color" content="#080a0e">
 
-<!-- Open Graph / Twitter card — rich link previews for iMessage, Slack, X, etc.
-     The reader shell hydrates per-article title/description client-side; these
-     tags are the fallback preview crawlers see on first-fetch. -->
+<!-- Open Graph / Twitter card - rich link previews for iMessage, Slack, X, etc.
+
+     These are the SHELL's values. scripts/build-blog.mjs stamps each article's
+     own title, description, canonical, og:url and article:published_time into
+     its /blog/<slug>.html at build time, along with the rendered body, so a
+     crawler reads the real article without running any JavaScript. The values
+     here are what is served when the shell itself is reached, which is the
+     /blog/:slug rewrite for a slug that has no stamped page. Do not remove or
+     rename these tags: the stamp matches on them and the build throws if one
+     is missing. -->
 <meta property="og:site_name" content="Fantasy Sports Network">
-<meta property="og:title" content="FSN Blog">
-<meta property="og:description" content="Waiver wire reads, trade analysis, and matchup breakdowns for your fantasy league.">
+<meta property="og:title" content="Trade deadline watch, the buyers and the sellers | Fantasy Sports Network">
+<meta property="og:description" content="Three contenders should be buying now, before prices climb. Two rebuilds should be selling veterans while the names still carry weight.">
 <meta property="og:type" content="article">
+<meta property="og:url" content="https://www.fantasysportsnetwork.app/blog/trade-deadline-watch">
+<meta property="article:published_time" content="2026-09-08">
+<meta property="article:section" content="Analysis">
+<meta property="article:author" content="FSN Desk">
+<link rel="canonical" href="https://www.fantasysportsnetwork.app/blog/trade-deadline-watch">
 <meta property="og:image" content="https://www.fantasysportsnetwork.app/assets/og-image.png">
 <meta property="og:image:secure_url" content="https://www.fantasysportsnetwork.app/assets/og-image.png">
 <meta property="og:image:type" content="image/png">
@@ -21,8 +33,8 @@
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="Fantasy Sports Network — your league's broadcast desk.">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="FSN Blog">
-<meta name="twitter:description" content="Waiver wire reads, trade analysis, and matchup breakdowns for your fantasy league.">
+<meta name="twitter:title" content="Trade deadline watch, the buyers and the sellers | Fantasy Sports Network">
+<meta name="twitter:description" content="Three contenders should be buying now, before prices climb. Two rebuilds should be selling veterans while the names still carry weight.">
 <meta name="twitter:image" content="https://www.fantasysportsnetwork.app/assets/og-image.png">
 <meta name="twitter:image:alt" content="Fantasy Sports Network — your league's broadcast desk.">
 
@@ -143,13 +155,14 @@ footer a:hover{ color:var(--cyan); }
 </header>
 
 <main class="wrap">
-  <article id="article" aria-live="polite">
-    <div class="skeleton-line short"></div>
-    <div class="skeleton-line title"></div>
-    <div class="skeleton-line"></div>
-    <div class="skeleton-line"></div>
-    <div class="skeleton-line short"></div>
-  </article>
+  <article id="article" aria-live="polite"><div class="art-meta"><span class="chip">Analysis</span><span class="date">September 8, 2026</span></div><h1 class="title">Trade deadline watch, the buyers and the sellers</h1><div class="byline">By <b>FSN Desk</b></div><div class="body"><p>The deadline is closer than the standings suggest. Records lie early. Point differential does not. Here is who should be picking up the phone this week.</p>
+<h2>Buy now, before the price moves</h2>
+<p>The contenders sitting on a soft bench should move first. <strong>Christian McCaffrey</strong> owners in a bye week crunch will listen, and a package built around depth beats one built around a single star. Offer two useful starters, not one name plus filler.</p>
+<h2>Sell the name, not the production</h2>
+<p>If your roster is a game and a half back with a bottom three point total, you are a seller. That is not an insult, it is a plan. Call the contenders about your veterans while the names still move rosters.</p>
+<ol><li>Lead with the player, not the pitch.</li><li>Ask for youth or picks, never another team's problem.</li><li>Take the second best offer if it comes first and clean.</li></ol>
+<h2>The one player who is not for sale</h2>
+<p><strong>Justin Jefferson</strong> stays. A target share like his is the rarest thing in the format, and no rebuild package returns it. Keep the star. Trade the parts around him.</p></div><div class="more"><a href="/blog">&lsaquo; All stories</a></div></article>
 </main>
 
 <footer>
@@ -193,7 +206,7 @@ footer a:hover{ color:var(--cyan); }
       '<div class="state"><strong>Story not found</strong>' +
       'We could not find that article. It may have moved. ' +
       '<a href="/blog">Back to all stories</a>.</div>';
-    document.title = 'Story not found | FSN Blog';
+    document.title = 'Story not found | Fantasy Sports Network';
   }
   function loadError(err, slug){
     console.error('[Blog] reader failed to load slug: ' + slug, err);
@@ -230,7 +243,9 @@ footer a:hover{ color:var(--cyan); }
       entityBlock +
       '<div class="more"><a href="/blog">&lsaquo; All stories</a></div>';
 
-    document.title = post.title + ' | FSN Blog';
+    /* The same suffix the build stamps into the static page, or the tab
+       title would change under the reader the moment hydration ran. */
+    document.title = post.title + ' | Fantasy Sports Network';
     var md = document.querySelector('meta[name="description"]');
     if (md && post.excerpt) md.setAttribute('content', post.excerpt);
   }
