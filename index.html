@@ -2577,6 +2577,93 @@ body.fsn-dd-lock{ overflow:hidden; }
 }
 
 /* ============================================================
+   LEAGUE BLOG — the league's own published articles on the News Desk
+
+   A stack of cards above the deterministic timeline, filled by
+   FSNLeagueArticles (block 1). Presentational only: when the league has
+   nothing published for the viewed week the renderer hides
+   #leagueBlogWrap entirely and the desk below is untouched.
+============================================================ */
+.lb-refresh{
+  background:none; border:0; color:var(--dim); font-size:15px; line-height:1;
+  padding:2px 4px; margin-left:8px; cursor:pointer;
+}
+.lb-refresh:disabled{ opacity:.4; cursor:default; }
+.lb-card{
+  border:1px solid var(--line-2); border-radius:10px; overflow:hidden;
+  background:rgba(255,255,255,.02); margin-bottom:10px;
+}
+.lb-top{ height:3px; background:var(--gold); box-shadow:0 0 18px var(--gold); }
+.lb-body{ padding:13px 14px 14px; }
+.lb-kicker{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px; }
+.lb-title{
+  font-family:'Anton',sans-serif; font-size:19px; line-height:1.14;
+  letter-spacing:.01em; margin:0 0 6px;
+}
+.lb-md{ font-size:13px; line-height:1.62; color:var(--ink-2, #cfd6e4); }
+.lb-md h1,.lb-md h2,.lb-md h3{
+  font-family:'Anton',sans-serif; letter-spacing:.01em; margin:12px 0 5px; line-height:1.16;
+}
+.lb-md h1{ font-size:17px; } .lb-md h2{ font-size:15px; } .lb-md h3{ font-size:13.5px; }
+.lb-md p{ margin:0 0 8px; }
+.lb-md ul{ margin:0 0 8px; padding-left:17px; list-style:disc; }
+.lb-md li{ margin:0 0 5px; }
+.lb-md strong{ color:#fff; font-weight:600; }
+.lb-md em{ font-style:italic; }
+.lb-md code{
+  font-family:ui-monospace,monospace; font-size:12px;
+  background:rgba(255,255,255,.07); padding:1px 4px; border-radius:4px;
+}
+.lb-md a{ color:var(--cyan); text-decoration:underline; }
+.lb-chips{ display:flex; flex-wrap:wrap; gap:6px; margin-top:11px; }
+.lb-chip{
+  display:inline-flex; align-items:center; gap:5px;
+  border:1px solid var(--line-2); border-radius:999px;
+  background:rgba(255,255,255,.03); color:var(--ink-2, #cfd6e4);
+  font-size:11px; line-height:1; padding:6px 10px; cursor:pointer;
+}
+.lb-chip:hover{ border-color:rgba(255,196,0,.4); }
+.lb-chip .dot{ width:6px; height:6px; border-radius:50%; background:var(--dim); }
+.lb-chip[data-flag="GAME_WINNER"] .dot{ background:#3ddc84; }
+.lb-chip[data-flag="VALIANT_LOSS"] .dot{ background:var(--gold); }
+.lb-chip[data-flag="DUD_COST_WIN"] .dot{ background:var(--red); }
+.lb-chip[data-flag="GARBAGE_TIME_BLOWOUT"] .dot{ background:var(--cyan); }
+.lb-chips-head{ font-size:10.5px; letter-spacing:.08em; color:var(--dim); margin-top:12px; }
+
+/* The player sheet a chip opens. One shared overlay, same bottom-sheet shape
+   as FSNSelect's picker so it reads as part of the app rather than a webview
+   dialog. */
+#lbPlayerSheet{
+  position:fixed; inset:0; z-index:120; display:none;
+  background:rgba(2,6,14,.72); backdrop-filter:blur(2px);
+}
+#lbPlayerSheet[data-open="true"]{ display:block; }
+#lbPlayerSheet .lb-sheet-in{
+  position:absolute; left:0; right:0; bottom:0;
+  background:#0b1018; border-top:1px solid var(--line-2);
+  border-radius:14px 14px 0 0; padding:16px 16px calc(16px + env(safe-area-inset-bottom));
+  max-height:74vh; overflow:auto;
+}
+#lbPlayerSheet .lb-sheet-name{ font-family:'Anton',sans-serif; font-size:20px; line-height:1.1; }
+#lbPlayerSheet .lb-sheet-team{ font-size:12px; color:var(--dim); margin-top:3px; }
+#lbPlayerSheet .lb-stat-grid{
+  display:grid; grid-template-columns:repeat(2,1fr); gap:9px; margin-top:14px;
+}
+#lbPlayerSheet .lb-stat{
+  border:1px solid var(--line-2); border-radius:9px; padding:9px 10px;
+  background:rgba(255,255,255,.02);
+}
+#lbPlayerSheet .lb-stat .k{ font-size:9.5px; letter-spacing:.09em; color:var(--dim); }
+#lbPlayerSheet .lb-stat .v{ font-family:ui-monospace,monospace; font-size:15px; margin-top:3px; }
+#lbPlayerSheet .lb-verdict{
+  margin-top:13px; font-size:12.5px; line-height:1.55; color:var(--ink-2, #cfd6e4);
+}
+#lbPlayerSheet .lb-sheet-close{
+  margin-top:15px; width:100%; border:1px solid var(--line-2); border-radius:9px;
+  background:rgba(255,255,255,.04); color:#fff; padding:10px; font-size:13px; cursor:pointer;
+}
+
+/* ============================================================
    THE DESK WIRE — the day's article from the root-domain blog
 
    One card above the deterministic timeline, filled by FSNArticles (block 1)
@@ -3502,6 +3589,20 @@ body.fsn-dd-lock{ overflow:hidden; }
     <!-- LEAD STORY -->
     <div class="px-4" id="newsLeadWrap"></div>
 
+    <!-- LEAGUE BLOG — this league's OWN published articles, read from
+         /api/blog/articles. Hidden outright until the league has something
+         published for the viewed week, so the deterministic timeline below
+         is exactly as it was when there is nothing to show. -->
+    <div class="px-4 mt-3" id="leagueBlogWrap" hidden>
+      <div class="section-head">
+        <span class="bar" style="background:var(--gold)"></span>
+        <h2>League Blog</h2>
+        <span class="kicker text-[var(--dim)] ml-auto" id="leagueBlogState"></span>
+        <button type="button" id="leagueBlogRefresh" class="lb-refresh" aria-label="Refresh league blog">&#8635;</button>
+      </div>
+      <div id="leagueBlogFeed"></div>
+    </div>
+
     <!-- THE CHRONOLOGICAL STREAM -->
     <div class="px-4 mt-3" id="newsFeedWrap">
       <div class="section-head">
@@ -3514,6 +3615,21 @@ body.fsn-dd-lock{ overflow:hidden; }
 
     </div>
   </section>
+
+  <!-- LEAGUE BLOG — PLAYER SHEET
+       Opened by a tracked-player chip on a League Blog card. One shared
+       overlay for every chip: the content is written on open from the
+       article's own tracked_players row, so there is no per-player markup
+       to keep in sync and no second source of truth for the numbers. -->
+  <div id="lbPlayerSheet" data-open="false" role="dialog" aria-modal="true" aria-labelledby="lbSheetName">
+    <div class="lb-sheet-in">
+      <div class="lb-sheet-name" id="lbSheetName"></div>
+      <div class="lb-sheet-team" id="lbSheetTeam"></div>
+      <div class="lb-stat-grid" id="lbSheetStats"></div>
+      <p class="lb-verdict" id="lbSheetVerdict"></p>
+      <button type="button" class="lb-sheet-close" id="lbSheetClose">Close</button>
+    </div>
+  </div>
 
   <!-- ==========================================================
        SCREEN 6 — SETUP
@@ -8857,6 +8973,292 @@ return {
   normalizeYahooLeagueKey,
   looksLikeYahooLeagueKey,
 };
+})();
+
+/* ============================================================
+   GLOBAL SCOPE — LEAGUE BLOG ARTICLES (FSNLeagueArticles)
+
+   The league's own published stories, read from the app project's public
+   endpoint (/api/blog/articles) and cached for the next visit.
+
+   This is a SEPARATE feed from FSNArticles below. That module reads the
+   general-audience blog the desk publishes on the root domain: real-world
+   NFL copy, the same for every reader. This one reads rows written by the
+   scheduled pipeline for ONE league, keyed by league/season/week, and every
+   article it returns names that league's own teams and players.
+
+   It lives at global scope in the first block, per the rule at the top of
+   this file: the state is owned here and the paint lives in the last block,
+   which is a closed scope that cannot see this declaration and reaches it
+   through window. Nothing here touches the DOM, the News Desk generators,
+   their seeds, or any historical pipeline. It fetches, caches, and reports
+   a state.
+
+   ---- THE STATE MACHINE ----
+
+   Every read resolves to exactly one of five states, so the renderer never
+   has to infer "nothing published yet" from an empty array plus a null error:
+
+     idle     nothing has been asked for yet
+     loading  a request is in flight and no cached copy can stand in
+     ready    articles are in hand (possibly served from cache)
+     empty    the league has nothing published for this scope. Not an error.
+     error    the read failed and there is no cached copy to fall back on
+
+   A cached payload paints immediately and is refreshed behind the reader, so
+   a repeat visit is instant. `stale` says whether what is on screen came from
+   cache while a refresh is running, which is what lets the header show a
+   quiet updating hint instead of a blocking spinner.
+============================================================ */
+window.FSNLeagueArticles = (function(){
+  'use strict';
+
+  const ENDPOINT = '/api/blog/articles';
+  const CACHE_PREFIX = 'fsn_league_articles_v1:';
+  /* A screen change is cheap to trigger and the pipeline publishes three
+     times a week, so a cached scope is reused rather than re-fetched. */
+  const FRESH_MS = 10 * 60 * 1000;
+  /* How long a cached payload may still paint when the network is gone. Past
+     this the slot reports its own state rather than showing stale copy. */
+  const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+  /* The reader is looking at this section, so it gets an interactive
+     deadline rather than a background one. */
+  const TIMEOUT_MS = 9000;
+  const MAX_ARTICLES = 12;
+
+  /* One entry per scope. Kept in memory so a repaint inside a session never
+     touches storage or the network at all. */
+  const memory = Object.create(null);
+  const listeners = [];
+  let lastScope = null;
+
+  /* ---- 1. SCOPE ------------------------------------------------------- */
+
+  /* A scope is only usable when all three coordinates are present. A missing
+     week would silently widen the read to the whole league and paint last
+     week's verdict under this week's header. */
+  function scopeOf(leagueId, week, season){
+    const league = String(leagueId == null ? '' : leagueId).trim();
+    const wk = Number(week);
+    const yr = Number(season);
+    if(!league || !/^[A-Za-z0-9._-]{1,64}$/.test(league)) return null;
+    if(!Number.isInteger(wk) || wk < 1 || wk > 18) return null;
+    if(!Number.isInteger(yr) || yr < 1990 || yr > 2100) return null;
+    return { leagueId: league, week: wk, season: yr, key: league + ':' + yr + ':' + wk };
+  }
+
+  function urlFor(scope){
+    return ENDPOINT +
+      '?league_id=' + encodeURIComponent(scope.leagueId) +
+      '&season=' + encodeURIComponent(scope.season) +
+      '&week=' + encodeURIComponent(scope.week) +
+      '&limit=' + MAX_ARTICLES;
+  }
+
+  /* ---- 2. SNAPSHOTS --------------------------------------------------- */
+
+  function snapshot(scope, patch){
+    return Object.assign({
+      status: 'idle',
+      leagueId: scope ? scope.leagueId : '',
+      season: scope ? scope.season : null,
+      week: scope ? scope.week : null,
+      articles: [],
+      error: null,
+      fetchedAt: 0,
+      stale: false,
+    }, patch || {});
+  }
+
+  function publish(scope, patch){
+    const next = snapshot(scope, patch);
+    if(scope) memory[scope.key] = next;
+    for(let i = 0; i < listeners.length; i++){
+      try{ listeners[i](next); }
+      catch(err){ console.error('[FSNLeagueArticles] a subscriber threw while handling a ' + next.status + ' update', err); }
+    }
+    return next;
+  }
+
+  /* ---- 3. STORAGE ----------------------------------------------------- */
+
+  /* localStorage throws outright in a private-mode webview, which is a
+     browser API failing by design rather than a bug in this module: the
+     cache is an optimisation and the feed works without it. */
+  function readCache(scope){
+    let raw = null;
+    try{ raw = window.localStorage.getItem(CACHE_PREFIX + scope.key); }
+    catch(err){ return null; }
+    if(!raw) return null;
+    try{
+      const parsed = JSON.parse(raw);
+      if(!parsed || !Array.isArray(parsed.articles)) return null;
+      const fetchedAt = Number(parsed.fetchedAt) || 0;
+      if(!fetchedAt || Date.now() - fetchedAt > CACHE_TTL_MS) return null;
+      /* A payload cached under a different scope is a bug, not a variant:
+         refuse it rather than painting another week's stories. */
+      if(parsed.key !== scope.key) return null;
+      return { articles: parsed.articles, fetchedAt };
+    }catch(err){
+      console.warn('[FSNLeagueArticles] cached payload for ' + scope.key + ' was unreadable and has been ignored', err);
+      return null;
+    }
+  }
+
+  function writeCache(scope, articles, fetchedAt){
+    try{
+      window.localStorage.setItem(CACHE_PREFIX + scope.key, JSON.stringify({
+        key: scope.key, articles, fetchedAt,
+      }));
+    }catch(err){ /* Quota or private mode. The feed does not depend on it. */ }
+  }
+
+  /* ---- 4. THE READ ---------------------------------------------------- */
+
+  /* Only the published shape is kept. An article missing a title or a body is
+     dropped rather than painted as an empty card: the endpoint should never
+     send one, and a blank row in the feed is worse than one fewer story. */
+  function normalize(list){
+    const out = [];
+    const rows = Array.isArray(list) ? list : [];
+    for(let i = 0; i < rows.length; i++){
+      const row = rows[i] || {};
+      const title = String(row.title == null ? '' : row.title).trim();
+      const body = String(row.content_markdown == null ? '' : row.content_markdown).trim();
+      if(!title || !body) continue;
+      out.push({
+        slug: String(row.slug || ''),
+        title,
+        excerpt: String(row.excerpt == null ? '' : row.excerpt).trim(),
+        content_markdown: body,
+        article_type: String(row.article_type || ''),
+        tracked_players: Array.isArray(row.tracked_players) ? row.tracked_players : [],
+        season: Number(row.season) || null,
+        week: Number(row.week) || null,
+        published_at: row.published_at || null,
+      });
+    }
+    return out;
+  }
+
+  async function request(scope){
+    const response = await FSNNet.fetch(urlFor(scope), { headers: { Accept: 'application/json' } }, {
+      timeoutMs: TIMEOUT_MS,
+      label: 'league articles ' + scope.key,
+    });
+    if(!response || !response.ok){
+      const status = response ? response.status : 0;
+      throw Object.assign(new Error('Blog article read failed (HTTP ' + status + ')'), { status });
+    }
+    const payload = await response.json();
+    return normalize(payload && payload.articles);
+  }
+
+  /* ---- 5. PUBLIC SURFACE ---------------------------------------------- */
+
+  /* What is known right now, without touching the network. The renderer calls
+     this on every repaint so a screen change repaints from memory instantly. */
+  function read(leagueId, week, season){
+    const scope = scopeOf(leagueId, week, season);
+    if(!scope) return snapshot(null, { status: 'idle' });
+    return memory[scope.key] || snapshot(scope, { status: 'idle' });
+  }
+
+  /* Fetch, using cache when it is fresh enough. `force` is the pull to
+     refresh: it always goes to the network, but still paints what it has
+     while the request is in flight so the section never blanks out. */
+  async function load(leagueId, week, season, options){
+    const opts = options || {};
+    const scope = scopeOf(leagueId, week, season);
+    if(!scope){
+      console.warn('[FSNLeagueArticles] refusing to read with an incomplete scope ' +
+        '(league "' + leagueId + '", season ' + season + ', week ' + week + ')');
+      return snapshot(null, { status: 'idle' });
+    }
+    lastScope = scope;
+
+    const cached = readCache(scope);
+    const current = memory[scope.key];
+    const known = (current && current.status === 'ready') ? current.articles : (cached ? cached.articles : null);
+    const knownAt = (current && current.fetchedAt) || (cached ? cached.fetchedAt : 0);
+
+    if(!opts.force && knownAt && Date.now() - knownAt < FRESH_MS){
+      return publish(scope, {
+        status: known && known.length ? 'ready' : 'empty',
+        articles: known || [], fetchedAt: knownAt,
+      });
+    }
+
+    /* Something already in hand keeps painting while the refresh runs. Only a
+       scope with nothing at all shows the loading state. */
+    publish(scope, known
+      ? { status: known.length ? 'ready' : 'empty', articles: known, fetchedAt: knownAt, stale: true }
+      : { status: 'loading' });
+
+    try{
+      const articles = await request(scope);
+      const fetchedAt = Date.now();
+      writeCache(scope, articles, fetchedAt);
+      return publish(scope, {
+        status: articles.length ? 'ready' : 'empty',
+        articles, fetchedAt,
+      });
+    }catch(err){
+      /* A 404 is the endpoint not being there at all: a static preview, a
+         local harness, or a deployment that predates this feature. The app
+         shipped for years without a league blog and loses nothing when it is
+         absent, so that is an expected-missing-data path, not a fault. Any
+         other status, a network fault or a timeout IS a fault and is logged
+         as one. */
+      if(Number(err && err.status) === 404){
+        console.warn('[FSNLeagueArticles] no article endpoint on this deployment (HTTP 404) for ' +
+          scope.key + '; the League Blog section stays hidden.', err);
+      }else{
+        console.error('[FSNLeagueArticles] read failed for ' + scope.key, err);
+      }
+      /* A cached copy outranks an error screen: the reader would rather see
+         the story they saw this morning than a failure they cannot act on. */
+      if(known && known.length){
+        return publish(scope, { status: 'ready', articles: known, fetchedAt: knownAt, stale: true, error: err });
+      }
+      return publish(scope, {
+        status: Number(err && err.status) === 404 ? 'empty' : 'error',
+        error: err,
+      });
+    }
+  }
+
+  /* Pull to refresh. Re-reads whatever scope was last asked for. */
+  function refresh(){
+    if(!lastScope) return Promise.resolve(snapshot(null, { status: 'idle' }));
+    return load(lastScope.leagueId, lastScope.week, lastScope.season, { force: true });
+  }
+
+  function subscribe(fn){
+    if(typeof fn !== 'function') return function(){};
+    listeners.push(fn);
+    return function(){
+      const at = listeners.indexOf(fn);
+      if(at >= 0) listeners.splice(at, 1);
+    };
+  }
+
+  /* Drop every cached scope. Called when the reader switches leagues, so one
+     league's stories can never paint under another's name. */
+  function clear(){
+    Object.keys(memory).forEach(function(key){ delete memory[key]; });
+    lastScope = null;
+    try{
+      const drop = [];
+      for(let i = 0; i < window.localStorage.length; i++){
+        const key = window.localStorage.key(i);
+        if(key && key.indexOf(CACHE_PREFIX) === 0) drop.push(key);
+      }
+      drop.forEach(function(key){ window.localStorage.removeItem(key); });
+    }catch(err){ /* Storage unavailable; the in-memory clear above is enough. */ }
+  }
+
+  return { read, load, refresh, subscribe, clear, scopeOf, FRESH_MS, CACHE_TTL_MS };
 })();
 
 /* ============================================================
@@ -32451,7 +32853,308 @@ document.addEventListener('click', (e)=>{
   if(handled) e.preventDefault();
 });
 
+/* ============================================================
+   THE LEAGUE BLOG — this league's own published articles
+
+   FSNLeagueArticles (block 1) owns the fetch, the cache and the state. This
+   is the paint, and it lives here because it needs this IIFE's closure (esc,
+   effectiveWeek, uiActiveSeasonYear, the screen's DOM). The engine reaches it
+   through FSNBridge.call('renderLeagueBlog'), registered at the bottom of
+   this block, so a missing or throwing handler is reported rather than taking
+   the News Desk's render down with it.
+
+   Unlike the desk wire above, this feed needs NO season/week gate. The desk
+   wire reads the root-domain blog, which publishes real-world NFL copy dated
+   to today and would misrepresent itself if painted into a historical view.
+   Every article here is stored against an explicit league, season and week
+   and is requested by those three coordinates, so a Week 3 article is
+   correct on the Week 3 view and nowhere else by construction.
+
+   Everything below this section — the lead story, the timeline, the topic
+   bar — is the existing deterministic News Desk and is untouched. When the
+   league has nothing published for the viewed week the wrapper is hidden
+   outright and the desk renders exactly as it always has.
+============================================================ */
+
+/* A deliberately small markdown subset: headings, bold, italic, inline code,
+   links, unordered lists and paragraphs. That is everything the article
+   generator emits, and nothing else is worth the surface area on a phone.
+
+   Text is escaped FIRST and markup is applied to the escaped string, so no
+   article body can inject markup no matter what the pipeline wrote into it.
+   Links are rewritten to http(s) only for the same reason. */
+function lbMarkdown(source){
+  const raw = String(source == null ? '' : source).replace(/\r\n?/g, '\n');
+  if(!raw.trim()) return '';
+
+  const inline = (text)=>{
+    let out = esc(text);
+    out = out.replace(/`([^`]+)`/g, '<code>$1</code>');
+    out = out.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    out = out.replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>');
+    out = out.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
+      '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+    return out;
+  };
+
+  const lines = raw.split('\n');
+  const html = [];
+  let list = null;
+  let para = [];
+
+  const flushPara = ()=>{
+    if(para.length){ html.push('<p>' + inline(para.join(' ')) + '</p>'); para = []; }
+  };
+  const flushList = ()=>{
+    if(list){ html.push('<ul>' + list.join('') + '</ul>'); list = null; }
+  };
+
+  for(let i = 0; i < lines.length; i++){
+    const line = lines[i];
+    const trimmed = line.trim();
+
+    if(!trimmed){ flushPara(); flushList(); continue; }
+
+    const heading = /^(#{1,3})\s+(.*)$/.exec(trimmed);
+    if(heading){
+      flushPara(); flushList();
+      const level = heading[1].length;
+      html.push('<h' + level + '>' + inline(heading[2]) + '</h' + level + '>');
+      continue;
+    }
+
+    const bullet = /^[-*]\s+(.*)$/.exec(trimmed);
+    if(bullet){
+      flushPara();
+      if(!list) list = [];
+      list.push('<li>' + inline(bullet[1]) + '</li>');
+      continue;
+    }
+
+    flushList();
+    para.push(trimmed);
+  }
+  flushPara(); flushList();
+  return html.join('');
+}
+
+const LB_TYPE_LABEL = {
+  monday_sweat: 'Monday Sweat',
+  tuesday_verdict: 'Tuesday Verdict',
+  friday_tnf_preview: 'Friday Preview',
+};
+
+/* The one-line verdict a chip's sheet leads with. It restates the outcome
+   flag the math assigned and nothing more: a player who is not flagged
+   GAME_WINNER is never described as having won anything here, exactly as in
+   the generator that wrote the article. */
+const LB_FLAG_VERDICT = {
+  GAME_WINNER: 'Won the matchup. His team trailed before his game and led after it, by no more than he scored.',
+  GARBAGE_TIME_BLOWOUT: 'Unneeded stat-padding. The matchup was already decided by more than 20 points before he played.',
+  VALIANT_LOSS: 'A monster game, wasted. He cleared 20 points and his team still lost.',
+  DUD_COST_WIN: 'A dud that cost a win in hand. His team led before he played, lost by the end, and he finished well under his projection.',
+};
+
+function lbNum(value){
+  const n = Number(value);
+  if(!Number.isFinite(n)) return '—';
+  return Number.isInteger(n) ? String(n) : n.toFixed(2);
+}
+
+function lbSigned(value){
+  const n = Number(value);
+  if(!Number.isFinite(n)) return '—';
+  return (n > 0 ? '+' : '') + lbNum(n);
+}
+
+/* Chips are keyed by their position in the article's tracked_players array
+   rather than by player id: two rows can legitimately name the same player
+   (one per side of a matchup) and the sheet must open the row that was
+   tapped, not the first one that happens to match. */
+function lbChips(article, articleIndex){
+  const rows = Array.isArray(article.tracked_players) ? article.tracked_players : [];
+  if(!rows.length) return '';
+  const count = rows.length;
+  const chips = rows.map((row, i)=>{
+    const name = String((row && row.player_name) || '').trim() || 'Unnamed player';
+    const flag = String((row && row.outcome_flag) || '');
+    return '<button type="button" class="lb-chip" data-lb-article="' + articleIndex + '" data-lb-player="' + i + '"' +
+      (flag ? ' data-flag="' + esc(flag) + '"' : '') + '>' +
+      '<span class="dot"></span>' + esc(name) + '</button>';
+  }).join('');
+  return '<div class="lb-chips-head">' + count + ' PLAYER' + (count === 1 ? '' : 'S') + ' TRACKED</div>' +
+    '<div class="lb-chips">' + chips + '</div>';
+}
+
+function lbCard(article, index){
+  const label = LB_TYPE_LABEL[article.article_type] || 'League Desk';
+  const week = Number.isFinite(Number(article.week)) ? 'WEEK ' + article.week : '';
+  return '<article class="lb-card">' +
+    '<div class="lb-top"></div>' +
+    '<div class="lb-body">' +
+      '<div class="lb-kicker">' +
+        '<span class="pill pill-gold">' + esc(label) + '</span>' +
+        (week ? '<span class="kicker text-[var(--dim)]">' + esc(week) + '</span>' : '') +
+      '</div>' +
+      '<h3 class="lb-title">' + esc(article.title) + '</h3>' +
+      '<div class="lb-md">' + lbMarkdown(article.content_markdown) + '</div>' +
+      lbChips(article, index) +
+    '</div>' +
+  '</article>';
+}
+
+/* The rendered scope, kept so a chip tap can find the row it names without
+   re-reading the store (and without trusting the DOM for data). */
+let lbRendered = [];
+let lbSubscribed = false;
+let lbSheetWired = false;
+
+function lbOpenPlayer(articleIndex, playerIndex){
+  const article = lbRendered[Number(articleIndex)];
+  const row = article && Array.isArray(article.tracked_players)
+    ? article.tracked_players[Number(playerIndex)] : null;
+  if(!row){
+    console.warn('[LeagueBlog] no tracked player at article ' + articleIndex + ', row ' + playerIndex);
+    return;
+  }
+  const sheet = $('lbPlayerSheet');
+  if(!sheet){
+    console.error('[LeagueBlog] the player sheet element is missing from the document',
+      new Error('LB_SHEET_MISSING'));
+    return;
+  }
+
+  const flag = String(row.outcome_flag || '');
+  const verdict = LB_FLAG_VERDICT[flag] ||
+    'No decisive swing. His number is on the board and the matchup turned on something else.';
+  const opponent = String(row.opponent_team || '').trim();
+
+  $('lbSheetName').textContent = String(row.player_name || 'Unnamed player');
+  $('lbSheetTeam').textContent = String(row.owner_team || '') +
+    (opponent ? ' vs ' + opponent : '') +
+    (row.slot ? ' · ' + row.slot : '');
+  $('lbSheetStats').innerHTML =
+    '<div class="lb-stat"><div class="k">POINTS</div><div class="v">' + esc(lbNum(row.player_points)) + '</div></div>' +
+    '<div class="lb-stat"><div class="k">PROJECTED</div><div class="v">' + esc(lbNum(row.projected_points)) + '</div></div>' +
+    '<div class="lb-stat"><div class="k">MARGIN BEFORE</div><div class="v">' + esc(lbSigned(row.entering_margin)) + '</div></div>' +
+    '<div class="lb-stat"><div class="k">FINAL MARGIN</div><div class="v">' + esc(lbSigned(row.final_margin)) + '</div></div>';
+  $('lbSheetVerdict').textContent = verdict;
+  sheet.dataset.open = 'true';
+}
+
+function lbCloseSheet(){
+  const sheet = $('lbPlayerSheet');
+  if(sheet) sheet.dataset.open = 'false';
+}
+
+/* One delegated listener for the whole feed, wired once. Re-rendering the
+   cards therefore costs nothing in listeners and a chip added by a later
+   repaint works without being re-bound. */
+function lbWire(){
+  if(lbSheetWired) return;
+  const feed = $('leagueBlogFeed');
+  const sheet = $('lbPlayerSheet');
+  if(!feed || !sheet) return;
+
+  feed.addEventListener('click', (event)=>{
+    const chip = event.target && event.target.closest ? event.target.closest('.lb-chip') : null;
+    if(!chip) return;
+    lbOpenPlayer(chip.dataset.lbArticle, chip.dataset.lbPlayer);
+  });
+  sheet.addEventListener('click', (event)=>{
+    // The scrim and the explicit close button both dismiss; the panel itself
+    // must not, or a tap on the stats would close the sheet under the finger.
+    if(event.target === sheet || (event.target && event.target.id === 'lbSheetClose')) lbCloseSheet();
+  });
+
+  const refresh = $('leagueBlogRefresh');
+  if(refresh){
+    refresh.addEventListener('click', ()=>{
+      refresh.disabled = true;
+      Promise.resolve(FSNLeagueArticles.refresh()).catch((err)=>{
+        console.error('[LeagueBlog] manual refresh failed', err);
+      }).then(()=>{ refresh.disabled = false; });
+    });
+  }
+  lbSheetWired = true;
+}
+
+function renderLeagueBlog(){
+  const wrap = $('leagueBlogWrap');
+  const feed = $('leagueBlogFeed');
+  if(!wrap || !feed) return;
+
+  lbWire();
+
+  const hide = ()=>{
+    wrap.hidden = true;
+    feed.innerHTML = '';
+    lbRendered = [];
+  };
+
+  const leagueId = selectedLeagueId();
+  const week = Number(effectiveWeek()) || 0;
+  const season = parseInt(($('seasonYear').value || '').trim(), 10) || uiActiveSeasonYear();
+  if(!FSNLeagueArticles.scopeOf(leagueId, week, season)){ hide(); return; }
+
+  /* Repaint whenever the store moves. Registered once, and only for the scope
+     currently on screen: a late response for a week the reader has since
+     navigated away from must not overwrite what they are looking at. */
+  if(!lbSubscribed){
+    lbSubscribed = true;
+    FSNLeagueArticles.subscribe((snap)=>{
+      const live = FSNLeagueArticles.scopeOf(
+        selectedLeagueId(), Number(effectiveWeek()) || 0,
+        parseInt(($('seasonYear').value || '').trim(), 10) || uiActiveSeasonYear());
+      if(!live || !snap || snap.leagueId !== live.leagueId || snap.week !== live.week || snap.season !== live.season) return;
+      paint(snap);
+    });
+  }
+
+  function paint(snap){
+    const state = $('leagueBlogState');
+    if(state) state.textContent = snap.stale ? '● UPDATING' : '';
+
+    if(snap.status === 'ready' && snap.articles.length){
+      lbRendered = snap.articles;
+      feed.innerHTML = snap.articles.map(lbCard).join('');
+      wrap.hidden = false;
+      return;
+    }
+    if(snap.status === 'loading'){
+      lbRendered = [];
+      feed.innerHTML = '<div class="empty"><p class="text-[12.5px] leading-relaxed">Loading this week’s league coverage…</p></div>';
+      wrap.hidden = false;
+      return;
+    }
+    if(snap.status === 'error'){
+      lbRendered = [];
+      /* An honest, specific empty state rather than a bare hiccup screen. The
+         deterministic timeline below is unaffected and still has the week
+         covered. */
+      feed.innerHTML = '<div class="empty"><p class="text-[12.5px] leading-relaxed">' +
+        'This week’s league blog could not be reached. The timeline below is unaffected.</p></div>';
+      wrap.hidden = false;
+      return;
+    }
+    // 'empty' and 'idle': nothing published for this week yet. Say nothing at
+    // all rather than occupying the screen with an absence.
+    hide();
+  }
+
+  paint(FSNLeagueArticles.read(leagueId, week, season));
+  Promise.resolve(FSNLeagueArticles.load(leagueId, week, season)).catch((err)=>{
+    console.error('[LeagueBlog] league article load failed for ' + leagueId + ' ' + season + ' week ' + week, err);
+  });
+}
+
 function renderNews(){
+  /* The league's own published articles, above the deterministic timeline.
+     Guarded so a failure in the remote feed can never stop the desk below
+     from rendering. */
+  try{ renderLeagueBlog(); }
+  catch(err){ console.error('[LeagueBlog] render failed; the deterministic desk below is unaffected', err); }
+
   const week = effectiveWeek();
   const viewedYearNews = parseInt(($('seasonYear').value || '').trim(), 10) || uiActiveSeasonYear();
   const newsLabel = isPreseasonWeek1(week, viewedYearNews) ? 'PRESEASON' : 'WEEK ' + week;
@@ -33577,6 +34280,7 @@ FSNBridge.register({
   renderRecordBook,
   renderNews,
   renderHomeStories,
+  renderLeagueBlog,
   currentLeagueWeek,
   uiActiveSeasonYear,
 });
