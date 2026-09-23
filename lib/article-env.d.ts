@@ -29,3 +29,8 @@ declare const module: { exports: any };
 /** Node 18+ ships these globally; the repo targets `node >= 18`. */
 declare function fetch(input: any, init?: any): Promise<any>;
 declare const AbortSignal: { timeout(ms: number): any };
+
+/** Used by the cron route's constant-time secret comparison. */
+declare const Buffer: {
+  from(input: string, encoding: string): { length: number };
+};

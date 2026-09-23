@@ -46,6 +46,10 @@ The table stores one AI-written story per league, week, and day: `league_id` (in
 
 Rows are written only by the server-side pipeline in `lib/article-generator.ts` using the service-role key, reusing the existing `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` variables. No new environment variables are required. See [`docs/blog-articles.md`](docs/blog-articles.md) for the outcome math and the copy guardrail.
 
+Also run [`supabase/cron_article_logs.sql`](supabase/cron_article_logs.sql). It creates `public.cron_article_logs`, the audit trail for the scheduled runs: one row per league per run with `status` (`created`, `skipped`, `failed`), the error message when it failed, and the season, week, slug and run id. Same RLS posture, same service-role-only access, also idempotent.
+
+The scheduled route `/api/cron/generate-articles?day=mon|tue|fri` is gated on `CRON_SECRET`, the variable the notification dispatcher already uses. It refuses every caller when that variable is unset rather than defaulting open. The three weekly triggers live in `.github/workflows/generate-articles.yml` and need `CRON_SECRET` as a **repository secret** matching the Vercel value.
+
 ## Yahoo Fantasy Sports OAuth
 
 1. In the Yahoo Developer Network, create a web application with **Fantasy Sports — Read** permission. Set its callback URL to `https://app.fantasysportsnetwork.app/api/auth/yahoo/callback`.
