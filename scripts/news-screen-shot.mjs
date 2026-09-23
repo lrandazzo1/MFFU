@@ -32,6 +32,12 @@ function arg(name, fallback) {
 }
 const outFile = resolve(arg('out', join(root, 'news-screen.png')));
 
+/* --payload FILE serves a real article payload instead of the fixture below,
+   for looking at a story the pipeline actually published. The file is one
+   article object, the shape /api/blog/articles returns. */
+const payloadFile = arg('payload', '');
+const weekArg = Number(arg('week', '')) || null;
+
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
@@ -77,6 +83,10 @@ const ARTICLE = {
   ],
 };
 
+const SERVED = payloadFile
+  ? JSON.parse(readFileSync(resolve(payloadFile), 'utf8'))
+  : null;
+
 function startServer() {
   return new Promise((done) => {
     const server = createServer((req, res) => {
@@ -84,8 +94,9 @@ function startServer() {
       if (url.pathname === '/api/blog/articles') {
         const active = url.searchParams.get('active') === '1';
         res.writeHead(200, { 'Content-Type': 'application/json' });
+        const article = SERVED || ARTICLE;
         res.end(JSON.stringify({
-          league_id: url.searchParams.get('league_id'), active, count: 1, articles: [ARTICLE],
+          league_id: url.searchParams.get('league_id'), active, count: 1, articles: [article],
         }));
         return;
       }
@@ -133,11 +144,12 @@ function syntheticLeague() {
   const game = (id, period, winner, home, away) => ({
     id, matchupPeriodId: period, scoringPeriodId: period, playoffTierType: 'NONE', winner, home, away,
   });
+  const wk = weekArg || (SERVED && Number(SERVED.week)) || 3;
   return {
     id: 311594,
     seasonId: 2026,
-    scoringPeriodId: 3,
-    status: { currentMatchupPeriod: 3, latestScoringPeriod: 3, finalScoringPeriod: 17, isActive: true },
+    scoringPeriodId: wk,
+    status: { currentMatchupPeriod: wk, latestScoringPeriod: wk, finalScoringPeriod: 17, isActive: true },
     settings: { name: 'Ridgeback Invitational', scoringSettings: {}, scheduleSettings: { matchupPeriodCount: 14 } },
     teams: [team(1, 'Ridgeback FC', 342, 310), team(2, 'Cobalt Kings', 318, 330)],
     members: [{ id: '{OWNER-1}', firstName: 'Alpha', lastName: 'One' }, { id: '{OWNER-2}', firstName: 'Bravo', lastName: 'Two' }],
@@ -146,7 +158,7 @@ function syntheticLeague() {
         side(2, [entry(2, player(102, 'Puka Nacua', 3, 31.2), 31.2)], 98.2)),
       game(2, 2, 'HOME', side(1, [entry(2, player(101, 'Bijan Robinson', 2, 18.2), 18.2)], 112.6),
         side(2, [entry(2, player(102, 'Puka Nacua', 3, 22.4), 22.4)], 104.8)),
-      game(3, 3, 'UNDECIDED', side(1, [entry(2, player(101, 'Bijan Robinson', 2, 24.8), 24.8)], 108.2),
+      game(3, wk, 'UNDECIDED', side(1, [entry(2, player(101, 'Bijan Robinson', 2, 24.8), 24.8)], 108.2),
         side(2, [entry(2, player(102, 'Puka Nacua', 3, 31.2), 31.2)], 101.8)),
     ],
   };
@@ -211,7 +223,9 @@ try {
   await wrap.screenshot({ path: outFile });
 
   const headline = await page.textContent('.lb-title');
-  const impact = await page.textContent('.lb-impact-text');
+  const impact = (await page.locator('.lb-impact-text').count())
+    ? await page.textContent('.lb-impact-text')
+    : '(no callout: this article carries no match_impact_summary)';
   const meta = (await page.textContent('.lb-meta')).replace(/\s+/g, ' ').trim();
   const state = (await page.textContent('#leagueBlogState')).trim();
 

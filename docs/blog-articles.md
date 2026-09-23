@@ -602,11 +602,24 @@ other's repaint or leave the button disabled.
 
 **On a league switch**, `clearLeagueStateForSwitch()` clears both stores.
 
+### The echoed heading
+
+The generator opens every body with `# <title>`, which was right when the card
+painted the body and nothing else. The headline is now its own tier directly
+above it, so that first heading would print the same words twice.
+
+`lbStripEchoedHeading()` drops it **at paint time, not at write time**: the
+stored article is what was published and is not rewritten. A body whose opening
+heading says something *different* from the headline keeps it, because then it
+is a real heading rather than a restatement. The comparison is on letters and
+digits only, so punctuation or casing drift between the two does not defeat it.
+
 ### Seeing the card
 
 ```
-npm run shot:news                      # writes news-screen.png
+npm run shot:news                            # writes news-screen.png
 npm run shot:news -- --out /tmp/a.png
+npm run shot:news -- --payload article.json  # a real published article
 ```
 
 Boots the real `index.html` in Chromium at phone width against a stubbed
@@ -618,7 +631,9 @@ of the section and clip the tracked-player chips.
 It is a **look, not a check**: `npm run check:leagueblog` is what asserts. This
 exists so a change to the card can be reviewed on a phone-width viewport
 without a device. Its article is a fixture, read from no one's league and
-written nowhere. `news-screen.png` is gitignored.
+written nowhere, and `--payload` serves a real one instead (a single article
+object in the shape the endpoint returns) for looking at a story the pipeline
+actually published. `news-screen.png` is gitignored.
 
 ### Markdown
 

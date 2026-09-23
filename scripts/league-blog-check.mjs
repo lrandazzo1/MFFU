@@ -22,6 +22,9 @@
                 author credit as the meta line
      LEGACY     an article carrying only title / content_markdown still paints
                 a complete card, with no empty callout band
+     ECHO       a body whose opening heading repeats the headline drops it, so
+                the card does not print the same words twice, while a heading
+                that says something different is kept
      ACTIVE     FSNSupabaseArticles.fetch() asks /api/blog/articles with
                 active=1 and no week, and its stories stand in under a LATEST
                 label when the week on screen has none of its own
@@ -355,6 +358,10 @@ try {
   expect(await page.textContent('.lb-title'), 'Ridgeback FC Survive The Late Window',
     'TIER 1: the headline renders, not the legacy title');
   expect(await page.locator('.lb-md h2').first().textContent(), 'What the math says', 'a markdown heading renders as a heading');
+  /* This fixture's opening H1 ("Tuesday Verdict: Week 2") is NOT its headline
+     ("Ridgeback FC Survive The Late Window"), so it is a real heading and must
+     survive. The echo case is asserted on the legacy fixture below. */
+  expect(await page.locator('.lb-md h1').count(), 1, 'ECHO: a heading that differs from the headline is kept');
   expect(await page.locator('.lb-md li').count(), 2, 'markdown bullets render as list items');
   expect(await page.locator('.lb-md strong').first().textContent(), 'actually', 'markdown bold renders as strong');
 
@@ -457,6 +464,15 @@ try {
   expect(await page.textContent('.lb-title'), 'Monday Sweat: Week 2',
     'a legacy headline falls back to the title');
   truthy((await page.textContent('.lb-md')).includes('legacy'), 'a legacy body falls back to content_markdown');
+  /* The generator opens every body with `# <title>`, and the headline now sits
+     directly above it as its own tier. This fixture's H1 and its headline are
+     the same words, so the card must print them once. */
+  expect(await page.locator('.lb-md h1').count(), 0,
+    'ECHO: a body heading that repeats the headline is dropped');
+  expect((await page.textContent('.lb-md')).trim().startsWith('Monday Sweat'), false,
+    'and the body starts at its real first line');
+  truthy((await page.locator('.lb-md strong').count()) > 0,
+    'the rest of the body survives the strip');
   expect(await page.locator('.lb-impact').count(), 0,
     'an article with no summary paints no callout rather than an empty band');
   truthy((await page.textContent('.lb-meta')).includes('MATCHUP RECAP'),

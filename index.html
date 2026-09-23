@@ -33367,12 +33367,32 @@ function lbChips(article, articleIndex){
    The callout is deliberately NOT run through the markdown subset: it is one
    sentence, and giving a prominent line its own markup surface buys nothing
    and widens what a published row can put on the screen. */
+/* The generator opens every body with `# <title>`, which was right when the
+   card painted the body and nothing else. Now the headline is its own tier
+   directly above it, so that first heading renders the same words twice.
+
+   Stripped at paint time, not at write time: the stored article is what was
+   published and is not rewritten, and an article whose opening heading says
+   something DIFFERENT from its headline keeps it, because then it is a real
+   heading rather than a restatement. Compared on letters and digits only, so
+   punctuation or casing drift between the two does not defeat the match. */
+function lbStripEchoedHeading(body, headline){
+  const source = String(body == null ? '' : body);
+  const key = (value) => String(value == null ? '' : value).toLowerCase().replace(/[^a-z0-9]+/g, '');
+  const wanted = key(headline);
+  if(!wanted) return source;
+
+  const match = /^\s*#{1,3}[ \t]+([^\n]*)(?:\n|$)/.exec(source);
+  if(!match || key(match[1]) !== wanted) return source;
+  return source.slice(match[0].length).replace(/^\s*\n/, '');
+}
+
 function lbCard(article, index){
   const label = LB_TYPE_LABEL[article.article_type] || 'League Desk';
   const week = Number.isFinite(Number(article.week)) ? 'WEEK ' + article.week : '';
   const headline = String(article.headline || article.title || '').trim();
   const impact = String(article.match_impact_summary || '').trim();
-  const body = String(article.content || article.content_markdown || '');
+  const body = lbStripEchoedHeading(article.content || article.content_markdown || '', headline);
   const category = String(article.category || '').trim();
   const author = String(article.author || '').trim();
 
