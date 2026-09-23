@@ -261,7 +261,12 @@ function normalizeEntry(entry: any, week: number | null, kickoffs: KickoffIndex 
   };
 }
 
-function normalizeSide(side: any, week: number | null, kickoffs: KickoffIndex | null): NormalizedSide | null {
+function normalizeSide(
+  side: any,
+  week: number | null,
+  kickoffs: KickoffIndex | null,
+  teamNames: Record<string, string> | null,
+): NormalizedSide | null {
   if (!side) return null;
   const roster = side.rosterForCurrentScoringPeriod || side.rosterForMatchupPeriod || null;
   const rawEntries: any[] = Array.isArray(side.starters)
@@ -287,13 +292,44 @@ function normalizeSide(side: any, week: number | null, kickoffs: KickoffIndex | 
   const teamId = text(side.team_id != null ? side.team_id : side.teamId);
   return {
     team_id: teamId,
-    team_name: text(side.team_name || side.teamName || side.name) || (teamId ? 'Team ' + teamId : 'Unknown team'),
+    /* The side's own name when it carries one, then the league's teams[] by
+       id, and only then the numeric fallback. */
+    team_name:
+      text(side.team_name || side.teamName || side.name) ||
+      (teamId && teamNames ? text(teamNames[teamId]) : '') ||
+      (teamId ? 'Team ' + teamId : 'Unknown team'),
     total: total == null ? null : round2(total),
     starters,
   };
 }
 
+/**
+ * Team id -> the name its managers actually call it.
+ *
+ * ESPN's `schedule[]` entries carry only `teamId`. The names live in the
+ * payload's top-level `teams[]`, so a side normalized from the schedule alone
+ * fell back to "Team 3" and every published article named its teams that way:
+ * "Davante Adams won the matchup for Team 3."
+ *
+ * `name` is what current payloads carry; `location` + `nickname` is the older
+ * split, and `abbrev` is the last resort before the numeric fallback.
+ */
+function teamNameIndex(leagueBoxScores: any): Record<string, string> {
+  const teams = (leagueBoxScores && Array.isArray(leagueBoxScores.teams)) ? leagueBoxScores.teams : [];
+  const index: Record<string, string> = Object.create(null);
+  for (const team of teams) {
+    if (!team) continue;
+    const id = text(team.id != null ? team.id : team.teamId);
+    if (!id) continue;
+    const joined = [text(team.location), text(team.nickname)].filter(Boolean).join(' ').trim();
+    const name = text(team.name) || joined || text(team.abbrev) || text(team.abbreviation);
+    if (name) index[id] = name;
+  }
+  return index;
+}
+
 function normalizeMatchups(leagueBoxScores: any, week: number | null, kickoffs: KickoffIndex | null): NormalizedMatchup[] {
+  const teamNames = teamNameIndex(leagueBoxScores);
   const raw: any[] = Array.isArray(leagueBoxScores)
     ? leagueBoxScores
     : Array.isArray(leagueBoxScores && leagueBoxScores.schedule)
@@ -311,8 +347,8 @@ function normalizeMatchups(leagueBoxScores: any, week: number | null, kickoffs: 
     if (week != null && matchup.week != null && Number(matchup.week) !== week) return;
     out.push({
       matchup_id: text(matchup.id != null ? matchup.id : matchup.matchup_id) || String(index + 1),
-      home: normalizeSide(matchup.home, week, kickoffs),
-      away: normalizeSide(matchup.away, week, kickoffs),
+      home: normalizeSide(matchup.home, week, kickoffs, teamNames),
+      away: normalizeSide(matchup.away, week, kickoffs, teamNames),
     });
   });
   return out;

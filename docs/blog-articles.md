@@ -62,6 +62,15 @@ already reads for the push dispatcher, on a host already allowlisted:
 A team on bye is **absent** from the index, not zero: it has no game, and a
 starter on bye scores nothing and cannot move a margin.
 
+### Team names
+
+ESPN's `schedule[]` entries carry only `teamId`; the names live in the
+payload's top-level `teams[]`. A side normalized from the schedule alone fell
+back to `Team <id>`, so published articles read "Davante Adams won the matchup
+for Team 3". `teamNameIndex()` resolves them: `name`, else `location` +
+`nickname` (the older split), else `abbrev`, and only then the numeric
+fallback. A side that carries its own name keeps it.
+
 An entry that states its own kickoff **outranks** the index. A payload naming a
 kickoff for one specific player knows something the league-wide schedule does
 not, such as a relocated game.
