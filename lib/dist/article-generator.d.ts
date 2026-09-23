@@ -18,7 +18,7 @@
  * generators, the historical pipelines, the leagues table, or the existing
  * file-based `landing/content/blog` ingestion. It owns exactly one new table.
  */
-import { type TrackedPlayer } from './article-math';
+import { type KickoffIndex, type TrackedPlayer } from './article-math';
 export type ArticleDay = 'mon' | 'tue' | 'fri';
 export type ArticleType = 'monday_sweat' | 'tuesday_verdict' | 'friday_tnf_preview';
 export interface GenerateInput {
@@ -79,6 +79,13 @@ export interface GenerateDependencies {
     fetchBoxScores?: (input: GenerateInput & {
         req?: any;
     }) => Promise<any>;
+    /** Kickoff times by NFL team for this week. Defaults to the public NFL
+     *  scoreboard, the same feed the push dispatcher reads. Without it the math
+     *  cannot place a starter's points in time and reports no outcome flags. */
+    fetchKickoffs?: (input: {
+        season: number;
+        week: number;
+    }) => Promise<KickoffIndex>;
     /** Copy writer. Defaults to the deterministic local composer below, so the
      *  pipeline runs end to end with no model credentials configured. */
     compose?: Composer;
@@ -94,6 +101,10 @@ export interface GenerateResult {
     /** Every starter the math looked at, not just the featured ones. */
     evaluated: number;
     stored: boolean;
+    /** How many NFL teams the kickoff index covered. Zero means the scoreboard
+     *  could not be read and every margin in this article is unresolved, which
+     *  is worth seeing in a cron summary rather than inferring from the copy. */
+    kickoffs: number;
 }
 export declare const ARTICLE_TYPE_BY_DAY: Record<ArticleDay, ArticleType>;
 /**

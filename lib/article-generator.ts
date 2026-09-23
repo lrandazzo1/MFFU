@@ -22,6 +22,7 @@
 import {
   calculatePlayerOutcomeFlags,
   featuredTrackedPlayers,
+  type KickoffIndex,
   type OutcomeFlag,
   type TrackedPlayer,
 } from './article-math';
@@ -101,6 +102,10 @@ export interface GenerateDependencies {
   db?: any;
   /** Box score source. Defaults to the ESPN read boundary in `api/espn`. */
   fetchBoxScores?: (input: GenerateInput & { req?: any }) => Promise<any>;
+  /** Kickoff times by NFL team for this week. Defaults to the public NFL
+   *  scoreboard, the same feed the push dispatcher reads. Without it the math
+   *  cannot place a starter's points in time and reports no outcome flags. */
+  fetchKickoffs?: (input: { season: number; week: number }) => Promise<KickoffIndex>;
   /** Copy writer. Defaults to the deterministic local composer below, so the
    *  pipeline runs end to end with no model credentials configured. */
   compose?: Composer;
@@ -117,6 +122,10 @@ export interface GenerateResult {
   /** Every starter the math looked at, not just the featured ones. */
   evaluated: number;
   stored: boolean;
+  /** How many NFL teams the kickoff index covered. Zero means the scoreboard
+   *  could not be read and every margin in this article is unresolved, which
+   *  is worth seeing in a cron summary rather than inferring from the copy. */
+  kickoffs: number;
 }
 
 /* ------------------------------------------------------------------ *
@@ -382,10 +391,31 @@ export function impactSummary(rows: TrackedPlayer[], articleType: ArticleType): 
       `${pts(top.projected_points as number)} point projection.`;
   }
 
-  /* The decisive rows lead, in the order the math ranks them. With nothing
-     decisive there is nothing to call out, and an invented one would be the
-     exact overclaim this module exists to prevent. */
-  const row = rows.find((candidate) => candidate.outcome_flag);
+  /* Which flagged performance IS the week, when several are.
+
+     `featuredTrackedPlayers` ranks rows by news weight for the body, and
+     taking its first flagged row put a wasted 74 ahead of the player who
+     actually swung a matchup. The callout is the one line a reader takes away,
+     so the order it picks by is stated here rather than inherited:
+
+       GAME_WINNER           a matchup was won by this performance
+       DUD_COST_WIN          a matchup in hand was thrown away by one
+       VALIANT_LOSS          a big score that changed nothing
+       GARBAGE_TIME_BLOWOUT  padding in a game already decided, the least
+                             meaningful thing the math can flag
+
+     Within a flag the math's own ranking breaks the tie, so the choice stays
+     deterministic for a given league, season and week. */
+  const CALLOUT_PRIORITY: OutcomeFlag[] = [
+    'GAME_WINNER', 'DUD_COST_WIN', 'VALIANT_LOSS', 'GARBAGE_TIME_BLOWOUT',
+  ];
+  let row: TrackedPlayer | undefined;
+  for (const flag of CALLOUT_PRIORITY) {
+    row = rows.find((candidate) => candidate.outcome_flag === flag);
+    if (row) break;
+  }
+  /* Nothing decisive means nothing to call out. An invented callout would be
+     the exact overclaim this module exists to prevent. */
   if (!row) return '';
 
   const scored = `${row.player_name} scored ${pts(row.player_points)} points`;
@@ -530,6 +560,26 @@ function withoutTierColumns(record: BlogArticleRecord): Record<string, unknown> 
   return legacy;
 }
 
+/**
+ * Kickoff times for the week, from the public NFL scoreboard.
+ *
+ * The ESPN fantasy league endpoint carries none, so without this every starter
+ * resolves to `kickoff: null` and the math refuses every margin. It is a
+ * public, credential-free read of a host the app already talks to, and one
+ * request covers every league in the run.
+ *
+ * Required at the module boundary, tolerated at the call site: a failure here
+ * degrades the article to the unresolved margins it had before this existed
+ * rather than failing the whole league, which is why the caller catches.
+ */
+async function defaultFetchKickoffs(input: { season: number; week: number }): Promise<KickoffIndex> {
+  /* Two levels up from the EMITTED file in lib/dist, same as the api/espn
+     require above: this string is copied through untouched and resolved at
+     runtime relative to lib/dist, not to this source file. */
+  const scheduleFeed = require('../notifications/schedule-feed');
+  return scheduleFeed.pullKickoffs({ season: input.season, week: input.week });
+}
+
 async function store(db: any, record: BlogArticleRecord): Promise<BlogArticleRecord> {
   const write = (row: any) => db
     .from('blog_articles')
@@ -579,7 +629,26 @@ export async function generateAndPublishBlogArticle(
     throw err;
   }
 
-  const evaluated = calculatePlayerOutcomeFlags(boxScores, { week: scope.week });
+  /* The kickoff index is what lets the math place a starter's points in time.
+     A failure is logged and the run continues: the article then carries the
+     unresolved margins it would have had anyway, which is strictly better than
+     publishing nothing for the league. */
+  let kickoffs: KickoffIndex = {};
+  try {
+    kickoffs = await (dependencies.fetchKickoffs || defaultFetchKickoffs)({
+      season: scope.season,
+      week: scope.week,
+    }) || {};
+  } catch (err) {
+    console.error(
+      '[ArticleGenerator] the NFL scoreboard could not be read for ' + label +
+        '; every margin in this article will be unresolved and no outcome flag will be assigned',
+      err,
+    );
+    kickoffs = {};
+  }
+
+  const evaluated = calculatePlayerOutcomeFlags(boxScores, { week: scope.week, kickoffs });
   const tracked = featuredTrackedPlayers(evaluated);
   if (!tracked.length) {
     console.error(
@@ -647,7 +716,13 @@ export async function generateAndPublishBlogArticle(
   const db = dependencies.db || database();
   try {
     const saved = await store(db, record);
-    return { record: saved, tracked_players: tracked, evaluated: evaluated.length, stored: true };
+    return {
+      record: saved,
+      tracked_players: tracked,
+      evaluated: evaluated.length,
+      stored: true,
+      kickoffs: Object.keys(kickoffs).length,
+    };
   } catch (err) {
     console.error('[ArticleGenerator] blog_articles write failed for ' + label, err);
     throw err;

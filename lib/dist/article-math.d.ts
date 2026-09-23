@@ -59,6 +59,19 @@ export interface OutcomeInput {
  * up a real number and the copy should say the team wasted it.
  */
 export declare function classifyOutcome(input: OutcomeInput): OutcomeFlag | null;
+/**
+ * NFL team -> the instant its game kicks off, keyed by BOTH the numeric ESPN
+ * team id and the uppercase abbreviation.
+ *
+ * The fantasy league endpoint carries no kickoff times, so without this every
+ * starter resolves to `kickoff: null`, every matchup is MISSING_KICKOFF_DATA,
+ * no outcome flag is ever assigned and every article reads "No Swings To
+ * Report". `parseProTeamKickoffs()` in lib/notifications/schedule-feed.js
+ * builds it from the public NFL scoreboard.
+ *
+ * This module stays pure: it is handed the index and never fetches one.
+ */
+export type KickoffIndex = Record<string, number>;
 export interface OutcomeOptions {
     /** Scoring period to evaluate. Required for a raw ESPN season payload, which
      *  carries every week's schedule in one array. */
@@ -66,6 +79,10 @@ export interface OutcomeOptions {
     /** Restrict the returned rows to these kickoff windows. Defaults to the
      *  featured windows the desk writes about. */
     slots?: GameSlot[];
+    /** Kickoff times by NFL team, for the payloads that carry none of their own
+     *  (which is all of them, from the ESPN fantasy endpoint). Omitted, the
+     *  behaviour is exactly what it was: unresolved margins, no flags. */
+    kickoffs?: KickoffIndex | null;
 }
 /**
  * Assign a math outcome flag to every starter in a league's box scores.

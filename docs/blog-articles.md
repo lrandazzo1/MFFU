@@ -40,6 +40,38 @@ returned as `null` with `unresolved_reason: 'MISSING_KICKOFF_DATA'` and no flag
 is assigned. Points that cannot be placed in time would silently manufacture a
 deficit that never existed, so partial data is refused rather than approximated.
 
+### Where kickoff times come from
+
+**The ESPN fantasy league endpoint carries none.** It never has. So for the
+first weeks this pipeline ran, every starter resolved to `kickoff: null`, every
+matchup was `MISSING_KICKOFF_DATA`, no outcome flag was ever assigned, and every
+published article read "No Swings To Report" with an empty impact summary. The
+points were real; only the timing was missing.
+
+They live on the public NFL scoreboard, which `lib/notifications/schedule-feed.js`
+already reads for the push dispatcher, on a host already allowlisted:
+
+| Piece | Role |
+|---|---|
+| `scoreboardUrl({season, week})` | The scoreboard for **one named week** (`?dates=&week=&seasontype=2`), which a backfill needs and the dispatcher's current-week `pull()` cannot answer. |
+| `parseProTeamKickoffs(payload)` | Pure. Every NFL team in the document → its kickoff instant, keyed by **both** numeric ESPN team id and uppercase abbreviation, because the fantasy payload identifies a player's team by `proTeamId` and some shapes carry only an abbreviation. |
+| `pullKickoffs({season, week})` | One request, one week. Throws rather than returning `{}`, because an empty index silently reproduces the exact bug it exists to remove. |
+| `OutcomeOptions.kickoffs` | The index, handed to the math. `article-math.ts` stays pure and never fetches. |
+| `GenerateDependencies.fetchKickoffs` | Injectable; defaults to `pullKickoffs`. |
+
+A team on bye is **absent** from the index, not zero: it has no game, and a
+starter on bye scores nothing and cannot move a margin.
+
+An entry that states its own kickoff **outranks** the index. A payload naming a
+kickoff for one specific player knows something the league-wide schedule does
+not, such as a relocated game.
+
+A scoreboard read that fails is logged and the run continues: the article then
+carries the unresolved margins it would have had anyway. Losing a league's
+article entirely is worse than losing its swing analysis, and `GenerateResult`
+reports `kickoffs` (how many teams the index covered) so a cron summary shows
+zero rather than leaving it to be inferred from the copy.
+
 ### The flags
 
 | Flag | Condition |
@@ -68,7 +100,18 @@ nobody reviewed) and nothing is written to the table.
 `impactSummary()` derives tier 2 from the flag and nothing else, with fixed
 grammar per flag, so the callout can never say more than the math supports:
 only `GAME_WINNER` gets "just enough", and a big score in a loss is "not
-enough" rather than anything warmer. The summary is passed through
+enough" rather than anything warmer.
+
+When a week carries several flagged performances, the callout picks by a stated
+order rather than inheriting `featuredTrackedPlayers`' news ranking, which put a
+wasted 74 ahead of the player who actually swung a matchup:
+
+    GAME_WINNER  >  DUD_COST_WIN  >  VALIANT_LOSS  >  GARBAGE_TIME_BLOWOUT
+
+A matchup that was won outranks one thrown away, which outranks a big score
+that changed nothing, which outranks padding in a game already decided. Within
+a flag the math's own ranking breaks the tie, so the choice stays deterministic
+for a given league, season and week. The summary is passed through
 `assertOutcomeLanguage` with the rest of the copy — a callout is the most
 prominent line on a card after the headline, and the last place an unbacked
 hero claim should be able to slip through.

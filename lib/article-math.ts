@@ -190,7 +190,45 @@ function cardStat(player: any, week: number | null, statSourceId: number): numbe
   return undated;
 }
 
-function normalizeEntry(entry: any, week: number | null): NormalizedEntry | null {
+/** The NFL team a fantasy starter plays for, in the two shapes ESPN uses.
+ *  Both are returned because a payload may carry either. */
+function proTeamKeys(entry: any, player: any): string[] {
+  const keys: string[] = [];
+  const push = (value: unknown) => {
+    const key = String(value == null ? '' : value).trim().toUpperCase();
+    if (key && key !== '0' && !keys.includes(key)) keys.push(key);
+  };
+  push(player && player.proTeamId);
+  push(entry && entry.proTeamId);
+  push(player && (player.proTeamAbbreviation || player.proTeamAbbrev));
+  push(entry && (entry.proTeamAbbreviation || entry.proTeamAbbrev));
+  return keys;
+}
+
+/** The entry's own kickoff if it has one, otherwise his NFL team's from the
+ *  index. The entry wins: a payload that states a kickoff for this specific
+ *  player knows something the league-wide schedule does not (a rescheduled or
+ *  relocated game), and overriding it with the general answer would be the
+ *  wrong way round. */
+function kickoffFor(entry: any, player: any, kickoffs: KickoffIndex | null): number | null {
+  const declared = kickoffMs(
+    entry.kickoff != null ? entry.kickoff :
+    entry.game_start != null ? entry.game_start :
+    entry.gameDate != null ? entry.gameDate :
+    player.proGameDate != null ? player.proGameDate :
+    player.gameDate,
+  );
+  if (declared != null) return declared;
+  if (!kickoffs) return null;
+
+  for (const key of proTeamKeys(entry, player)) {
+    const ts = Number(kickoffs[key]);
+    if (Number.isFinite(ts) && ts > 0) return ts;
+  }
+  return null;
+}
+
+function normalizeEntry(entry: any, week: number | null, kickoffs: KickoffIndex | null): NormalizedEntry | null {
   if (!entry) return null;
   const player = entryPlayer(entry);
   const id = text(entry.player_id != null ? entry.player_id : entry.playerId != null ? entry.playerId : player.id);
@@ -211,13 +249,7 @@ function normalizeEntry(entry: any, week: number | null): NormalizedEntry | null
     num(entry.playerPoolEntry && entry.playerPoolEntry.projectedStatTotal) ??
     cardStat(player, week, 1);
 
-  const kickoff = kickoffMs(
-    entry.kickoff != null ? entry.kickoff :
-    entry.game_start != null ? entry.game_start :
-    entry.gameDate != null ? entry.gameDate :
-    player.proGameDate != null ? player.proGameDate :
-    player.gameDate,
-  );
+  const kickoff = kickoffFor(entry, player, kickoffs);
 
   return {
     player_id: id || name,
@@ -229,7 +261,7 @@ function normalizeEntry(entry: any, week: number | null): NormalizedEntry | null
   };
 }
 
-function normalizeSide(side: any, week: number | null): NormalizedSide | null {
+function normalizeSide(side: any, week: number | null, kickoffs: KickoffIndex | null): NormalizedSide | null {
   if (!side) return null;
   const roster = side.rosterForCurrentScoringPeriod || side.rosterForMatchupPeriod || null;
   const rawEntries: any[] = Array.isArray(side.starters)
@@ -242,7 +274,7 @@ function normalizeSide(side: any, week: number | null): NormalizedSide | null {
 
   const starters: NormalizedEntry[] = [];
   for (const raw of rawEntries) {
-    const entry = normalizeEntry(raw, week);
+    const entry = normalizeEntry(raw, week, kickoffs);
     if (entry) starters.push(entry);
   }
 
@@ -261,7 +293,7 @@ function normalizeSide(side: any, week: number | null): NormalizedSide | null {
   };
 }
 
-function normalizeMatchups(leagueBoxScores: any, week: number | null): NormalizedMatchup[] {
+function normalizeMatchups(leagueBoxScores: any, week: number | null, kickoffs: KickoffIndex | null): NormalizedMatchup[] {
   const raw: any[] = Array.isArray(leagueBoxScores)
     ? leagueBoxScores
     : Array.isArray(leagueBoxScores && leagueBoxScores.schedule)
@@ -279,8 +311,8 @@ function normalizeMatchups(leagueBoxScores: any, week: number | null): Normalize
     if (week != null && matchup.week != null && Number(matchup.week) !== week) return;
     out.push({
       matchup_id: text(matchup.id != null ? matchup.id : matchup.matchup_id) || String(index + 1),
-      home: normalizeSide(matchup.home, week),
-      away: normalizeSide(matchup.away, week),
+      home: normalizeSide(matchup.home, week, kickoffs),
+      away: normalizeSide(matchup.away, week, kickoffs),
     });
   });
   return out;
@@ -350,6 +382,20 @@ export function classifyOutcome(input: OutcomeInput): OutcomeFlag | null {
  * Entry point
  * ------------------------------------------------------------------ */
 
+/**
+ * NFL team -> the instant its game kicks off, keyed by BOTH the numeric ESPN
+ * team id and the uppercase abbreviation.
+ *
+ * The fantasy league endpoint carries no kickoff times, so without this every
+ * starter resolves to `kickoff: null`, every matchup is MISSING_KICKOFF_DATA,
+ * no outcome flag is ever assigned and every article reads "No Swings To
+ * Report". `parseProTeamKickoffs()` in lib/notifications/schedule-feed.js
+ * builds it from the public NFL scoreboard.
+ *
+ * This module stays pure: it is handed the index and never fetches one.
+ */
+export type KickoffIndex = Record<string, number>;
+
 export interface OutcomeOptions {
   /** Scoring period to evaluate. Required for a raw ESPN season payload, which
    *  carries every week's schedule in one array. */
@@ -357,6 +403,10 @@ export interface OutcomeOptions {
   /** Restrict the returned rows to these kickoff windows. Defaults to the
    *  featured windows the desk writes about. */
   slots?: GameSlot[];
+  /** Kickoff times by NFL team, for the payloads that carry none of their own
+   *  (which is all of them, from the ESPN fantasy endpoint). Omitted, the
+   *  behaviour is exactly what it was: unresolved margins, no flags. */
+  kickoffs?: KickoffIndex | null;
 }
 
 /**
@@ -371,7 +421,8 @@ export function calculatePlayerOutcomeFlags(
 ): TrackedPlayer[] {
   const week = options.week == null ? null : Number(options.week);
   const slotFilter = options.slots && options.slots.length ? new Set(options.slots) : null;
-  const matchups = normalizeMatchups(leagueBoxScores, week);
+  const kickoffs = options.kickoffs && typeof options.kickoffs === 'object' ? options.kickoffs : null;
+  const matchups = normalizeMatchups(leagueBoxScores, week, kickoffs);
   if (!matchups.length) {
     console.warn(
       '[ArticleMath] no matchups found in box score payload for week ' + (week == null ? 'any' : week),
