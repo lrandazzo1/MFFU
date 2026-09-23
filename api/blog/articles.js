@@ -6,6 +6,7 @@
    the boundary, exactly as /api/league is for league storage.
 
      GET /api/blog/articles?league_id=123456&season=2026&week=3&limit=10
+     GET /api/blog/articles?league_id=123456&active=1&limit=6
 
    ---- WHAT IT RETURNS ----
 
@@ -48,6 +49,22 @@
 
    `season` and `week` narrow further. With neither, the league's most recent
    articles come back newest first, which is what a blog index wants.
+
+   ---- THE ACTIVE READ ----
+
+   `active=1` asks for the league's currently live stories: everything already
+   published, newest first, with no week coordinate. It is what the News Desk
+   uses to show the league's latest coverage when the week on screen has
+   nothing of its own.
+
+   The only thing it adds over an unfiltered read is the `published_at <= now`
+   floor, which excludes a row dated into the future. The pipeline does not
+   write those, but a backfill and the publish route both accept an explicit
+   `published_at`, so a story staged for tomorrow morning exists as a real
+   possibility and must not appear on a phone tonight.
+
+   It composes with the other filters rather than replacing them, so
+   `active=1&season=2026` is a legal narrowing and means what it reads like.
 
    ---- WHY IT IS PUBLIC ----
 
@@ -145,6 +162,17 @@ function intParam(req, name, { min, max }) {
   return value;
 }
 
+/* A flag is either set or not, and an unrecognised value is a typo in the
+   caller rather than a filter to guess at. `active=maybe` is a 400 for the
+   same reason `week=banana` is. */
+function flagParam(req, name) {
+  const raw = queryParam(req, name).toLowerCase();
+  if (!raw) return false;
+  if (raw === '1' || raw === 'true' || raw === 'yes') return true;
+  if (raw === '0' || raw === 'false' || raw === 'no') return false;
+  throw Object.assign(new Error(name + " must be 1 or 0"), { status: 400 });
+}
+
 function readScope(req) {
   const league_id = queryParam(req, 'league_id');
   if (!league_id || league_id.length > 64 || !/^[A-Za-z0-9._-]+$/.test(league_id)) {
@@ -154,6 +182,7 @@ function readScope(req) {
     league_id,
     season: intParam(req, 'season', { min: 1990, max: 2100 }),
     week: intParam(req, 'week', { min: 1, max: 18 }),
+    active: flagParam(req, 'active'),
     limit: intParam(req, 'limit', { min: 1, max: MAX_LIMIT }) || DEFAULT_LIMIT,
   };
 }
@@ -238,6 +267,10 @@ async function handler(req, res) {
       .eq('league_id', scope.league_id);
     if (scope.season != null) query = query.eq('season', scope.season);
     if (scope.week != null) query = query.eq('week', scope.week);
+    /* The active floor. Applied as part of the query rather than by filtering
+       the rows afterwards, so a league whose next few stories are staged ahead
+       does not quietly get a short page back. */
+    if (scope.active) query = query.lte('published_at', new Date().toISOString());
     return query
       .order('published_at', { ascending: false })
       .limit(scope.limit);
@@ -260,13 +293,15 @@ async function handler(req, res) {
       league_id: scope.league_id,
       season: scope.season,
       week: scope.week,
+      active: scope.active,
       count: articles.length,
       articles,
     });
   } catch (err) {
     console.error(
       '[BlogArticles] read failed for league ' + scope.league_id +
-        ' (season ' + String(scope.season) + ', week ' + String(scope.week) + ')',
+        ' (season ' + String(scope.season) + ', week ' + String(scope.week) +
+        ', active ' + String(scope.active) + ')',
       err,
     );
     res.setHeader('Cache-Control', 'no-store');

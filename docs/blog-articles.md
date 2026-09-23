@@ -279,7 +279,9 @@ the deterministic timeline.
 | Piece | Role |
 |---|---|
 | `api/blog/articles.js` | Public `GET /api/blog/articles`, the one read boundary onto `blog_articles`. |
-| `window.FSNLeagueArticles` (index.html, block 1) | Fetch, cache and state. The data half. |
+| `window.FSNLeagueArticles` (index.html, block 1) | The week on screen. Fetch, cache and state. |
+| `window.FSNSupabaseArticles` (index.html, block 1) | The league's active stories, no week coordinate. Same five states. |
+| `fsnNormalizeArticles()` (index.html, global, block 1) | The three-tier resolver both engines share. |
 | `renderLeagueBlog()` (index.html, last block) | The paint: cards, markdown, player chips, the player sheet. |
 | `scripts/league-blog-check.mjs` | `npm run check:leagueblog`, a real Chromium render against a stubbed endpoint. |
 
@@ -307,6 +309,25 @@ dropped filter: returning the whole league would answer a question nobody
 asked. Bad requests and failures are `no-store`; a successful read is cached
 for five minutes at the edge with a day of stale-while-revalidate, matching the
 static blog payload.
+
+### The active read
+
+```
+GET /api/blog/articles?league_id=123456&active=1&limit=6
+```
+
+`active=1` asks for the league's currently live stories: everything already
+published, newest first, with no week coordinate. The only thing it adds over
+an unfiltered read is the `published_at <= now` floor, which excludes a row
+dated into the future. The pipeline does not write those, but a backfill and
+the publish route both accept an explicit `published_at`, so a story staged for
+tomorrow morning is a real possibility and must not appear on a phone tonight.
+
+It composes with the other filters rather than replacing them, so
+`active=1&season=2026` is a legal narrowing and means what it reads like. The
+response echoes `active` so a client can tell which read it got back. An
+unrecognised value (`active=maybe`) is a 400, for the same reason `week=banana`
+is.
 
 It is also reachable at `https://fantasysportsnetwork.app/api/blog/articles`.
 The `fsn-landing` project has no `api/` of its own and no Supabase credentials,
@@ -471,21 +492,92 @@ after a timeout costs nothing.
 
 ---
 
+## FSNSupabaseArticles
+
+The active feed, also at global scope in the first block.
+
+```js
+FSNSupabaseArticles.fetch(leagueId)                // cache when fresh
+FSNSupabaseArticles.fetch(leagueId, {force:true})  // always go to the network
+FSNSupabaseArticles.read(leagueId)                 // what is known now, no network
+FSNSupabaseArticles.refresh()                      // re-read the last league
+FSNSupabaseArticles.subscribe(fn)                  // repaint on state changes
+FSNSupabaseArticles.clear()                        // drop every cached league
+```
+
+Same five states, same cache-outranks-an-error posture, same 404-is-`empty`
+rule as `FSNLeagueArticles`. Its scope is a league id and nothing else, its
+cache key and storage prefix are its own, and it refuses a payload whose
+`league_id` does not match what it asked for.
+
+**Why it exists alongside `FSNLeagueArticles`.** That engine reads one week,
+which is correct: an article is stored against an explicit league, season and
+week, so asking by those three coordinates puts a Week 3 story on the Week 3
+view and nowhere else. What it cannot answer is "what has this league published
+lately", and three publishing mornings a week means most visits land on a week
+with no story of its own. Hiding the section outright on those visits is what
+made the feed look disconnected.
+
+**Why it is not a browser Supabase client.** `blog_articles` has RLS enabled
+and no anon or authenticated policies: the browser holds no key that can read
+it and is never given one, because a service-role key in a static file is a
+service-role key in every reader's devtools. `/api/blog/articles` is the read
+boundary, exactly as `/api/league` is for league storage, so "fetch from
+Supabase" means fetch through that route. Same posture as the transaction wire
+and the cloud archive.
+
+**The shared resolver.** `fsnNormalizeArticles()` and `fsnArticleTiers()` are
+at global scope rather than inside either IIFE, per the rule at the top of
+`index.html`: both engines resolve rows with them, and a copy inside one would
+be invisible to the other and let the two feeds drift on what an article is.
+
 ## The News Desk section
 
-`renderLeagueBlog()` paints `#leagueBlogWrap`, which is hidden outright until
-the league has something published for the viewed week. Everything below it —
-the lead story, the timeline, the topic bar — is the existing deterministic
-News Desk and is untouched. The call sits behind its own `try` inside
-`renderNews()`, so a failure in the remote feed can never stop the desk from
-rendering.
+`renderLeagueBlog()` paints `#leagueBlogWrap` from **both** feeds, and only
+ever one of them at a time, so no article can be painted twice:
 
-Unlike the desk wire, this section needs **no season/week gate**. The desk wire
-reads the root-domain blog, which publishes real-world NFL copy dated to today
-and would misrepresent itself in a historical view. Every article here is
-stored against an explicit league, season and week and is requested by those
-three coordinates, so a Week 3 article is correct on the Week 3 view and
-nowhere else by construction.
+1. **The week on screen leads.** When `FSNLeagueArticles` has stories for it,
+   those are the section, under a `WEEK n` label. This is exactly what the
+   section did before the active feed existed.
+2. **The active feed stands in** when the week has nothing, under a `LATEST`
+   label: the league's most recent coverage, whatever week it belongs to.
+3. Both still loading with nothing to stand in → one loading line. Both done
+   with nothing, and either read failed → one honest sentence saying the
+   coverage could not be reached. Both done and genuinely empty → the section
+   is hidden outright, as before.
+
+The header label always says which of the two is on screen, and each card names
+the week its own story belongs to.
+
+Everything below the section — the lead story, the timeline, the topic bar — is
+the existing deterministic News Desk and is untouched. The call sits behind its
+own `try` inside `renderNews()`, so a failure in either remote feed can never
+stop the desk from rendering.
+
+**The gate.** The week-scoped feed needs none: every article it returns was
+requested by the exact season and week on screen. The active feed is held back
+outside the live season (`lbOnLiveSeason()`), because it is not season-scoped
+and would otherwise offer 2026 stories on a 2019 retro view, which a reader
+only reaches by choosing it.
+
+Within the live season it is deliberately **not** gated on the week. Each card
+names its story's week and the header says `LATEST`, so nothing is presented as
+the viewed week's own coverage, and the app's default landing week can
+legitimately sit behind the week the league has rolled forward to
+(`effectiveWeek()` 2 while `currentLeagueWeek()` reads 3 is an ordinary
+Tuesday). A week comparison would suppress the feed on exactly the view where a
+reader who has navigated nowhere most wants it.
+
+A gate that throws returns false: holding the fallback back costs the reader a
+section they were not promised, while guessing wrong puts one season's copy
+under another's name.
+
+**The refresh control** drives both feeds through `Promise.allSettled`, because
+refreshing one and not the other would leave the reader looking at a stale
+fallback after asking for fresh copy, and one feed failing must not cancel the
+other's repaint or leave the button disabled.
+
+**On a league switch**, `clearLeagueStateForSwitch()` clears both stores.
 
 ### Markdown
 
