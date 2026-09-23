@@ -196,13 +196,20 @@ matters.
 ## The schedule
 
 `.github/workflows/generate-articles.yml` fires three weekly triggers, all at
-10:00 UTC (06:00 ET during the season):
+08:00 UTC (04:00 ET during the season):
 
 | Cron | Day | Article |
 |---|---|---|
-| `0 10 * * 1` | Monday | `monday_sweat` — recaps the Sunday slate, previews MNF. |
-| `0 10 * * 2` | Tuesday | `tuesday_verdict` — recaps the Monday night final. |
-| `0 10 * * 5` | Friday | `friday_tnf_preview` — recaps TNF, previews the weekend slate. |
+| `0 8 * * 1` | Monday | `monday_sweat` — recaps the Sunday slate, previews MNF. |
+| `0 8 * * 2` | Tuesday | `tuesday_verdict` — recaps the Monday night final. |
+| `0 8 * * 5` | Friday | `friday_tnf_preview` — recaps TNF, previews the weekend slate. |
+
+The three entries are deliberately not collapsed into the equivalent
+`0 8 * * 1,2,5`. The job maps the schedule string that fired to the article it
+writes, and GitHub queues scheduled runs under load: a run that starts well
+after its slot still carries its own cron string, whereas reading the weekday
+off the clock would publish Monday's article as Tuesday's after a long enough
+delay.
 
 It also takes a `workflow_dispatch` with `day`, `dry_run`, `season` and `week`,
 for a manual run or a backfill, and a `concurrency` group so a manual run never
@@ -222,9 +229,9 @@ array in `vercel.json` and delete the workflow (running both would just make
 the second one a no-op, but the duplicate alert noise is not worth it):
 
 ```json
-{ "path": "/api/cron/generate-articles?day=mon", "schedule": "0 10 * * 1" },
-{ "path": "/api/cron/generate-articles?day=tue", "schedule": "0 10 * * 2" },
-{ "path": "/api/cron/generate-articles?day=fri", "schedule": "0 10 * * 5" }
+{ "path": "/api/cron/generate-articles?day=mon", "schedule": "0 8 * * 1" },
+{ "path": "/api/cron/generate-articles?day=tue", "schedule": "0 8 * * 2" },
+{ "path": "/api/cron/generate-articles?day=fri", "schedule": "0 8 * * 5" }
 ```
 
 Vercel injects the `Authorization: Bearer $CRON_SECRET` header itself, so no
