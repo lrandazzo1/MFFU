@@ -1,7 +1,7 @@
 // Real page + real article renderer, with deterministic provider/cache fixtures.
 import {createServer} from 'node:http';
-import {readFileSync} from 'node:fs';
-import {resolve,extname,dirname} from 'node:path';
+import {readFileSync,existsSync,readdirSync} from 'node:fs';
+import {resolve,extname,dirname,join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
@@ -35,7 +35,24 @@ const server = createServer((req,res)=>{
   catch(err){res.writeHead(404);res.end();}
 });
 await new Promise(r=>server.listen(0,'127.0.0.1',r));
-const browser = await chromium.launch({executablePath:process.env.FSN_CHROMIUM_PATH,headless:true,args:['--no-sandbox']});
+/* Same resolution order as every other browser check in this directory:
+   FSN_CHROMIUM_PATH wins, then whatever Chromium is actually installed under
+   PLAYWRIGHT_BROWSERS_PATH. Passing `undefined` here instead sent Playwright
+   looking for the build its own version pins, which is not the build this
+   image ships, so the check died on "Executable doesn't exist" rather than on
+   anything about the transaction wire. */
+function resolveChromium(){
+  const override = String(process.env.FSN_CHROMIUM_PATH || '').trim();
+  if(override) return override;
+  const dir = String(process.env.PLAYWRIGHT_BROWSERS_PATH || '/opt/pw-browsers');
+  if(!existsSync(dir)) return undefined;
+  return readdirSync(dir)
+    .filter(name=>name.startsWith('chromium'))
+    .sort().reverse()
+    .flatMap(name=>[join(dir,name,'chrome-linux','chrome'),join(dir,name,'chrome-linux','headless_shell')])
+    .find(file=>existsSync(file));
+}
+const browser = await chromium.launch({executablePath:resolveChromium(),headless:true,args:['--no-sandbox']});
 const page = await browser.newPage();
 const errors = [];
 page.on('pageerror',e=>errors.push(String(e)));

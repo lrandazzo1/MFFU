@@ -3,7 +3,7 @@
 // This runs in CI with Playwright, alongside the six-screen render regression gate.
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
@@ -22,7 +22,23 @@ const server = createServer((req,res)=>{
 });
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 const base = 'http://127.0.0.1:' + server.address().port;
-const browser = await chromium.launch({ executablePath:process.env.FSN_CHROMIUM_PATH || chromium.executablePath() });
+/* Same resolution order as every other browser check in this directory:
+   FSN_CHROMIUM_PATH wins, then whatever Chromium is actually installed under
+   PLAYWRIGHT_BROWSERS_PATH. Falling through to Playwright's own default sent it
+   looking for the build its version pins, which is not the build this image
+   ships, so the check died on "Executable doesn't exist" before it ran. */
+function resolveChromium() {
+  const override = String(process.env.FSN_CHROMIUM_PATH || '').trim();
+  if (override) return override;
+  const dir = String(process.env.PLAYWRIGHT_BROWSERS_PATH || '/opt/pw-browsers');
+  if (!existsSync(dir)) return undefined;
+  return readdirSync(dir)
+    .filter((name) => name.startsWith('chromium'))
+    .sort().reverse()
+    .flatMap((name) => [join(dir, name, 'chrome-linux', 'chrome'), join(dir, name, 'chrome-linux', 'headless_shell')])
+    .find((file) => existsSync(file));
+}
+const browser = await chromium.launch({ executablePath:resolveChromium() });
 try{
   for(const route of ['', '?goto=setup&platform=yahoo&id=449.l.12345', '?goto=setup&platform=yahoo&id=123456']){
     const page = await browser.newPage({ viewport:{ width:390, height:844 } });

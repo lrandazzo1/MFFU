@@ -355,21 +355,31 @@ try {
   const mid = await readDesk(preseasonLeague(MIDSEASON_WEEK - 1),
     { clock: MIDSEASON_CLOCK, week: MIDSEASON_WEEK });
 
-  /* The gate's own floor rule — "promote only the next story due when the wire
-     would otherwise be blank" — predates this fix and can legitimately surface a
-     single still-ahead story mid-week. Anything past that one card means the
-     advance carve-out leaked out of the season-opening window it is scoped to. */
+  /* Only a story whose slot has NOT gone to air can have been released early, so
+     that — not "carries an advance slot" — is what this looks at. A primer whose
+     Thursday is already behind the reader is ordinary released copy, and the
+     mid-season desk is mostly the deterministic article library folding in the
+     prior weeks' results, every one of them long since aired.
+
+     One still-ahead card is the gate's own floor rule: "promote only the next
+     story due when the wire would otherwise be blank". It predates this fix and
+     fires legitimately here, because the week being viewed has no scores of its
+     own yet, so every slot the generators stamped for it is still ahead and the
+     library rows are merged in afterwards. Two or more means the advance
+     carve-out leaked out of the season-opening window it is scoped to. */
   const midDesk = mid.stream.filter((a) => !a.custom);
-  const midEarly = midDesk.filter((a) => ADVANCE_SLOTS.includes(a.slot));
-  const floorOnly = midEarly.length <= 1 && midDesk.length <= 1;
-  if (midEarly.length === 0 || floorOnly) {
-    pass('the Thursday primer and the Saturday availability wire are still held on the Wednesday' +
-      (midEarly.length ? ' (one card promoted by the gate\'s pre-existing blank-wire floor)' : ''));
+  const midEarly = midDesk.filter((a) => a.at > mid.now);
+  const describe = (rows) => rows.map((a) => a.id + ' · ' + a.slot).slice(0, 4).join(', ');
+  if (midEarly.length === 0) {
+    pass('every story on the mid-season wire has already gone to air');
+  } else if (midEarly.length === 1 && ADVANCE_SLOTS.includes(midEarly[0].slot)) {
+    pass('one card promoted by the gate\'s pre-existing blank-wire floor (' + describe(midEarly) +
+      '); the rest of the week\'s advance copy is still held');
   } else {
-    fail(midEarly.length + ' advance story/stories were released early in a mid-season week (' +
-      midEarly.map((a) => a.id + ' · ' + a.slot).slice(0, 4).join(', ') +
+    fail(midEarly.length + ' story/stories were released ahead of their slot in a mid-season week (' +
+      describe(midEarly) +
       '). The advance carve-out is scoped to the season-opening window on purpose — outside it the desk ' +
-      'still publishes on the calendar it advertises.');
+      'still publishes on the calendar it advertises, and only the blank-wire floor may promote a single card.');
   }
 
   if (mid.stream.length > 0) pass('the mid-season wire is not empty (' + mid.stream.length + ' stories)');

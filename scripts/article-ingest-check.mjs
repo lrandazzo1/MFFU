@@ -9,23 +9,46 @@
    against the running engine. This is that check for FSNArticles: the app's
    reader for the root-domain blog payload.
 
-   It serves index.html and a synthetic blog payload from one loopback origin,
-   points the engine at it with window.FSN_ARTICLES_ORIGIN, and asserts:
+   ---- WHAT THIS CHECK GUARDS NOW ----
 
-     1. the weekly cadence routes every day to the slot the desk publishes for
-     2. selection is deterministic, rejects unpublished and out-of-window copy,
-        and breaks a same-day tie on slug rather than on manifest order
-     3. entities match this league's rosters by Sleeper id AND by name, through
-        the punctuation and suffix variance between a desk's copy and a
-        provider's roster
-     4. the ownership tag is injected once into the annotated HTML, at the
-        first mention, without disturbing the markup around it — the compact
-        card does not paint that HTML inline, but the annotator still runs
-        so the wire-context strip and any future consumer can key off it
-     5. the body sanitizer drops script/style/iframe and every event attribute
-     6. the compact card paints on the News Desk with no page error, no "hit
-        a snag", no inline expand section, and links out to the blog
-     7. an unreachable feed disables the slot and leaves the News Desk intact
+   External editorial is DISCONNECTED from the app on purpose. FSNArticles no
+   longer fetches the root-domain blog payload, no longer routes a post into the
+   News Desk, and there is no `#deskWireWrap` card on the News screen; the app's
+   own coverage comes from the deterministic News Desk (block 4) and from each
+   league's own published articles (the League Blog, `/api/blog/articles`, which
+   scripts/league-blog-check.mjs covers end to end).
+
+   So this check asserts two things:
+
+     A. THE DISCONNECTION HOLDS. Even with a reachable, well-formed blog payload
+        served on the origin the engine points at, the app never reads it: zero
+        requests to /content/generated/blog/, the engine settles to `empty` with
+        no post, `annotated()` stays null, nothing from the payload executes,
+        and the News Desk paints its own copy with no "hit a snag". This is the
+        assertion that would catch external editorial being wired back in by
+        accident.
+
+     B. THE PURE HELPERS STILL BEHAVE. The cadence router, the slot selector and
+        the roster-matching layer are pure, live code at global scope, and they
+        are what any future re-enablement would be built back on top of:
+
+          1. the weekly cadence routes every day to the slot the desk publishes
+          2. selection is deterministic, rejects unpublished and out-of-window
+             copy, and breaks a same-day tie on slug rather than manifest order
+          3. entities match this league's rosters by Sleeper id AND by name,
+             through the punctuation and suffix variance between a desk's copy
+             and a provider's roster, reading each team's LATEST week
+          4. ownership is framed relative to the reader — their own player, this
+             week's opponent's player, anyone else's — and degrades to the
+             neutral label when no team is claimed
+
+   NOT COVERED HERE, DELIBERATELY: the body sanitizer and the first-mention
+   ownership injector are reachable only through `FSNArticles.annotated()`,
+   which requires a `ready` snapshot that the disconnected engine can never
+   produce. That coverage is parked with the surface it belongs to. If external
+   editorial is ever re-enabled, restore it here in the same commit — the
+   sanitizer is what stands between a bad blog deploy and script execution
+   inside a native shell.
 
    Exit code 0 means clean.
 ============================================================================ */
@@ -46,6 +69,8 @@ const TYPES = {
   '.css': 'text/css; charset=utf-8',
 };
 
+const BLOG_PREFIX = '/content/generated/blog/';
+
 /* The engine routes on the reader's LOCAL calendar day, so the fixture dates
    are built from the same local clock the page will read. */
 function localDateKey(offsetDays) {
@@ -56,15 +81,13 @@ function localDateKey(offsetDays) {
 }
 
 /* One article per slot, all published today, so whatever day this check runs
-   the live slot has exactly one legitimate answer. Each carries two entities:
-   one the synthetic league rosters, one it does not. */
-/* One article per slot, all published today, so whatever day this check runs
    the live slot has exactly one legitimate answer.
 
-   Every body is built the same way on purpose, so no assertion below depends on
-   which day it is: each names its rostered player TWICE (a second ownership tag
-   would mean the injector is not first-mention-only), names one player nobody
-   rosters, and carries the same hostile markup the sanitizer has to strip. */
+   Every body is built the same way on purpose: each names its rostered player
+   twice, names one player nobody rosters, and carries hostile markup. Nothing
+   in the app reads these bodies any more — that is the point of scenario A, and
+   the payload has to be genuinely readable and genuinely hostile for "the app
+   did not read it" to mean anything. */
 const HOSTILE = '<script>window.__fsnWireInjected = true;</script>'
   + '<p onclick="window.__fsnWireInjected = true">A paragraph carrying an event attribute.</p>'
   + '<iframe src="https://example.com"></iframe>'
@@ -127,10 +150,15 @@ function fixturePayload() {
 
 /* Repo root plus the blog payload, plus the one API route the client boots
    against. `live:false` makes every blog read a 404, which is the offline
-   scenario the fallback has to survive. */
+   scenario scenario B points the engine at.
+
+   `blogReads` is the load-bearing instrumentation: the server counts every
+   request that reaches the blog directory, so "the app never read the payload"
+   is asserted at the origin rather than only from inside the page. */
 function startServer(options) {
   const opts = options || {};
   const payload = fixturePayload();
+  const state = { blogReads: [] };
   return new Promise((resolve) => {
     const server = createServer((req, res) => {
       const url = new URL(req.url, 'http://localhost');
@@ -142,14 +170,15 @@ function startServer(options) {
         json({ configured: false, apns: false, web: false, vapidPublicKey: '', groups: [] });
         return;
       }
-      if (url.pathname.startsWith('/content/generated/blog/')) {
+      if (url.pathname.startsWith(BLOG_PREFIX)) {
+        state.blogReads.push(url.pathname);
         if (!opts.live) {
           res.writeHead(404, { 'Content-Type': 'text/plain', 'Access-Control-Allow-Origin': '*' });
           res.end('not found');
           return;
         }
-        if (url.pathname === '/content/generated/blog/index.json') { json(payload.index); return; }
-        const slug = decodeURIComponent(url.pathname.replace('/content/generated/blog/posts/', '').replace(/\.json$/, ''));
+        if (url.pathname === BLOG_PREFIX + 'index.json') { json(payload.index); return; }
+        const slug = decodeURIComponent(url.pathname.replace(BLOG_PREFIX + 'posts/', '').replace(/\.json$/, ''));
         if (payload.bySlug[slug]) { json(payload.bySlug[slug]); return; }
         res.writeHead(404, { 'Content-Type': 'text/plain', 'Access-Control-Allow-Origin': '*' });
         res.end('not found');
@@ -165,7 +194,7 @@ function startServer(options) {
       res.writeHead(200, { 'Content-Type': TYPES[extname(file)] || 'application/octet-stream' });
       res.end(readFileSync(file));
     });
-    server.listen(0, '127.0.0.1', () => resolve(server));
+    server.listen(0, '127.0.0.1', () => resolve({ server, state }));
   });
 }
 
@@ -264,39 +293,62 @@ const expect = (actual, wanted, label) => {
 
 const liveServer = await startServer({ live: true });
 const deadServer = await startServer({ live: false });
-const liveBase = 'http://127.0.0.1:' + liveServer.address().port;
-const deadBase = 'http://127.0.0.1:' + deadServer.address().port;
+const liveBase = 'http://127.0.0.1:' + liveServer.server.address().port;
+const deadBase = 'http://127.0.0.1:' + deadServer.server.address().port;
 
 const browser = await chromium.launch({ executablePath });
+
+/* Every day of the week, and the slug each slot has exactly one legitimate
+   answer for. Computed here rather than read back from the engine, so the
+   assertions stay independent of the thing they are checking. */
+const WEEK_PLAN = ['pregame', 'recap', 'recap', 'waiver', 'roster', 'roster', 'open'];
+const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 async function openApp(base, articlesOrigin) {
   const page = await browser.newPage({ viewport: { width: 414, height: 896 } });
   const pageErrors = [];
   const consoleErrors = [];
+  /* Blog requests seen from the browser side as well as from the origin: a read
+     that never leaves the page (a cache hit, a service worker) still counts as
+     the app reaching for external editorial. */
+  const blogRequests = [];
   page.on('pageerror', (err) => pageErrors.push(String((err && err.stack) || err)));
+  page.on('request', (req) => {
+    if (req.url().includes(BLOG_PREFIX)) blogRequests.push(req.url());
+  });
   page.on('console', (msg) => {
     if (msg.type() !== 'error') return;
     const text = msg.text();
     if (/\[(FSN|NewsDesk|Standings|Matchups)/.test(text)) consoleErrors.push(text);
   });
-  await page.addInitScript(({ origin, fixtures }) => {
+  await page.addInitScript(({ origin }) => {
     window.FSN_ARTICLES_ORIGIN = origin;
     window.__fsnWireInjected = false;
     try { window.localStorage.clear(); } catch (err) { /* private mode */ }
     try { window.localStorage.setItem('hasCompletedOnboarding', 'true'); } catch (err) { /* private mode */ }
-    /* Fixture payload for the category-gate assertion below: it force-routes
-       each fixture through the wire by slug and inspects the resulting card,
-       so it needs the source bodies at hand. Serialized on the init side
-       because the assertion runs inside page.evaluate. */
-    window.__fsnFixturePayload = fixtures;
-  }, { origin: articlesOrigin, fixtures: fixturePayload().bySlug });
+  }, { origin: articlesOrigin });
   await page.goto(base + '/', { waitUntil: 'load' });
   await page.waitForTimeout(1200);
-  return { page, pageErrors, consoleErrors };
+  return { page, pageErrors, consoleErrors, blogRequests };
+}
+
+/* Seed the synthetic league, repaint, and dismiss the profile picker so the
+   reader is an explicit guest rather than an unanswered prompt. */
+async function seedLeague(page) {
+  await page.evaluate((data) => {
+    window.LeagueData.setEspnData(data);
+    window.__fsnRender();
+  }, syntheticSleeperLeague());
+  await page.waitForTimeout(600);
+  if ((await page.getAttribute('#profilePicker', 'data-open')) === 'true') {
+    await page.click('#profileGuest');
+    await page.waitForTimeout(400);
+  }
 }
 
 try {
-  /* ---- A. The live feed ------------------------------------------------- */
+  /* ---- A. A reachable blog payload the app must still not read ---------- */
+  console.log('\n[A] the live blog origin is reachable — the app must stay disconnected from it');
   const live = await openApp(liveBase, liveBase);
   const page = live.page;
 
@@ -304,12 +356,19 @@ try {
   if (seam) pass('seam present: window.FSNArticles');
   else fail('seam missing: window.FSNArticles');
 
+  /* The launch hook is inert: booting the app must not reach for the payload or
+     settle the engine into any state that implies it tried. */
+  const boot = await page.evaluate(() => window.FSNArticles.current().status);
+  expect(boot, 'idle', 'engine status after boot, with no explicit refresh');
+
   /* 1. Cadence routing, every day, without moving the clock. */
   const plan = await page.evaluate(() => [0, 1, 2, 3, 4, 5, 6].map((d) => window.FSNArticles.slotForDay(d).id));
-  const wantedPlan = ['pregame', 'recap', 'recap', 'waiver', 'roster', 'roster', 'open'];
-  expect(plan.join(','), wantedPlan.join(','), 'weekly cadence Sun..Sat');
+  expect(plan.join(','), WEEK_PLAN.join(','), 'weekly cadence Sun..Sat');
 
-  /* 2. Selection: the right category per slot, and the two rejections. */
+  /* 2. Selection: the right category per slot, and the three rejections. The
+        rows are inline rather than fetched, so this exercises the selector
+        without the check itself reading the blog payload it asserts nobody
+        reads. */
   const selection = await page.evaluate(() => {
     const A = window.FSNArticles;
     const today = '2026-09-09';
@@ -344,17 +403,7 @@ try {
   expect(selection.tie, 'alpha', 'a same-day tie breaks on slug, not manifest order');
 
   /* ---- 3. Entity matching against this league's rosters ----------------- */
-  await page.evaluate((data) => {
-    window.LeagueData.setEspnData(data);
-    window.__fsnRender();
-  }, syntheticSleeperLeague());
-  await page.waitForTimeout(600);
-
-  const pickerOpen = await page.getAttribute('#profilePicker', 'data-open');
-  if (pickerOpen === 'true') {
-    await page.click('#profileGuest');
-    await page.waitForTimeout(400);
-  }
+  await seedLeague(page);
 
   const owners = await page.evaluate(() => {
     const A = window.FSNArticles;
@@ -379,428 +428,184 @@ try {
   if (owners.rosterCount >= 6) pass('roster index built: ' + owners.rosterCount + ' players');
   else fail('roster index too small: ' + owners.rosterCount);
 
-  /* ---- 4/5. Annotation and sanitizing, on every fixture article ---------- */
-  const annotation = await page.evaluate(async () => {
+  /* ---- 4. Reader-scoped ownership framing -------------------------------
+     With no active team claimed the tag reads generically ("owned by ..."). Team
+     1 (Alpha) rosters all three matched players, so a reader on Team 1 must see
+     them as their own. Team 3 (Charlie) plays Team 1 in the league's current
+     week (2), so the same three players must reframe as that week's opponent.
+     Driven through the exported helpers rather than a rendered card: there is
+     no card, and these are the functions any future surface would call. */
+  const framing = await page.evaluate(() => {
     const A = window.FSNArticles;
-    const out = {};
-    const slots = { 0: 'pregame', 1: 'recap', 3: 'waiver' };
-    /* Drive the engine's own annotate path over each fixture body by asking it
-       to route the day that owns it, then reading the rendered result. */
-    const origin = window.FSN_ARTICLES_ORIGIN;
-    const manifest = await (await fetch(origin + '/content/generated/blog/index.json')).json();
-    for (const day of Object.keys(slots)) {
-      const slot = A.slotForDay(Number(day));
-      const todayKey = manifest.posts[0].publishDate;
-      const row = A.selectForSlot(manifest.posts, slot, todayKey);
-      if (!row) { out[slots[day]] = { missing: true }; continue; }
-      const post = await (await fetch(origin + '/content/generated/blog/posts/' + row.slug + '.json')).json();
-      /* Annotation is exercised through the real state machine: seed the
-         engine's current post by forcing a refresh is day-dependent, so the
-         body is run through the same public helpers the card uses. */
-      const doc = new DOMParser().parseFromString('<div>' + post.bodyHtml + '</div>', 'text/html');
-      out[slots[day]] = { slug: row.slug, parsed: !!doc };
-    }
-    return out;
-  });
-  if (annotation && Object.keys(annotation).length === 3) pass('every fixture slot resolves to an article');
-  else fail('fixture slots did not resolve: ' + JSON.stringify(annotation));
-
-  /* The card itself, on the News Desk, for whatever day this runs. */
-  await page.click('#tabBar .tab-btn[data-tab="news"]');
-  await page.waitForTimeout(900);
-  await page.evaluate(() => window.FSNArticles.refresh({ force: true }));
-  await page.waitForTimeout(900);
-
-  const card = await page.evaluate(() => {
-    const wrap = document.getElementById('deskWireWrap');
-    if (!wrap) return { present: false };
-    const state = window.FSNArticles.current();
-    const view = window.FSNArticles.annotated();
-    const anchor = wrap.querySelector('.wire-card-compact');
-    /* Two mutually exclusive dek treatments now. `.wire-dek-local` is the
-       hyper-local lede FSNLocalDesk writes when the item names a player
-       somebody in this league rosters; `.wire-dek-compact` is the compressed
-       national excerpt, which survives only when nothing in the piece touches
-       a roster here. Exactly one may be present. */
-    const localDek = wrap.querySelector('.wire-dek-local');
-    const nationalDek = wrap.querySelector('.wire-dek-compact');
-    const dek = localDek || nationalDek;
-    const deepBlock = wrap.querySelector('.deepstat');
-    const openCta = wrap.querySelector('.wire-foot-compact .wire-read');
-    const bodyDoc = new DOMParser().parseFromString(
-      '<div>' + ((view && view.html) || '') + '</div>', 'text/html');
-    const bodyEl = bodyDoc.body.firstElementChild;
-    const tags = bodyEl
-      ? Array.prototype.slice.call(bodyEl.querySelectorAll('.wire-own')).map((n) => n.textContent.trim())
-      : [];
-    return {
-      present: true,
-      hidden: wrap.hidden,
-      status: state.status,
-      slot: state.slot && state.slot.id,
-      slug: state.post && state.post.slug,
-      title: (wrap.querySelector('.wire-title') || {}).textContent || '',
-      dek: dek ? dek.textContent.trim() : '',
-      dekIsLocal: !!localDek,
-      dekBoth: !!(localDek && nationalDek),
-      /* The deep data section: the localized read, the per-player stat chips
-         and the live head-to-head, appended below the card. */
-      deep: deepBlock ? {
-        players: Array.prototype.slice.call(deepBlock.querySelectorAll('.ds-player'))
-          .map((n) => ({
-            name: (n.querySelector('.ds-name') || {}).textContent || '',
-            who: (n.querySelector('.ds-who') || {}).textContent || '',
-            points: (n.querySelector('.ds-pts') || {}).textContent || '',
-            cats: Array.prototype.slice.call(n.querySelectorAll('.ds-cat')).map((c) => c.textContent.trim()),
-          })),
-        scores: deepBlock.querySelectorAll('.ds-score').length,
-        anchors: deepBlock.querySelectorAll('a, [href]').length,
-        /* The block must live OUTSIDE the card's anchor: a <section> of stat
-           rows inside an <a> is invalid markup, and the anchor has to stay the
-           tap target. */
-        insideAnchor: !!deepBlock.closest('.wire-card-compact'),
-      } : null,
-      openCta: openCta ? openCta.textContent.trim() : '',
-      anchorHref: anchor ? anchor.getAttribute('href') : '',
-      anchorTarget: anchor ? anchor.getAttribute('target') : '',
-      hasInlineExpand: !!wrap.querySelector('.wire-expand, .wire-body'),
-      tags,
-      matchCount: (view && view.matches) ? view.matches.length : 0,
-      annotatedHtml: (view && view.html) || '',
-      scriptCount: bodyEl ? bodyEl.querySelectorAll('script, style, iframe, object, embed').length : -1,
-      eventAttrs: bodyEl ? bodyEl.innerHTML.indexOf('onclick') : -1,
-      injected: window.__fsnWireInjected === true,
-      readerUrl: state.readerUrl,
-      snag: /hit a snag/i.test(document.querySelector('.screen[data-screen="news"]').innerText),
-    };
-  });
-
-  /* What TODAY must route to. Computed here rather than read back from the
-     engine, so the assertion is independent of the thing it is checking. */
-  const EXPECTED_BY_SLOT = {
-    pregame: 'sunday-matchup-breakdowns',
-    recap: 'monday-recap-highs-and-lows',
-    waiver: 'wednesday-waiver-faab-targets',
-    roster: 'thursday-injury-report',
-    /* Saturday accepts anything, newest first, ties on slug. */
-    open: [...FIXTURE_POSTS].map((p) => p.slug).sort()[0],
-  };
-  const todaySlot = ['pregame', 'recap', 'recap', 'waiver', 'roster', 'roster', 'open'][new Date().getDay()];
-
-  if (!card.present) fail('#deskWireWrap is missing from the News Desk');
-  else {
-    expect(card.hidden, false, 'the wire card is visible with a live feed');
-    expect(card.status, 'ready', 'engine status');
-    expect(card.slot, todaySlot, "today's slot");
-    expect(card.slug, EXPECTED_BY_SLOT[todaySlot], "today's routed article");
-    if (card.title.trim()) pass('headline rendered: ' + card.title.trim());
-    else fail('no headline rendered');
-    /* The card is a compact timeline entry, not an inline reader. It must not
-       paint the full article body anywhere on the News Desk. */
-    expect(card.hasInlineExpand, false, 'no inline body / expand section is rendered');
-    if (card.dek.length && card.dek.length <= 320) pass('the dek is one short paragraph (' + card.dek.length + ' chars): ' + card.dek);
-    else fail('the dek is not a short paragraph (' + card.dek.length + ' chars): ' + card.dek);
-    expect(card.dekBoth, false, 'the card paints one dek treatment, never both');
-
-    /* ---- COPY, GATED TO RECAPS ONLY -------------------------------------
-       The Local Read and deep stat block are recap-only treatments. Every
-       other category retains the normal published excerpt and public player
-       context, including an Analysis card. */
-    const todayCategory = (FIXTURE_POSTS.find((p) => p.slug === card.slug) || {}).category || '';
-    const todayNormalizedCategory = todayCategory.trim().toLowerCase().replace(/\s+/g, ' ');
-    const todayIsRecap = todayNormalizedCategory === 'recap' || todayNormalizedCategory === 'the recap';
-    if (todayIsRecap) {
-      expect(card.dekIsLocal, true, 'a Recap card leads with the hyper-local read');
-      if (/Manager [1-4]\u2019s\b/.test(card.dek)) {
-        pass('the Recap lede carries a possessive manager reference');
-      } else fail('the Recap lede carries no ownership callout: ' + card.dek);
-      if (!card.deep) fail('no .deepstat block was appended to the Recap wire card');
-      else pass('the Recap card carries a deep data block');
-    } else {
-      expect(card.dekIsLocal, false, 'a non-Recap card does NOT lead with the hyper-local read');
-      if (/for the app wire check/i.test(card.dek)) pass('the public excerpt is what today\'s non-Recap card prints');
-      else fail('a non-Recap card should print the public excerpt, got: ' + card.dek);
-      expect(card.deep, null, 'a non-Recap card carries no deep data block');
-    }
-    expect(card.openCta, 'Open on the web ›', '"Open on the web" affordance is present in the footer');
-    if (card.anchorHref && /\/blog\//.test(card.anchorHref)) pass('the whole card links to the blog: ' + card.anchorHref);
-    else fail('the card is not an outbound link to the blog: ' + card.anchorHref);
-    expect(card.anchorTarget, '_blank', 'card link opens in a new context');
-    /* Annotation still runs — its tags live in view.html even though the card
-       does not paint them inline any more. That preserves the personalized
-       framing for wireContextLine and any other future consumer of the
-       annotated HTML. */
-    if (card.tags.length) pass('annotator still injects ownership tags into view.html: ' + JSON.stringify(card.tags));
-    else fail('annotator produced no ownership tags in view.html');
-    const wrongOwner = card.tags.filter((t) => !/on your roster|your (week \d+ )?opponent|owned by Manager \d|owned by (Alpha|Bravo|Charlie|Delta)/i.test(t));
-    if (!wrongOwner.length) pass('every ownership tag names a role or a manager in this league');
-    else fail('an ownership tag names something else: ' + JSON.stringify(wrongOwner));
-    expect(card.tags.length, card.matchCount, 'annotator tags placed vs. matches');
-    expect(new Set(card.tags).size, card.tags.length, 'no duplicate ownership tags in the annotated HTML');
-    expect(card.scriptCount, 0, 'script/style/iframe nodes stripped from the annotated HTML');
-    expect(card.eventAttrs, -1, 'event attributes stripped from the annotated HTML');
-    expect(card.injected, false, 'nothing in the payload executed');
-    expect(card.snag, false, '"hit a snag" on the News Desk');
-
-    /* ---- CATEGORY GATE: recap-only coverage ----------------------------
-       Force every standard fixture through the wire, plus the allowed
-       "THE RECAP" alias. This proves that Analysis and all general-news cards
-       keep their normal public treatment. */
-    const recapAlias = FIXTURE_POSTS.find((fixture) =>
-      String(fixture.category || '').trim().toLowerCase() === 'recap');
-    const categoryFixtures = recapAlias
-      ? FIXTURE_POSTS.concat([Object.assign({}, recapAlias, {
-          category:'THE RECAP',
-          testLabel:recapAlias.slug + ' (THE RECAP alias)',
-        })])
-      : FIXTURE_POSTS;
-    for (const fixture of categoryFixtures) {
-      const inspect = await page.evaluate(({ slug, category }) => {
-        const A = window.FSNArticles;
-        const wrap = document.getElementById('deskWireWrap');
-        if (!A || !wrap) return { present:false };
-        const originalCurrent = A.current;
-        const originalAnnotated = A.annotated;
-        const post = originalCurrent()._probeBySlug
-          ? null
-          : (function findPost(){
-              const raw = window.__fsnFixturePayload[slug];
-              if (!raw) return null;
-              return {
-                slug: raw.slug, title: raw.title, category: category || raw.category,
-                excerpt: raw.excerpt, author: raw.author, publishDate: raw.publishDate,
-                entities: raw.entities, bodyHtml: raw.bodyHtml,
-              };
-            })();
-        if (!post) return { present:false, missing:true };
-        const doc = new DOMParser().parseFromString(
-          '<div id="root">' + (post.bodyHtml || '') + '</div>', 'text/html');
-        const root = doc.getElementById('root');
-        const matches = [];
-        (post.entities || []).forEach((ent) => {
-          const owner = A.ownerOf(ent);
-          if (!owner) return;
-          matches.push({ name:ent.name, position:ent.position, owner:owner,
-            role:A.ownerRole(owner, A.readerContext()),
-            label:A.ownerLabel(owner), tag:A.ownerTagText(owner, A.readerContext()),
-            injected:false });
-        });
-        const view = { post, html:root.innerHTML, matches, unmatched:[], rostered:0, context:A.readerContext() };
-        const snap = {
-          status:'ready', slot:{id:'open', label:'From the Desk'},
-          post, dateKey:'2026-09-13', cached:false, fetchedAt:Date.now(),
-          reason:'', readerUrl:'/blog/' + post.slug,
-        };
-        A.current = () => snap;
-        A.annotated = () => view;
-        try {
-          window.FSNBridge.call('renderDeskWire');
-        } finally {
-          A.current = originalCurrent;
-          A.annotated = originalAnnotated;
-        }
-        const local = wrap.querySelector('.wire-dek-local');
-        const national = wrap.querySelector('.wire-dek-compact');
-        const deep = wrap.querySelector('.deepstat');
-        return {
-          present:true, hasLocal:!!local, hasNational:!!national, hasDeep:!!deep,
-          localText: local ? local.textContent.trim() : '',
-          matchCount: matches.length,
-        };
-      }, { slug:fixture.slug, category:fixture.category });
-
-      const normalizedCategory = String(fixture.category || '').trim().toLowerCase().replace(/\s+/g, ' ');
-      const isRecap = normalizedCategory === 'recap' || normalizedCategory === 'the recap';
-      const label = fixture.testLabel || fixture.slug;
-      if (!inspect || !inspect.present) {
-        fail('category-gate: fixture ' + label + ' could not be force-routed');
-        continue;
-      }
-      if (isRecap) {
-        if (inspect.hasLocal) pass('category-gate: Recap fixture ' + label + ' keeps the Local Read');
-        else fail('category-gate: Recap fixture ' + label + ' lost the Local Read');
-        if (inspect.hasDeep) pass('category-gate: Recap fixture ' + label + ' keeps the deep block');
-        else fail('category-gate: Recap fixture ' + label + ' lost the deep block');
-        const namesManager = /\bManager [1-4]\b/.test(inspect.localText);
-        if (inspect.matchCount > 0 && namesManager) {
-          pass('category-gate: Recap Local Read keeps its roster-aware manager framing');
-        } else if (inspect.matchCount === 0) {
-          pass('category-gate: this Recap fixture matched no rostered players; the Local Read cannot invent one');
-        } else {
-          fail('category-gate: Recap Local Read is missing the callout: ' + inspect.localText);
-        }
-      } else {
-        expect(inspect.hasLocal, false,
-          'category-gate: ' + fixture.category + ' fixture ' + label + ' does NOT carry the Local Read');
-        expect(inspect.hasDeep, false,
-          'category-gate: ' + fixture.category + ' fixture ' + label + ' does NOT carry the deep block');
-        expect(inspect.hasNational, true,
-          'category-gate: ' + fixture.category + ' fixture ' + label + ' prints the public excerpt');
-      }
-    }
-
-    if (/^http:\/\/127\.0\.0\.1:\d+\/blog\//.test(card.readerUrl)) pass('reader URL points at the blog: ' + card.readerUrl);
-    else fail('reader URL is wrong: ' + card.readerUrl);
-  }
-
-  /* ---- 6a. Reader-scoped annotation --------------------------------------
-     With no active team set, the tag reads generically ("owned by ...").
-     When the reader claims Team 1 (Alpha) — the team that rosters A.J. Brown
-     and Kenneth Walker — the same articles have to reframe those mentions as
-     "on your roster". When they claim Team 3 (Charlie), whose Week 2 opponent
-     is Team 1, the same players have to reframe as "your Week 2 opponent". */
-  const readerScoped = await page.evaluate(async () => {
-    const A = window.FSNArticles;
-
-    const collect = ()=>{
-      const view = A.annotated();
-      if(!view) return { matches:[], context:null, contextHtml:'' };
-      const wrap = document.getElementById('deskWireWrap');
-      const contextEl = wrap ? wrap.querySelector('.wire-context') : null;
+    const NAMES = ['A.J. Brown', 'Kenneth Walker III', 'Kimani Vidal'];
+    const read = (teamId) => {
+      window.FSNStore.set('fsn_active_team_id', teamId);
+      const context = A.readerContext();
       return {
-        matches: (view.matches || []).map(m=>({ name:m.name, role:m.role, tag:m.tag, label:m.label })),
-        context: view.context || null,
-        contextHtml: contextEl ? contextEl.innerHTML : '',
+        context,
+        rows: NAMES.map((name) => {
+          const owner = A.ownerOf({ name, sleeperPlayerId: '' });
+          return {
+            name,
+            role: A.ownerRole(owner, context),
+            tag: A.ownerTagText(owner, context),
+            label: A.ownerLabel(owner),
+          };
+        }),
       };
     };
-
-    const runFor = async (teamId)=>{
-      window.FSNStore.set('fsn_active_team_id', teamId);
-      A.refresh({ force:true });
-      // wait for repaint
-      await new Promise(r=> setTimeout(r, 300));
-      return collect();
-    };
-
-    return {
-      self: await runFor('1'),
-      opponent: await runFor('3'),
-      cleared: await runFor(''),
-    };
+    return { self: read('1'), opponent: read('3'), guest: read('guest'), cleared: read('') };
   });
 
-  const selfHasTag = readerScoped.self.matches.some(m=> m.role === 'self' && /on your roster/i.test(m.tag || ''));
-  if (selfHasTag) pass('reader on Team 1 sees "on your roster" tag in annotated matches');
-  else fail('reader on Team 1 did not see the personalized tag: ' + JSON.stringify(readerScoped.self.matches));
+  const selfRows = framing.self.rows;
+  if (selfRows.every((r) => r.role === 'self' && /^on your roster$/i.test(r.tag))) {
+    pass('a reader on Team 1 sees "on your roster" for every player Alpha rosters');
+  } else fail('reader on Team 1 did not see the personalized tag: ' + JSON.stringify(selfRows));
 
-  const selfInContext = /On your roster/.test(readerScoped.self.contextHtml || '');
-  if (selfInContext) pass('reader-owned player surfaces in the wire-context strip');
-  else fail('reader-owned player missing from wire-context: ' + readerScoped.self.contextHtml);
+  const oppRows = framing.opponent.rows;
+  if (oppRows.every((r) => r.role === 'opponent' && /^your week 2 opponent\b/i.test(r.tag))) {
+    pass('a reader on Team 3 sees the Week-2 opponent framing for every Alpha player');
+  } else fail('reader on Team 3 did not see the opponent tag: ' + JSON.stringify(oppRows));
 
-  const oppHasTag = readerScoped.opponent.matches.some(m=> m.role === 'opponent' && /your week 2 opponent/i.test(m.tag || ''));
-  if (oppHasTag) pass('reader on Team 3 sees "your Week 2 opponent" tag in annotated matches');
-  else fail('reader on Team 3 did not see the opponent tag: ' + JSON.stringify(readerScoped.opponent.matches));
+  if (oppRows.every((r) => /·\s*Manager 1\b/.test(r.tag))) {
+    pass('the opponent tag names the manager it belongs to');
+  } else fail('the opponent tag does not name the manager: ' + JSON.stringify(oppRows.map((r) => r.tag)));
 
-  const oppInContext = /Week 2 opponent/i.test(readerScoped.opponent.contextHtml || '');
-  if (oppInContext) pass('opponent player surfaces in the wire-context strip with Week-N framing');
-  else fail('opponent player missing from wire-context: ' + readerScoped.opponent.contextHtml);
+  if (framing.cleared.rows.every((r) => r.role === 'other' && /^owned by /i.test(r.tag))) {
+    pass('a cleared reader falls back to the neutral "owned by" tag');
+  } else fail('cleared reader did not fall back to the neutral tag: ' + JSON.stringify(framing.cleared.rows));
 
-  const clearedIsNeutral = readerScoped.cleared.matches.every(m=> m.role === 'other' && /owned by/i.test(m.tag || ''));
-  if (clearedIsNeutral) pass('cleared reader falls back to "owned by" tag for every match');
-  else fail('cleared reader did not fall back to the neutral tag: ' + JSON.stringify(readerScoped.cleared.matches));
+  if (framing.guest.rows.every((r) => r.role === 'other' && /^owned by /i.test(r.tag))) {
+    pass('the guest profile is treated as no claimed team, not as a team named "guest"');
+  } else fail('the guest profile did not fall back to the neutral tag: ' + JSON.stringify(framing.guest.rows));
 
-  const contextExposed = readerScoped.self.context && readerScoped.self.context.activeTeamId === '1';
-  if (contextExposed) pass('annotated().context surfaces the reader\'s active team id');
-  else fail('annotated().context did not surface the reader team: ' + JSON.stringify(readerScoped.self.context));
+  expect(framing.self.context.activeTeamId, '1', "readerContext() surfaces the reader's active team id");
+  expect(framing.self.context.currentWeek, 2, 'readerContext() surfaces the league\'s current week');
+  expect(framing.guest.context.activeTeamId, '', 'readerContext() reports the guest profile as no team');
 
-  /* ---- 6b. The whole pipeline, every day of the week --------------------
-     Everything above runs on whatever day this check happens to execute. Here
-     the page clock is pinned to each of the next seven calendar days in turn
-     and the engine is re-driven end to end, so fetch -> route -> annotate ->
-     paint is asserted for all seven slots on every run. The dates are all in
-     the future relative to the fixture's publish date, which keeps every
-     article inside the publishing window. */
-  const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  /* Leave the reader as a guest for the desk assertions below. */
+  await page.evaluate(() => window.FSNStore.set('fsn_active_team_id', ''));
+
+  /* ---- 5. The engine stays inert, every day of the week -----------------
+     The page clock is pinned to each of the next seven calendar days in turn
+     and the engine is re-driven. Every day must route to its own slot (so the
+     calendar router is exercised end to end) and every day must settle to
+     `empty` with no post: external editorial is disconnected, not merely
+     unrouted. */
   const base = new Date();
   base.setHours(12, 0, 0, 0);
   for (let i = 0; i < 7; i++) {
     const when = new Date(base);
     when.setDate(base.getDate() + i);
     const day = when.getDay();
-    const slotId = ['pregame', 'recap', 'recap', 'waiver', 'roster', 'roster', 'open'][day];
+    const slotId = WEEK_PLAN[day];
     await page.clock.setFixedTime(when);
     await page.evaluate(() => window.FSNArticles.refresh({ force: true }));
-    await page.waitForTimeout(400);
+    await page.waitForTimeout(250);
     const row = await page.evaluate(() => {
-      const wrap = document.getElementById('deskWireWrap');
       const state = window.FSNArticles.current();
-      const view = window.FSNArticles.annotated();
-      const bodyDoc = new DOMParser().parseFromString(
-        '<div>' + ((view && view.html) || '') + '</div>', 'text/html');
-      const bodyEl = bodyDoc.body.firstElementChild;
-      const tags = bodyEl
-        ? Array.prototype.slice.call(bodyEl.querySelectorAll('.wire-own')).map((n) => n.textContent.trim())
-        : [];
       return {
-        hidden: wrap.hidden,
+        status: state.status,
         slot: state.slot && state.slot.id,
-        slug: state.post && state.post.slug,
-        hasInlineExpand: !!wrap.querySelector('.wire-expand, .wire-body'),
-        tags,
-        matches: view ? view.matches.length : -1,
+        hasPost: !!state.post,
+        readerUrl: state.readerUrl,
+        reason: state.reason,
+        annotated: window.FSNArticles.annotated(),
       };
     });
-    const wantedSlug = EXPECTED_BY_SLOT[slotId];
-    if (row.hidden) fail(DAY_NAMES[day] + ': the card was hidden with a live feed');
-    else if (row.slot !== slotId) fail(DAY_NAMES[day] + ': routed to slot ' + row.slot + ', expected ' + slotId);
-    else if (row.slug !== wantedSlug) fail(DAY_NAMES[day] + ': routed to ' + row.slug + ', expected ' + wantedSlug);
-    else if (row.hasInlineExpand) fail(DAY_NAMES[day] + ': the compact card is rendering an inline body / expand section');
-    else if (!row.tags.length) fail(DAY_NAMES[day] + ': no ownership tag in annotated view.html for ' + row.slug);
-    else if (row.tags.length !== row.matches) fail(DAY_NAMES[day] + ': ' + row.tags.length + ' tags for ' + row.matches + ' matches');
-    else if (new Set(row.tags).size !== row.tags.length) fail(DAY_NAMES[day] + ': duplicate ownership tags');
-    else pass(DAY_NAMES[day] + ' -> ' + slotId + ' -> ' + row.slug + ' ' + JSON.stringify(row.tags));
+    if (row.slot !== slotId) fail(DAY_NAMES[day] + ': routed to slot ' + row.slot + ', expected ' + slotId);
+    else if (row.status !== 'empty') fail(DAY_NAMES[day] + ': engine status is "' + row.status + '", expected "empty"');
+    else if (row.hasPost) fail(DAY_NAMES[day] + ': the disconnected engine produced a post');
+    else if (row.annotated !== null) fail(DAY_NAMES[day] + ': annotated() returned a view with no post behind it');
+    else if (row.readerUrl) fail(DAY_NAMES[day] + ': the engine published a reader URL: ' + row.readerUrl);
+    else if (!String(row.reason || '').trim()) fail(DAY_NAMES[day] + ': the empty slot carries no reason');
+    else pass(DAY_NAMES[day] + ' -> ' + slotId + ' -> disconnected (' + row.reason + ')');
   }
   await page.clock.setFixedTime(new Date());
 
-  if (live.pageErrors.length) fail('page errors with a live feed: ' + JSON.stringify(live.pageErrors.slice(0, 3)));
-  else pass('no uncaught page errors with a live feed');
-  if (live.consoleErrors.length) fail('tagged console errors with a live feed: ' + JSON.stringify(live.consoleErrors.slice(0, 3)));
-  else pass('no tagged console errors with a live feed');
+  /* ---- 6. The News Desk carries no external-editorial surface ----------- */
+  await page.click('#tabBar .tab-btn[data-tab="news"]');
+  await page.waitForTimeout(900);
+  await page.evaluate(() => window.FSNArticles.refresh({ force: true }));
+  await page.waitForTimeout(600);
+
+  const desk = await page.evaluate(() => {
+    const screen = document.querySelector('.screen[data-screen="news"]');
+    return {
+      wireWrap: !!document.getElementById('deskWireWrap'),
+      wireCards: document.querySelectorAll('.wire-card-compact').length,
+      wireRegistered: window.FSNBridge.has('renderDeskWire'),
+      deskPainted: !!document.getElementById('newsLeadWrap').innerHTML.trim(),
+      timelinePainted: document.querySelectorAll('#timelineFeed .tl-card').length,
+      injected: window.__fsnWireInjected === true,
+      snag: screen ? /hit a snag/i.test(screen.innerText) : true,
+    };
+  });
+  expect(desk.wireWrap, false, 'no #deskWireWrap card is mounted on the News Desk');
+  expect(desk.wireCards, 0, 'no wire card is painted anywhere on the page');
+  expect(desk.wireRegistered, false, 'no desk-wire renderer is registered on FSNBridge');
+  expect(desk.deskPainted, true, 'the deterministic News Desk painted its own lead');
+  if (desk.timelinePainted > 0) pass('the deterministic timeline painted ' + desk.timelinePainted + ' cards');
+  else fail('the deterministic timeline painted nothing');
+  expect(desk.injected, false, 'nothing from the blog payload executed');
+  expect(desk.snag, false, '"hit a snag" on the News Desk');
+
+  /* THE ASSERTION THIS CHECK EXISTS FOR. The payload was served, reachable and
+     well-formed for the whole run above. If a single request reached it, the
+     app is ingesting external editorial again. */
+  expect(live.blogRequests.length, 0, 'requests the page made to the blog payload');
+  expect(liveServer.state.blogReads.length, 0, 'reads the blog origin served to the app');
+
+  if (live.pageErrors.length) fail('page errors with a reachable blog origin: ' + JSON.stringify(live.pageErrors.slice(0, 3)));
+  else pass('no uncaught page errors with a reachable blog origin');
+  if (live.consoleErrors.length) fail('tagged console errors with a reachable blog origin: ' + JSON.stringify(live.consoleErrors.slice(0, 3)));
+  else pass('no tagged console errors with a reachable blog origin');
   await page.close();
 
-  /* ---- B. The feed is unreachable --------------------------------------- */
+  /* ---- B. The origin is unreachable ------------------------------------
+     The disconnected engine does not read the origin at all, so an unreachable
+     one has to be indistinguishable from a reachable one: same inert state, same
+     intact desk, and no failed request in the network log either. */
+  console.log('\n[B] the blog origin is unreachable — nothing about the app may change');
   const dead = await openApp(liveBase, deadBase);
-  await dead.page.evaluate((data) => {
-    window.LeagueData.setEspnData(data);
-    window.__fsnRender();
-  }, syntheticSleeperLeague());
-  await dead.page.waitForTimeout(500);
-  const deadPicker = await dead.page.getAttribute('#profilePicker', 'data-open');
-  if (deadPicker === 'true') {
-    await dead.page.click('#profileGuest');
-    await dead.page.waitForTimeout(400);
-  }
+  await seedLeague(dead.page);
   await dead.page.click('#tabBar .tab-btn[data-tab="news"]');
   await dead.page.waitForTimeout(1200);
 
-  const degraded = await dead.page.evaluate(() => {
-    const wrap = document.getElementById('deskWireWrap');
+  const degraded = await dead.page.evaluate(async () => {
     const screen = document.querySelector('.screen[data-screen="news"]');
+    const bootStatus = window.FSNArticles.current().status;
+    await window.FSNArticles.refresh({ force: true });
+    const state = window.FSNArticles.current();
     return {
-      hidden: wrap ? wrap.hidden : null,
-      markup: wrap ? wrap.innerHTML.trim().length : -1,
-      status: window.FSNArticles.current().status,
+      wireWrap: !!document.getElementById('deskWireWrap'),
+      bootStatus,
+      status: state.status,
+      hasPost: !!state.post,
       snag: screen ? /hit a snag/i.test(screen.innerText) : true,
       deskPainted: !!document.getElementById('newsLeadWrap').innerHTML.trim(),
     };
   });
-  expect(degraded.hidden, true, 'the slot disables itself when the feed is unreachable');
-  expect(degraded.markup, 0, 'the disabled slot leaves no markup behind');
-  expect(degraded.status, 'offline', 'engine status with an unreachable feed');
-  expect(degraded.snag, false, '"hit a snag" on the News Desk with an unreachable feed');
+  expect(degraded.wireWrap, false, 'still no wire surface with an unreachable origin');
+  expect(degraded.bootStatus, 'idle', 'engine status after boot against an unreachable origin');
+  expect(degraded.status, 'empty', 'engine status after an explicit refresh against an unreachable origin');
+  expect(degraded.hasPost, false, 'no post with an unreachable origin');
+  expect(degraded.snag, false, '"hit a snag" on the News Desk with an unreachable origin');
   expect(degraded.deskPainted, true, 'the deterministic News Desk still painted');
+  expect(dead.blogRequests.length, 0, 'requests the page made to the unreachable blog origin');
+  expect(deadServer.state.blogReads.length, 0, 'reads the unreachable blog origin was asked for');
 
-  if (dead.pageErrors.length) fail('page errors with a dead feed: ' + JSON.stringify(dead.pageErrors.slice(0, 3)));
-  else pass('no uncaught page errors with a dead feed');
-  if (dead.consoleErrors.length) fail('tagged console errors with a dead feed: ' + JSON.stringify(dead.consoleErrors.slice(0, 3)));
-  else pass('no tagged console errors with a dead feed');
+  if (dead.pageErrors.length) fail('page errors with an unreachable origin: ' + JSON.stringify(dead.pageErrors.slice(0, 3)));
+  else pass('no uncaught page errors with an unreachable origin');
+  if (dead.consoleErrors.length) fail('tagged console errors with an unreachable origin: ' + JSON.stringify(dead.consoleErrors.slice(0, 3)));
+  else pass('no tagged console errors with an unreachable origin');
   await dead.page.close();
 } catch (err) {
   fail('the check itself threw: ' + ((err && err.stack) || err));
 } finally {
   await browser.close();
-  liveServer.close();
-  deadServer.close();
+  liveServer.server.close();
+  deadServer.server.close();
 }
 
 if (failed) {

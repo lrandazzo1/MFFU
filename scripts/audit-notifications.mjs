@@ -604,11 +604,21 @@ console.log('-- 5. Schedule shape --');
   checkTrue('the docs quote the same cron expression as vercel.json',
     doc.includes(String(cron.schedule)));
 
-  /* The daily pull must run on Vercel's own scheduler, inside the serverless
-     function. A workflow that curls the dispatcher on a schedule would put the
-     data pull back on GitHub's side of the fence — a repository actor, with the
-     deploy-triggering surface that comes with it — which is exactly what this
-     design moved away from. */
+  /* The NOTIFICATION pull must run on Vercel's own scheduler, inside the
+     serverless function. A workflow that curls the dispatcher on a schedule
+     would put that data pull back on GitHub's side of the fence — a repository
+     actor, with the deploy-triggering surface that comes with it — which is
+     exactly what this design moved away from.
+
+     Scoped to the dispatcher rather than to the workflow directory as a whole.
+     This file audits the notification pipeline, and other subsystems are
+     entitled to their own schedules: the league blog cron
+     (.github/workflows/generate-articles.yml) runs on GitHub's scheduler
+     deliberately, because Vercel issues cron requests as GET and that route
+     POSTs, and because day-of-week schedules past the first couple of cron
+     entries need a paid Vercel plan. Neither fact says anything about where the
+     notification pull runs, so a blanket "no workflow anywhere is scheduled"
+     assertion was failing on a workflow it has no stake in. */
   const workflowDir = join(root, '.github', 'workflows');
   const workflows = existsSync(workflowDir)
     ? readdirSync(workflowDir).filter((f) => /\.ya?ml$/.test(f))
@@ -620,7 +630,8 @@ console.log('-- 5. Schedule shape --');
     if (/^\s*schedule:/m.test(body)) scheduled.push(file);
     if (/notifications-dispatch/.test(body)) touchingDispatch.push(file);
   }
-  check('no GitHub workflow runs on a schedule', scheduled, []);
+  check('no scheduled GitHub workflow touches the dispatcher',
+    scheduled.filter((f) => touchingDispatch.includes(f)), []);
   check('no GitHub workflow invokes the dispatcher', touchingDispatch, []);
 }
 

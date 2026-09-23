@@ -2,7 +2,7 @@
 // Exercise the real invite UI and fetch/hydration flow with authorized API fixtures.
 // No private credentials or external services are used.
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
@@ -16,7 +16,23 @@ const fixture = Function(fixtureSource + '; return syntheticLeague();')();
 const token = 'a'.repeat(43);
 const id = String(fixture.id);
 const origin = 'http://invite.test';
-const browser = await chromium.launch({ executablePath: process.env.FSN_CHROMIUM_PATH || undefined });
+/* Same resolution order as every other browser check in this directory:
+   FSN_CHROMIUM_PATH wins, then whatever Chromium is actually installed under
+   PLAYWRIGHT_BROWSERS_PATH. Falling through to Playwright's own default sent it
+   looking for the build its version pins, which is not the build this image
+   ships, so the check died on "Executable doesn't exist" before it ran. */
+function resolveChromium() {
+  const override = String(process.env.FSN_CHROMIUM_PATH || '').trim();
+  if (override) return override;
+  const dir = String(process.env.PLAYWRIGHT_BROWSERS_PATH || '/opt/pw-browsers');
+  if (!existsSync(dir)) return undefined;
+  return readdirSync(dir)
+    .filter((name) => name.startsWith('chromium'))
+    .sort().reverse()
+    .flatMap((name) => [join(dir, name, 'chrome-linux', 'chrome'), join(dir, name, 'chrome-linux', 'headless_shell')])
+    .find((file) => existsSync(file));
+}
+const browser = await chromium.launch({ executablePath: resolveChromium() });
 
 async function fresh({ blockedStorage = false, holdUnauthorized = false } = {}) {
   const page = await browser.newPage({ serviceWorkers: 'block' });
@@ -129,16 +145,45 @@ try {
   {
     const test = await fresh();
     await test.page.evaluate(() => { document.getElementById('privateLeagueAuthModal').dataset.open = 'true'; });
+    /* An unparseable invite reaches the auto-join listener and is dropped by
+       it, so the explicit button is still the only thing that reports. */
     await test.page.locator('#privateLeagueAuthInviteInput').fill(`id=${id}&token=short`);
     await test.page.locator('#privateLeagueAuthUseInvite').click();
     assert.equal(test.requests.length, 0);
     assert.equal(await test.page.locator('#privateLeagueAuthInviteStatus').getAttribute('data-tone'), 'error');
-    await test.page.locator('#privateLeagueAuthInviteInput').fill(forms[2]);
+    /* The refusal is stage-tagged and logged on purpose, so assert it was
+       reported rather than ignoring it — then clear the buffer, because
+       connected() below is asserting that the VALID path logs nothing. */
+    assert.equal(test.errors.length, 1, 'the refused invite must be reported exactly once: ' + JSON.stringify(test.errors));
+    assert.match(test.errors[0], /\[Private League Auth\]\[Parsing Stage\].*could not extract League ID or Share Token/);
+    test.errors.length = 0;
+    /* The explicit path, on its own. The value is assigned WITHOUT an `input`
+       event, which is what a browser autofill or a programmatic prefill looks
+       like: nothing has auto-joined, so the button is the whole mechanism and
+       clicking it has to complete the join. Filling through the locator would
+       emit `input`, auto-join, and leave this clicking a button the finished
+       join has already disabled and hidden — which is the join working, not the
+       button. The auto-join path gets its own case below. */
+    await test.page.locator('#privateLeagueAuthInviteInput')
+      .evaluate((input, value) => { input.value = value; }, forms[2]);
+    assert.equal(await test.page.locator('#privateLeagueAuthUseInvite').isDisabled(), false,
+      'the explicit Use Invite button must still be live when nothing has auto-joined');
     await test.page.locator('#privateLeagueAuthUseInvite').click();
     await connected(test);
     await test.page.close();
   }
   console.log('ok: invalid invite makes no request; explicit Use Invite retry succeeds');
+
+  {
+    /* One-click join: typing or autofilling a complete invite IS the click, with
+       no button press anywhere in this case. */
+    const test = await fresh();
+    await test.page.evaluate(() => { document.getElementById('privateLeagueAuthModal').dataset.open = 'true'; });
+    await test.page.locator('#privateLeagueAuthInviteInput').fill(forms[2]);
+    await connected(test);
+    await test.page.close();
+  }
+  console.log('ok: a complete invite typed into the field joins without pressing anything');
 
   {
     const test = await fresh();
