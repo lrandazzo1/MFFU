@@ -246,8 +246,8 @@ try {
   await page.goto(base + '/', { waitUntil: 'load' });
   await page.waitForTimeout(1300);
 
-  /* ---- 1. Matchup of the Week is the News Desk's ------------------------ */
-  console.log('\n[1] Matchup of the Week is bound to the News Desk');
+  /* ---- 1. Home marquee is desk-bound; Week 2 feed is historical -------- */
+  console.log('\n[1] Home Matchup of the Week remains desk-bound while Week 2 news is historical');
   await seed(BOARD_MARQUEE);
 
   /* Each section stands on its own: a seam that has gone missing here must not
@@ -294,14 +294,8 @@ try {
     else fail('the Home marquee card shows different teams than the News Desk. card=' +
       JSON.stringify(cardText.replace(/\s+/g, ' ').slice(0, 160)));
 
-    if (desk.articleId) {
-      const articleNamesBoth = new RegExp(desk.marquee.home, 'i').test(desk.articleText) &&
-                               new RegExp(desk.marquee.away, 'i').test(desk.articleText);
-      if (articleNamesBoth) pass('the News tab\'s "' + desk.articleId + '" article is written about those same two teams');
-      else fail('the Matchup of the Week article names different teams than marqueeMatchup(): ' + desk.articleText);
-    } else {
-      fail('no kind="motw" article was generated for week 2');
-    }
+    if (!desk.articleId) pass('the Week 2 News Desk excludes the current-week matchup preview');
+    else fail('Week 2 leaked a current-week Matchup of the Week article: ' + desk.articleText);
 
     /* The board is deliberately built so these differ. If they ever stop
        differing the assertion above stops proving anything, so say so. */
