@@ -42,7 +42,11 @@ View signups in Supabase: **Table Editor → `waitlist_signups`**, or `select em
 
 Run [`supabase/blog_articles.sql`](supabase/blog_articles.sql) in the Supabase SQL Editor. It creates `public.blog_articles` with RLS enabled and no browser policies, and it is idempotent, so re-running it is safe.
 
-The table stores one AI-written story per league, week, and day: `league_id` (indexed, so stories are isolated per fantasy league), a unique deterministic `slug`, `title`, `excerpt`, `content_markdown`, `article_type` (`monday_sweat`, `tuesday_verdict`, `friday_tnf_preview`), `season`, `week`, a `tracked_players` JSONB array, and `published_at`.
+The table stores one AI-written story per league, week, and day: `league_id` (indexed, so stories are isolated per fantasy league), a unique deterministic `slug`, `title`, `excerpt`, `content_markdown`, `article_type` (`monday_sweat`, `tuesday_verdict`, `friday_tnf_preview`, `league_dispatch`), `season`, `week`, a `tracked_players` JSONB array, and `published_at`.
+
+**Re-run the file after updating to the three-tier article layout.** Its second half adds `headline`, `match_impact_summary`, `content`, `category` and `author` beside the existing columns, widens the `article_type` check to allow `league_dispatch`, adds a trigger that keeps `headline`/`title` and `content`/`content_markdown` in lockstep on every write, and creates the `public.articles` view that resolves the fallbacks in SQL. It is additive and idempotent: the original columns are kept, no existing row can fail it, and running it twice changes nothing. Until it has been run, the app and both endpoints keep working against the legacy columns and log a warning naming this file.
+
+Articles can also be published directly over `POST /api/blog/articles/publish`, gated on the same `CRON_SECRET` as the scheduled route. See [`docs/blog-articles.md`](docs/blog-articles.md#publishing).
 
 Rows are written only by the server-side pipeline in `lib/article-generator.ts` using the service-role key, reusing the existing `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` variables. No new environment variables are required. See [`docs/blog-articles.md`](docs/blog-articles.md) for the outcome math and the copy guardrail.
 

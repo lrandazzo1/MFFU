@@ -40,6 +40,10 @@
     {
       "source": "/api/auth/yahoo/callback",
       "destination": "/api/auth/yahoo?action=callback"
+    },
+    {
+      "source": "/api/blog/articles/publish",
+      "destination": "/api/blog/articles-publish"
     }
   ],
   "headers": [

@@ -31,6 +31,11 @@ export interface GenerateInput {
 export interface BlogArticleRecord {
     league_id: string;
     slug: string;
+    headline: string;
+    match_impact_summary: string;
+    content: string;
+    category: string;
+    author: string;
     title: string;
     excerpt: string;
     content_markdown: string;
@@ -56,6 +61,15 @@ export interface ArticleDraft {
     title: string;
     excerpt: string;
     content_markdown: string;
+    /** Tier 2: the one line callout under the headline. Optional so a composer
+     *  written before the three-tier layout still satisfies the type; the
+     *  pipeline derives one from the math when a composer omits it, and never
+     *  from the composer's prose. */
+    match_impact_summary?: string;
+    /** The editorial shelf. Defaults to the one this article type belongs to. */
+    category?: string;
+    /** The byline. Defaults to the desk. */
+    author?: string;
 }
 export type Composer = (request: ComposeRequest) => ArticleDraft | Promise<ArticleDraft>;
 export interface GenerateDependencies {
@@ -103,6 +117,17 @@ export declare function buildUserPrompt(request: Omit<ComposeRequest, 'system_pr
  * copy nobody reviewed, and a thrown error means the row is never written.
  */
 export declare function assertOutcomeLanguage(draft: ArticleDraft, tracked: TrackedPlayer[]): void;
+export declare const CATEGORY_BY_TYPE: Record<ArticleType, string>;
+export declare const DEFAULT_AUTHOR = "FFU News Desk";
+/**
+ * Tier 2: what one performance meant to one matchup, in a single line.
+ *
+ * Derived from the flag and nothing else, exactly like the body sentences. The
+ * grammar is fixed per flag, so the callout can never say more than the math
+ * supports: only GAME_WINNER gets "just enough", and a big score in a loss is
+ * "not enough" rather than anything warmer.
+ */
+export declare function impactSummary(rows: TrackedPlayer[], articleType: ArticleType): string;
 export declare const defaultComposer: Composer;
 /** Service-role client. Browsers never hold this key: the article pipeline is
  *  a server-side job, same boundary as `/api/league` and the transaction wire. */
