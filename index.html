@@ -376,7 +376,8 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
   background:rgba(10,13,19,.94);
   backdrop-filter:blur(18px); -webkit-backdrop-filter:blur(18px);
   border-top:1px solid var(--line);
-  display:grid; grid-template-columns:repeat(6,1fr);
+  /* Five tabs since Setup moved behind the header gear. */
+  display:grid; grid-template-columns:repeat(5,1fr);
 }
 .tab-btn{
   display:flex; flex-direction:column; align-items:center; justify-content:center;
@@ -3800,6 +3801,326 @@ body.fsn-dd-lock{ overflow:hidden; }
   text-shadow:0 1px 0 rgba(0,0,0,.55);
 }
 
+/* ============================================================
+   GLOBAL SETUP GEAR
+   Setup left the bottom tab bar; this is now the single route to the
+   league-connection screen, pinned top-right of every screen header.
+   It carries data-goto="setup", so it rides the exact same delegated
+   navigation path as every empty-state "GO TO SETUP" button — one
+   destination, one handler, no second code path to drift.
+   40x40 hit area around a 22px glyph: comfortably tappable without
+   competing with the screen title beside it.
+============================================================ */
+.gear-btn{
+  flex:none; width:40px; height:40px; border-radius:12px;
+  display:inline-flex; align-items:center; justify-content:center;
+  color:var(--dim);
+  border:1px solid var(--line);
+  background:linear-gradient(160deg,rgba(255,255,255,.05),rgba(255,255,255,.012));
+  transition:color .18s ease, border-color .18s ease, background .18s ease, transform .12s ease;
+  -webkit-tap-highlight-color:transparent;
+}
+.gear-btn svg{
+  width:22px; height:22px; fill:none; stroke:currentColor;
+  stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round;
+}
+.gear-btn:hover{ color:var(--off); border-color:var(--line-2); }
+.gear-btn:active{ transform:scale(.93); background:#161c27; }
+.gear-btn[data-active="true"]{
+  color:var(--cyan); border-color:rgba(0,224,255,.42);
+  background:rgba(0,224,255,.10);
+  box-shadow:0 0 14px rgba(0,224,255,.18);
+}
+.gear-btn:focus-visible{ outline:2px solid var(--cyan); outline-offset:2px; }
+
+/* ============================================================
+   STORY REEL — Instagram-style avatar rings on the Desk, directly
+   above TOP STORIES. Every ring is built from the same live payload
+   renderHome() is already holding; nothing here reads or writes a
+   News Desk generator, seed or article.
+============================================================ */
+.story-reel{
+  display:flex; align-items:flex-start; gap:12px;
+  overflow-x:auto; overscroll-behavior-x:contain;
+  -webkit-overflow-scrolling:touch;
+  width:100%; box-sizing:border-box; margin:0;
+  padding:2px 16px 10px;
+}
+.sr-item{
+  flex:0 0 auto; width:72px; padding:0; border:0; background:none;
+  color:inherit; text-align:center;
+  display:flex; flex-direction:column; align-items:center; gap:7px;
+  -webkit-tap-highlight-color:transparent;
+  transition:transform .12s ease;
+}
+.sr-item:active{ transform:scale(.94); }
+.sr-item:focus-visible{ outline:2px solid var(--cyan); outline-offset:3px; border-radius:14px; }
+.sr-ring{
+  position:relative; width:64px; height:64px; border-radius:50%;
+  display:grid; place-items:center;
+  --sr-a:var(--cyan); --sr-b:#ffffff; --sr-glow:rgba(0,224,255,.5);
+  animation:srGlow 2.8s ease-in-out infinite;
+}
+.sr-ring::before{
+  content:''; position:absolute; inset:0; border-radius:50%;
+  background:conic-gradient(from 0deg, var(--sr-a), var(--sr-b), var(--sr-a));
+  animation:srSpin 4.2s linear infinite;
+}
+.sr-ring::after{
+  content:''; position:absolute; inset:3px; border-radius:50%; background:var(--ink);
+}
+.sr-ring[data-pulse="true"]{ animation:srPulse 1.5s ease-in-out infinite; }
+.sr-core{
+  position:relative; z-index:2;
+  width:53px; height:53px; border-radius:50%; overflow:hidden;
+  display:grid; place-items:center; background:#0d1119;
+}
+.sr-core .logo, .sr-core .mono-badge{ border-radius:50%; }
+.sr-label{
+  font-size:9px; font-weight:700; letter-spacing:.11em; text-transform:uppercase;
+  color:var(--off); line-height:1.15;
+}
+.sr-sub{
+  font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+  font-size:8.5px; letter-spacing:.06em; color:var(--dim); line-height:1.1;
+}
+@keyframes srSpin{ to{ transform:rotate(360deg); } }
+@keyframes srGlow{
+  0%,100%{ box-shadow:0 0 10px 0 var(--sr-glow); }
+  50%    { box-shadow:0 0 22px 3px var(--sr-glow); }
+}
+@keyframes srPulse{
+  0%,100%{ box-shadow:0 0 12px 0 var(--sr-glow); transform:scale(1); }
+  50%    { box-shadow:0 0 28px 6px var(--sr-glow); transform:scale(1.05); }
+}
+
+/* ============================================================
+   STORY VIEWER — the full-screen tap-through the rings open.
+   Sits above the nav, the ticker and the reader, and below the
+   boot curtain so a league swap still masks it.
+============================================================ */
+#storyViewer{
+  position:fixed; inset:0; z-index:120;
+  background:#05070b;
+  display:none; flex-direction:column;
+}
+#storyViewer[data-open="true"]{ display:flex; }
+.sv-progress{
+  flex:none; display:flex; gap:4px;
+  padding:calc(10px + env(safe-area-inset-top)) 14px 0;
+  position:relative; z-index:6;
+}
+.sv-seg{
+  flex:1 1 0; height:2.5px; border-radius:2px;
+  background:rgba(255,255,255,.18); overflow:hidden;
+}
+.sv-seg > i{ display:block; height:100%; width:0; border-radius:2px; background:var(--off); }
+.sv-seg[data-state="done"] > i{ width:100%; }
+.sv-seg[data-state="active"] > i{ animation:svFill var(--sv-dur,7000ms) linear forwards; }
+@keyframes svFill{ from{ width:0; } to{ width:100%; } }
+.sv-head{
+  flex:none; display:flex; align-items:center; gap:10px;
+  padding:12px 14px 6px; position:relative; z-index:6;
+}
+.sv-head-id{
+  flex:1; min-width:0;
+  font-size:9.5px; font-weight:700; letter-spacing:.18em; text-transform:uppercase;
+  color:var(--dim); overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.sv-close{
+  flex:none; width:38px; height:38px; border-radius:10px;
+  display:inline-flex; align-items:center; justify-content:center;
+  color:var(--off); border:1px solid var(--line); background:rgba(255,255,255,.03);
+}
+.sv-close svg{ width:19px; height:19px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; }
+.sv-close:active{ background:#161c27; }
+.sv-stage{
+  flex:1; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch;
+  overscroll-behavior:contain;
+  padding:4px 18px calc(30px + env(safe-area-inset-bottom));
+  position:relative; z-index:3;
+}
+.sv-stage > *{ max-width:34rem; margin-left:auto; margin-right:auto; }
+/* Above .sv-stage on purpose: a tap zone the panel content can cover is a tap
+   zone that does nothing wherever a stat tile happens to land. They are edge
+   strips rather than a full-width sheet so the middle column still scrolls. */
+.sv-tap{
+  position:absolute; top:0; bottom:0; z-index:5;
+  background:transparent; border:0; padding:0;
+  -webkit-tap-highlight-color:transparent;
+}
+.sv-tap[data-story-nav="prev"]{ left:0; width:30%; }
+.sv-tap[data-story-nav="next"]{ right:0; width:30%; }
+.sv-hint{
+  flex:none; text-align:center; position:relative; z-index:6;
+  font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:#3b4657;
+  padding:0 14px calc(10px + env(safe-area-inset-bottom));
+  pointer-events:none;
+}
+
+/* ---- story panel ---- */
+.sv-panel{ animation:svPanelIn .34s cubic-bezier(.2,.7,.3,1) both; }
+@keyframes svPanelIn{ from{ opacity:0; transform:translateY(14px) scale(.985); } to{ opacity:1; transform:none; } }
+.sv-kicker{
+  font-size:9.5px; font-weight:700; letter-spacing:.2em; text-transform:uppercase;
+  color:var(--sv-tone,var(--cyan));
+}
+.sv-headline{
+  font-family:'Anton',sans-serif; font-size:30px; line-height:1.02;
+  letter-spacing:.01em; text-transform:uppercase; margin:8px 0 0; color:#eef2f8;
+}
+.sv-dek{ font-size:12.5px; line-height:1.55; color:var(--dim); margin:10px 0 0; }
+.sv-duel{ display:flex; align-items:stretch; gap:12px; margin-top:18px; }
+.sv-side{
+  flex:1 1 0; min-width:0;
+  border:1px solid var(--line); border-radius:14px;
+  background:linear-gradient(160deg,var(--panel),#0b0f16);
+  padding:14px 12px; text-align:center;
+}
+.sv-side[data-lead="true"]{
+  border-color:color-mix(in srgb, var(--sv-tone,var(--cyan)) 40%, transparent);
+  box-shadow:inset 0 0 22px rgba(255,255,255,.035);
+}
+.sv-side .logo, .sv-side .mono-badge{ margin:0 auto; }
+.sv-side-name{
+  margin-top:9px; font-family:'Anton',sans-serif; font-size:13px; line-height:1.1;
+  text-transform:uppercase; color:#dfe5ee;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.sv-side-sub{ margin-top:3px; font-size:10px; color:var(--dim); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.sv-side-score{
+  margin-top:10px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+  font-variant-numeric:tabular-nums; font-size:31px; font-weight:800; line-height:1;
+  color:#5d6879;
+}
+.sv-side[data-lead="true"] .sv-side-score{ color:var(--sv-tone,var(--cyan)); }
+.sv-vs{
+  flex:none; align-self:center;
+  font-family:'Anton',sans-serif; font-size:13px; color:#39424f; letter-spacing:.1em;
+}
+.sv-solo{
+  display:flex; align-items:center; gap:14px; margin-top:18px;
+  border:1px solid var(--line); border-radius:14px; padding:14px;
+  background:linear-gradient(160deg,var(--panel),#0b0f16);
+}
+.sv-solo-body{ min-width:0; flex:1; }
+.sv-solo-name{
+  font-family:'Anton',sans-serif; font-size:17px; line-height:1.1; text-transform:uppercase;
+  color:#eef2f8; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+.sv-solo-sub{ margin-top:4px; font-size:11px; color:var(--dim); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.sv-solo-score{
+  flex:none; text-align:right;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+  font-variant-numeric:tabular-nums; font-size:30px; font-weight:800; line-height:1;
+  color:var(--sv-tone,var(--cyan));
+}
+.sv-solo-unit{ display:block; margin-top:5px; font-family:inherit; font-size:8.5px; letter-spacing:.16em; text-transform:uppercase; color:var(--dim); font-weight:600; }
+.sv-bars{ margin-top:18px; display:flex; flex-direction:column; gap:12px; }
+.sv-bar-head{
+  display:flex; align-items:baseline; justify-content:space-between; gap:10px;
+  font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--dim);
+}
+.sv-bar-val{
+  font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+  font-variant-numeric:tabular-nums; font-size:12px; font-weight:700; color:#dfe5ee; letter-spacing:0;
+}
+.sv-bar-track{
+  margin-top:6px; height:7px; border-radius:99px; overflow:hidden;
+  background:rgba(255,255,255,.07); border:1px solid var(--line);
+}
+.sv-bar-fill{
+  height:100%; width:0; border-radius:99px;
+  background:linear-gradient(90deg, var(--sv-bar-a,var(--cyan)), var(--sv-bar-b,#ffffff));
+  transition:width .85s cubic-bezier(.2,.75,.25,1);
+}
+.sv-stats{ margin-top:18px; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+.sv-stat{
+  border:1px solid var(--line); border-radius:12px; padding:11px 12px;
+  background:rgba(255,255,255,.025);
+}
+.sv-stat-label{ font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:var(--dim); }
+.sv-stat-value{
+  margin-top:5px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+  font-variant-numeric:tabular-nums; font-size:18px; font-weight:800; color:#eef2f8;
+}
+.sv-note{
+  margin-top:18px; padding-top:13px; border-top:1px solid var(--line);
+  font-size:11.5px; line-height:1.6; color:var(--dim);
+}
+.sv-empty{ margin-top:24px; text-align:center; font-size:12.5px; color:var(--dim); }
+
+/* ============================================================
+   MATCHUP OF THE WEEK — tug-of-war bar on the margin divider.
+   Replaces the two hairlines that used to flank the centre stat:
+   the split is each side's share of the real combined points, so the
+   divider now carries the state of the game instead of decorating it.
+============================================================ */
+.motw-tug-rail{ position:relative; }
+.motw-tug-track{
+  display:flex; align-items:stretch; height:8px; border-radius:99px; overflow:hidden;
+  border:1px solid var(--line); background:#0b0f16;
+}
+.motw-tug-fill{ position:relative; overflow:hidden; animation:tugFill .9s cubic-bezier(.2,.75,.25,1) both; }
+.motw-tug-away{ background:linear-gradient(90deg,rgba(0,224,255,.35),var(--cyan)); }
+.motw-tug-home{ background:linear-gradient(90deg,var(--gold),rgba(255,196,0,.35)); }
+.motw-tug[data-tug-live="false"] .motw-tug-away,
+.motw-tug[data-tug-live="false"] .motw-tug-home{
+  background:rgba(255,255,255,.1);
+}
+.motw-tug[data-tug-live="true"] .motw-tug-fill::after{
+  content:''; position:absolute; inset:0;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.4),transparent);
+  transform:translateX(-100%);
+  animation:tugSheen 2.6s ease-in-out 1s infinite;
+}
+.motw-tug-knob{
+  position:absolute; top:50%; width:3px; height:16px; border-radius:2px;
+  transform:translate(-50%,-50%);
+  background:#eef2f8; box-shadow:0 0 10px rgba(255,255,255,.55);
+  animation:tugKnob .9s cubic-bezier(.2,.75,.25,1) both;
+}
+.motw-tug-legend{
+  display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:6px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+  font-variant-numeric:tabular-nums; font-size:9.5px; letter-spacing:.14em; color:var(--dim);
+}
+.motw-tug-end{ flex:0 0 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:32%; }
+.motw-tug-end-r{ text-align:right; }
+.motw-tug-stat{ flex:1 1 auto; text-align:center; font-size:10px; }
+@keyframes tugFill{ from{ width:50%; } }
+@keyframes tugKnob{ from{ left:50%; } }
+@keyframes tugSheen{ 0%{ transform:translateX(-100%); } 55%,100%{ transform:translateX(100%); } }
+
+/* ============================================================
+   FRAUD ALERT — pulsing heat gradient behind a live verdict.
+   Applied only when the desk has actually named a team; the
+   pre-game and no-data states keep the plain card.
+============================================================ */
+.fraud-heat::after{
+  content:''; position:absolute; inset:0; pointer-events:none; z-index:0;
+  background:
+    radial-gradient(120% 78% at 6% 100%, rgba(255,45,85,.30), transparent 62%),
+    radial-gradient(90% 60% at 88% 0%, rgba(255,122,26,.18), transparent 64%);
+  animation:fraudHeat 3.4s ease-in-out infinite;
+}
+.fraud-heat > *{ position:relative; z-index:1; }
+@keyframes fraudHeat{ 0%,100%{ opacity:.55; } 50%{ opacity:1; } }
+
+@media (prefers-reduced-motion: reduce){
+  .gear-btn{ transition:none; }
+  .sr-item{ transition:none; }
+  .sr-ring, .sr-ring::before, .sr-ring[data-pulse="true"]{ animation:none; }
+  .sv-panel{ animation:none; }
+  .sv-seg[data-state="active"] > i{ animation:none; width:100%; }
+  .sv-bar-fill{ transition:none; }
+  .motw-tug-fill, .motw-tug-knob{ animation:none; }
+  .motw-tug[data-tug-live="true"] .motw-tug-fill::after{ animation:none; opacity:0; }
+  .fraud-heat::after{ animation:none; opacity:.8; }
+}
+
 </style>
 <style>*, ::before, ::after{--tw-border-spacing-x:0;--tw-border-spacing-y:0;--tw-translate-x:0;--tw-translate-y:0;--tw-rotate:0;--tw-skew-x:0;--tw-skew-y:0;--tw-scale-x:1;--tw-scale-y:1;--tw-pan-x: ;--tw-pan-y: ;--tw-pinch-zoom: ;--tw-scroll-snap-strictness:proximity;--tw-gradient-from-position: ;--tw-gradient-via-position: ;--tw-gradient-to-position: ;--tw-ordinal: ;--tw-slashed-zero: ;--tw-numeric-figure: ;--tw-numeric-spacing: ;--tw-numeric-fraction: ;--tw-ring-inset: ;--tw-ring-offset-width:0px;--tw-ring-offset-color:#fff;--tw-ring-color:rgb(59 130 246 / 0.5);--tw-ring-offset-shadow:0 0 #0000;--tw-ring-shadow:0 0 #0000;--tw-shadow:0 0 #0000;--tw-shadow-colored:0 0 #0000;--tw-blur: ;--tw-brightness: ;--tw-contrast: ;--tw-grayscale: ;--tw-hue-rotate: ;--tw-invert: ;--tw-saturate: ;--tw-sepia: ;--tw-drop-shadow: ;--tw-backdrop-blur: ;--tw-backdrop-brightness: ;--tw-backdrop-contrast: ;--tw-backdrop-grayscale: ;--tw-backdrop-hue-rotate: ;--tw-backdrop-invert: ;--tw-backdrop-opacity: ;--tw-backdrop-saturate: ;--tw-backdrop-sepia: ;--tw-contain-size: ;--tw-contain-layout: ;--tw-contain-paint: ;--tw-contain-style: }::backdrop{--tw-border-spacing-x:0;--tw-border-spacing-y:0;--tw-translate-x:0;--tw-translate-y:0;--tw-rotate:0;--tw-skew-x:0;--tw-skew-y:0;--tw-scale-x:1;--tw-scale-y:1;--tw-pan-x: ;--tw-pan-y: ;--tw-pinch-zoom: ;--tw-scroll-snap-strictness:proximity;--tw-gradient-from-position: ;--tw-gradient-via-position: ;--tw-gradient-to-position: ;--tw-ordinal: ;--tw-slashed-zero: ;--tw-numeric-figure: ;--tw-numeric-spacing: ;--tw-numeric-fraction: ;--tw-ring-inset: ;--tw-ring-offset-width:0px;--tw-ring-offset-color:#fff;--tw-ring-color:rgb(59 130 246 / 0.5);--tw-ring-offset-shadow:0 0 #0000;--tw-ring-shadow:0 0 #0000;--tw-shadow:0 0 #0000;--tw-shadow-colored:0 0 #0000;--tw-blur: ;--tw-brightness: ;--tw-contrast: ;--tw-grayscale: ;--tw-hue-rotate: ;--tw-invert: ;--tw-saturate: ;--tw-sepia: ;--tw-drop-shadow: ;--tw-backdrop-blur: ;--tw-backdrop-brightness: ;--tw-backdrop-contrast: ;--tw-backdrop-grayscale: ;--tw-backdrop-hue-rotate: ;--tw-backdrop-invert: ;--tw-backdrop-opacity: ;--tw-backdrop-saturate: ;--tw-backdrop-sepia: ;--tw-contain-size: ;--tw-contain-layout: ;--tw-contain-paint: ;--tw-contain-style: }/* ! tailwindcss v3.4.17 | MIT License | https://tailwindcss.com */*,::after,::before{box-sizing:border-box;border-width:0;border-style:solid;border-color:#e5e7eb}::after,::before{--tw-content:''}:host,html{line-height:1.5;-webkit-text-size-adjust:100%;-moz-tab-size:4;tab-size:4;font-family:ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";font-feature-settings:normal;font-variation-settings:normal;-webkit-tap-highlight-color:transparent}body{margin:0;line-height:inherit}hr{height:0;color:inherit;border-top-width:1px}abbr:where([title]){-webkit-text-decoration:underline dotted;text-decoration:underline dotted}h1,h2,h3,h4,h5,h6{font-size:inherit;font-weight:inherit}a{color:inherit;text-decoration:inherit}b,strong{font-weight:bolder}code,kbd,pre,samp{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;font-feature-settings:normal;font-variation-settings:normal;font-size:1em}small{font-size:80%}sub,sup{font-size:75%;line-height:0;position:relative;vertical-align:baseline}sub{bottom:-.25em}sup{top:-.5em}table{text-indent:0;border-color:inherit;border-collapse:collapse}button,input,optgroup,select,textarea{font-family:inherit;font-feature-settings:inherit;font-variation-settings:inherit;font-size:100%;font-weight:inherit;line-height:inherit;letter-spacing:inherit;color:inherit;margin:0;padding:0}button,select{text-transform:none}button,input:where([type=button]),input:where([type=reset]),input:where([type=submit]){-webkit-appearance:button;background-color:transparent;background-image:none}:-moz-focusring{outline:auto}:-moz-ui-invalid{box-shadow:none}progress{vertical-align:baseline}::-webkit-inner-spin-button,::-webkit-outer-spin-button{height:auto}[type=search]{-webkit-appearance:textfield;outline-offset:-2px}::-webkit-search-decoration{-webkit-appearance:none}::-webkit-file-upload-button{-webkit-appearance:button;font:inherit}summary{display:list-item}blockquote,dd,dl,figure,h1,h2,h3,h4,h5,h6,hr,p,pre{margin:0}fieldset{margin:0;padding:0}legend{padding:0}menu,ol,ul{list-style:none;margin:0;padding:0}dialog{padding:0}textarea{resize:vertical}input::placeholder,textarea::placeholder{opacity:1;color:#9ca3af}[role=button],button{cursor:pointer}:disabled{cursor:default}audio,canvas,embed,iframe,img,object,svg,video{display:block;vertical-align:middle}img,video{max-width:100%;height:auto}[hidden]:where(:not([hidden=until-found])){display:none}.relative{position:relative}.my-2\.5{margin-top:0.625rem;margin-bottom:0.625rem}.mb-2{margin-bottom:0.5rem}.mb-3{margin-bottom:0.75rem}.mb-4{margin-bottom:1rem}.ml-auto{margin-left:auto}.mt-1{margin-top:0.25rem}.mt-1\.5{margin-top:0.375rem}.mt-2{margin-top:0.5rem}.mt-3{margin-top:0.75rem}.mt-4{margin-top:1rem}.mt-5{margin-top:1.25rem}.mt-0\.5{margin-top:0.125rem}.mt-2\.5{margin-top:0.625rem}.mb-2\.5{margin-bottom:0.625rem}.mb-3\.5{margin-bottom:0.875rem}.mt-3\.5{margin-top:0.875rem}.mb-1\.5{margin-bottom:0.375rem}.block{display:block}.flex{display:flex}.grid{display:grid}.hidden{display:none}.h-px{height:1px}.w-9{width:2.25rem}.w-full{width:100%}.min-w-0{min-width:0px}.flex-1{flex:1 1 0%}.flex-none{flex:none}.grid-cols-3{grid-template-columns:repeat(3, minmax(0, 1fr))}.grid-cols-2{grid-template-columns:repeat(2, minmax(0, 1fr))}.flex-wrap{flex-wrap:wrap}.items-start{align-items:flex-start}.items-center{align-items:center}.justify-between{justify-content:space-between}.gap-2{gap:0.5rem}.gap-2\.5{gap:0.625rem}.gap-3{gap:0.75rem}.gap-1\.5{gap:0.375rem}.gap-4{gap:1rem}.space-y-2 > :not([hidden]) ~ :not([hidden]){--tw-space-y-reverse:0;margin-top:calc(0.5rem * calc(1 - var(--tw-space-y-reverse)));margin-bottom:calc(0.5rem * var(--tw-space-y-reverse))}.space-y-3 > :not([hidden]) ~ :not([hidden]){--tw-space-y-reverse:0;margin-top:calc(0.75rem * calc(1 - var(--tw-space-y-reverse)));margin-bottom:calc(0.75rem * var(--tw-space-y-reverse))}.space-y-4 > :not([hidden]) ~ :not([hidden]){--tw-space-y-reverse:0;margin-top:calc(1rem * calc(1 - var(--tw-space-y-reverse)));margin-bottom:calc(1rem * var(--tw-space-y-reverse))}.space-y-0 > :not([hidden]) ~ :not([hidden]){--tw-space-y-reverse:0;margin-top:calc(0px * calc(1 - var(--tw-space-y-reverse)));margin-bottom:calc(0px * var(--tw-space-y-reverse))}.space-y-1\.5 > :not([hidden]) ~ :not([hidden]){--tw-space-y-reverse:0;margin-top:calc(0.375rem * calc(1 - var(--tw-space-y-reverse)));margin-bottom:calc(0.375rem * var(--tw-space-y-reverse))}.overflow-x-auto{overflow-x:auto}.truncate{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.break-all{word-break:break-all}.rounded-lg{border-radius:0.5rem}.border{border-width:1px}.border-t{border-top-width:1px}.border-\[rgba\(57\2c 255\2c 140\2c \.28\)\]{border-color:rgba(57,255,140,.28)}.border-\[var\(--line\)\]{border-color:var(--line)}.bg-\[\#0b0f16\]{--tw-bg-opacity:1;background-color:rgb(11 15 22 / var(--tw-bg-opacity, 1))}.bg-\[rgba\(57\2c 255\2c 140\2c \.07\)\]{background-color:rgba(57,255,140,.07)}.bg-\[var\(--line\)\]{background-color:var(--line)}.p-2\.5{padding:0.625rem}.p-3{padding:0.75rem}.p-4{padding:1rem}.p-6{padding:1.5rem}.px-4{padding-left:1rem;padding-right:1rem}.py-2{padding-top:0.5rem;padding-bottom:0.5rem}.px-3\.5{padding-left:0.875rem;padding-right:0.875rem}.py-2\.5{padding-top:0.625rem;padding-bottom:0.625rem}.py-4{padding-top:1rem;padding-bottom:1rem}.px-1{padding-left:0.25rem;padding-right:0.25rem}.px-2{padding-left:0.5rem;padding-right:0.5rem}.px-3{padding-left:0.75rem;padding-right:0.75rem}.pb-1{padding-bottom:0.25rem}.pb-3{padding-bottom:0.75rem}.pt-4{padding-top:1rem}.pt-3{padding-top:0.75rem}.pl-5{padding-left:1.25rem}.pr-4{padding-right:1rem}.text-left{text-align:left}.text-center{text-align:center}.text-right{text-align:right}.font-mono{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace}.text-\[10\.5px\]{font-size:10.5px}.text-\[10px\]{font-size:10px}.text-\[11\.5px\]{font-size:11.5px}.text-\[12px\]{font-size:12px}.text-\[13px\]{font-size:13px}.text-\[21px\]{font-size:21px}.text-\[27px\]{font-size:27px}.text-\[30px\]{font-size:30px}.text-\[11px\]{font-size:11px}.text-\[15px\]{font-size:15px}.text-\[16px\]{font-size:16px}.text-\[17px\]{font-size:17px}.text-\[25px\]{font-size:25px}.text-\[9px\]{font-size:9px}.text-\[12\.5px\]{font-size:12.5px}.text-\[13\.5px\]{font-size:13.5px}.text-\[20px\]{font-size:20px}.text-\[9\.5px\]{font-size:9.5px}.text-\[26px\]{font-size:26px}.font-bold{font-weight:700}.font-semibold{font-weight:600}.font-extrabold{font-weight:800}.normal-case{text-transform:none}.leading-none{line-height:1}.leading-relaxed{line-height:1.625}.leading-tight{line-height:1.25}.tracking-normal{letter-spacing:0em}.tracking-wide{letter-spacing:0.025em}.tracking-widest{letter-spacing:0.1em}.text-\[\#232c3b\]{--tw-text-opacity:1;color:rgb(35 44 59 / var(--tw-text-opacity, 1))}.text-\[var\(--cyan\)\]{color:var(--cyan)}.text-\[var\(--dim\)\]{color:var(--dim)}.text-\[var\(--gold\)\]{color:var(--gold)}.text-\[var\(--green\)\]{color:var(--green)}.text-\[var\(--off\)\]{color:var(--off)}.text-\[var\(--red\)\]{color:var(--red)}.text-\[\#2b3546\]{--tw-text-opacity:1;color:rgb(43 53 70 / var(--tw-text-opacity, 1))}.text-\[\#39424f\]{--tw-text-opacity:1;color:rgb(57 66 79 / var(--tw-text-opacity, 1))}.text-\[\#5d6879\]{--tw-text-opacity:1;color:rgb(93 104 121 / var(--tw-text-opacity, 1))}.underline{-webkit-text-decoration-line:underline;text-decoration-line:underline}.decoration-dotted{-webkit-text-decoration-style:dotted;text-decoration-style:dotted}</style></head>
 <body>
@@ -3856,9 +4177,15 @@ body.fsn-dd-lock{ overflow:hidden; }
           <div class="desk-league-menu" id="deskLeagueMenu" role="listbox" aria-labelledby="deskLeagueTrigger" hidden></div>
           <div class="text-[10.5px] text-[var(--dim)] mt-1.5 font-mono tabular truncate" id="homeLeagueMeta"></div>
         </div>
-        <div class="text-right">
-          <div id="homeWeekPill" class="pill pill-cyan">CONNECT LEAGUE</div>
-          <div class="text-[10px] text-[var(--dim)] mt-1.5 font-mono tabular" id="homeSeasonLabel"></div>
+        <div class="flex items-start gap-2.5 flex-none">
+          <div class="text-right">
+            <div id="homeWeekPill" class="pill pill-cyan">CONNECT LEAGUE</div>
+            <div class="text-[10px] text-[var(--dim)] mt-1.5 font-mono tabular" id="homeSeasonLabel"></div>
+          </div>
+          <button type="button" class="gear-btn" data-goto="setup" data-active="false"
+                  aria-label="Open Setup and league connection" title="Setup">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.1"></circle><path d="M19.14 12.94a7.6 7.6 0 0 0 .05-.94 7.6 7.6 0 0 0-.05-.94l2-1.58a.5.5 0 0 0 .12-.62l-1.9-3.28a.5.5 0 0 0-.6-.22l-2.36.95a7.3 7.3 0 0 0-1.62-.94l-.36-2.5a.5.5 0 0 0-.5-.43h-3.8a.5.5 0 0 0-.5.43l-.36 2.5a7.3 7.3 0 0 0-1.62.94l-2.36-.95a.5.5 0 0 0-.6.22L2.8 8.86a.5.5 0 0 0 .12.62l2 1.58a7.6 7.6 0 0 0 0 1.88l-2 1.58a.5.5 0 0 0-.12.62l1.9 3.28a.5.5 0 0 0 .6.22l2.36-.95c.5.38 1.04.7 1.62.94l.36 2.5a.5.5 0 0 0 .5.43h3.8a.5.5 0 0 0 .5-.43l.36-2.5a7.3 7.3 0 0 0 1.62-.94l2.36.95a.5.5 0 0 0 .6-.22l1.9-3.28a.5.5 0 0 0-.12-.62Z"></path></svg>
+          </button>
         </div>
       </div>
       <p class="view-blurb">Your league's front page — the week's lead story, the pulse numbers, and every result at a glance.</p>
@@ -3897,6 +4224,19 @@ body.fsn-dd-lock{ overflow:hidden; }
     </div>
 
     <div id="homeContent" class="hidden">
+      <!-- STORY REEL — Instagram-style rings, directly above TOP STORIES.
+           Filled by renderStoryReel() from the same live week the Desk is
+           already painting; hidden whenever the week produces no ring. -->
+      <div id="homeStoryReel" class="mb-4 hidden">
+        <div class="px-4">
+          <div class="section-head">
+            <span class="bar" style="background:var(--cyan)"></span>
+            <h2>The Reel</h2>
+          </div>
+        </div>
+        <div class="story-reel no-bar" id="homeStoryReelTrack"></div>
+      </div>
+
       <!-- TOP STORY CAROUSEL — the News Desk's lead, on the Desk itself -->
       <div id="homeTopStory" class="mb-4">
         <div class="px-4">
@@ -3953,8 +4293,16 @@ body.fsn-dd-lock{ overflow:hidden; }
   <section class="screen" data-screen="matchups" data-active="false">
     <div class="screen-shell max-w-6xl mx-auto w-full px-4 sm:px-6">
     <header class="px-4 pt-4 pb-3">
-      <div class="kicker text-[var(--cyan)]">Scoreboard</div>
-      <h1 class="font-display text-[27px] leading-none mt-1.5">MATCHUPS</h1>
+      <div class="flex items-start justify-between gap-3">
+        <div class="min-w-0">
+          <div class="kicker text-[var(--cyan)]">Scoreboard</div>
+          <h1 class="font-display text-[27px] leading-none mt-1.5">MATCHUPS</h1>
+        </div>
+        <button type="button" class="gear-btn" data-goto="setup" data-active="false"
+                aria-label="Open Setup and league connection" title="Setup">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.1"></circle><path d="M19.14 12.94a7.6 7.6 0 0 0 .05-.94 7.6 7.6 0 0 0-.05-.94l2-1.58a.5.5 0 0 0 .12-.62l-1.9-3.28a.5.5 0 0 0-.6-.22l-2.36.95a7.3 7.3 0 0 0-1.62-.94l-.36-2.5a.5.5 0 0 0-.5-.43h-3.8a.5.5 0 0 0-.5.43l-.36 2.5a7.3 7.3 0 0 0-1.62.94l-2.36-.95a.5.5 0 0 0-.6.22L2.8 8.86a.5.5 0 0 0 .12.62l2 1.58a7.6 7.6 0 0 0 0 1.88l-2 1.58a.5.5 0 0 0-.12.62l1.9 3.28a.5.5 0 0 0 .6.22l2.36-.95c.5.38 1.04.7 1.62.94l.36 2.5a.5.5 0 0 0 .5.43h3.8a.5.5 0 0 0 .5-.43l.36-2.5a7.3 7.3 0 0 0 1.62-.94l2.36.95a.5.5 0 0 0 .6-.22l1.9-3.28a.5.5 0 0 0-.12-.62Z"></path></svg>
+        </button>
+      </div>
       <p class="view-blurb">Every head-to-head result for the selected week, with team scores and the difference that decided each game.</p>
     </header>
     <div id="matchupWeekScrubber" class="px-4 pb-3 max-w-4xl mx-auto w-full"></div>
@@ -3975,9 +4323,15 @@ body.fsn-dd-lock{ overflow:hidden; }
             <div class="kicker text-[var(--cyan)]">Decision Science · Live</div>
             <h1 class="font-display text-[27px] leading-none mt-1.5">SEASON STATS</h1>
           </div>
-          <div class="text-right">
-            <div id="analyticsSeasonPill" class="pill pill-cyan">— SEASON</div>
-            <div id="analyticsUpdated" class="text-[10px] text-[var(--dim)] mt-1.5 font-mono tabular">AWAITING DATA</div>
+          <div class="flex items-start gap-2.5 flex-none">
+            <div class="text-right">
+              <div id="analyticsSeasonPill" class="pill pill-cyan">— SEASON</div>
+              <div id="analyticsUpdated" class="text-[10px] text-[var(--dim)] mt-1.5 font-mono tabular">AWAITING DATA</div>
+            </div>
+            <button type="button" class="gear-btn" data-goto="setup" data-active="false"
+                    aria-label="Open Setup and league connection" title="Setup">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.1"></circle><path d="M19.14 12.94a7.6 7.6 0 0 0 .05-.94 7.6 7.6 0 0 0-.05-.94l2-1.58a.5.5 0 0 0 .12-.62l-1.9-3.28a.5.5 0 0 0-.6-.22l-2.36.95a7.3 7.3 0 0 0-1.62-.94l-.36-2.5a.5.5 0 0 0-.5-.43h-3.8a.5.5 0 0 0-.5.43l-.36 2.5a7.3 7.3 0 0 0-1.62.94l-2.36-.95a.5.5 0 0 0-.6.22L2.8 8.86a.5.5 0 0 0 .12.62l2 1.58a7.6 7.6 0 0 0 0 1.88l-2 1.58a.5.5 0 0 0-.12.62l1.9 3.28a.5.5 0 0 0 .6.22l2.36-.95c.5.38 1.04.7 1.62.94l.36 2.5a.5.5 0 0 0 .5.43h3.8a.5.5 0 0 0 .5-.43l.36-2.5a7.3 7.3 0 0 0 1.62-.94l2.36.95a.5.5 0 0 0 .6-.22l1.9-3.28a.5.5 0 0 0-.12-.62Z"></path></svg>
+            </button>
           </div>
         </div>
         <p class="view-blurb">Season-long standings, the FSN power index, and advanced efficiency metrics — switch views with the tabs below.</p>
@@ -3998,9 +4352,17 @@ body.fsn-dd-lock{ overflow:hidden; }
   <section class="screen" data-screen="recordbook" data-active="false">
     <div class="screen-shell max-w-6xl mx-auto w-full px-4 sm:px-6">
     <header class="px-4 pt-4 pb-3">
-      <div class="kicker text-[var(--gold)]" id="recordBookKicker">All-Time Archive</div>
-      <h1 class="font-display text-[27px] leading-none mt-1.5">THE RECORD BOOK</h1>
-      <div class="text-[10.5px] text-[var(--dim)] mt-1.5 font-mono tabular" id="recordBookMeta">8 seasons · 16 managers · 687 matchups</div>
+      <div class="flex items-start justify-between gap-3">
+        <div class="min-w-0">
+          <div class="kicker text-[var(--gold)]" id="recordBookKicker">All-Time Archive</div>
+          <h1 class="font-display text-[27px] leading-none mt-1.5">THE RECORD BOOK</h1>
+          <div class="text-[10.5px] text-[var(--dim)] mt-1.5 font-mono tabular" id="recordBookMeta">8 seasons · 16 managers · 687 matchups</div>
+        </div>
+        <button type="button" class="gear-btn" data-goto="setup" data-active="false"
+                aria-label="Open Setup and league connection" title="Setup">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.1"></circle><path d="M19.14 12.94a7.6 7.6 0 0 0 .05-.94 7.6 7.6 0 0 0-.05-.94l2-1.58a.5.5 0 0 0 .12-.62l-1.9-3.28a.5.5 0 0 0-.6-.22l-2.36.95a7.3 7.3 0 0 0-1.62-.94l-.36-2.5a.5.5 0 0 0-.5-.43h-3.8a.5.5 0 0 0-.5.43l-.36 2.5a7.3 7.3 0 0 0-1.62.94l-2.36-.95a.5.5 0 0 0-.6.22L2.8 8.86a.5.5 0 0 0 .12.62l2 1.58a7.6 7.6 0 0 0 0 1.88l-2 1.58a.5.5 0 0 0-.12.62l1.9 3.28a.5.5 0 0 0 .6.22l2.36-.95c.5.38 1.04.7 1.62.94l.36 2.5a.5.5 0 0 0 .5.43h3.8a.5.5 0 0 0 .5-.43l.36-2.5a7.3 7.3 0 0 0 1.62-.94l2.36.95a.5.5 0 0 0 .6-.22l1.9-3.28a.5.5 0 0 0-.12-.62Z"></path></svg>
+        </button>
+      </div>
       <p class="view-blurb">The all-time archive — franchise legacies, rivalry ledgers, and the league's biggest performances across every season on record.</p>
     </header>
 
@@ -4038,9 +4400,15 @@ body.fsn-dd-lock{ overflow:hidden; }
           <div class="kicker text-[var(--red)]">The Wire · Live</div>
           <h1 class="font-display text-[27px] leading-none mt-1.5">NEWS DESK</h1>
         </div>
-        <div class="text-right">
-          <div id="newsWeekPill" class="pill pill-cyan">WEEK —</div>
-          <div class="text-[10px] text-[var(--dim)] mt-1.5 font-mono tabular" id="newsCount">—</div>
+        <div class="flex items-start gap-2.5 flex-none">
+          <div class="text-right">
+            <div id="newsWeekPill" class="pill pill-cyan">WEEK —</div>
+            <div class="text-[10px] text-[var(--dim)] mt-1.5 font-mono tabular" id="newsCount">—</div>
+          </div>
+          <button type="button" class="gear-btn" data-goto="setup" data-active="false"
+                  aria-label="Open Setup and league connection" title="Setup">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.1"></circle><path d="M19.14 12.94a7.6 7.6 0 0 0 .05-.94 7.6 7.6 0 0 0-.05-.94l2-1.58a.5.5 0 0 0 .12-.62l-1.9-3.28a.5.5 0 0 0-.6-.22l-2.36.95a7.3 7.3 0 0 0-1.62-.94l-.36-2.5a.5.5 0 0 0-.5-.43h-3.8a.5.5 0 0 0-.5.43l-.36 2.5a7.3 7.3 0 0 0-1.62.94l-2.36-.95a.5.5 0 0 0-.6.22L2.8 8.86a.5.5 0 0 0 .12.62l2 1.58a7.6 7.6 0 0 0 0 1.88l-2 1.58a.5.5 0 0 0-.12.62l1.9 3.28a.5.5 0 0 0 .6.22l2.36-.95c.5.38 1.04.7 1.62.94l.36 2.5a.5.5 0 0 0 .5.43h3.8a.5.5 0 0 0 .5-.43l.36-2.5a7.3 7.3 0 0 0 1.62-.94l2.36.95a.5.5 0 0 0 .6-.22l1.9-3.28a.5.5 0 0 0-.12-.62Z"></path></svg>
+          </button>
         </div>
       </div>
       <p class="view-blurb">Auto-generated coverage of your league — recaps, power moves, and storylines, refreshed for every week of the season.</p>
@@ -4136,9 +4504,17 @@ body.fsn-dd-lock{ overflow:hidden; }
   <section class="screen" data-screen="setup" data-active="false">
     <div class="screen-shell max-w-6xl mx-auto w-full px-4 sm:px-6">
     <header class="px-4 pt-4 pb-3">
-      <div class="kicker text-[var(--cyan)]">Control Room</div>
-      <h1 class="font-display text-[27px] leading-none mt-1.5">SETUP</h1>
-      <div class="mt-2"><span class="pill pill-final" id="connStatus" style="color: var(--cyan); border-color: rgba(0, 224, 255, 0.45);">● MANUAL DATA</span></div>
+      <div class="flex items-start justify-between gap-3">
+        <div class="min-w-0">
+          <div class="kicker text-[var(--cyan)]">Control Room</div>
+          <h1 class="font-display text-[27px] leading-none mt-1.5">SETUP</h1>
+          <div class="mt-2"><span class="pill pill-final" id="connStatus" style="color: var(--cyan); border-color: rgba(0, 224, 255, 0.45);">● MANUAL DATA</span></div>
+        </div>
+        <button type="button" class="gear-btn" data-goto="setup" data-active="true" aria-current="page"
+                aria-label="Open Setup and league connection" title="Setup">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.1"></circle><path d="M19.14 12.94a7.6 7.6 0 0 0 .05-.94 7.6 7.6 0 0 0-.05-.94l2-1.58a.5.5 0 0 0 .12-.62l-1.9-3.28a.5.5 0 0 0-.6-.22l-2.36.95a7.3 7.3 0 0 0-1.62-.94l-.36-2.5a.5.5 0 0 0-.5-.43h-3.8a.5.5 0 0 0-.5.43l-.36 2.5a7.3 7.3 0 0 0-1.62.94l-2.36-.95a.5.5 0 0 0-.6.22L2.8 8.86a.5.5 0 0 0 .12.62l2 1.58a7.6 7.6 0 0 0 0 1.88l-2 1.58a.5.5 0 0 0-.12.62l1.9 3.28a.5.5 0 0 0 .6.22l2.36-.95c.5.38 1.04.7 1.62.94l.36 2.5a.5.5 0 0 0 .5.43h3.8a.5.5 0 0 0 .5-.43l.36-2.5a7.3 7.3 0 0 0 1.62-.94l2.36.95a.5.5 0 0 0 .6-.22l1.9-3.28a.5.5 0 0 0-.12-.62Z"></path></svg>
+        </button>
+      </div>
     </header>
 
     <div class="px-4 space-y-4">
@@ -4532,10 +4908,6 @@ body.fsn-dd-lock{ overflow:hidden; }
   <button class="tab-btn" data-tab="recordbook" data-active="false">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"></rect><circle cx="12" cy="12" r="3.5"></circle><path d="M12 6v2"></path><path d="M12 16v2"></path></svg>
     <span>Record Book</span>
-  </button>
-  <button class="tab-btn" data-tab="setup" data-active="false">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h10"></path><path d="M18 7h2"></path><circle cx="16" cy="7" r="2"></circle><path d="M4 17h6"></path><path d="M14 17h6"></path><circle cx="12" cy="17" r="2"></circle></svg>
-    <span>Setup</span>
   </button>
 </nav>
 
@@ -4991,6 +5363,27 @@ body.fsn-dd-lock{ overflow:hidden; }
       </div>
     </div>
   </div>
+</div>
+
+<!-- ============================================================
+     STORY VIEWER — the full-screen tap-through the Desk's story rings
+     open. Progress segments across the top, one panel at a time, tap the
+     right edge to advance and the left edge to go back. Entirely
+     presentational: every number it shows was computed by renderHome()
+     from the live payload before the viewer was ever opened.
+============================================================ -->
+<div id="storyViewer" data-open="false" role="dialog" aria-modal="true" aria-label="League story reel">
+  <div class="sv-progress" id="storyViewerProgress" aria-hidden="true"></div>
+  <div class="sv-head">
+    <div class="sv-head-id" id="storyViewerLabel">FSN · The Reel</div>
+    <button type="button" class="sv-close" id="storyViewerClose" aria-label="Close stories">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12"></path><path d="M18 6L6 18"></path></svg>
+    </button>
+  </div>
+  <div class="sv-stage" id="storyViewerStage" role="document"></div>
+  <button type="button" class="sv-tap" data-story-nav="prev" aria-label="Previous story"></button>
+  <button type="button" class="sv-tap" data-story-nav="next" aria-label="Next story"></button>
+  <div class="sv-hint" aria-hidden="true">Tap right to advance · left to go back</div>
 </div>
 
 <!-- ============================================================
@@ -23841,7 +24234,7 @@ function toast(msg){
    strand every primary screen behind overflow:hidden. Recompute from actual
    DOM state after every transition instead of trusting paired assignments. */
 function syncBodyScrollLock(){
-  const overlayIds = ['reader','franchiseModal','onboardModal','ftuModal','profilePicker','fsnIndexInfoModal','mxBoxSheet'];
+  const overlayIds = ['reader','franchiseModal','onboardModal','ftuModal','profilePicker','fsnIndexInfoModal','mxBoxSheet','storyViewer'];
   const locked = overlayIds.some(id=>{
     const node = $(id);
     return node && node.dataset && node.dataset.open === 'true';
@@ -25105,6 +25498,7 @@ function renderHome(){
       $('homeSeasonLabel').textContent = '';
     }
     try{ refreshDeskLeaguePicker(); }catch(err){ console.warn('[Home] desk league picker refresh failed', err); }
+    safeRun('homeStoryReel:clear', ()=> renderStoryReel([]));
     return;
   }
 
@@ -25284,6 +25678,17 @@ function renderHome(){
     // number was never live and the label was misleading. Show the neutral
     // MATCHUP divider until the week has scored; then the real margin.
     const centerStat = pregameWeek ? 'MATCHUP' : `${margin.toFixed(1)} MARGIN`;
+    /* Tug-of-war split for the divider bar: each side's share of the REAL
+       combined points, clamped so the trailing team never disappears entirely
+       and the knob stays on the track. A week with nothing scored has no tug to
+       show, so it sits dead centre and the bar renders in its neutral tone. */
+    const tugTotal = hs + as;
+    const tugAwayShare = (!pregameWeek && tugTotal > 0)
+      ? Math.max(6, Math.min(94, (as / tugTotal) * 100))
+      : 50;
+    const tugHomeShare = 100 - tugAwayShare;
+    const tugAwayTag = esc(String(g.awayTeam.abbrev || g.awayTeam.name || '').toUpperCase());
+    const tugHomeTag = esc(String(g.homeTeam.abbrev || g.homeTeam.name || '').toUpperCase());
     // Non-final matchups (pre-kickoff or mid-slate before Tuesday roll) get a
     // clean editorial sub-line beneath the score block so nobody expects a
     // live-tracker experience that this app has never delivered.
@@ -25300,10 +25705,19 @@ function renderHome(){
           ${statusPill}
         </div>
         ${motwSide(g.awayTeam, as, !homeLeads, st, week)}
-        <div class="flex items-center gap-3 my-2.5">
-          <div class="flex-1 h-px bg-[var(--line)]"></div>
-          <div class="font-mono tabular text-[10px] text-[var(--dim)] tracking-widest">${centerStat}</div>
-          <div class="flex-1 h-px bg-[var(--line)]"></div>
+        <div class="motw-tug my-2.5" data-tug-live="${pregameWeek ? 'false' : 'true'}">
+          <div class="motw-tug-rail">
+            <div class="motw-tug-track">
+              <div class="motw-tug-fill motw-tug-away" style="width:${tugAwayShare.toFixed(2)}%"></div>
+              <div class="motw-tug-fill motw-tug-home" style="width:${tugHomeShare.toFixed(2)}%"></div>
+            </div>
+            <div class="motw-tug-knob" style="left:${tugAwayShare.toFixed(2)}%"></div>
+          </div>
+          <div class="motw-tug-legend">
+            <span class="motw-tug-end">${tugAwayTag}</span>
+            <span class="motw-tug-stat">${centerStat}</span>
+            <span class="motw-tug-end motw-tug-end-r">${tugHomeTag}</span>
+          </div>
         </div>
         ${motwSide(g.homeTeam, hs, homeLeads, st, week)}
         ${finalizeNotice}
@@ -25420,6 +25834,15 @@ function renderHome(){
      verdict it is. */
   const lowIsProjectionCall = tiedAtLow.length > 1 && tiedAtLow.some(side=> side.status !== 'final');
   const lowIsProvisional = !!(low && low.status !== 'final');
+  /* The pulsing heat gradient rides a real verdict only. Pre-game and
+     no-scored-team are not accusations, so they keep the plain card. */
+  try{
+    const hotSeatEl = $('hotSeatCard');
+    if(hotSeatEl) hotSeatEl.classList.toggle('fraud-heat', !!(hasScoring && low));
+  }catch(err){
+    console.warn('[Home] Could not toggle the Fraud Alert heat glow for week ' + week +
+      '; the card still renders without it.', err);
+  }
   if(!hasScoring){
     $('hotSeatCard').innerHTML = `
       <div class="pl-5 pr-4 py-4">
@@ -25516,6 +25939,21 @@ function renderHome(){
   const deskGames = activeGames.concat(games.filter(g=> !gameHasActiveTeam(g)));
   $('homeQuickScores').innerHTML = deskGames.slice(0, 4).map(g=> compactGameRow(g)).join('')
     || `<div class="card p-4 text-center text-[12.5px] text-[var(--dim)]">Nothing on the board.</div>`;
+
+  /* ---- STORY REEL ----
+     Built from the reads this render already performed — the Desk's marquee
+     game, the widest margin on the board, the hot seat it just assigned — so
+     the rings can never disagree with the cards below them. Strictly additive:
+     a failure here paints an empty reel and leaves the rest of the Desk alone. */
+  safeRun('homeStoryReel', ()=> renderStoryReel(buildStoryReel({
+    week,
+    games,
+    hasScoring,
+    motw,
+    fraud: low,
+    fraudSides,
+    fraudIsProjection: lowIsProjectionCall,
+  })), ()=> renderStoryReel([]));
 }
 
 function motwSide(team, score, leading, status, week){
@@ -25555,6 +25993,458 @@ function compactGameRow(g){
     </div>
   </div>`;
 }
+
+
+/* ============================================================
+   STORY REEL & STORY VIEWER
+   An Instagram-style ring carousel on the Desk, sitting directly above
+   TOP STORIES, and the full-screen tap-through it opens.
+
+   Strictly additive and purely presentational. Every figure a ring shows
+   was already computed by renderHome() from the live payload — no News
+   Desk generator, seed, hash or article is read or written here, and the
+   only clock this file touches is the animation timer, which decides when
+   a panel advances and never what a panel says.
+============================================================ */
+
+/* Ring identity: border colours, the glow they pulse, and the label under
+   the avatar. Crimson is the one ring that pulses — the hot seat is the
+   alarm, and the others would fight it for attention if they did too. */
+const STORY_TONES = {
+  matchup: { a:'#ffc400', b:'#fff2b0', glow:'rgba(255,196,0,.5)',  text:'#ffc400', pulse:false, label:'Matchup',  sub:'OF THE WEEK' },
+  blowout: { a:'#ff7a1a', b:'#ff2d55', glow:'rgba(255,110,26,.55)', text:'#ff8a3d', pulse:false, label:'Blowout',  sub:'OF THE WEEK' },
+  fraud:   { a:'#ff2d55', b:'#ff9db1', glow:'rgba(255,45,85,.62)',  text:'#ff2d55', pulse:true,  label:'Hot Seat', sub:'FRAUD ALERT' },
+  mover:   { a:'#00e0ff', b:'#d4fbff', glow:'rgba(0,224,255,.55)',  text:'#00e0ff', pulse:false, label:'Power Mover', sub:'RANKINGS' },
+};
+
+/* The reel the Desk last built, and where the viewer currently sits in it. */
+let storyReel = [];
+let storyViewerIndex = 0;
+let storyViewerTimer = null;
+const STORY_VIEWER_MS = 7000;
+
+function storyPrefersReducedMotion(){
+  try{ return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); }
+  catch(err){
+    console.warn('[StoryReel] Could not read the reduced-motion preference; animating normally.', err);
+    return false;
+  }
+}
+
+/* esc() escapes text, not attribute quotes — it round-trips through
+   textContent, which leaves a double quote intact. A team name carrying one
+   would close the attribute it is written into, so anything of the reader's
+   that lands in an attribute goes through here instead. */
+function storyAttr(value){
+  return esc(value).replace(/"/g, '&quot;');
+}
+
+function storyPct(value, max){
+  const v = Number(value), m = Number(max);
+  if(!Number.isFinite(v) || !Number.isFinite(m) || m <= 0) return 0;
+  return Math.max(0, Math.min(100, (v / m) * 100));
+}
+
+/* ---- BUILD ----------------------------------------------------------------
+   One try/catch per ring so a single bad read costs that ring and no other.
+   ctx carries the values renderHome() already resolved for this week. */
+function buildStoryReel(ctx){
+  const out = [];
+  const week = (ctx && ctx.week) || 0;
+  const games = (ctx && Array.isArray(ctx.games)) ? ctx.games : [];
+  const hasScoring = !!(ctx && ctx.hasScoring);
+
+  /* 1 — MATCHUP OF THE WEEK. The same game the marquee card features. */
+  try{
+    const m = ctx && ctx.motw;
+    if(m && m.g && m.g.homeTeam && m.g.awayTeam){
+      const hs = Number(m.hs) || 0, as = Number(m.as) || 0;
+      const total = hs + as;
+      const scored = hasScoring && m.st !== 'pre' && total > 0;
+      out.push({
+        key:'matchup',
+        avatar:{ name:m.g.homeTeam.name, logo:m.g.homeTeam.logo },
+        kicker:'Matchup of the Week · Week ' + week,
+        headline:String(m.g.awayTeam.name || '') + ' vs ' + String(m.g.homeTeam.name || ''),
+        dek:scored
+          ? 'The two best teams on the board drew each other. Here is how the points landed.'
+          : 'The marquee matchup is set. Scores land once the slate finalizes.',
+        duel:[
+          { name:m.g.awayTeam.name, logo:m.g.awayTeam.logo, sub:m.g.awayTeam.owner || '', score:scored ? as : null, lead:scored && as >= hs },
+          { name:m.g.homeTeam.name, logo:m.g.homeTeam.logo, sub:m.g.homeTeam.owner || '', score:scored ? hs : null, lead:scored && hs >= as },
+        ],
+        bars:scored ? [
+          { label:String(m.g.awayTeam.abbrev || m.g.awayTeam.name || 'Away') + ' share', value:as.toFixed(1), pct:storyPct(as, total) },
+          { label:String(m.g.homeTeam.abbrev || m.g.homeTeam.name || 'Home') + ' share', value:hs.toFixed(1), pct:storyPct(hs, total) },
+        ] : [],
+        stats:scored ? [
+          { label:'Combined', value:total.toFixed(1) },
+          { label:'Margin', value:Math.abs(hs - as).toFixed(1) },
+        ] : [],
+        note:scored
+          ? 'Read the full Matchup of the Week file on the News Desk.'
+          : 'Nothing has been scored in week ' + week + ' yet.',
+      });
+    }
+  }catch(err){
+    console.error('[StoryReel] The Matchup of the Week ring failed for week ' + week +
+      '; the rest of the reel is unaffected.', err);
+  }
+
+  /* 2 — BLOWOUT OF THE WEEK. Widest margin among games that have started. */
+  try{
+    let worst = null;
+    games.forEach(g=>{
+      if(!g || !g.homeTeam || !g.awayTeam) return;
+      if(gameStatus(g) === 'pre') return;
+      const hs = actualOf(g, 'home'), as = actualOf(g, 'away');
+      if(hs == null || as == null) return;
+      const margin = Math.abs(hs - as);
+      if(!worst || margin > worst.margin) worst = { g, hs, as, margin };
+    });
+    if(worst && worst.margin > 0){
+      const homeWon = worst.hs >= worst.as;
+      const win = { team: homeWon ? worst.g.homeTeam : worst.g.awayTeam, score: homeWon ? worst.hs : worst.as };
+      const lose = { team: homeWon ? worst.g.awayTeam : worst.g.homeTeam, score: homeWon ? worst.as : worst.hs };
+      const total = win.score + lose.score;
+      out.push({
+        key:'blowout',
+        avatar:{ name:win.team.name, logo:win.team.logo },
+        kicker:'Blowout of the Week · Week ' + week,
+        headline:String(win.team.name || '') + ' by ' + worst.margin.toFixed(1),
+        dek:'The widest margin anywhere on this week’s board.',
+        duel:[
+          { name:win.team.name, logo:win.team.logo, sub:win.team.owner || '', score:win.score, lead:true },
+          { name:lose.team.name, logo:lose.team.logo, sub:lose.team.owner || '', score:lose.score, lead:false },
+        ],
+        bars:[
+          { label:String(win.team.abbrev || win.team.name || 'Winner') + ' share', value:win.score.toFixed(1), pct:storyPct(win.score, total) },
+          { label:String(lose.team.abbrev || lose.team.name || 'Loser') + ' share', value:lose.score.toFixed(1), pct:storyPct(lose.score, total) },
+        ],
+        stats:[
+          { label:'Margin', value:worst.margin.toFixed(1) },
+          { label:'Combined', value:total.toFixed(1) },
+        ],
+        note:marginTierLabel(worst.margin) + ' · ' + String(lose.team.name || '') +
+          ' will want this one back.',
+      });
+    }
+  }catch(err){
+    console.error('[StoryReel] The Blowout of the Week ring failed for week ' + week +
+      '; the rest of the reel is unaffected.', err);
+  }
+
+  /* 3 — FRAUD / HOT SEAT. Exactly the seat the Fraud Alert card just assigned. */
+  try{
+    const fraud = ctx && ctx.fraud;
+    if(hasScoring && fraud && fraud.team){
+      const sides = (ctx && Array.isArray(ctx.fraudSides)) ? ctx.fraudSides : [];
+      const high = sides.reduce((best, s)=> (!best || s.score > best.score ? s : best), null);
+      const projected = ctx && ctx.fraudIsProjection;
+      const shown = (projected && fraud.projected != null) ? fraud.projected : fraud.score;
+      const ceiling = high ? high.score : shown;
+      const record = (()=>{
+        try{ return FSNIntel.getRecordAsOfWeek(fraud.team.id, week); }
+        catch(err){
+          console.warn('[StoryReel] Could not read the hot seat team’s record for week ' + week + '.', err);
+          return '';
+        }
+      })();
+      out.push({
+        key:'fraud',
+        avatar:{ name:fraud.team.name, logo:fraud.team.logo },
+        kicker:(projected ? 'Fraud Watch · Projected Low' : 'Fraud Alert · Lowest Score') + ' · Week ' + week,
+        headline:String(fraud.team.name || ''),
+        dek:projected
+          ? 'Nothing has separated the bottom of the board on actual points yet, so the seat is assigned on the lowest live projection.'
+          : 'Bottom of the league this week. The seat is warm.',
+        solo:{
+          name:fraud.team.name,
+          logo:fraud.team.logo,
+          sub:[fraud.team.owner || '—', record].filter(Boolean).join(' · '),
+          score:shown,
+          dec:1,
+          unit:projected ? 'projected' : 'points',
+        },
+        bars:[
+          { label:'Against the week’s high', value:shown.toFixed(1) + ' / ' + Number(ceiling).toFixed(1), pct:storyPct(shown, ceiling) },
+        ],
+        stats:[
+          { label:projected ? 'Actual so far' : 'Points', value:Number(fraud.score).toFixed(1) },
+          { label:'Behind the high', value:(high && high.score - fraud.score > 0.05) ? (high.score - fraud.score).toFixed(1) : '—' },
+        ],
+        note:fraud.status === 'final'
+          ? 'Final. The seat belongs to them until next week’s board says otherwise.'
+          : 'Not final until Tuesday — stat corrections can still move this.',
+      });
+    }
+  }catch(err){
+    console.error('[StoryReel] The Fraud Alert ring failed for week ' + week +
+      '; the rest of the reel is unaffected.', err);
+  }
+
+  /* 4 — POWER MOVER. Biggest climb in the weekly rankings; with no movement
+         on the board yet (week 1, or a flat table) the leader takes the ring. */
+  try{
+    const table = FSNIntel.powerRankings(week) || [];
+    if(table.length){
+      const climbers = table.filter(r=> r && r.delta > 0)
+        .sort((a, b)=> (b.delta - a.delta) || (a.rank - b.rank));
+      const mover = climbers[0] || table.slice().sort((a, b)=> a.rank - b.rank)[0] || null;
+      if(mover && mover.team){
+        const climbed = mover.delta > 0;
+        const seatPct = storyPct(table.length - mover.rank + 1, table.length);
+        const bars = [{ label:'League position', value:'No.' + mover.rank + ' of ' + table.length, pct:seatPct }];
+        if(Number.isFinite(mover.pfIndex)){
+          bars.push({ label:'Points-for index', value:Number(mover.pfIndex).toFixed(0), pct:storyPct(mover.pfIndex, 100) });
+        }
+        out.push({
+          key:'mover',
+          avatar:{ name:mover.team.name, logo:mover.team.logo },
+          kicker:'Power Mover · Week ' + week,
+          headline:String(mover.team.name || ''),
+          dek:climbed
+            ? 'Up ' + mover.delta + ' spot' + (mover.delta === 1 ? '' : 's') + ' to No.' + mover.rank + ' in the weekly power rankings.'
+            : 'Holding No.' + mover.rank + ' at the top of the weekly power rankings.',
+          solo:{
+            name:mover.team.name,
+            logo:mover.team.logo,
+            sub:[mover.team.owner || '—', (()=>{
+              try{ return FSNIntel.getRecordAsOfWeek(mover.team.id, week); }
+              catch(err){
+                console.warn('[StoryReel] Could not read the power mover’s record for week ' + week + '.', err);
+                return '';
+              }
+            })()].filter(Boolean).join(' · '),
+            score:climbed ? mover.delta : mover.rank,
+            dec:0,
+            unit:climbed ? 'spots gained' : 'power rank',
+          },
+          bars:bars,
+          stats:[
+            { label:'Rank', value:'No.' + mover.rank },
+            { label:'Last week', value:mover.prevRank ? ('No.' + mover.prevRank) : '—' },
+          ],
+          note:mover.indexBadge
+            ? mover.indexBadge + ' — the index rates this roster above its record.'
+            : 'The weekly power table is rebuilt from the standings through week ' + week + '.',
+        });
+      }
+    }
+  }catch(err){
+    console.error('[StoryReel] The Power Mover ring failed for week ' + week +
+      '; the rest of the reel is unaffected.', err);
+  }
+
+  return out;
+}
+
+/* ---- REEL ---------------------------------------------------------------- */
+function renderStoryReel(list){
+  const wrap = $('homeStoryReel');
+  const track = $('homeStoryReelTrack');
+  if(!wrap || !track) return;
+  storyReel = Array.isArray(list) ? list : [];
+  if(!storyReel.length){
+    track.innerHTML = '';
+    wrap.classList.add('hidden');
+    if($('storyViewer') && $('storyViewer').dataset.open === 'true') closeStoryViewer();
+    return;
+  }
+  wrap.classList.remove('hidden');
+  track.innerHTML = storyReel.map((story, idx)=>{
+    const tone = STORY_TONES[story.key] || STORY_TONES.mover;
+    const avatar = story.avatar || {};
+    return `<button type="button" class="sr-item" data-story-ring="${idx}"
+              aria-label="${storyAttr(tone.label + ' \u2014 ' + (story.headline || ''))}">
+      <span class="sr-ring" data-pulse="${tone.pulse ? 'true' : 'false'}"
+            style="--sr-a:${tone.a};--sr-b:${tone.b};--sr-glow:${tone.glow}">
+        <span class="sr-core">${crest(avatar.name || tone.label, avatar.logo, 53)}</span>
+      </span>
+      <span class="sr-label" style="color:${tone.text}">${esc(tone.label)}</span>
+      <span class="sr-sub">${esc(tone.sub)}</span>
+    </button>`;
+  }).join('');
+}
+
+/* ---- VIEWER -------------------------------------------------------------- */
+function storyPanelHtml(story){
+  const tone = STORY_TONES[story.key] || STORY_TONES.mover;
+  const duel = Array.isArray(story.duel) ? story.duel : null;
+  const solo = story.solo || null;
+  const bars = Array.isArray(story.bars) ? story.bars : [];
+  const stats = Array.isArray(story.stats) ? story.stats : [];
+
+  const scoreCell = (value, cls)=> value == null
+    ? `<div class="${cls}">—</div>`
+    : `<div class="${cls}"><span data-count-to="${Number(value).toFixed(1)}" data-count-dec="1">0.0</span></div>`;
+
+  const duelHtml = duel ? `<div class="sv-duel">
+      ${duel.map((side, i)=> `${i ? '<div class="sv-vs">VS</div>' : ''}
+        <div class="sv-side" data-lead="${side.lead ? 'true' : 'false'}">
+          ${crest(side.name, side.logo, 46)}
+          <div class="sv-side-name">${esc(String(side.name || '').toUpperCase())}</div>
+          <div class="sv-side-sub">${esc(side.sub || '—')}</div>
+          ${scoreCell(side.score, 'sv-side-score')}
+        </div>`).join('')}
+    </div>` : '';
+
+  const soloHtml = solo ? `<div class="sv-solo">
+      ${crest(solo.name, solo.logo, 52)}
+      <div class="sv-solo-body">
+        <div class="sv-solo-name">${esc(String(solo.name || '').toUpperCase())}</div>
+        <div class="sv-solo-sub">${esc(solo.sub || '—')}</div>
+      </div>
+      <div class="sv-solo-score">
+        <span data-count-to="${Number(solo.score).toFixed(Number.isFinite(solo.dec) ? solo.dec : 1)}" data-count-dec="${Number.isFinite(solo.dec) ? solo.dec : 1}">0</span>
+        <span class="sv-solo-unit">${esc(solo.unit || '')}</span>
+      </div>
+    </div>` : '';
+
+  const barsHtml = bars.length ? `<div class="sv-bars">
+      ${bars.map(bar=> `<div>
+        <div class="sv-bar-head">
+          <span>${esc(bar.label || '')}</span>
+          <span class="sv-bar-val">${esc(String(bar.value == null ? '' : bar.value))}</span>
+        </div>
+        <div class="sv-bar-track">
+          <div class="sv-bar-fill" data-bar-pct="${Number(bar.pct || 0).toFixed(2)}"
+               style="--sv-bar-a:${tone.a};--sv-bar-b:${tone.b}"></div>
+        </div>
+      </div>`).join('')}
+    </div>` : '';
+
+  const statsHtml = stats.length ? `<div class="sv-stats">
+      ${stats.map(s=> `<div class="sv-stat">
+        <div class="sv-stat-label">${esc(s.label || '')}</div>
+        <div class="sv-stat-value">${esc(String(s.value == null ? '—' : s.value))}</div>
+      </div>`).join('')}
+    </div>` : '';
+
+  return `<div class="sv-panel" style="--sv-tone:${tone.text}">
+    <div class="sv-kicker">${esc(story.kicker || tone.label)}</div>
+    <h2 class="sv-headline">${esc(String(story.headline || '').toUpperCase())}</h2>
+    ${story.dek ? `<p class="sv-dek">${esc(story.dek)}</p>` : ''}
+    ${duelHtml}
+    ${soloHtml}
+    ${barsHtml}
+    ${statsHtml}
+    ${story.note ? `<div class="sv-note">${esc(story.note)}</div>` : ''}
+  </div>`;
+}
+
+/* Count the numbers up and grow the bars once the panel is on glass. Reduced
+   motion gets the final values immediately rather than a slower animation. */
+function animateStoryPanel(root){
+  if(!root) return;
+  const reduced = storyPrefersReducedMotion();
+  root.querySelectorAll('[data-count-to]').forEach(el=>{
+    const to = parseFloat(el.getAttribute('data-count-to'));
+    const dec = parseInt(el.getAttribute('data-count-dec') || '1', 10);
+    if(!Number.isFinite(to)){ el.textContent = '—'; return; }
+    const digits = Number.isFinite(dec) ? Math.max(0, dec) : 1;
+    if(reduced){ el.textContent = to.toFixed(digits); return; }
+    let started = null;
+    const step = (ts)=>{
+      if(started == null) started = ts;
+      const t = Math.min(1, (ts - started) / 760);
+      const eased = 1 - Math.pow(1 - t, 3);
+      el.textContent = (to * eased).toFixed(digits);
+      if(t < 1) requestAnimationFrame(step);
+      else el.textContent = to.toFixed(digits);
+    };
+    requestAnimationFrame(step);
+  });
+  root.querySelectorAll('[data-bar-pct]').forEach(el=>{
+    const pct = parseFloat(el.getAttribute('data-bar-pct'));
+    const width = (Number.isFinite(pct) ? Math.max(0, Math.min(100, pct)) : 0) + '%';
+    if(reduced){ el.style.width = width; return; }
+    requestAnimationFrame(()=> requestAnimationFrame(()=>{ el.style.width = width; }));
+  });
+}
+
+function renderStoryProgress(){
+  const bar = $('storyViewerProgress');
+  if(!bar) return;
+  bar.style.setProperty('--sv-dur', STORY_VIEWER_MS + 'ms');
+  bar.innerHTML = storyReel.map((_, i)=>{
+    const state = i < storyViewerIndex ? 'done' : (i === storyViewerIndex ? 'active' : 'idle');
+    return `<span class="sv-seg" data-state="${state}"><i></i></span>`;
+  }).join('');
+}
+
+function clearStoryTimer(){
+  if(storyViewerTimer){ clearTimeout(storyViewerTimer); storyViewerTimer = null; }
+}
+
+function showStory(index){
+  const stage = $('storyViewerStage');
+  const label = $('storyViewerLabel');
+  if(!stage) return;
+  if(index < 0) index = 0;
+  if(index >= storyReel.length){ closeStoryViewer(); return; }
+  storyViewerIndex = index;
+  const story = storyReel[index];
+  const tone = STORY_TONES[story.key] || STORY_TONES.mover;
+  if(label) label.textContent = 'FSN · ' + tone.label + ' · ' + (index + 1) + ' of ' + storyReel.length;
+  try{
+    stage.innerHTML = storyPanelHtml(story);
+  }catch(err){
+    console.error('[StoryViewer] Panel "' + story.key + '" failed to render; showing a plain card instead.', err);
+    stage.innerHTML = `<div class="sv-empty">This story could not be rendered. The rest of the reel is unaffected.</div>`;
+  }
+  stage.scrollTop = 0;
+  renderStoryProgress();
+  animateStoryPanel(stage);
+  clearStoryTimer();
+  storyViewerTimer = setTimeout(()=> showStory(storyViewerIndex + 1), STORY_VIEWER_MS);
+}
+
+function openStoryViewer(index){
+  const modal = $('storyViewer');
+  if(!modal || !storyReel.length) return;
+  const n = parseInt(index, 10);
+  modal.dataset.open = 'true';
+  syncBodyScrollLock();
+  showStory(Number.isInteger(n) && n >= 0 ? Math.min(n, storyReel.length - 1) : 0);
+}
+
+function closeStoryViewer(){
+  const modal = $('storyViewer');
+  clearStoryTimer();
+  if(!modal) return;
+  modal.dataset.open = 'false';
+  const stage = $('storyViewerStage');
+  if(stage) stage.innerHTML = '';
+  syncBodyScrollLock();
+}
+
+/* Delegated so the reel can be repainted on every render without rebinding. */
+document.addEventListener('click', (e)=>{
+  const ring = e.target.closest('[data-story-ring]');
+  if(!ring) return;
+  openStoryViewer(ring.getAttribute('data-story-ring'));
+});
+
+$('storyViewerClose').addEventListener('click', closeStoryViewer);
+$('storyViewer').addEventListener('click', (e)=>{
+  const nav = e.target.closest('[data-story-nav]');
+  if(!nav) return;
+  if(nav.getAttribute('data-story-nav') === 'prev'){
+    if(storyViewerIndex <= 0){ showStory(0); return; }
+    showStory(storyViewerIndex - 1);
+  } else {
+    showStory(storyViewerIndex + 1);
+  }
+});
+document.addEventListener('keydown', (e)=>{
+  const modal = $('storyViewer');
+  if(!modal || modal.dataset.open !== 'true') return;
+  if(e.key === 'Escape') closeStoryViewer();
+  else if(e.key === 'ArrowRight') showStory(storyViewerIndex + 1);
+  else if(e.key === 'ArrowLeft') showStory(Math.max(0, storyViewerIndex - 1));
+});
+
 
 /* ============================================================
    MATCHUPS
@@ -35629,6 +36519,10 @@ function setScreen(name){
     s.dataset.active = String(s.dataset.screen === name));
   document.querySelectorAll('.tab-btn').forEach(b=>
     b.dataset.active = String(b.dataset.tab === name));
+  /* Setup no longer has a tab to light up, so the header gear carries the
+     current-screen state instead. */
+  document.querySelectorAll('.gear-btn').forEach(b=>
+    b.dataset.active = String(name === 'setup'));
   window.scrollTo({ top:0, behavior:'auto' });
   renderAll();
 }

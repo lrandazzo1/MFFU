@@ -399,7 +399,7 @@ try {
       if (btn) btn.click();
       window.__fsnRender();
     });
-    await page.click('#tabBar .tab-btn[data-tab="setup"]');
+    await page.click('.screen[data-active="true"] .gear-btn');
     await page.waitForTimeout(300);
 
     await page.evaluate((id) => {
@@ -466,7 +466,7 @@ try {
   section('[6] A link about a different league');
 
   if (listenerBound && storyId) {
-    await page.click('#tabBar .tab-btn[data-tab="setup"]');
+    await page.click('.screen[data-active="true"] .gear-btn');
     await page.waitForTimeout(300);
     await page.evaluate((id) => {
       window.__fsnAppListeners.appUrlOpen({

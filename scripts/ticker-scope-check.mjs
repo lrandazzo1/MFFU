@@ -485,8 +485,12 @@ try {
 
   for (const name of SCREENS) {
     await page.evaluate((screen) => {
-      const tab = document.querySelector('[data-tab="' + screen + '"]');
-      if (tab) tab.click();
+      /* Setup has no tab since it moved behind the header gear, so it is
+         reached the way a reader reaches it: by clicking that gear. */
+      const target = screen === 'setup'
+        ? document.querySelector('.screen[data-active="true"] .gear-btn')
+        : document.querySelector('[data-tab="' + screen + '"]');
+      if (target) target.click();
     }, name);
     await page.waitForTimeout(300);
     const bounds = await page.evaluate(() => {

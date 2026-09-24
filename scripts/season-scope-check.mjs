@@ -397,7 +397,8 @@ try {
      A Sleeper season lives under its own previous_league_id, so sending this
      league's id to the ESPN season route would be asking a different platform
      about a number that means something else there. */
-  await page.click('#tabBar .tab-btn[data-tab="setup"]');
+  /* Setup moved out of the bottom nav and behind the header gear. */
+  await page.click('.screen[data-active="true"] .gear-btn');
   await page.click('#providerSleeper');
   await page.evaluate(({ sleeperId, live }) => {
     document.getElementById('leagueIdInput').value = sleeperId;
