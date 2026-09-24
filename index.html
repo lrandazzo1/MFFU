@@ -4064,6 +4064,93 @@ body.fsn-dd-lock{ overflow:hidden; }
 }
 .sv-empty{ margin-top:24px; text-align:center; font-size:12.5px; color:var(--dim); }
 
+/* ---- expanded story panels ----
+   The five dynamic story types (matchup reel, MVP, bench blunder, editorial
+   promo, matchup preview) reuse the duel / bars / stats furniture above and
+   add only what they genuinely need: a headline badge, a highlighted hero
+   block for a single player, a pulled recap sentence, an editorial excerpt
+   and the CTA that opens the full article. Nothing here is generated copy —
+   every string these classes carry was written by an existing deterministic
+   generator and is printed verbatim. */
+.sv-badge{
+  display:inline-flex; align-items:center; gap:6px; margin-top:12px;
+  padding:5px 10px; border-radius:99px;
+  border:1px solid color-mix(in srgb, var(--sv-tone,var(--cyan)) 45%, transparent);
+  background:color-mix(in srgb, var(--sv-tone,var(--cyan)) 12%, transparent);
+  color:var(--sv-tone,var(--cyan));
+  font-size:9px; font-weight:800; letter-spacing:.2em; text-transform:uppercase;
+}
+.sv-hero{
+  margin-top:18px; border-radius:16px; padding:16px 14px;
+  border:1px solid color-mix(in srgb, var(--sv-tone,var(--cyan)) 34%, var(--line));
+  background:
+    radial-gradient(130% 90% at 0% 0%, color-mix(in srgb, var(--sv-tone,var(--cyan)) 14%, transparent), transparent 62%),
+    linear-gradient(160deg,var(--panel),#0b0f16);
+}
+.sv-hero-top{ display:flex; align-items:center; gap:12px; }
+.sv-hero-top .logo, .sv-hero-top .mono-badge{ flex:none; }
+.sv-hero-id{ min-width:0; flex:1; }
+/* A player's name is the subject of the card, so it wraps to a second line
+   rather than truncating: "T. HIGGINS" is a fine ellipsis, "CHRISTIAN M…" is
+   not the point of a card about Christian McCaffrey. */
+.sv-hero-name{
+  font-family:'Anton',sans-serif; font-size:19px; line-height:1.08; text-transform:uppercase;
+  color:#eef2f8; overflow:hidden;
+  display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;
+}
+.sv-hero-sub{ margin-top:4px; font-size:11px; color:var(--dim); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.sv-hero-score{
+  flex:none; text-align:right;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+  font-variant-numeric:tabular-nums; font-size:32px; font-weight:800; line-height:1;
+  color:var(--sv-tone,var(--cyan));
+}
+.sv-hero-unit{ display:block; margin-top:5px; font-family:inherit; font-size:8.5px; letter-spacing:.16em; text-transform:uppercase; color:var(--dim); font-weight:700; }
+.sv-chips{ margin-top:12px; display:flex; flex-wrap:wrap; gap:6px; }
+.sv-chip{
+  padding:4px 9px; border-radius:99px; border:1px solid var(--line);
+  background:rgba(255,255,255,.04); color:var(--off);
+  font-size:9px; font-weight:700; letter-spacing:.13em; text-transform:uppercase;
+}
+.sv-lines{ margin-top:14px; display:flex; flex-direction:column; gap:8px; }
+.sv-line{
+  display:flex; align-items:baseline; justify-content:space-between; gap:12px;
+  border-top:1px solid var(--line); padding-top:8px;
+}
+.sv-line:first-child{ border-top:0; padding-top:0; }
+.sv-line-label{ font-size:11px; color:var(--dim); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.sv-line-value{
+  flex:0 1 auto; text-align:right; overflow-wrap:anywhere;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+  font-variant-numeric:tabular-nums; font-size:12.5px; font-weight:700; color:#dfe5ee;
+}
+.sv-quote{
+  margin-top:18px; padding:13px 14px; border-radius:13px;
+  border:1px solid var(--line); border-left:3px solid var(--sv-tone,var(--cyan));
+  background:rgba(255,255,255,.028);
+  font-size:12.5px; line-height:1.62; color:#c6cedb;
+}
+.sv-quote-src{
+  display:block; margin-top:9px;
+  font-size:8.5px; letter-spacing:.16em; text-transform:uppercase; color:var(--dim); font-weight:700;
+}
+.sv-excerpt{ margin-top:16px; font-size:12.5px; line-height:1.62; color:#c6cedb; }
+/* Above the edge tap strips on purpose: the CTA is the whole point of an
+   editorial panel, and a button the "next story" zone eats is a dead one. */
+.sv-cta{
+  position:relative; z-index:6; margin-top:18px;
+  display:inline-flex; align-items:center; gap:8px;
+  padding:11px 16px; border-radius:12px;
+  border:1px solid color-mix(in srgb, var(--sv-tone,var(--cyan)) 50%, transparent);
+  background:color-mix(in srgb, var(--sv-tone,var(--cyan)) 14%, transparent);
+  color:var(--sv-tone,var(--cyan));
+  font-size:10.5px; font-weight:800; letter-spacing:.16em; text-transform:uppercase;
+  -webkit-tap-highlight-color:transparent;
+}
+.sv-cta:active{ transform:scale(.97); }
+.sv-cta:focus-visible{ outline:2px solid var(--cyan); outline-offset:2px; }
+.sv-cta svg{ width:14px; height:14px; fill:none; stroke:currentColor; stroke-width:2.2; stroke-linecap:round; stroke-linejoin:round; }
+
 /* ============================================================
    MATCHUP OF THE WEEK — tug-of-war bar on the margin divider.
    Replaces the two hairlines that used to flank the centre stat:
@@ -26027,6 +26114,14 @@ const STORY_TONES = {
   blowout: { a:'#ff7a1a', b:'#ff2d55', glow:'rgba(255,110,26,.55)', text:'#ff8a3d', pulse:false, label:'Blowout',  sub:'OF THE WEEK' },
   fraud:   { a:'#ff2d55', b:'#ff9db1', glow:'rgba(255,45,85,.62)',  text:'#ff2d55', pulse:true,  label:'Hot Seat', sub:'FRAUD ALERT' },
   mover:   { a:'#00e0ff', b:'#d4fbff', glow:'rgba(0,224,255,.55)',  text:'#00e0ff', pulse:false, label:'Power Mover', sub:'RANKINGS' },
+  /* The five dynamic types. Each one reads an engine that already exists —
+     the week's box score, the week-scoped roster index, the Coaching
+     Efficiency board, the News Desk timeline — and prints what it finds. */
+  mvp:     { a:'#a78bfa', b:'#ede9fe', glow:'rgba(167,139,250,.55)', text:'#a78bfa', pulse:false, label:'MVP',       sub:'OF THE WEEK' },
+  blunder: { a:'#ff9f1a', b:'#ffe4b8', glow:'rgba(255,159,26,.55)',  text:'#ff9f1a', pulse:false, label:'Blunder',   sub:'ON THE BENCH' },
+  reel:    { a:'#39ff8c', b:'#d9ffe8', glow:'rgba(57,255,140,.5)',   text:'#39ff8c', pulse:false, label:'The Slate', sub:'ALL MATCHUPS' },
+  preview: { a:'#00e0ff', b:'#d4fbff', glow:'rgba(0,224,255,.5)',    text:'#00e0ff', pulse:false, label:'Preview',   sub:'WEEK AHEAD' },
+  editorial:{ a:'#ffc400', b:'#ffffff', glow:'rgba(255,196,0,.42)',  text:'#eef2f8', pulse:false, label:'Newsroom',  sub:'TOP STORIES' },
 };
 
 /* The reel the Desk last built, and where the viewer currently sits in it. */
@@ -26248,6 +26343,491 @@ function buildStoryReel(ctx){
       '; the rest of the reel is unaffected.', err);
   }
 
+  /* ---- THE DYNAMIC TYPES ----
+     Added alongside the four rings above and fenced the same way: one
+     unreadable source costs its own panel and nothing else. The News Desk
+     timeline is read once here and shared by the slate — which quotes the
+     recap already filed for each game — and by the promo cards. */
+  const articles = storyArticleSet(week);
+
+  /* PLAYER MVP OF THE WEEK. */
+  try{
+    const mvp = storyMvpPanel(ctx);
+    if(mvp) out.push(mvp);
+  }catch(err){
+    console.error('[StoryReel] The Player MVP ring failed for week ' + week +
+      '; the rest of the reel is unaffected.', err);
+  }
+
+  /* BENCH BLUNDER. */
+  try{
+    const blunder = storyBenchBlunderPanel(ctx);
+    if(blunder) out.push(blunder);
+  }catch(err){
+    console.error('[StoryReel] The Bench Blunder ring failed for week ' + week +
+      '; the rest of the reel is unaffected.', err);
+  }
+
+  /* THE SLATE: a recap card per played game, a preview card per game that has
+     not kicked off yet. */
+  try{
+    storySlatePanels(ctx, articles).forEach(panel=> out.push(panel));
+  }catch(err){
+    console.error('[StoryReel] The matchup slate failed for week ' + week +
+      '; the rest of the reel is unaffected.', err);
+  }
+
+  /* EDITORIAL PROMOS. */
+  try{
+    storyEditorialPanels(ctx, articles).forEach(panel=> out.push(panel));
+  }catch(err){
+    console.error('[StoryReel] The editorial promo cards failed for week ' + week +
+      '; the rest of the reel is unaffected.', err);
+  }
+
+  return out;
+}
+
+/* ---- SOURCE READS FOR THE DYNAMIC TYPES ----------------------------------
+   Everything below reads an engine that already exists and prints what it
+   finds. No generator is edited, no seed is touched, no article is rewritten:
+   a recap sentence is LIFTED verbatim from the deterministic story the News
+   Desk already filed for that game, and a promo card quotes the dek the same
+   generator wrote. If a source is missing the panel is dropped, never faked. */
+
+/* Article bodies carry the generator's own inline markup (<b>, <i>). The
+   viewer prints escaped text, so the tags come off first — by regex rather
+   than by parsing the string into a DOM node, which is the one way a lifted
+   sentence can never do anything but read. */
+function storyPlainText(value){
+  return String(value == null ? '' : value)
+    .replace(/<[^>]*>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#0?39;/g, '’')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/* The lead sentence, unedited. No lookbehind: iOS WebViews on older OS builds
+   reject the whole script when they meet one, which takes the entire block
+   down rather than this function. */
+function storyFirstSentence(text){
+  const clean = storyPlainText(text);
+  if(!clean) return '';
+  const match = /^[\s\S]*?[.!?](?=\s|$)/.exec(clean);
+  return (match ? match[0] : clean).trim();
+}
+
+function storyTruncate(text, max){
+  const clean = storyPlainText(text);
+  const cap = Number(max) || 180;
+  if(clean.length <= cap) return clean;
+  const cut = clean.slice(0, cap);
+  const space = cut.lastIndexOf(' ');
+  return (space > cap * 0.6 ? cut.slice(0, space) : cut).replace(/[\s,;:.–—-]+$/, '') + '…';
+}
+
+function storyViewedSeason(){
+  const typed = parseInt(($('seasonYear') ? $('seasonYear').value : '') || '', 10);
+  if(typed) return typed;
+  return Number(uiActiveSeasonYear()) || 0;
+}
+
+/* The week's deterministic stories, read once and shared by the matchup reel
+   (which quotes the recap filed for each game) and the editorial promos. */
+/* The desks whose stories are post-game write-ups of one game. A played game
+   quotes one of these before it quotes anything else, so a final never leads
+   with the sentence a pre-game preview opened the week with. */
+const STORY_RECAP_KINDS = { recap:true, heartbreak:true, shootout:true, bench:true };
+
+function storyArticleSet(week){
+  let list = [];
+  try{
+    list = newsList() || [];
+  }catch(err){
+    console.error('[StoryReel] the News Desk timeline could not be read for week ' + week +
+      '; the reel runs without recap sentences or promo cards.', err);
+    return { list:[], bySubject:{}, recapBySubject:{} };
+  }
+  const bySubject = {};
+  const recapBySubject = {};
+  /* Highest priority wins, and an exact tie falls to the lower id so two
+     repaints of the same week can never quote two different sentences. */
+  const claim = (map, key, a)=>{
+    const prev = map[key];
+    const p = Number(a.priority) || 0;
+    const prevP = prev ? (Number(prev.priority) || 0) : -Infinity;
+    if(!prev || p > prevP || (p === prevP && String(a.id) < String(prev.id))) map[key] = a;
+  };
+  list.forEach(a=>{
+    if(!a || a.custom) return;
+    const key = String(a.gameSubjectKey || '');
+    if(!key) return;
+    claim(bySubject, key, a);
+    if(STORY_RECAP_KINDS[String(a.kind || '')]) claim(recapBySubject, key, a);
+  });
+  return { list, bySubject, recapBySubject };
+}
+
+function storyGameSubjectKey(game){
+  if(!game || !game.homeTeam || !game.awayTeam) return '';
+  return [String(game.homeTeam.id), String(game.awayTeam.id)].sort().join('__');
+}
+
+function storyCta(article, label){
+  if(!article || !article.id) return null;
+  return { articleId:String(article.id), label:label || 'Read the full story' };
+}
+
+/* ---- THE SLATE: ALL MATCHUPS, RECAP OR PREVIEW ----------------------------------------------------
+   One panel per game on the board. A game that has kicked off is a recap, and
+   a game that has not is a preview — which is the whole of "preview mode":
+   the same reel, routed on what the scoreboard actually knows. */
+function storySlatePanels(ctx, articles){
+  const out = [];
+  const week = (ctx && ctx.week) || 0;
+  const all = (ctx && Array.isArray(ctx.games)) ? ctx.games : [];
+  const games = all.filter(g=> g && g.homeTeam && g.awayTeam);
+  if(!games.length) return out;
+
+  /* The reader's own matchup leads the reel, exactly as it leads the Desk's
+     Around the League rows, then the rest of the board in board order. */
+  const ordered = games.filter(g=> gameHasActiveTeam(g))
+    .concat(games.filter(g=> !gameHasActiveTeam(g)));
+
+  ordered.forEach((g, idx)=>{
+    try{
+      const st = gameStatus(g);
+      const position = (idx + 1) + ' of ' + ordered.length;
+      const panel = st === 'pre'
+        ? storyPreviewPanel(g, week, position, articles)
+        : storyRecapPanel(g, week, st, position, articles);
+      if(panel) out.push(panel);
+    }catch(err){
+      console.error('[StoryReel] the slate panel for ' +
+        String(g.awayTeam && g.awayTeam.name) + ' at ' + String(g.homeTeam && g.homeTeam.name) +
+        ' failed in week ' + week + '; the rest of the reel is unaffected.', err);
+    }
+  });
+
+  if(out.length){
+    const previews = out.filter(p=> p.key === 'preview').length;
+    const lead = out[0];
+    lead.ring = true;
+    lead.ringLabel = previews === out.length ? 'Previews' : 'The Slate';
+    lead.ringSub = out.length + (previews === out.length ? ' PREVIEW' : ' MATCHUP') + (out.length === 1 ? '' : 'S');
+  }
+  return out;
+}
+
+function storyRecapPanel(g, week, status, position, articles){
+  const hs = actualOf(g, 'home'), as = actualOf(g, 'away');
+  if(hs == null || as == null) return null;
+  const total = hs + as;
+  const margin = Math.abs(hs - as);
+  const homeLeads = hs >= as;
+  const final = status === 'final';
+  const key = storyGameSubjectKey(g);
+  /* The desk's own post-game file on this game when it has filed one. Until it
+     does — the Desk covers week N's board and week N-1's postgame — the card
+     falls back to whatever story IS about this game, credited by the tag the
+     generator stamped on it, so the reader can see which file the line is
+     from rather than being told a preview is a recap. */
+  const recap = (articles && articles.recapBySubject[key]) || null;
+  const article = recap || (articles && articles.bySubject[key]) || null;
+  /* The sentence is the generator's, printed as it was filed. Its lead
+     paragraph is the recap; the dek is the fallback when a story carries no
+     body, and nothing is written here when it carries neither. */
+  const sentence = article
+    ? storyFirstSentence((Array.isArray(article.paragraphs) && article.paragraphs[0]) || article.dek)
+    : '';
+
+  return {
+    key:'reel',
+    ring:false,
+    avatar:{ name:(homeLeads ? g.homeTeam : g.awayTeam).name, logo:(homeLeads ? g.homeTeam : g.awayTeam).logo },
+    kicker:(final ? 'Matchup Recap' : 'Live Matchup') + ' · Week ' + week + ' · ' + position,
+    headline:String(g.awayTeam.name || '') + ' vs ' + String(g.homeTeam.name || ''),
+    dek:final
+      ? marginTierLabel(margin) + ' — ' + n1(margin) + ' points separated them on ' + n1(total) + ' combined.'
+      : 'Still on the clock. These are the points posted so far, not a final.',
+    duel:[
+      { name:g.awayTeam.name, logo:g.awayTeam.logo, sub:g.awayTeam.owner || '', score:as, lead:as >= hs },
+      { name:g.homeTeam.name, logo:g.homeTeam.logo, sub:g.homeTeam.owner || '', score:hs, lead:homeLeads },
+    ],
+    bars:[
+      { label:String(g.awayTeam.abbrev || g.awayTeam.name || 'Away') + ' share', value:n1(as), pct:storyPct(as, total) },
+      { label:String(g.homeTeam.abbrev || g.homeTeam.name || 'Home') + ' share', value:n1(hs), pct:storyPct(hs, total) },
+    ],
+    stats:[
+      { label:'Margin', value:n1(margin) },
+      { label:'Combined', value:n1(total) },
+    ],
+    quote:sentence ? { text:sentence, source:'FSN News Desk · ' + String(article.tag || 'Matchup Recap') } : null,
+    cta:storyCta(article, recap ? 'Read the recap' : 'Read the full story'),
+    note:final
+      ? null
+      : 'Not final until the last starter is off the field — these numbers still move.',
+  };
+}
+
+function storyPreviewPanel(g, week, position, articles){
+  const A = g.awayTeam, B = g.homeTeam;
+  /* The Desk's own pre-game file on this game, when it wrote one. */
+  const article = (articles && articles.bySubject[storyGameSubjectKey(g)]) || null;
+  const projAway = projectedOf(g, 'away');
+  const projHome = projectedOf(g, 'home');
+
+  /* The model lean, read from the same FSNIntel function the News Desk's
+     preview article prints. It is this app's number, not a figure the ESPN
+     payload publishes, and the panel says so rather than dressing it up. */
+  let probAway = null;
+  try{
+    const p = Number(FSNIntel.winProbability(week - 1, A, B));
+    if(Number.isFinite(p)) probAway = Math.max(0, Math.min(100, p));
+  }catch(err){
+    console.warn('[StoryReel] no win projection available for ' + String(A && A.name) +
+      ' at ' + String(B && B.name) + ' in week ' + week + '.', err);
+    probAway = null;
+  }
+
+  /* Historical head-to-head, fenced to everything BEFORE this week so a
+     preview can never quote a result the reader has not seen yet. */
+  let h2h = null;
+  try{
+    if(A.ownerId && B.ownerId){
+      h2h = window.getH2HAsOf(A.ownerId, B.ownerId, storyViewedSeason(), Number(week) - 1);
+    }
+  }catch(err){
+    console.warn('[StoryReel] the all-time series for ' + String(A && A.name) + ' vs ' +
+      String(B && B.name) + ' could not be read.', err);
+    h2h = null;
+  }
+
+  const bars = [];
+  if(probAway != null){
+    bars.push({ label:String(A.abbrev || A.name || 'Away') + ' win projection', value:Math.round(probAway) + '%', pct:probAway });
+    bars.push({ label:String(B.abbrev || B.name || 'Home') + ' win projection', value:Math.round(100 - probAway) + '%', pct:100 - probAway });
+  }
+  if(projAway != null && projHome != null){
+    const projTotal = projAway + projHome;
+    bars.push({ label:'Projected share', value:n1(projAway) + ' / ' + n1(projHome), pct:storyPct(projAway, projTotal) });
+  }
+
+  const lines = [];
+  if(h2h){
+    lines.push({ label:'All-time series', value:h2h.meetingCount
+      ? (String(A.abbrev || A.name) + ' ' + h2h.winsFor + '–' + h2h.winsAgainst + (h2h.ties ? '–' + h2h.ties : ''))
+      : 'First meeting' });
+    if(h2h.lastMeeting){
+      lines.push({ label:'Last meeting', value:'W' + h2h.lastMeeting.week + ' ' + h2h.lastMeeting.year + ' · ' +
+        n1(h2h.lastMeeting.scoreFor) + '–' + n1(h2h.lastMeeting.scoreAgainst) });
+    }
+    if(h2h.meetingCount){
+      lines.push({ label:'Series points', value:n1(h2h.pointsFor) + ' – ' + n1(h2h.pointsAgainst) });
+    }
+    if(h2h.streakCount > 1 && h2h.streakOwnerId){
+      lines.push({ label:'Current streak', value:(h2h.streakOwnerId === A.ownerId ? String(A.abbrev || A.name) : String(B.abbrev || B.name)) +
+        ' won ' + h2h.streakCount + ' straight' });
+    }
+  }
+
+  const favorite = probAway == null ? null : (probAway >= 50 ? A : B);
+  const edge = probAway == null ? null : Math.round(probAway >= 50 ? probAway : 100 - probAway);
+
+  return {
+    key:'preview',
+    ring:false,
+    avatar:{ name:(favorite || B).name, logo:(favorite || B).logo },
+    kicker:'Matchup Preview · Week ' + week + ' · ' + position,
+    headline:String(A.name || '') + ' vs ' + String(B.name || ''),
+    dek:favorite
+      ? String(favorite.name) + ' walks in a ' + edge + '% favorite. Nothing has been scored yet.'
+      : 'Nothing has been scored yet. These are the projections the board opens with.',
+    duel:[
+      { name:A.name, logo:A.logo, sub:A.owner || '', score:null, lead:false },
+      { name:B.name, logo:B.logo, sub:B.owner || '', score:null, lead:false },
+    ],
+    bars:bars,
+    stats:[
+      { label:String(A.abbrev || A.name || 'Away') + ' projected', value:projAway == null ? '—' : n1(projAway) },
+      { label:String(B.abbrev || B.name || 'Home') + ' projected', value:projHome == null ? '—' : n1(projHome) },
+    ],
+    lines:lines,
+    cta:storyCta(article, 'Read the preview'),
+    note:'Projected totals are the provider’s. The win projection is this app’s model lean from power rating, scoring average and the all-time series — not a prediction.',
+  };
+}
+
+/* ---- PLAYER MVP OF THE WEEK -------------------------------------------
+   The single highest-scoring STARTER anywhere in the league this week, read
+   from the same week-scoped roster index the Local Read is written from. */
+function storyMvpPanel(ctx){
+  const week = (ctx && ctx.week) || 0;
+  const index = FSNLocalDesk.roster(week);
+  const rows = (index && Array.isArray(index.rows)) ? index.rows : [];
+  const starters = rows.filter(r=> r && !r.bench && Number.isFinite(Number(r.points)));
+  if(!starters.length) return null;
+
+  /* Points first, then the compact name key, so the ordering is total and the
+     same player wins on every repaint of the same week. */
+  const mvp = starters.slice().sort((a, b)=>
+    (Number(b.points) - Number(a.points)) || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))[0];
+  if(!mvp || !(Number(mvp.points) > 0)) return null;
+
+  const owner = mvp.owner || {};
+  const teamStarters = (index.byTeam && index.byTeam[String(owner.teamId)] || [])
+    .filter(r=> r && !r.bench && Number.isFinite(Number(r.points)));
+  const teamTotal = teamStarters.reduce((sum, r)=> sum + Number(r.points), 0);
+  const runnerUp = starters.filter(r=> r.key !== mvp.key)
+    .sort((a, b)=> Number(b.points) - Number(a.points))[0] || null;
+
+  const chips = [mvp.pos, mvp.proTeam, 'WEEK ' + week].filter(Boolean);
+  const lines = [
+    { label:'Manager', value:owner.manager || owner.teamName || '—' },
+    { label:'Fantasy team', value:owner.teamName || '—' },
+  ];
+  if(runnerUp){
+    lines.push({ label:'Next best starter', value:String(runnerUp.name) + ' · ' + n1(runnerUp.points) });
+  }
+
+  return {
+    key:'mvp',
+    ring:true,
+    avatar:{ name:owner.teamName || mvp.name, logo:owner.logo || '' },
+    badge:'MVP of the Week',
+    kicker:'Player MVP · Week ' + week,
+    headline:String(mvp.name || ''),
+    dek:'The highest-scoring starter on any roster in the league this week.',
+    hero:{
+      name:mvp.name,
+      logo:owner.logo || '',
+      sub:[mvp.pos, mvp.proTeam, owner.teamName].filter(Boolean).join(' · '),
+      score:Number(mvp.points),
+      dec:1,
+      unit:'points',
+    },
+    chips:chips,
+    bars:teamTotal > 0 ? [
+      { label:'Share of ' + String(owner.teamName || 'the lineup') + '’s starters',
+        value:n1(mvp.points) + ' / ' + n1(teamTotal), pct:storyPct(mvp.points, teamTotal) },
+    ] : [],
+    stats:[
+      { label:'Position', value:mvp.pos || '—' },
+      { label:'Points', value:n1(mvp.points) },
+    ],
+    lines:lines,
+    note:mvp.statLine
+      ? String(mvp.name) + ': ' + mvp.statLine + '.'
+      : 'Started, not stashed — bench points are counted on their own card.',
+  };
+}
+
+/* ---- BENCH BLUNDER ----------------------------------------------------
+   The largest starter-versus-bench disparity on the board, read straight off
+   the Coaching Efficiency board the News Desk already builds for the week. */
+function storyBenchBlunderPanel(ctx){
+  const week = (ctx && ctx.week) || 0;
+  const wc = NewsDesk.weekContext(week);
+  const board = (wc && Array.isArray(wc.lineupBoard)) ? wc.lineupBoard : [];
+  let worst = null;
+  board.forEach(row=>{
+    const r = row && row.roster;
+    if(!r || !r.topBench || !r.worstStarter) return;
+    const swing = Number(r.topBench.points) - Number(r.worstStarter.points);
+    if(!Number.isFinite(swing) || swing <= 0) return;
+    const better = !worst || swing > worst.swing ||
+      (swing === worst.swing && Number(row.wasted) > Number(worst.row.wasted)) ||
+      (swing === worst.swing && Number(row.wasted) === Number(worst.row.wasted) &&
+        String(row.team.name) < String(worst.row.team.name));
+    if(better) worst = { row, swing };
+  });
+  if(!worst) return null;
+
+  const row = worst.row;
+  const r = row.roster;
+  const bench = r.topBench;
+  const starter = r.worstStarter;
+  const benchTotal = Number(r.benchTotal) || 0;
+  const wasted = Number(row.wasted) || 0;
+  const pair = Number(bench.points) + Number(starter.points);
+
+  return {
+    key:'blunder',
+    ring:true,
+    avatar:{ name:row.team.name, logo:row.team.logo },
+    badge:'Bench Blunder',
+    kicker:'Bench Blunder · Week ' + week,
+    headline:String(row.team.name || ''),
+    dek:String(bench.name) + ' outscored ' + String(starter.name) + ' by ' + n1(worst.swing) +
+      ' from the bench, and only one of them was in the lineup.',
+    hero:{
+      name:bench.name,
+      logo:row.team.logo,
+      sub:[bench.pos, 'BENCH', String(row.team.name)].filter(Boolean).join(' · '),
+      score:Number(bench.points),
+      dec:1,
+      unit:'points on the bench',
+    },
+    chips:[row.team.abbrev || row.team.name, 'WEEK ' + week, row.fatal ? 'COST THE GAME' : 'NOT DECISIVE'].filter(Boolean),
+    bars:[
+      { label:String(bench.name) + ' (benched)', value:n1(bench.points), pct:storyPct(bench.points, pair) },
+      { label:String(starter.name) + ' (started)', value:n1(starter.points), pct:storyPct(starter.points, pair) },
+      ...(row.optimalScore > 0
+        ? [{ label:'Lineup efficiency', value:Math.round(Number(row.efficiency) || 0) + '%', pct:Math.max(0, Math.min(100, Number(row.efficiency) || 0)) }]
+        : []),
+    ],
+    stats:[
+      { label:'Left on the bench', value:n1(benchTotal) },
+      { label:'Optimal lineup cost', value:n1(wasted) },
+    ],
+    lines:[
+      { label:'Started', value:String(starter.name) + ' · ' + n1(starter.points) },
+      { label:'Benched', value:String(bench.name) + ' · ' + n1(bench.points) },
+      { label:'Actual / optimal', value:n1(row.actualScore) + ' / ' + n1(row.optimalScore) },
+      { label:'Result', value:n1(row.teamScore) + '–' + n1(row.opponentScore) + ' ' + (row.won ? 'W' : row.lost ? 'L' : '—') },
+    ],
+    note:row.fatal
+      ? 'The optimal card wins this game. ' + n1(wasted) + ' points of it stayed on the bench.'
+      : 'Points left on the bench do not count. This week they did not decide it either.',
+  };
+}
+
+/* ---- EDITORIAL PROMOS -------------------------------------------------
+   The Desk's own lead stories, promoted into the reel with the category badge
+   the generator already stamped and the dek it already wrote. Nothing is
+   re-worded; the excerpt is the dek, trimmed on a word boundary. */
+function storyEditorialPanels(ctx, articles){
+  const week = (ctx && ctx.week) || 0;
+  const source = (articles && Array.isArray(articles.list)) ? articles.list : [];
+  if(!source.length) return [];
+  const list = prioritizeStateOfLeague(source).slice(0, 3);
+  const out = [];
+  list.forEach((a, idx)=>{
+    if(!a || !a.id) return;
+    const excerpt = storyTruncate(a.dek || (Array.isArray(a.paragraphs) ? a.paragraphs[0] : ''), 190);
+    out.push({
+      key:'editorial',
+      ring:idx === 0,
+      ringLabel:'Newsroom',
+      ringSub:list.length + ' STORIES',
+      avatar:a.crest ? { name:a.crest.name, logo:a.crest.logo } : { name:'FSN', logo:'assets/icon.svg' },
+      badge:String(a.tag || 'FSN Desk'),
+      toneColor:toneVar(a.tone),
+      kicker:'From the News Desk · Week ' + week,
+      headline:storyPlainText(a.headline),
+      excerpt:excerpt,
+      cta:storyCta(a, 'Open the full story'),
+      /* Longer on glass than a stat panel: a promo the reader cannot finish
+         reading before it advances is a promo they never tap. */
+      dwell:11000,
+      note:[a.byline, a.dateline].filter(Boolean).join(' · '),
+    });
+  });
   return out;
 }
 
@@ -26264,17 +26844,26 @@ function renderStoryReel(list){
     return;
   }
   wrap.classList.remove('hidden');
+  /* A reel type can run to many panels — the slate is one card per game, the
+     newsroom one per promoted story — and a ring each would bury the four
+     original rings under a wall of duplicates. Only a lead panel takes a ring
+     (`ring !== false`); the rest are reached by tapping through the viewer,
+     and a ring's index is its position in the FULL reel so opening it lands on
+     the right panel. */
   track.innerHTML = storyReel.map((story, idx)=>{
+    if(story.ring === false) return '';
     const tone = STORY_TONES[story.key] || STORY_TONES.mover;
     const avatar = story.avatar || {};
+    const label = story.ringLabel || tone.label;
+    const sub = story.ringSub || tone.sub;
     return `<button type="button" class="sr-item" data-story-ring="${idx}"
-              aria-label="${storyAttr(tone.label + ' \u2014 ' + (story.headline || ''))}">
+              aria-label="${storyAttr(label + ' \u2014 ' + (story.headline || ''))}">
       <span class="sr-ring" data-pulse="${tone.pulse ? 'true' : 'false'}"
             style="--sr-a:${tone.a};--sr-b:${tone.b};--sr-glow:${tone.glow}">
-        <span class="sr-core">${crest(avatar.name || tone.label, avatar.logo, 53)}</span>
+        <span class="sr-core">${crest(avatar.name || label, avatar.logo, 53)}</span>
       </span>
-      <span class="sr-label" style="color:${tone.text}">${esc(tone.label)}</span>
-      <span class="sr-sub">${esc(tone.sub)}</span>
+      <span class="sr-label" style="color:${tone.text}">${esc(label)}</span>
+      <span class="sr-sub">${esc(sub)}</span>
     </button>`;
   }).join('');
 }
@@ -26282,10 +26871,19 @@ function renderStoryReel(list){
 /* ---- VIEWER -------------------------------------------------------------- */
 function storyPanelHtml(story){
   const tone = STORY_TONES[story.key] || STORY_TONES.mover;
+  /* An editorial promo wears the tone the generator stamped on the story it
+     promotes, so its badge matches the badge on the same story's card in TOP
+     STORIES. Every other panel keeps its own type's colour. */
+  const accent = story.toneColor || tone.text;
   const duel = Array.isArray(story.duel) ? story.duel : null;
   const solo = story.solo || null;
+  const hero = story.hero || null;
   const bars = Array.isArray(story.bars) ? story.bars : [];
   const stats = Array.isArray(story.stats) ? story.stats : [];
+  const lines = Array.isArray(story.lines) ? story.lines : [];
+  const chips = Array.isArray(story.chips) ? story.chips.filter(Boolean) : [];
+  const quote = story.quote && story.quote.text ? story.quote : null;
+  const cta = story.cta && story.cta.articleId ? story.cta : null;
 
   const scoreCell = (value, cls)=> value == null
     ? `<div class="${cls}">—</div>`
@@ -26299,6 +26897,28 @@ function storyPanelHtml(story){
           <div class="sv-side-sub">${esc(side.sub || '—')}</div>
           ${scoreCell(side.score, 'sv-side-score')}
         </div>`).join('')}
+    </div>` : '';
+
+  const chipsHtml = chips.length
+    ? `<div class="sv-chips">${chips.map(c=> `<span class="sv-chip">${esc(String(c))}</span>`).join('')}</div>`
+    : '';
+
+  /* The highlighted single-subject block the MVP and Bench Blunder cards are
+     built around: one crest, one name, one number, and the chips that qualify
+     it (position, pro team, the week). */
+  const heroHtml = hero ? `<div class="sv-hero">
+      <div class="sv-hero-top">
+        ${crest(hero.name, hero.logo, 46)}
+        <div class="sv-hero-id">
+          <div class="sv-hero-name">${esc(String(hero.name || '').toUpperCase())}</div>
+          <div class="sv-hero-sub">${esc(hero.sub || '\u2014')}</div>
+        </div>
+        <div class="sv-hero-score">
+          <span data-count-to="${Number(hero.score).toFixed(Number.isFinite(hero.dec) ? hero.dec : 1)}" data-count-dec="${Number.isFinite(hero.dec) ? hero.dec : 1}">0</span>
+          <span class="sv-hero-unit">${esc(hero.unit || '')}</span>
+        </div>
+      </div>
+      ${chipsHtml}
     </div>` : '';
 
   const soloHtml = solo ? `<div class="sv-solo">
@@ -26333,14 +26953,40 @@ function storyPanelHtml(story){
       </div>`).join('')}
     </div>` : '';
 
-  return `<div class="sv-panel" style="--sv-tone:${tone.text}">
+  const linesHtml = lines.length ? `<div class="sv-lines">
+      ${lines.map(l=> `<div class="sv-line">
+        <span class="sv-line-label">${esc(l.label || '')}</span>
+        <span class="sv-line-value">${esc(String(l.value == null ? '\u2014' : l.value))}</span>
+      </div>`).join('')}
+    </div>` : '';
+
+  /* Lifted verbatim from the deterministic story the News Desk already filed
+     for this game, and credited to it. Nothing is re-worded here. */
+  const quoteHtml = quote ? `<div class="sv-quote">${esc(quote.text)}${
+      quote.source ? `<span class="sv-quote-src">${esc(quote.source)}</span>` : ''}</div>` : '';
+
+  const excerptHtml = story.excerpt ? `<p class="sv-excerpt">${esc(story.excerpt)}</p>` : '';
+
+  const ctaHtml = cta ? `<button type="button" class="sv-cta" data-story-article="${storyAttr(cta.articleId)}">
+      ${esc(cta.label || 'Read the full story')}
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13"></path><path d="M12 5l7 7-7 7"></path></svg>
+    </button>` : '';
+
+  return `<div class="sv-panel" style="--sv-tone:${accent}">
     <div class="sv-kicker">${esc(story.kicker || tone.label)}</div>
+    ${story.badge ? `<div class="sv-badge">${esc(String(story.badge).toUpperCase())}</div>` : ''}
     <h2 class="sv-headline">${esc(String(story.headline || '').toUpperCase())}</h2>
     ${story.dek ? `<p class="sv-dek">${esc(story.dek)}</p>` : ''}
     ${duelHtml}
     ${soloHtml}
+    ${heroHtml}
+    ${hero ? '' : chipsHtml}
+    ${quoteHtml}
+    ${excerptHtml}
     ${barsHtml}
     ${statsHtml}
+    ${linesHtml}
+    ${ctaHtml}
     ${story.note ? `<div class="sv-note">${esc(story.note)}</div>` : ''}
   </div>`;
 }
@@ -26375,10 +27021,11 @@ function animateStoryPanel(root){
   });
 }
 
-function renderStoryProgress(){
+function renderStoryProgress(duration){
   const bar = $('storyViewerProgress');
   if(!bar) return;
-  bar.style.setProperty('--sv-dur', STORY_VIEWER_MS + 'ms');
+  const dur = Number(duration) > 0 ? Number(duration) : STORY_VIEWER_MS;
+  bar.style.setProperty('--sv-dur', dur + 'ms');
   bar.innerHTML = storyReel.map((_, i)=>{
     const state = i < storyViewerIndex ? 'done' : (i === storyViewerIndex ? 'active' : 'idle');
     return `<span class="sv-seg" data-state="${state}"><i></i></span>`;
@@ -26398,7 +27045,10 @@ function showStory(index){
   storyViewerIndex = index;
   const story = storyReel[index];
   const tone = STORY_TONES[story.key] || STORY_TONES.mover;
-  if(label) label.textContent = 'FSN · ' + tone.label + ' · ' + (index + 1) + ' of ' + storyReel.length;
+  /* A promo card carries more to read than a stat panel, so a type may ask for
+     longer on glass. Everything else keeps the reel's cadence. */
+  const dwell = Number(story.dwell) > 0 ? Number(story.dwell) : STORY_VIEWER_MS;
+  if(label) label.textContent = 'FSN · ' + (story.ringLabel || tone.label) + ' · ' + (index + 1) + ' of ' + storyReel.length;
   try{
     stage.innerHTML = storyPanelHtml(story);
   }catch(err){
@@ -26406,10 +27056,10 @@ function showStory(index){
     stage.innerHTML = `<div class="sv-empty">This story could not be rendered. The rest of the reel is unaffected.</div>`;
   }
   stage.scrollTop = 0;
-  renderStoryProgress();
+  renderStoryProgress(dwell);
   animateStoryPanel(stage);
   clearStoryTimer();
-  storyViewerTimer = setTimeout(()=> showStory(storyViewerIndex + 1), STORY_VIEWER_MS);
+  storyViewerTimer = setTimeout(()=> showStory(storyViewerIndex + 1), dwell);
 }
 
 function openStoryViewer(index){
@@ -26440,6 +27090,20 @@ document.addEventListener('click', (e)=>{
 
 $('storyViewerClose').addEventListener('click', closeStoryViewer);
 $('storyViewer').addEventListener('click', (e)=>{
+  /* The CTA is checked before the tap zones: a promo card exists to be opened,
+     and a button the "next story" strip swallows is a dead one. The viewer
+     closes first because the reader sits below it in the stack. */
+  const cta = e.target.closest('[data-story-article]');
+  if(cta){
+    const articleId = cta.getAttribute('data-story-article');
+    closeStoryViewer();
+    try{
+      openReader(articleId);
+    }catch(err){
+      console.error('[StoryViewer] the reel CTA could not open article "' + articleId + '".', err);
+    }
+    return;
+  }
   const nav = e.target.closest('[data-story-nav]');
   if(!nav) return;
   if(nav.getAttribute('data-story-nav') === 'prev'){
