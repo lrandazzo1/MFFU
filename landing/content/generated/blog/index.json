@@ -1,7 +1,33 @@
 {
-  "generatedAt": "2026-09-24T02:34:51.652Z",
-  "count": 4,
+  "generatedAt": "2026-09-24T03:07:11.925Z",
+  "count": 5,
   "posts": [
+    {
+      "title": "Week 4 is where the noise starts to clear",
+      "slug": "week-4-signal-and-noise",
+      "publishDate": "2026-09-24",
+      "category": "Analysis",
+      "excerpt": "Three weeks is enough to trust how a player is being used. It is not enough to trust what he did with it. Here is how to tell the two apart before you make a move you cannot take back.",
+      "author": "FSN Desk",
+      "entityCount": 3,
+      "tracked_players": [
+        {
+          "name": "Bijan Robinson",
+          "position": "RB",
+          "sleeperPlayerId": "8138"
+        },
+        {
+          "name": "Puka Nacua",
+          "position": "WR",
+          "sleeperPlayerId": "9493"
+        },
+        {
+          "name": "Sam LaPorta",
+          "position": "TE",
+          "sleeperPlayerId": "9502"
+        }
+      ]
+    },
     {
       "title": "Week 1 delivered a scorigami, a rushing record, and two nail biters",
       "slug": "nfl-week-1-recap-record-breaking-openers",
