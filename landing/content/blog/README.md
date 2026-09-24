@@ -176,13 +176,27 @@ article on `/blog`. **`/blog` is file backed**: it serves the payload
 `npm run build:blog` compiles out of this directory. Committing the source file
 is what publishes.
 
-### Verifying the live path
+### Where the live path actually runs
 
 The development container denies `api.sleeper.app` at its egress proxy, so a run
-there reports "no verified source" and writes nothing. The
-**Public editorial generator** workflow (`.github/workflows/generate-editorial.yml`,
-run it by hand) exercises the live read on a GitHub runner, prints the generated
-Markdown into the run summary, and uploads it as an artifact. It does not commit.
+there reports "no verified source" and writes nothing. The live read happens on
+a GitHub runner, in the **Public editorial generator** workflow
+(`.github/workflows/generate-editorial.yml`).
+
+It runs itself every Tuesday at 13:00 UTC (09:00 ET on EDT), between the Monday
+night final and the midweek claim deadline, which is when a 24 hour add count
+says the most. A successful run commits the source file and the compiled payload
+together and pushes to the default branch, so the article is live without anyone
+touching it. It also prints the generated Markdown into the run summary and
+uploads it as an artifact.
+
+Dispatch it by hand to publish off schedule. `commit` and `publish_supabase`
+both default on; turning `commit` off makes the run a preview of exactly what a
+committing run would publish, with the Markdown still in the summary.
+
+Nothing publishes when nothing verifies. An unreachable Sleeper, an offseason
+week or a board too thin to stand up all write no file, the commit step finds an
+empty index and says so, and the run is green with no article.
 
 `--player` is optional and repeatable. A supplied player must appear in the
 selected public item or generation fails, preventing ghost entities. When no

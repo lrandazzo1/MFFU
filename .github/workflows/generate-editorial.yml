@@ -1,25 +1,47 @@
-# Live verification for the public editorial generator.
+# The public editorial generator, on autopilot.
 #
 # scripts/generate-editorial.mjs reads Sleeper's free public API. That API is
 # unauthenticated, so this workflow needs no secret to do the interesting part,
 # but it does need outbound network: the development container this repo is
 # usually worked in denies api.sleeper.app at its egress proxy, so a run there
 # reports "no verified source" and writes nothing. A GitHub runner can reach it.
-# This is where the live path is exercised.
+# This is where the live path runs.
 #
-# It deliberately does NOT commit. The generated source file is uploaded as an
-# artifact and printed into the run summary so it can be read before it becomes
-# a public page. Putting an article on /blog is still the ordinary two steps:
-# commit the file into landing/content/blog/, and let the landing deploy serve
-# the payload `npm run build:blog` compiled.
+# A successful run publishes. It commits the generated source file together
+# with the payload `npm run build:blog` compiled from it, and pushes to the
+# branch the run started from, which for the schedule is the default branch.
+# The landing deploy then serves the new article. The generated Markdown is
+# also printed into the run summary and uploaded as an artifact either way, so
+# a dispatch with `commit` off is a safe preview of exactly what a committing
+# run would publish.
 #
-# Optional repository secrets (only for the Supabase half):
+# The source file and the compiled payload are committed together on purpose.
+# The payload is what /blog actually reads, it is source controlled because the
+# landing project runs no build step, and `npm run check:blog` (first in
+# `npm run verify`) fails on drift between the two. Committing one without the
+# other would leave the default branch failing its own check.
+#
+# There is no "publish nothing" failure mode to worry about. If Sleeper is
+# unreachable, reports an offseason week, or resolves to too few usable players
+# for a board, the generator writes nothing and exits clean, the commit step
+# finds an empty index and says so, and the run is green with no article. That
+# is the designed outcome, not a failure to chase.
+#
+# Repository secrets (for the Supabase half):
 #   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
-# With either missing the generator says so and still writes the source file.
+# With either missing the generator says so and still writes the source file,
+# so a repo that has not set them still publishes to /blog.
 
 name: Public editorial generator
 
 on:
+  # Tuesday 13:00 UTC, which is 09:00 ET while the season is on EDT. Tuesday
+  # because the waiver board is read between the Monday night final and the
+  # midweek claim deadline, which is when a 24 hour add count says the most.
+  # It is three hours before the league recap run in generate-articles.yml
+  # (Tuesday 08:00 UTC), so the two never contend for the same runner minute.
+  schedule:
+    - cron: '0 13 * * 2'
   workflow_dispatch:
     inputs:
       mode:
@@ -31,10 +53,17 @@ on:
       publish_supabase:
         description: Also upsert the global row into blog_articles (league_id null).
         type: boolean
-        default: false
+        default: true
+      commit:
+        description: Commit and push the generated article and the compiled payload.
+        type: boolean
+        default: true
 
+# contents: write so a successful run can push the article it generated. The
+# commit step is the only thing that needs it, and it runs after the blog build
+# and its checks have both passed.
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: generate-editorial
@@ -57,15 +86,37 @@ jobs:
       - name: Install
         run: npm ci
 
+      # A scheduled run carries no inputs at all, so every one of them needs a
+      # fallback here rather than relying on the `default:` above, which only
+      # applies to a dispatch. `github.event_name == 'schedule' ||` is the
+      # autopilot default: on, unless a dispatch explicitly turned it off.
+      - name: Resolve the run's settings
+        id: settings
+        env:
+          INPUT_MODE: ${{ inputs.mode }}
+          INPUT_SUPABASE: ${{ github.event_name == 'schedule' || inputs.publish_supabase }}
+          INPUT_COMMIT: ${{ github.event_name == 'schedule' || inputs.commit }}
+        run: |
+          set -euo pipefail
+          {
+            echo "mode=${INPUT_MODE:-sleeper}"
+            echo "publish_supabase=${INPUT_SUPABASE}"
+            echo "commit=${INPUT_COMMIT}"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Generate from the live source
         env:
-          MODE: ${{ inputs.mode }}
-          SUPABASE_URL: ${{ inputs.publish_supabase && secrets.SUPABASE_URL || '' }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ inputs.publish_supabase && secrets.SUPABASE_SERVICE_ROLE_KEY || '' }}
+          MODE: ${{ steps.settings.outputs.mode }}
+          PUBLISH_SUPABASE: ${{ steps.settings.outputs.publish_supabase }}
+          # The generator reads these two names directly. They are always
+          # passed; whether it uses them is decided by the flag below, so the
+          # secret plumbing has one shape regardless of how the run started.
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
           set -euo pipefail
           args=(--mode "${MODE}")
-          if [ "${{ inputs.publish_supabase }}" != "true" ]; then
+          if [ "${PUBLISH_SUPABASE}" != "true" ]; then
             args+=(--no-supabase)
           fi
           node scripts/generate-editorial.mjs "${args[@]}"
@@ -93,7 +144,54 @@ jobs:
           npm run build:blog
           npm run check:blog
 
+      # After the build and its checks, so a failing check can never produce a
+      # commit.
+      - name: Commit and push
+        if: steps.settings.outputs.commit == 'true'
+        env:
+          REF: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          # The source file plus the payload it compiles into. check:blog fails
+          # on drift between them, so they move together or not at all.
+          git add -A -- landing/content/blog landing/content/generated/blog landing/blog landing/sitemap.xml
+          if git diff --cached --quiet; then
+            echo 'Nothing to commit: the generator found no verified source, or this article is already published.'
+            echo '### Nothing to commit' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+
+          slug=$(git diff --cached --name-only -- landing/content/blog \
+            | grep -E '\.(md|mdx|json)$' \
+            | head -n 1 | xargs -r basename | sed 's/\.[^.]*$//' || true)
+          git commit -q \
+            -m "Publish the generated editorial${slug:+: $slug}" \
+            -m 'Written by .github/workflows/generate-editorial.yml from public sources. The compiled payload is committed alongside the source file because the landing project runs no build step and npm run check:blog fails on drift between the two.'
+
+          # A concurrent push to the same branch is the one retryable failure
+          # here. Rebase onto it and try again rather than forcing: a force
+          # push from an unattended job is how somebody else's commit
+          # disappears.
+          for attempt in 1 2 3; do
+            if git push origin "HEAD:${REF}"; then
+              echo "### Published to ${REF}" >> "$GITHUB_STEP_SUMMARY"
+              git log -1 --format='%H %s' >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            echo "push attempt ${attempt} failed; rebasing onto origin/${REF} and retrying"
+            git fetch origin "${REF}"
+            git rebase "origin/${REF}"
+            sleep $((attempt * 4))
+          done
+          echo "::error title=Push failed::Could not push the generated article to ${REF}."
+          exit 1
+
       - name: Upload the generated source and payload
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: editorial-output
