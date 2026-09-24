@@ -1,7 +1,43 @@
 {
-  "generatedAt": "2026-09-24T03:07:11.925Z",
-  "count": 5,
+  "generatedAt": "2026-09-24T14:34:31.289Z",
+  "count": 6,
   "posts": [
+    {
+      "title": "Week 3 trending adds: where the waiver money is going",
+      "slug": "2026-09-24-week-3-trending-adds-where-the-waiver-money-is-going",
+      "publishDate": "2026-09-24",
+      "category": "Waiver Wire",
+      "excerpt": "Sleeper's platform-wide add counts for week 3. Emanuel Wilson, Adonai Mitchell and Tyler Shough are the most claimed players of the last 24 hours, and the gap between the top of the board and the bottom is the part worth acting on.",
+      "author": "FSN Desk",
+      "entityCount": 5,
+      "tracked_players": [
+        {
+          "name": "Emanuel Wilson",
+          "position": "RB",
+          "sleeperPlayerId": "11435"
+        },
+        {
+          "name": "Adonai Mitchell",
+          "position": "WR",
+          "sleeperPlayerId": "11625"
+        },
+        {
+          "name": "Tyler Shough",
+          "position": "QB",
+          "sleeperPlayerId": "12545"
+        },
+        {
+          "name": "Kyler Murray",
+          "position": "QB",
+          "sleeperPlayerId": "5849"
+        },
+        {
+          "name": "Zach Ertz",
+          "position": "TE",
+          "sleeperPlayerId": "1339"
+        }
+      ]
+    },
     {
       "title": "Week 4 is where the noise starts to clear",
       "slug": "week-4-signal-and-noise",

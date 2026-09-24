@@ -1,0 +1,64 @@
+{
+  "title": "Week 3 trending adds: where the waiver money is going",
+  "slug": "2026-09-24-week-3-trending-adds-where-the-waiver-money-is-going",
+  "publishDate": "2026-09-24",
+  "category": "Waiver Wire",
+  "excerpt": "Sleeper's platform-wide add counts for week 3. Emanuel Wilson, Adonai Mitchell and Tyler Shough are the most claimed players of the last 24 hours, and the gap between the top of the board and the bottom is the part worth acting on.",
+  "author": "FSN Desk",
+  "format": "markdown",
+  "entities": [
+    {
+      "name": "Emanuel Wilson",
+      "position": "RB",
+      "sleeperPlayerId": "11435"
+    },
+    {
+      "name": "Adonai Mitchell",
+      "position": "WR",
+      "sleeperPlayerId": "11625"
+    },
+    {
+      "name": "Tyler Shough",
+      "position": "QB",
+      "sleeperPlayerId": "12545"
+    },
+    {
+      "name": "Kyler Murray",
+      "position": "QB",
+      "sleeperPlayerId": "5849"
+    },
+    {
+      "name": "Zach Ertz",
+      "position": "TE",
+      "sleeperPlayerId": "1339"
+    }
+  ],
+  "tracked_players": [
+    {
+      "name": "Emanuel Wilson",
+      "position": "RB",
+      "sleeperPlayerId": "11435"
+    },
+    {
+      "name": "Adonai Mitchell",
+      "position": "WR",
+      "sleeperPlayerId": "11625"
+    },
+    {
+      "name": "Tyler Shough",
+      "position": "QB",
+      "sleeperPlayerId": "12545"
+    },
+    {
+      "name": "Kyler Murray",
+      "position": "QB",
+      "sleeperPlayerId": "5849"
+    },
+    {
+      "name": "Zach Ertz",
+      "position": "TE",
+      "sleeperPlayerId": "1339"
+    }
+  ],
+  "bodyHtml": "<h2>The most added players in the last 24 hours</h2>\n<p>Sleeper publishes how many leagues across its entire platform added each player, and these are those counts as they stand for week 3 of the 2026 season. Read them as demand, not as value. A name at the top of this list is being chased in every league at once, which is exactly when a claim costs more than the player is worth. The names further down carry the same information at a price somebody will still take.</p>\n<h3>1. <strong>Emanuel Wilson</strong>, RB, SEA</h3>\n<p>Added in <strong>664,173</strong> leagues in the last 24 hours. Listed second on the SEA depth chart at RB, which is what a spike in adds is usually betting against.</p>\n<h3>2. <strong>Adonai Mitchell</strong>, WR, NYJ</h3>\n<p>Added in <strong>535,624</strong> leagues in the last 24 hours. Listed second on the NYJ depth chart at WR.</p>\n<h3>3. <strong>Tyler Shough</strong>, QB, NO</h3>\n<p>Added in <strong>372,168</strong> leagues in the last 24 hours. Listed first on the NO depth chart at QB. In a second NFL season.</p>\n<h3>4. <strong>Kyler Murray</strong>, QB, MIN</h3>\n<p>Added in <strong>311,216</strong> leagues in the last 24 hours. Listed first on the MIN depth chart at QB.</p>\n<h3>5. <strong>Zach Ertz</strong>, TE, PHI</h3>\n<p>Added in <strong>296,847</strong> leagues in the last 24 hours. Listed first on the PHI depth chart at TE.</p>\n<h3>6. <strong>Kirk Cousins</strong>, QB, LV</h3>\n<p>Added in <strong>284,448</strong> leagues in the last 24 hours. Listed first on the LV depth chart at QB.</p>\n<h3>7. <strong>Keon Coleman</strong>, WR, BUF</h3>\n<p>Added in <strong>282,384</strong> leagues in the last 24 hours. Sleeper currently carries a questionable designation on this roster spot, so check the status before the claim locks.</p>\n<h3>8. <strong>Darren Waller</strong>, TE, CAR</h3>\n<p>Added in <strong>280,404</strong> leagues in the last 24 hours. Listed first on the CAR depth chart at TE.</p>\n<h2>How to read the board</h2>\n<p>The gap between the first name and the last one is the useful number here. <strong>Emanuel Wilson</strong> at 664,173 adds and the bottom of this list at 280,404 are not the same kind of claim, even though both are trending. The first is a bidding war and the second is a quiet add, and in a league where everyone is looking at the same public counts, the quiet add is usually where the margin is.</p>\n<p>These counts cover every league on the platform, not yours. A player already rostered in your league is noise on this board no matter how hard the rest of the platform is chasing the name. Start from the list, then check your own wire.</p>\n<p><em>Source: Sleeper public API, add counts over the last 24 hours.</em></p>"
+}
