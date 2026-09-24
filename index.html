@@ -3696,17 +3696,29 @@ body.fsn-dd-lock{ overflow:hidden; }
 .franchise-status.is-steady{ border-color:var(--line-2); background:rgba(255,255,255,.03); color:var(--off); }
 .franchise-identity .franchise-status{ margin-top:7px; max-width:100%; overflow:hidden; }
 
-.fr-spark-wrap{ margin-top:12px; padding-top:11px; border-top:1px solid var(--line); }
-.fr-spark-head{
+.fr-preview-wrap{ margin-top:12px; padding-top:11px; border-top:1px solid var(--line); }
+.fr-preview-head{
   display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:5px;
   font-family:'JetBrains Mono',monospace; font-size:8px; font-weight:800;
   letter-spacing:.14em; text-transform:uppercase; color:#4d5769;
 }
-.fr-spark{ display:block; width:100%; height:34px; overflow:visible; }
-.fr-spark-line{ fill:none; stroke:var(--cyan); stroke-width:1.6; vector-effect:non-scaling-stroke; }
-.fr-spark-area{ fill:rgba(0,224,255,.14); }
-.fr-spark-champ{ fill:var(--gold); }
-.fr-spark-last{ fill:var(--cyan); }
+/* The preview keeps the 320x160 drawing box the markup sets up and scales it
+   uniformly, the same contract the dossier chart uses at 800x240: a career
+   reads as a trend line with real vertical travel instead of a flat band
+   stretched across the card. min-height holds that travel on a narrow phone;
+   max-width keeps a wide card from blowing the graph up past its ratio.
+   The whole card is the tap target, so the graph takes no pointer events. */
+.fr-preview-plot{ position:relative; width:100%; max-width:26rem; }
+.fr-preview-svg{
+  display:block; width:100%; height:auto; aspect-ratio:320 / 160;
+  min-height:138px; max-height:13rem; overflow:visible; pointer-events:none;
+}
+.fr-preview-grid{ stroke:rgba(255,255,255,.075); stroke-width:1; stroke-dasharray:3 5; vector-effect:non-scaling-stroke; }
+.fr-preview-axis{ fill:#596477; font-family:'JetBrains Mono',monospace; font-size:9px; }
+.fr-preview-area{ opacity:.5; }
+.fr-preview-line{ fill:none; stroke:var(--cyan); stroke-width:2; vector-effect:non-scaling-stroke; filter:drop-shadow(0 0 4px rgba(0,224,255,.45)); }
+.fr-preview-champ{ fill:var(--gold); stroke:#0a0f16; stroke-width:1.2; }
+.fr-preview-last{ fill:var(--cyan); stroke:#0a0f16; stroke-width:1.2; }
 
 /* Rivalries — tug-of-war, intensity badge, playoff line. */
 .rival-tug{ margin-top:16px; }
@@ -27707,36 +27719,61 @@ function franchiseStatusBadge(resume){
   return `<span class="franchise-status ${status.cls}"><span aria-hidden="true">${status.glyph}</span>${esc(status.label.toUpperCase())}</span>`;
 }
 
-/* A thumbnail of the same year-by-year finish the dossier draws full size, so
-   the list card shows the shape of a career without opening it. Inverted like
-   the big chart: first place is the top of the box. */
-function franchiseSparkline(resume){
+/* The same year-by-year finish the dossier draws, previewed at card size: a
+   proportioned graph with its own rank axis, not a flattened strip. It keeps a
+   fixed drawing box and scales uniformly inside it (see .fr-preview-svg), so
+   the line reads as a trend at any card width instead of being stretched to a
+   34px band. Inverted like the big chart: first place is the top of the box. */
+function franchiseTrendPreview(resume, chartId){
   const rows = ((resume && resume.yearRanks) || []).slice().sort((a,b)=> a.year-b.year);
   if(rows.length < 2) return '';
 
-  const width = 200, height = 34, pad = 3;
+  /* Fixed 320x160 drawing box. The plot keeps 22px of headroom above #1 and
+     36px below the last place line, so a champion year and a basement year
+     both sit inside the box rather than on its edge. */
+  const width = 320, height = 160, top = 22, bottom = 124, left = 30, right = 306;
   const maxRank = Math.max(2, ...rows.map(row=> Number(row.teamCount || row.rank || 2)));
-  const xAt = (i)=> pad + (width - pad*2) * i / (rows.length - 1);
-  const yAt = (rank)=> pad + ((Math.max(1, Number(rank)) - 1) / (maxRank - 1)) * (height - pad*2);
+  const xAt = (i)=> left + (right-left) * i / (rows.length - 1);
+  const yAt = (rank)=> top + ((Math.max(1, Number(rank)) - 1) / (maxRank - 1)) * (bottom-top);
   const points = rows.map((row,i)=> `${xAt(i).toFixed(1)},${yAt(row.rank).toFixed(1)}`).join(' ');
-  const area = `${pad},${height-pad} ${points} ${(width-pad)},${height-pad}`;
+  const area = `${left},${bottom} ${points} ${right},${bottom}`;
   const last = rows[rows.length-1];
+  const gridRanks = Array.from(new Set([1, Math.ceil(maxRank/2), maxRank])).sort((a,b)=> a-b);
+
+  /* A twenty-season career cannot print twenty years across a phone card, so
+     the axis thins to at most five evenly spaced labels, always including the
+     first and last season. */
+  const labelStep = Math.max(1, Math.ceil((rows.length - 1) / 4));
+  const yearLabels = rows.map((row,i)=>
+    (i % labelStep === 0 || i === rows.length - 1)
+      ? `<text class="fr-preview-axis" text-anchor="middle" x="${xAt(i).toFixed(1)}" y="${height - 12}">'${String(row.year).slice(-2)}</text>`
+      : '').join('');
 
   const champMarks = rows.map((row,i)=> Number(row.rank) === 1
-    ? `<circle class="fr-spark-champ" cx="${xAt(i).toFixed(1)}" cy="${yAt(row.rank).toFixed(1)}" r="2.6"/>` : '').join('');
+    ? `<circle class="fr-preview-champ" cx="${xAt(i).toFixed(1)}" cy="${yAt(row.rank).toFixed(1)}" r="4"/>` : '').join('');
 
-  return `<div class="fr-spark-wrap">
-    <div class="fr-spark-head">
+  return `<div class="fr-preview-wrap">
+    <div class="fr-preview-head">
       <span>Finish Trajectory</span>
       <span>${rows[0].year}–${last.year} · last #${esc(String(last.rank))}</span>
     </div>
-    <svg class="fr-spark" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" role="img"
-      aria-label="Final-rank trajectory from ${rows[0].year} to ${last.year}, most recent finish number ${esc(String(last.rank))}">
-      <polygon class="fr-spark-area" points="${area}"/>
-      <polyline class="fr-spark-line" points="${points}"/>
-      ${champMarks}
-      <circle class="fr-spark-last" cx="${xAt(rows.length-1).toFixed(1)}" cy="${yAt(last.rank).toFixed(1)}" r="2.6"/>
-    </svg>
+    <div class="fr-preview-plot">
+      <svg class="fr-preview-svg" viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet" role="img"
+        aria-label="Final-rank trajectory from ${rows[0].year} to ${last.year}, first place at the top, most recent finish number ${esc(String(last.rank))}">
+        <defs>
+          <linearGradient id="${chartId}" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#00e0ff" stop-opacity=".3"/>
+            <stop offset="1" stop-color="#00e0ff" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+        ${gridRanks.map(rank=> `<g><line class="fr-preview-grid" x1="${left}" y1="${yAt(rank).toFixed(1)}" x2="${right}" y2="${yAt(rank).toFixed(1)}"/><text class="fr-preview-axis" x="2" y="${(yAt(rank)+3.5).toFixed(1)}">#${rank}</text></g>`).join('')}
+        <polygon class="fr-preview-area" points="${area}" style="fill:url(#${chartId})"/>
+        <polyline class="fr-preview-line" points="${points}"/>
+        ${champMarks}
+        <circle class="fr-preview-last" cx="${xAt(rows.length-1).toFixed(1)}" cy="${yAt(last.rank).toFixed(1)}" r="4"/>
+        ${yearLabels}
+      </svg>
+    </div>
   </div>`;
 }
 
@@ -27790,7 +27827,7 @@ function renderFranchises(){
           ${franchiseMetric('Career PAPG', r.careerPapg.toFixed(1), 'var(--off)')}
         </div>
 
-        ${franchiseSparkline(r)}
+        ${franchiseTrendPreview(r, 'fr-preview-grad-' + i)}
 
         <div class="franchise-open-hint">Open dossier for the full Finish Trend chart →</div>
       </div>
