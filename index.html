@@ -3359,6 +3359,447 @@ body.fsn-dd-lock{ overflow:hidden; }
   padding:10px 11px; font-size:11.5px; color:var(--dim); line-height:1.4;
 }
 
+/* ============================================================
+   UI UPGRADE LAYER — MATCHUPS
+   Intensity badges, projection deltas, the Game of the Week
+   header tag, the head-to-head dominance bar and the box-score
+   affordance at the foot of every card.
+============================================================ */
+.mx-badge{
+  display:inline-flex; align-items:center; gap:5px; flex:none;
+  padding:3px 8px; border-radius:999px; border:1px solid var(--line-2);
+  background:rgba(255,255,255,.03); color:var(--dim);
+  font-family:'JetBrains Mono',monospace; font-size:9px; font-weight:800;
+  letter-spacing:.09em; text-transform:uppercase; white-space:nowrap;
+  font-variant-numeric:tabular-nums; line-height:1.25;
+}
+.mx-badge .mx-badge-glyph{ font-size:10px; line-height:1; }
+.mx-badge.is-nailbiter{
+  border-color:rgba(255,196,0,.45); background:rgba(255,196,0,.11); color:var(--gold);
+  box-shadow:0 0 14px -4px rgba(255,196,0,.55);
+}
+.mx-badge.is-blowout{
+  border-color:rgba(255,106,45,.5); background:rgba(255,80,45,.12); color:#ff8a4c;
+  box-shadow:0 0 14px -4px rgba(255,90,45,.6);
+}
+.mx-badge.is-standard{ border-color:var(--line); background:rgba(255,255,255,.025); color:var(--dim); }
+
+/* The Game of the Week header tag and the gold treatment on its card. */
+.mx-motw-tag{
+  display:inline-flex; align-items:center; gap:5px; flex:none;
+  padding:3px 9px; border-radius:999px;
+  border:1px solid rgba(255,196,0,.55); background:linear-gradient(100deg,rgba(255,196,0,.2),rgba(255,196,0,.06));
+  color:var(--gold); font-family:'Anton',Impact,sans-serif; font-size:9.5px;
+  letter-spacing:.14em; text-transform:uppercase; white-space:nowrap; line-height:1.3;
+  box-shadow:0 0 16px -5px rgba(255,196,0,.8);
+}
+.card.is-motw{
+  border-color:rgba(255,196,0,.4);
+  box-shadow:0 0 0 1px rgba(255,196,0,.14), 0 18px 44px -32px rgba(255,196,0,.55);
+}
+
+/* Performance against the projection, as a signed delta rather than a second
+   copy of a number already on the card. */
+.mx-proj{
+  display:inline-flex; align-items:center; gap:4px; margin-top:6px;
+  padding:2px 7px; border-radius:999px; border:1px solid var(--line-2);
+  background:rgba(255,255,255,.03); color:var(--dim);
+  font-family:'JetBrains Mono',monospace; font-size:9px; font-weight:800;
+  letter-spacing:.06em; white-space:nowrap; font-variant-numeric:tabular-nums; line-height:1.3;
+}
+.mx-proj.is-over{ border-color:rgba(57,255,140,.42); background:rgba(57,255,140,.10); color:var(--green); }
+.mx-proj.is-under{ border-color:rgba(255,45,85,.42); background:rgba(255,45,85,.10); color:var(--red); }
+
+/* The divider between the two sides is now a contribution bar: each segment is
+   that team's share of the combined points, in its own accent. */
+.mx-dominance{ margin:11px 0 10px; }
+.mx-dominance-track{
+  display:flex; width:100%; height:5px; border-radius:999px; overflow:hidden;
+  background:#0a0e15; border:1px solid rgba(255,255,255,.055);
+}
+.mx-dominance-seg{ height:100%; min-width:2px; transition:flex-basis .25s ease; }
+.mx-dominance-seg.is-away{ border-radius:999px 0 0 999px; }
+.mx-dominance-seg.is-home{ border-radius:0 999px 999px 0; }
+.mx-dominance-legend{
+  display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:5px;
+  font-family:'JetBrains Mono',monospace; font-size:8px; font-weight:800;
+  letter-spacing:.1em; text-transform:uppercase; color:#4d5769; font-variant-numeric:tabular-nums;
+}
+.mx-dominance-legend .mx-dominance-mid{ color:#37404f; letter-spacing:.14em; }
+
+/* The affordance for the box-score drawer. */
+.mx-cue{
+  display:flex; align-items:center; justify-content:flex-end; gap:6px;
+  margin-top:11px; padding-top:9px; border-top:1px solid var(--line);
+  color:#5a6579; font-family:'JetBrains Mono',monospace; font-size:8.5px;
+  font-weight:800; letter-spacing:.16em; text-transform:uppercase;
+  transition:color .16s ease;
+}
+.mx-cue .mx-cue-chev{ font-size:12px; line-height:1; transition:transform .16s ease; }
+.card.mx-card{ cursor:pointer; transition:border-color .16s ease, transform .12s ease; }
+.card.mx-card:hover{ border-color:var(--line-2); }
+.card.mx-card:hover .mx-cue{ color:var(--cyan); }
+.card.mx-card:hover .mx-cue .mx-cue-chev{ transform:translateX(3px); }
+.card.mx-card:active{ transform:scale(.995); }
+
+/* The box-score drawer itself. Same bottom-sheet grammar as the League Blog
+   player sheet so it reads as part of the app. */
+#mxBoxSheet{ position:fixed; inset:0; z-index:122; display:none; background:rgba(2,6,14,.74); backdrop-filter:blur(3px); }
+#mxBoxSheet[data-open="true"]{ display:block; }
+.mx-box-in{
+  position:absolute; left:0; right:0; bottom:0;
+  background:#0b1018; border-top:1px solid var(--line-2);
+  border-radius:16px 16px 0 0; padding:16px 15px calc(16px + env(safe-area-inset-bottom));
+  max-height:82vh; overflow:auto;
+}
+.mx-box-head{ display:flex; align-items:center; gap:10px; margin-bottom:12px; }
+.mx-box-title{ flex:1; min-width:0; font-family:'Anton',Impact,sans-serif; font-size:17px; line-height:1.12; text-transform:uppercase; }
+.mx-box-sub{ margin-top:3px; color:var(--dim); font-family:'JetBrains Mono',monospace; font-size:9px; letter-spacing:.1em; text-transform:uppercase; }
+.mx-box-grid{ display:grid; grid-template-columns:minmax(0,1fr); gap:11px; }
+@media (min-width:560px){ .mx-box-grid{ grid-template-columns:repeat(2,minmax(0,1fr)); } }
+.mx-box-side{ border:1px solid var(--line); border-radius:13px; background:#080d13; overflow:hidden; }
+.mx-box-side-head{ display:flex; align-items:center; gap:9px; padding:10px 11px; border-bottom:1px solid var(--line); background:rgba(255,255,255,.02); }
+.mx-box-side-name{ flex:1; min-width:0; font-family:'Oswald',sans-serif; font-weight:700; font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.mx-box-side-score{ flex:none; font-family:'JetBrains Mono',monospace; font-size:16px; font-weight:900; color:var(--cyan); font-variant-numeric:tabular-nums; }
+.mx-box-row{ display:grid; grid-template-columns:30px minmax(0,1fr) auto; align-items:center; gap:9px; padding:7px 11px; }
+.mx-box-row + .mx-box-row{ border-top:1px solid rgba(255,255,255,.05); }
+.mx-box-slot{ font-family:'JetBrains Mono',monospace; font-size:8.5px; font-weight:800; letter-spacing:.06em; color:#5a6579; text-align:center; }
+.mx-box-player{ min-width:0; }
+.mx-box-player strong{ display:block; font-size:11.5px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.mx-box-player span{ display:block; margin-top:2px; color:var(--dim); font-size:8.5px; letter-spacing:.06em; text-transform:uppercase; }
+.mx-box-pts{ font-family:'JetBrains Mono',monospace; font-size:12px; font-weight:800; color:var(--off); font-variant-numeric:tabular-nums; }
+.mx-box-empty{ padding:14px 12px; color:var(--dim); font-size:11px; line-height:1.5; }
+.mx-box-close{
+  margin-top:14px; width:100%; border:1px solid var(--line-2); border-radius:10px;
+  background:rgba(255,255,255,.04); color:#fff; padding:11px; font-size:13px; cursor:pointer;
+}
+
+/* ============================================================
+   UI UPGRADE LAYER — NEWS DESK
+   Player micro-cards, category timeline nodes, inline avatars
+   and the lead-story hero banner.
+============================================================ */
+.lb-chip{ padding:5px 9px 5px 5px; gap:7px; border-radius:12px; }
+.lb-chip .lb-chip-face{
+  position:relative; flex:none; width:28px; height:28px; border-radius:9px; overflow:hidden;
+  background:linear-gradient(150deg,rgba(255,255,255,.08),#10161f);
+  border:1px solid rgba(255,255,255,.09);
+  display:grid; place-items:center;
+}
+.lb-chip .lb-chip-shot{ width:100%; height:100%; object-fit:cover; object-position:top center; display:block; }
+.lb-chip .lb-chip-mono{
+  font-family:'Anton',Impact,sans-serif; font-size:10px; letter-spacing:.04em; color:var(--dim);
+}
+.lb-chip .lb-chip-logo{
+  position:absolute; right:-2px; bottom:-2px; width:13px; height:13px; border-radius:4px;
+  background:#05080d; border:1px solid rgba(255,255,255,.12); object-fit:contain; padding:1px;
+}
+.lb-chip .lb-chip-copy{ display:flex; flex-direction:column; align-items:flex-start; gap:2px; min-width:0; }
+.lb-chip .lb-chip-name{ font-size:11px; line-height:1.15; font-weight:600; white-space:nowrap; }
+.lb-chip .lb-chip-meta{
+  display:flex; align-items:center; gap:5px;
+  font-family:'JetBrains Mono',monospace; font-size:8.5px; font-weight:800;
+  letter-spacing:.06em; color:var(--dim); font-variant-numeric:tabular-nums;
+}
+.lb-chip .lb-chip-pts{ color:var(--gold); }
+.lb-chip[data-flag="GAME_WINNER"] .lb-chip-pts{ color:#3ddc84; }
+.lb-chip[data-flag="DUD_COST_WIN"] .lb-chip-pts{ color:var(--red); }
+.lb-chip[data-flag="GARBAGE_TIME_BLOWOUT"] .lb-chip-pts{ color:var(--cyan); }
+.lb-chip .dot{ align-self:center; }
+
+/* Category nodes on the timeline spine. A story that resolves to a category
+   paints its own badge; everything else keeps the plain accent dot. */
+.tl-item[data-node]::before{ display:none; }
+.tl-node{
+  position:absolute; left:-31px; top:13px; width:23px; height:23px; border-radius:8px;
+  display:grid; place-items:center; font-size:11px; line-height:1; z-index:2;
+  background:#05080d; border:1px solid var(--tl-node-color,var(--cyan));
+  box-shadow:0 0 12px -2px var(--tl-node-color,var(--cyan));
+}
+.tl-node[data-node="breaking"]{ --tl-node-color:var(--red); animation:tlNodePulse 1.9s ease-in-out infinite; }
+.tl-node[data-node="rage"]{ --tl-node-color:#ff8a4c; }
+.tl-node[data-node="power"]{ --tl-node-color:var(--cyan); }
+.tl-node[data-node="steal"]{ --tl-node-color:var(--green); }
+.tl-node[data-node="recap"]{ --tl-node-color:var(--gold); }
+@keyframes tlNodePulse{
+  0%,100%{ box-shadow:0 0 12px -2px var(--tl-node-color,var(--red)); }
+  50%{ box-shadow:0 0 20px 1px var(--tl-node-color,var(--red)); }
+}
+
+/* A manager crest set into the running narrative, at cap height. */
+.tl-inline-avatar{
+  display:inline-block; width:16px; height:16px; border-radius:5px; vertical-align:-3px;
+  margin-right:4px; object-fit:cover; border:1px solid rgba(255,255,255,.14); background:#10161f;
+}
+.tl-inline-mono{
+  display:inline-grid; place-items:center; width:16px; height:16px; border-radius:5px;
+  vertical-align:-3px; margin-right:4px; font-family:'Anton',Impact,sans-serif; font-size:8px;
+  border:1px solid rgba(255,255,255,.14); background:#10161f; color:var(--dim);
+}
+
+/* Composite hero banner above a lead story. */
+.news-hero{
+  position:relative; height:104px; overflow:hidden;
+  border-bottom:1px solid var(--line); background:linear-gradient(120deg,#0d1420,#070b11);
+}
+.news-hero-shots{ position:absolute; inset:0; display:flex; align-items:flex-end; justify-content:flex-start; gap:0; padding-left:10px; }
+.news-hero-shot{
+  width:82px; height:100%; object-fit:cover; object-position:top center;
+  -webkit-mask-image:linear-gradient(180deg,#000 55%,transparent); mask-image:linear-gradient(180deg,#000 55%,transparent);
+  opacity:.82; margin-right:-14px;
+}
+.news-hero-overlay{ position:absolute; inset:0; }
+.news-hero[data-hero="injury"] .news-hero-overlay{
+  background:linear-gradient(104deg,transparent 18%,rgba(255,45,85,.42) 38%,rgba(255,45,85,.08) 62%,transparent 78%),
+             linear-gradient(90deg,rgba(6,9,14,.1),rgba(6,9,14,.94));
+}
+.news-hero[data-hero="recap"] .news-hero-overlay{
+  background:linear-gradient(90deg,rgba(6,9,14,.15),rgba(6,9,14,.9));
+}
+.news-hero-label{
+  position:absolute; left:13px; top:11px; font-family:'Anton',Impact,sans-serif;
+  font-size:10px; letter-spacing:.2em; text-transform:uppercase; color:#fff; opacity:.9;
+}
+.news-hero-h2h{
+  position:absolute; right:13px; top:50%; transform:translateY(-50%);
+  display:flex; align-items:center; gap:9px;
+}
+.news-hero-h2h .news-hero-crest{ width:34px; height:34px; border-radius:9px; object-fit:contain; background:#0b111a; border:1px solid rgba(255,255,255,.12); }
+.news-hero-h2h .news-hero-score{
+  font-family:'JetBrains Mono',monospace; font-size:16px; font-weight:900; color:#fff;
+  font-variant-numeric:tabular-nums; white-space:nowrap;
+}
+.news-hero-h2h .news-hero-score .sep{ color:#4d5769; margin:0 3px; }
+
+/* ============================================================
+   UI UPGRADE LAYER — SEASON STATS
+============================================================ */
+.standings-move{
+  display:inline-flex; align-items:center; gap:2px; margin-left:5px; vertical-align:middle;
+  font-family:'JetBrains Mono',monospace; font-size:8.5px; font-weight:900;
+  letter-spacing:.04em; color:var(--dim); font-variant-numeric:tabular-nums;
+}
+.standings-move.is-up{ color:var(--green); }
+.standings-move.is-down{ color:var(--red); }
+.standings-move.is-flat{ color:#4d5769; }
+.standings-rank-wrap{ display:inline-flex; align-items:center; flex:none; }
+.standings-diff{
+  display:inline-flex; align-items:center; gap:4px; margin-top:6px;
+  padding:2px 7px; border-radius:999px; border:1px solid var(--line-2);
+  background:rgba(255,255,255,.03);
+  font-family:'JetBrains Mono',monospace; font-size:8.5px; font-weight:800;
+  letter-spacing:.06em; color:var(--dim); font-variant-numeric:tabular-nums; white-space:nowrap;
+}
+.standings-diff.is-pos{ border-color:rgba(57,255,140,.4); background:rgba(57,255,140,.09); color:var(--green); }
+.standings-diff.is-neg{ border-color:rgba(255,45,85,.4); background:rgba(255,45,85,.09); color:var(--red); }
+.standings-cutline{
+  display:flex; align-items:center; gap:9px; margin:2px 0;
+  font-family:'JetBrains Mono',monospace; font-size:8.5px; font-weight:800;
+  letter-spacing:.2em; text-transform:uppercase; color:var(--gold);
+}
+.standings-cutline::before,.standings-cutline::after{
+  content:''; flex:1 1 0; height:0; border-top:1px dashed rgba(255,196,0,.45);
+}
+
+/* FSN Index — composite fill behind the score, tier badge, coaching bar. */
+.fsn-index-card{ --fsn-fill:0%; }
+.fsn-index-card::after{
+  content:''; position:absolute; left:0; right:0; bottom:0; height:3px;
+  width:var(--fsn-fill); background:linear-gradient(90deg,rgba(0,224,255,.25),var(--model-accent,var(--cyan)));
+  box-shadow:0 0 12px var(--model-accent,var(--cyan)); border-radius:0 999px 999px 0;
+}
+.fsn-index-score{ position:relative; }
+.fsn-index-meter{
+  display:block; width:56px; height:4px; margin:6px 0 0 auto; border-radius:999px;
+  background:#0a1017; border:1px solid rgba(255,255,255,.07); overflow:hidden;
+}
+.fsn-index-meter i{
+  display:block; height:100%; border-radius:999px;
+  background:linear-gradient(90deg,rgba(0,224,255,.35),var(--cyan));
+  box-shadow:0 0 10px rgba(0,224,255,.65);
+}
+.fsn-tier{
+  display:inline-flex; align-items:center; gap:4px; margin-top:6px;
+  padding:2px 7px; border-radius:999px; border:1px solid var(--line-2);
+  background:rgba(255,255,255,.03); color:var(--dim);
+  font-family:'JetBrains Mono',monospace; font-size:8px; font-weight:800;
+  letter-spacing:.1em; text-transform:uppercase; white-space:nowrap;
+}
+.fsn-tier.is-contender{ border-color:rgba(255,196,0,.5); background:rgba(255,196,0,.11); color:var(--gold); box-shadow:0 0 14px -5px rgba(255,196,0,.7); }
+.fsn-tier.is-lock{ border-color:rgba(0,224,255,.45); background:rgba(0,224,255,.1); color:var(--cyan); }
+.fsn-tier.is-bubble{ border-color:var(--line-2); background:rgba(255,255,255,.035); color:var(--off); }
+.fsn-tier.is-hotseat{ border-color:rgba(255,45,85,.45); background:rgba(255,45,85,.1); color:var(--red); }
+
+.mini-bar{
+  display:block; width:100%; height:5px; margin-top:6px; border-radius:999px;
+  background:#0a1017; border:1px solid rgba(255,255,255,.065); overflow:hidden;
+}
+.mini-bar i{ display:block; height:100%; border-radius:999px; background:var(--cyan); box-shadow:0 0 9px rgba(0,224,255,.5); }
+.mini-bar.is-split{ display:flex; }
+.mini-bar.is-split i{ border-radius:0; box-shadow:none; }
+.mini-bar.is-split i.is-active{ background:var(--green); }
+.mini-bar.is-split i.is-wasted{ background:var(--red); opacity:.75; }
+.mini-bar-legend{
+  display:flex; align-items:center; gap:8px; margin-top:4px;
+  font-family:'JetBrains Mono',monospace; font-size:8px; font-weight:800;
+  letter-spacing:.06em; color:#4d5769; font-variant-numeric:tabular-nums;
+}
+.mini-bar-legend .is-active{ color:var(--green); }
+.mini-bar-legend .is-wasted{ color:var(--red); }
+
+/* Luck delta badges in the Expected Wins table. */
+.luck-badge{
+  display:inline-flex; align-items:center; gap:4px; white-space:nowrap;
+  font-family:'JetBrains Mono',monospace; font-weight:800; font-variant-numeric:tabular-nums;
+}
+.luck-badge.is-lucky{ color:var(--green); }
+.luck-badge.is-unlucky{ color:var(--red); }
+.luck-badge.is-even{ color:var(--dim); }
+.luck-badge .luck-tag{ font-size:8px; letter-spacing:.08em; opacity:.85; }
+
+/* Lineup efficiency split bar lives in a table cell, so it needs a floor and
+   has to keep its legend stacked under it rather than beside it. */
+.lineup-split{ display:flex; flex-direction:column; align-items:stretch; gap:3px; flex:1 1 auto; min-width:92px; }
+.lineup-split .mini-bar{ margin-top:0; }
+.lineup-split .mini-bar-legend{ justify-content:space-between; }
+.analytics-table td.analytics-split-cell{ align-items:center; }
+@media (max-width:640px){
+  /* The value here is two lines tall, so it takes the full width of the
+     stacked row instead of half of a two-column grid. */
+  .analytics-table td.analytics-split-cell{ grid-column:1 / -1; }
+}
+
+/* Schedule Hardship reads on a green-to-red scale: a softer draw sits at the
+   green end of the band, a brutal one at the red end. */
+.analytics-model.is-hardship .analytics-table-wrap{
+  background:linear-gradient(180deg,rgba(57,255,140,.05),rgba(255,255,255,0) 42%,rgba(255,45,85,.07));
+  border-radius:12px;
+}
+
+/* ============================================================
+   UI UPGRADE LAYER — RECORD BOOK
+============================================================ */
+.fr-trend-node.is-basement circle{ stroke:#ff8a4c; filter:drop-shadow(0 0 5px rgba(255,138,76,.7)); }
+.fr-trend-node.is-basement:hover circle,.fr-trend-node.is-basement:focus circle,.fr-trend-node.is-basement[data-pinned="true"] circle{ fill:#ff8a4c; }
+.fr-trend-glyph{ font-size:17px; pointer-events:none; }
+
+.franchise-status{
+  display:inline-flex; align-items:center; gap:4px; flex:none;
+  padding:4px 8px; border-radius:999px; border:1px solid var(--line-2);
+  background:rgba(255,255,255,.03); color:var(--dim);
+  font-size:8.5px; font-weight:800; letter-spacing:.1em; text-transform:uppercase; white-space:nowrap;
+}
+.franchise-status.is-dynasty{ border-color:rgba(255,196,0,.5); background:rgba(255,196,0,.1); color:var(--gold); box-shadow:0 0 15px -5px rgba(255,196,0,.75); }
+.franchise-status.is-bridesmaid{ border-color:rgba(0,224,255,.42); background:rgba(0,224,255,.09); color:var(--cyan); }
+.franchise-status.is-rebuilding{ border-color:rgba(255,45,85,.4); background:rgba(255,45,85,.09); color:var(--red); }
+.franchise-status.is-steady{ border-color:var(--line-2); background:rgba(255,255,255,.03); color:var(--off); }
+.franchise-identity .franchise-status{ margin-top:7px; max-width:100%; overflow:hidden; }
+
+.fr-spark-wrap{ margin-top:12px; padding-top:11px; border-top:1px solid var(--line); }
+.fr-spark-head{
+  display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:5px;
+  font-family:'JetBrains Mono',monospace; font-size:8px; font-weight:800;
+  letter-spacing:.14em; text-transform:uppercase; color:#4d5769;
+}
+.fr-spark{ display:block; width:100%; height:34px; overflow:visible; }
+.fr-spark-line{ fill:none; stroke:var(--cyan); stroke-width:1.6; vector-effect:non-scaling-stroke; }
+.fr-spark-area{ fill:rgba(0,224,255,.14); }
+.fr-spark-champ{ fill:var(--gold); }
+.fr-spark-last{ fill:var(--cyan); }
+
+/* Rivalries — tug-of-war, intensity badge, playoff line. */
+.rival-tug{ margin-top:16px; }
+.rival-tug-track{
+  display:flex; width:100%; height:9px; border-radius:999px; overflow:hidden;
+  background:#0a0e15; border:1px solid rgba(255,255,255,.07);
+}
+.rival-tug-seg{ height:100%; min-width:2px; }
+.rival-tug-seg.is-a{ background:linear-gradient(90deg,rgba(0,224,255,.5),var(--cyan)); }
+.rival-tug-seg.is-tie{ background:#2b3546; }
+.rival-tug-seg.is-b{ background:linear-gradient(90deg,var(--gold),rgba(255,196,0,.5)); }
+.rival-tug-legend{
+  display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:6px;
+  font-family:'JetBrains Mono',monospace; font-size:8.5px; font-weight:800;
+  letter-spacing:.09em; text-transform:uppercase; font-variant-numeric:tabular-nums;
+}
+.rival-tug-legend .is-a{ color:var(--cyan); }
+.rival-tug-legend .is-b{ color:var(--gold); }
+.rival-tug-legend .is-mid{ color:#4d5769; letter-spacing:.14em; }
+.rival-intensity{
+  display:inline-flex; align-items:center; gap:5px;
+  padding:4px 9px; border-radius:999px; border:1px solid var(--line-2);
+  background:rgba(255,255,255,.03); color:var(--off);
+  font-size:9px; font-weight:800; letter-spacing:.11em; text-transform:uppercase; white-space:nowrap;
+}
+.rival-intensity.is-heated{ border-color:rgba(255,138,76,.5); background:rgba(255,120,60,.11); color:#ff8a4c; }
+.rival-intensity.is-feud{ border-color:rgba(255,45,85,.52); background:rgba(255,45,85,.12); color:var(--red); box-shadow:0 0 16px -6px rgba(255,45,85,.8); }
+.rival-intensity.is-onesided{ border-color:rgba(0,224,255,.45); background:rgba(0,224,255,.1); color:var(--cyan); }
+.rival-intensity.is-casual{ border-color:var(--line-2); color:var(--dim); }
+.rival-playoff{
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+  margin-top:10px; padding:9px 11px; border-radius:11px;
+  border:1px solid rgba(255,196,0,.22); background:rgba(255,196,0,.05);
+}
+.rival-playoff-label{
+  font-family:'JetBrains Mono',monospace; font-size:8.5px; font-weight:800;
+  letter-spacing:.14em; text-transform:uppercase; color:var(--gold);
+}
+.rival-playoff-value{
+  font-family:'JetBrains Mono',monospace; font-size:12px; font-weight:900; color:var(--off);
+  font-variant-numeric:tabular-nums; white-space:nowrap;
+}
+.rival-playoff-value .none{ font-size:9.5px; font-weight:700; color:var(--dim); letter-spacing:.08em; }
+
+/* Leaderboard crowns and the negative-board crimson treatment. */
+.record-book-leader-row.is-crown{
+  border:1px solid rgba(255,196,0,.42);
+  background:linear-gradient(90deg,rgba(255,196,0,.14),transparent 72%);
+  box-shadow:0 0 0 1px rgba(255,196,0,.1), 0 0 22px -12px rgba(255,196,0,.9);
+}
+.record-book-leader-row.is-crown .record-book-leader-rank{ color:var(--gold); }
+.record-book-leaderboard.is-negative .record-book-leaderboard-head{
+  background:linear-gradient(90deg,rgba(255,45,85,.12),transparent);
+}
+.record-book-leaderboard.is-negative .record-book-leader-row:first-child{
+  background:linear-gradient(90deg,rgba(150,10,40,.28),transparent 74%);
+}
+.record-book-leader-row.is-shame{
+  border:1px solid rgba(190,20,55,.55);
+  background:linear-gradient(90deg,rgba(150,10,40,.3),transparent 74%);
+  box-shadow:0 0 0 1px rgba(190,20,55,.14), 0 0 22px -12px rgba(255,45,85,.85);
+}
+.record-book-leader-row.is-shame .record-book-leader-rank{ color:var(--red); }
+.record-book-leader-row.is-shame .record-book-leader-value strong{ color:var(--red); }
+/* Both of these live inside .record-book-leader-name, whose own span rules
+   (display:block / -webkit-box, 9.5px, dim) outrank a single class — the
+   single-season grid's two-line clamp in particular would stretch the badge
+   to the full column. They are scoped deep enough to win those. */
+.record-book-leaderboard-list .record-book-leader-name .leader-badge{
+  display:inline-flex; align-items:center; gap:4px; margin-top:5px;
+  padding:2px 7px; border-radius:999px; border:1px solid rgba(255,196,0,.4);
+  background:rgba(255,196,0,.1); color:var(--gold);
+  font-family:'JetBrains Mono',monospace; font-size:8px; font-weight:800;
+  letter-spacing:.09em; text-transform:uppercase; white-space:nowrap;
+}
+.record-book-leaderboard-list .record-book-leader-name .leader-badge.is-shame{ border-color:rgba(255,45,85,.45); background:rgba(255,45,85,.12); color:var(--red); }
+.record-book-leaderboard-list .record-book-leader-name .leader-badge > span{ display:inline-block; font-size:10px; line-height:1; margin:0; color:inherit; }
+/* Colour-emoji fonts carry a very tall ascent, so a crown left to sit on the
+   text baseline floats a line above the name. Boxing it and centring it keeps
+   it on the name's optical line. */
+.record-book-leader-name strong .record-book-leader-crown{
+  display:inline-block; font-size:12px; line-height:1; vertical-align:middle; margin:0; color:inherit;
+}
+
+/* Retro season pills across the single-season boards. */
+.record-book-season-tag{
+  padding:2px 8px; border-radius:5px;
+  border:1px solid rgba(255,196,0,.42);
+  background:linear-gradient(180deg,rgba(255,196,0,.2),rgba(255,196,0,.05));
+  color:#ffd75e; font-size:9px; letter-spacing:.14em;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.12);
+  text-shadow:0 1px 0 rgba(0,0,0,.55);
+}
+
 </style>
 <style>*, ::before, ::after{--tw-border-spacing-x:0;--tw-border-spacing-y:0;--tw-translate-x:0;--tw-translate-y:0;--tw-rotate:0;--tw-skew-x:0;--tw-skew-y:0;--tw-scale-x:1;--tw-scale-y:1;--tw-pan-x: ;--tw-pan-y: ;--tw-pinch-zoom: ;--tw-scroll-snap-strictness:proximity;--tw-gradient-from-position: ;--tw-gradient-via-position: ;--tw-gradient-to-position: ;--tw-ordinal: ;--tw-slashed-zero: ;--tw-numeric-figure: ;--tw-numeric-spacing: ;--tw-numeric-fraction: ;--tw-ring-inset: ;--tw-ring-offset-width:0px;--tw-ring-offset-color:#fff;--tw-ring-color:rgb(59 130 246 / 0.5);--tw-ring-offset-shadow:0 0 #0000;--tw-ring-shadow:0 0 #0000;--tw-shadow:0 0 #0000;--tw-shadow-colored:0 0 #0000;--tw-blur: ;--tw-brightness: ;--tw-contrast: ;--tw-grayscale: ;--tw-hue-rotate: ;--tw-invert: ;--tw-saturate: ;--tw-sepia: ;--tw-drop-shadow: ;--tw-backdrop-blur: ;--tw-backdrop-brightness: ;--tw-backdrop-contrast: ;--tw-backdrop-grayscale: ;--tw-backdrop-hue-rotate: ;--tw-backdrop-invert: ;--tw-backdrop-opacity: ;--tw-backdrop-saturate: ;--tw-backdrop-sepia: ;--tw-contain-size: ;--tw-contain-layout: ;--tw-contain-paint: ;--tw-contain-style: }::backdrop{--tw-border-spacing-x:0;--tw-border-spacing-y:0;--tw-translate-x:0;--tw-translate-y:0;--tw-rotate:0;--tw-skew-x:0;--tw-skew-y:0;--tw-scale-x:1;--tw-scale-y:1;--tw-pan-x: ;--tw-pan-y: ;--tw-pinch-zoom: ;--tw-scroll-snap-strictness:proximity;--tw-gradient-from-position: ;--tw-gradient-via-position: ;--tw-gradient-to-position: ;--tw-ordinal: ;--tw-slashed-zero: ;--tw-numeric-figure: ;--tw-numeric-spacing: ;--tw-numeric-fraction: ;--tw-ring-inset: ;--tw-ring-offset-width:0px;--tw-ring-offset-color:#fff;--tw-ring-color:rgb(59 130 246 / 0.5);--tw-ring-offset-shadow:0 0 #0000;--tw-ring-shadow:0 0 #0000;--tw-shadow:0 0 #0000;--tw-shadow-colored:0 0 #0000;--tw-blur: ;--tw-brightness: ;--tw-contrast: ;--tw-grayscale: ;--tw-hue-rotate: ;--tw-invert: ;--tw-saturate: ;--tw-sepia: ;--tw-drop-shadow: ;--tw-backdrop-blur: ;--tw-backdrop-brightness: ;--tw-backdrop-contrast: ;--tw-backdrop-grayscale: ;--tw-backdrop-hue-rotate: ;--tw-backdrop-invert: ;--tw-backdrop-opacity: ;--tw-backdrop-saturate: ;--tw-backdrop-sepia: ;--tw-contain-size: ;--tw-contain-layout: ;--tw-contain-paint: ;--tw-contain-style: }/* ! tailwindcss v3.4.17 | MIT License | https://tailwindcss.com */*,::after,::before{box-sizing:border-box;border-width:0;border-style:solid;border-color:#e5e7eb}::after,::before{--tw-content:''}:host,html{line-height:1.5;-webkit-text-size-adjust:100%;-moz-tab-size:4;tab-size:4;font-family:ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";font-feature-settings:normal;font-variation-settings:normal;-webkit-tap-highlight-color:transparent}body{margin:0;line-height:inherit}hr{height:0;color:inherit;border-top-width:1px}abbr:where([title]){-webkit-text-decoration:underline dotted;text-decoration:underline dotted}h1,h2,h3,h4,h5,h6{font-size:inherit;font-weight:inherit}a{color:inherit;text-decoration:inherit}b,strong{font-weight:bolder}code,kbd,pre,samp{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;font-feature-settings:normal;font-variation-settings:normal;font-size:1em}small{font-size:80%}sub,sup{font-size:75%;line-height:0;position:relative;vertical-align:baseline}sub{bottom:-.25em}sup{top:-.5em}table{text-indent:0;border-color:inherit;border-collapse:collapse}button,input,optgroup,select,textarea{font-family:inherit;font-feature-settings:inherit;font-variation-settings:inherit;font-size:100%;font-weight:inherit;line-height:inherit;letter-spacing:inherit;color:inherit;margin:0;padding:0}button,select{text-transform:none}button,input:where([type=button]),input:where([type=reset]),input:where([type=submit]){-webkit-appearance:button;background-color:transparent;background-image:none}:-moz-focusring{outline:auto}:-moz-ui-invalid{box-shadow:none}progress{vertical-align:baseline}::-webkit-inner-spin-button,::-webkit-outer-spin-button{height:auto}[type=search]{-webkit-appearance:textfield;outline-offset:-2px}::-webkit-search-decoration{-webkit-appearance:none}::-webkit-file-upload-button{-webkit-appearance:button;font:inherit}summary{display:list-item}blockquote,dd,dl,figure,h1,h2,h3,h4,h5,h6,hr,p,pre{margin:0}fieldset{margin:0;padding:0}legend{padding:0}menu,ol,ul{list-style:none;margin:0;padding:0}dialog{padding:0}textarea{resize:vertical}input::placeholder,textarea::placeholder{opacity:1;color:#9ca3af}[role=button],button{cursor:pointer}:disabled{cursor:default}audio,canvas,embed,iframe,img,object,svg,video{display:block;vertical-align:middle}img,video{max-width:100%;height:auto}[hidden]:where(:not([hidden=until-found])){display:none}.relative{position:relative}.my-2\.5{margin-top:0.625rem;margin-bottom:0.625rem}.mb-2{margin-bottom:0.5rem}.mb-3{margin-bottom:0.75rem}.mb-4{margin-bottom:1rem}.ml-auto{margin-left:auto}.mt-1{margin-top:0.25rem}.mt-1\.5{margin-top:0.375rem}.mt-2{margin-top:0.5rem}.mt-3{margin-top:0.75rem}.mt-4{margin-top:1rem}.mt-5{margin-top:1.25rem}.mt-0\.5{margin-top:0.125rem}.mt-2\.5{margin-top:0.625rem}.mb-2\.5{margin-bottom:0.625rem}.mb-3\.5{margin-bottom:0.875rem}.mt-3\.5{margin-top:0.875rem}.mb-1\.5{margin-bottom:0.375rem}.block{display:block}.flex{display:flex}.grid{display:grid}.hidden{display:none}.h-px{height:1px}.w-9{width:2.25rem}.w-full{width:100%}.min-w-0{min-width:0px}.flex-1{flex:1 1 0%}.flex-none{flex:none}.grid-cols-3{grid-template-columns:repeat(3, minmax(0, 1fr))}.grid-cols-2{grid-template-columns:repeat(2, minmax(0, 1fr))}.flex-wrap{flex-wrap:wrap}.items-start{align-items:flex-start}.items-center{align-items:center}.justify-between{justify-content:space-between}.gap-2{gap:0.5rem}.gap-2\.5{gap:0.625rem}.gap-3{gap:0.75rem}.gap-1\.5{gap:0.375rem}.gap-4{gap:1rem}.space-y-2 > :not([hidden]) ~ :not([hidden]){--tw-space-y-reverse:0;margin-top:calc(0.5rem * calc(1 - var(--tw-space-y-reverse)));margin-bottom:calc(0.5rem * var(--tw-space-y-reverse))}.space-y-3 > :not([hidden]) ~ :not([hidden]){--tw-space-y-reverse:0;margin-top:calc(0.75rem * calc(1 - var(--tw-space-y-reverse)));margin-bottom:calc(0.75rem * var(--tw-space-y-reverse))}.space-y-4 > :not([hidden]) ~ :not([hidden]){--tw-space-y-reverse:0;margin-top:calc(1rem * calc(1 - var(--tw-space-y-reverse)));margin-bottom:calc(1rem * var(--tw-space-y-reverse))}.space-y-0 > :not([hidden]) ~ :not([hidden]){--tw-space-y-reverse:0;margin-top:calc(0px * calc(1 - var(--tw-space-y-reverse)));margin-bottom:calc(0px * var(--tw-space-y-reverse))}.space-y-1\.5 > :not([hidden]) ~ :not([hidden]){--tw-space-y-reverse:0;margin-top:calc(0.375rem * calc(1 - var(--tw-space-y-reverse)));margin-bottom:calc(0.375rem * var(--tw-space-y-reverse))}.overflow-x-auto{overflow-x:auto}.truncate{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.break-all{word-break:break-all}.rounded-lg{border-radius:0.5rem}.border{border-width:1px}.border-t{border-top-width:1px}.border-\[rgba\(57\2c 255\2c 140\2c \.28\)\]{border-color:rgba(57,255,140,.28)}.border-\[var\(--line\)\]{border-color:var(--line)}.bg-\[\#0b0f16\]{--tw-bg-opacity:1;background-color:rgb(11 15 22 / var(--tw-bg-opacity, 1))}.bg-\[rgba\(57\2c 255\2c 140\2c \.07\)\]{background-color:rgba(57,255,140,.07)}.bg-\[var\(--line\)\]{background-color:var(--line)}.p-2\.5{padding:0.625rem}.p-3{padding:0.75rem}.p-4{padding:1rem}.p-6{padding:1.5rem}.px-4{padding-left:1rem;padding-right:1rem}.py-2{padding-top:0.5rem;padding-bottom:0.5rem}.px-3\.5{padding-left:0.875rem;padding-right:0.875rem}.py-2\.5{padding-top:0.625rem;padding-bottom:0.625rem}.py-4{padding-top:1rem;padding-bottom:1rem}.px-1{padding-left:0.25rem;padding-right:0.25rem}.px-2{padding-left:0.5rem;padding-right:0.5rem}.px-3{padding-left:0.75rem;padding-right:0.75rem}.pb-1{padding-bottom:0.25rem}.pb-3{padding-bottom:0.75rem}.pt-4{padding-top:1rem}.pt-3{padding-top:0.75rem}.pl-5{padding-left:1.25rem}.pr-4{padding-right:1rem}.text-left{text-align:left}.text-center{text-align:center}.text-right{text-align:right}.font-mono{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace}.text-\[10\.5px\]{font-size:10.5px}.text-\[10px\]{font-size:10px}.text-\[11\.5px\]{font-size:11.5px}.text-\[12px\]{font-size:12px}.text-\[13px\]{font-size:13px}.text-\[21px\]{font-size:21px}.text-\[27px\]{font-size:27px}.text-\[30px\]{font-size:30px}.text-\[11px\]{font-size:11px}.text-\[15px\]{font-size:15px}.text-\[16px\]{font-size:16px}.text-\[17px\]{font-size:17px}.text-\[25px\]{font-size:25px}.text-\[9px\]{font-size:9px}.text-\[12\.5px\]{font-size:12.5px}.text-\[13\.5px\]{font-size:13.5px}.text-\[20px\]{font-size:20px}.text-\[9\.5px\]{font-size:9.5px}.text-\[26px\]{font-size:26px}.font-bold{font-weight:700}.font-semibold{font-weight:600}.font-extrabold{font-weight:800}.normal-case{text-transform:none}.leading-none{line-height:1}.leading-relaxed{line-height:1.625}.leading-tight{line-height:1.25}.tracking-normal{letter-spacing:0em}.tracking-wide{letter-spacing:0.025em}.tracking-widest{letter-spacing:0.1em}.text-\[\#232c3b\]{--tw-text-opacity:1;color:rgb(35 44 59 / var(--tw-text-opacity, 1))}.text-\[var\(--cyan\)\]{color:var(--cyan)}.text-\[var\(--dim\)\]{color:var(--dim)}.text-\[var\(--gold\)\]{color:var(--gold)}.text-\[var\(--green\)\]{color:var(--green)}.text-\[var\(--off\)\]{color:var(--off)}.text-\[var\(--red\)\]{color:var(--red)}.text-\[\#2b3546\]{--tw-text-opacity:1;color:rgb(43 53 70 / var(--tw-text-opacity, 1))}.text-\[\#39424f\]{--tw-text-opacity:1;color:rgb(57 66 79 / var(--tw-text-opacity, 1))}.text-\[\#5d6879\]{--tw-text-opacity:1;color:rgb(93 104 121 / var(--tw-text-opacity, 1))}.underline{-webkit-text-decoration-line:underline;text-decoration-line:underline}.decoration-dotted{-webkit-text-decoration-style:dotted;text-decoration-style:dotted}</style></head>
 <body>
@@ -3670,6 +4111,22 @@ body.fsn-dd-lock{ overflow:hidden; }
       <div class="lb-stat-grid" id="lbSheetStats"></div>
       <p class="lb-verdict" id="lbSheetVerdict"></p>
       <button type="button" class="lb-sheet-close" id="lbSheetClose">Close</button>
+    </div>
+  </div>
+
+  <!-- The matchup box-score drawer. Opened by a tap anywhere on a matchup
+       card; filled by openMatchupBox() in the UI layer from the week's
+       roster feed, so the markup here is an empty shell. -->
+  <div id="mxBoxSheet" data-open="false" role="dialog" aria-modal="true" aria-labelledby="mxBoxTitle">
+    <div class="mx-box-in">
+      <div class="mx-box-head">
+        <div class="min-w-0 flex-1">
+          <div class="mx-box-title" id="mxBoxTitle"></div>
+          <div class="mx-box-sub" id="mxBoxSub"></div>
+        </div>
+      </div>
+      <div class="mx-box-grid" id="mxBoxGrid"></div>
+      <button type="button" class="mx-box-close" id="mxBoxClose">Close</button>
     </div>
   </div>
 
@@ -23384,7 +23841,7 @@ function toast(msg){
    strand every primary screen behind overflow:hidden. Recompute from actual
    DOM state after every transition instead of trusting paired assignments. */
 function syncBodyScrollLock(){
-  const overlayIds = ['reader','franchiseModal','onboardModal','ftuModal','profilePicker','fsnIndexInfoModal'];
+  const overlayIds = ['reader','franchiseModal','onboardModal','ftuModal','profilePicker','fsnIndexInfoModal','mxBoxSheet'];
   const locked = overlayIds.some(id=>{
     const node = $(id);
     return node && node.dataset && node.dataset.open === 'true';
@@ -25126,19 +25583,98 @@ function renderMatchups(){
     return;
   }
 
+  /* The Game of the Week is resolved once for the whole board rather than per
+     card, and it reads the same selector the Desk and the News tab read
+     (NewsDesk.marqueeMatchup) so all three name the same fixture. */
+  const motwKey = marqueeFixtureKey(week);
+
   try{
-    $('matchupList').innerHTML = games.map(g=> matchupCard(g)).join('');
+    $('matchupList').innerHTML = games.map(g=> matchupCard(g, motwKey, week)).join('');
   }catch(err){
     console.warn('[Matchups] card render failed; showing empty state.', err);
     $('matchupList').innerHTML = emptyState('BYE', `This week’s board hit a snag while rendering. Re-fetch the league from Setup.`, 'setup');
   }
 }
 
-function matchupCard(g){
+/* A stable identity for a fixture, so the marquee pick can be matched against
+   this render's own game objects (which are not guaranteed to be the same
+   references the News Desk built its context from). */
+function fixtureKeyOf(g){
+  if(!g || !g.homeTeam || !g.awayTeam || g.homeTeam.id == null || g.awayTeam.id == null) return '';
+  return String(g.awayTeam.id) + '@' + String(g.homeTeam.id);
+}
+
+function marqueeFixtureKey(week){
+  try{
+    return fixtureKeyOf(NewsDesk.marqueeMatchup(week));
+  }catch(err){
+    console.warn('[Matchups] the Game of the Week could not be read from the News Desk for week ' +
+      week + '; no card is tagged this week.', err);
+    return '';
+  }
+}
+
+/* ---- MARGIN INTENSITY ----
+   The News Desk's calibrated tiers (NAILBITER_MARGIN and friends, block 4)
+   drive narrative copy and are deliberately untouched. These are the board's
+   own display brackets: a tight game, a rout, and the neutral middle. */
+const MX_NAILBITER_MARGIN = 10;
+const MX_BLOWOUT_MARGIN   = 30;
+
+function matchupMarginBadge(margin){
+  const gap = Math.abs(Number(margin) || 0);
+  const value = gap.toFixed(1);
+  if(gap < MX_NAILBITER_MARGIN) return { cls:'is-nailbiter', glyph:'\u26a1', text:'NAILBITER \u00b7 ' + value };
+  if(gap > MX_BLOWOUT_MARGIN)   return { cls:'is-blowout',   glyph:'\ud83d\udca5', text:'BLOWOUT \u00b7 ' + value };
+  return { cls:'is-standard', glyph:'', text:value + ' MARGIN' };
+}
+
+/* Two accents that are always distinguishable. accentFor() hashes a name into
+   a fixed palette, so two franchises in the same game can legitimately land on
+   the same colour — which would make the contribution bar read as one solid
+   block. When they collide the home side steps to the next entry. */
+function matchupAccents(away, home){
+  const a = accentFor(away && away.name);
+  let h = accentFor(home && home.name);
+  if(h === a) h = ACCENTS[(ACCENTS.indexOf(a) + 1) % ACCENTS.length];
+  return { away:a, home:h };
+}
+
+/* The contribution bar that replaced the plain divider. Scored games split on
+   real points; a board that has not kicked off splits on projections when the
+   feed carries both, and otherwise sits evenly and says so. */
+function matchupDominanceBar(awayScore, homeScore, awayProj, homeProj, accents, scored){
+  let a = Number(awayScore) || 0, h = Number(homeScore) || 0;
+  let label = 'POINT SHARE';
+  if(!scored){
+    const ap = projectedPoints(awayProj), hp = projectedPoints(homeProj);
+    if(ap != null && hp != null){ a = ap; h = hp; label = 'PROJECTED SHARE'; }
+    else { a = 0; h = 0; }
+  }
+  const total = a + h;
+  const awayPct = total > 0 ? (a / total) * 100 : 50;
+  const homePct = 100 - awayPct;
+  const even = total <= 0;
+  const dim = 'rgba(255,255,255,.12)';
+  return `<div class="mx-dominance" aria-hidden="true">
+    <div class="mx-dominance-track">
+      <span class="mx-dominance-seg is-away" style="flex:0 0 ${awayPct.toFixed(1)}%;background:${even ? dim : accents.away}"></span>
+      <span class="mx-dominance-seg is-home" style="flex:0 0 ${homePct.toFixed(1)}%;background:${even ? dim : accents.home}"></span>
+    </div>
+    <div class="mx-dominance-legend">
+      <span style="color:${even ? '#4d5769' : accents.away}">${even ? '\u2014' : awayPct.toFixed(0) + '%'}</span>
+      <span class="mx-dominance-mid">${even ? 'AWAITING KICKOFF' : label}</span>
+      <span style="color:${even ? '#4d5769' : accents.home}">${even ? '\u2014' : homePct.toFixed(0) + '%'}</span>
+    </div>
+  </div>`;
+}
+
+function matchupCard(g, motwKey, week){
   const st = gameStatus(g);
   /* The real score is the primary value on the card at every state. A slate
      that has not kicked off reads 0.0 — the projection is rendered under the
-     score as its own labelled line rather than standing in for it. */
+     score as its own labelled secondary value (see matchupSide) rather than
+     standing in for it. */
   const hs = actualOf(g, 'home') || 0;
   const as = actualOf(g, 'away') || 0;
   const homeProj = projectedOf(g, 'home');
@@ -25161,13 +25697,28 @@ function matchupCard(g){
   const playoff = g.playoffTierType && g.playoffTierType !== 'NONE'
     ? `<span class="pill pill-gold">PLAYOFFS</span>` : '';
 
-  const accent = st === 'live' ? 'accent-red' : (st === 'final' ? 'accent-cyan' : 'accent-gold');
+  /* The marquee fixture wears the Game of the Week tag and the gold card
+     treatment. It is matched by team ids, so it survives the Desk and this
+     render holding different objects for the same game. */
+  const key = fixtureKeyOf(g);
+  const isMotw = !!(motwKey && key && key === motwKey);
+  const motwTag = isMotw
+    ? `<span class="mx-motw-tag"><span aria-hidden="true">★</span>GAME OF THE WEEK</span>` : '';
 
-  // Pre-game rows also drop the projected-total badge; margin only lives here
-  // once real scoring exists.
-  const marginBadge = st === 'pre'
-    ? ''
-    : `<span class="font-mono tabular text-[10px] text-[var(--dim)]">${margin.toFixed(1)} MARGIN</span>`;
+  const accent = isMotw ? 'accent-gold' : (st === 'live' ? 'accent-red' : (st === 'final' ? 'accent-cyan' : 'accent-gold'));
+
+  /* Pre-game rows carry no margin at all — there is nothing to be tight or
+     lopsided about yet. Once real scoring exists the plain margin line becomes
+     an intensity badge: a nail-biter, a blowout, or the neutral middle. */
+  let marginBadge = '';
+  if(st !== 'pre'){
+    const badge = matchupMarginBadge(margin);
+    marginBadge = `<span class="mx-badge ${badge.cls}">` +
+      (badge.glyph ? `<span class="mx-badge-glyph" aria-hidden="true">${badge.glyph}</span>` : '') +
+      `${esc(badge.text)}</span>`;
+  }
+
+  const accents = matchupAccents(g.awayTeam, g.homeTeam);
 
   // In-universe fallback sub-text: any matchup period that has not finalized
   // (pre-game, active, or awaiting the Tuesday roll) gets the clean editorial
@@ -25177,16 +25728,25 @@ function matchupCard(g){
     ? `<div class="mt-2 text-[11px] text-[var(--dim)] leading-relaxed italic">Scores finalize Tuesday morning following stat corrections.</div>`
     : '';
 
-  return `<div class="card card-accent ${accent} ${gameHasActiveTeam(g) ? 'active-team-matchup' : ''}">
+  const boxWeek = Number(week) || effectiveWeek();
+
+  return `<div class="card card-accent mx-card ${accent} ${isMotw ? 'is-motw' : ''} ${gameHasActiveTeam(g) ? 'active-team-matchup' : ''}"
+      data-mx-week="${esc(String(boxWeek))}"
+      data-mx-away="${esc(String(g.awayTeam && g.awayTeam.id))}"
+      data-mx-home="${esc(String(g.homeTeam && g.homeTeam.id))}"
+      role="button" tabindex="0"
+      aria-label="Open the box score for ${esc(String((g.awayTeam && g.awayTeam.name) || 'away'))} at ${esc(String((g.homeTeam && g.homeTeam.name) || 'home'))}">
     <div class="pl-4 pr-3.5 py-3.5">
-      <div class="flex items-center justify-between mb-3">
-        <div class="flex items-center gap-1.5">${statusPill}${playoff}</div>
+      ${motwTag ? `<div class="mb-2.5">${motwTag}</div>` : ''}
+      <div class="flex items-center justify-between gap-2 mb-3">
+        <div class="flex items-center gap-1.5 flex-wrap min-w-0">${statusPill}${playoff}</div>
         ${marginBadge}
       </div>
-      ${matchupSide(g.awayTeam, as, awayLeads, st, awayProj, effectiveWeek())}
-      <div class="h-px bg-[var(--line)] my-2.5"></div>
-      ${matchupSide(g.homeTeam, hs, homeLeads, st, homeProj, effectiveWeek())}
+      ${matchupSide(g.awayTeam, as, awayLeads, st, awayProj, boxWeek)}
+      ${matchupDominanceBar(as, hs, awayProj, homeProj, accents, scored)}
+      ${matchupSide(g.homeTeam, hs, homeLeads, st, homeProj, boxWeek)}
       ${finalizeNotice}
+      <div class="mx-cue"><span>View Box Score</span><span class="mx-cue-chev" aria-hidden="true">›</span></div>
     </div>
   </div>`;
 }
@@ -25201,14 +25761,30 @@ function matchupSide(team, score, leading, status, projected, week){
       border-color:${won ? 'rgba(57,255,140,.4)' : 'rgba(255,45,85,.4)'};
       color:${won ? 'var(--green)' : 'var(--red)'};">${won ? 'W' : 'L'}${streak.length}</span>`;
   }
-  /* The projection rides under the real score as a small muted annotation.
-     It is strictly secondary: the score above it is what actually happened,
-     and a missing projection simply drops the line. */
+  /* Before a side has scored, the projection is the only forecast there is, so
+     it rides under the score as a small muted annotation. Once real points are
+     on the board, the raw forecast is a second copy of a number the reader has
+     already read; what is actually new is the DISTANCE from it, so the line
+     becomes a signed delta — green over the projection, red under it.
+
+     The switch is per SIDE, not per game: in a live week one roster can be
+     mid-slate while the other has not played, and printing that team a
+     −109.4 deficit against its own projection would read as a collapse
+     rather than as a team whose players have not kicked off. A missing
+     projection drops the line entirely in both states. */
   const proj = projectedPoints(projected);
-  const projLine = proj == null
-    ? ''
-    : `<div class="font-mono tabular text-[10px] text-[var(--dim)] leading-none mt-1.5 whitespace-nowrap"
+  const hasScored = status !== 'pre' && Number(score) > 0;
+  let projLine = '';
+  if(proj != null && !hasScored){
+    projLine = `<div class="font-mono tabular text-[10px] text-[var(--dim)] leading-none mt-1.5 whitespace-nowrap"
          data-score-projected="${esc(formatPoints(proj))}">Projected: ${esc(formatPoints(proj))}</div>`;
+  } else if(proj != null){
+    const delta = Number(score) - proj;
+    const tone = delta > 0.05 ? 'is-over' : (delta < -0.05 ? 'is-under' : '');
+    const sign = delta > 0 ? '+' : (delta < 0 ? '−' : '±');
+    projLine = `<div class="mx-proj ${tone}" data-score-projected="${esc(formatPoints(proj))}"
+         title="Projected ${esc(formatPoints(proj))}">${sign}${Math.abs(delta).toFixed(1)} vs PROJ</div>`;
+  }
 
   return `<div class="flex items-center gap-3">
     ${crest(team.name, team.logo, 40)}
@@ -25228,6 +25804,114 @@ function matchupSide(team, score, leading, status, projected, week){
   </div>`;
 }
 
+/* ---- THE BOX-SCORE DRAWER ----
+   The cue at the foot of every matchup card promises a box score, so the
+   drawer is a real destination: this week's starting lineups for both sides,
+   read from the same roster feed the analytics models read. A side the feed
+   has not exposed lineups for says so rather than rendering an empty panel. */
+function matchupBoxSide(team, score, week){
+  let starters = [];
+  try{
+    starters = FSNIntel.startersFor(week, team && team.id) || [];
+  }catch(err){
+    console.error('[Matchups] the starting lineup could not be read for ' +
+      ((team && team.name) || 'an unknown team') + ' in week ' + week +
+      '; that side of the box score renders empty.', err);
+    starters = [];
+  }
+
+  const rows = starters.map(p=>{
+    const pts = (p && typeof p.points === 'number') ? p.points.toFixed(1) : '—';
+    const meta = [p.pos, p.proTeam].filter(Boolean).join(' · ') || 'Starter';
+    return `<div class="mx-box-row">
+      <span class="mx-box-slot">${esc(p.pos || '—')}</span>
+      <span class="mx-box-player"><strong>${esc(p.name || 'Unnamed player')}</strong><span>${esc(meta)}</span></span>
+      <span class="mx-box-pts">${esc(pts)}</span>
+    </div>`;
+  }).join('');
+
+  return `<section class="mx-box-side">
+    <header class="mx-box-side-head">
+      ${crest(team && team.name, team && team.logo, 28)}
+      <span class="mx-box-side-name">${esc((team && team.name) || 'Team')}</span>
+      <span class="mx-box-side-score">${Number(score || 0).toFixed(1)}</span>
+    </header>
+    ${rows || '<div class="mx-box-empty">This league’s export does not expose a starting lineup for this side of the matchup.</div>'}
+  </section>`;
+}
+
+function openMatchupBox(week, awayId, homeId){
+  const sheet = $('mxBoxSheet');
+  if(!sheet){
+    console.error('[Matchups] the box-score drawer is missing from the document',
+      new Error('MX_BOX_SHEET_MISSING'));
+    return;
+  }
+
+  let games = [];
+  try{ games = LeagueData.getWeekMatchups(week) || []; }
+  catch(err){
+    console.error('[Matchups] the week ' + week + ' board could not be re-read for the box score; ' +
+      'the drawer stays closed.', err);
+    toast('Box score unavailable for this week');
+    return;
+  }
+
+  const game = games.find(g=> g && g.awayTeam && g.homeTeam &&
+    String(g.awayTeam.id) === String(awayId) && String(g.homeTeam.id) === String(homeId));
+  if(!game){
+    console.warn('[Matchups] no week ' + week + ' game matches ' + awayId + '@' + homeId +
+      '; the drawer stays closed.');
+    toast('Box score unavailable for this matchup');
+    return;
+  }
+
+  const as = actualOf(game, 'away') || 0;
+  const hs = actualOf(game, 'home') || 0;
+  const st = gameStatus(game);
+
+  $('mxBoxTitle').textContent = String(game.awayTeam.name || 'Away') + ' at ' + String(game.homeTeam.name || 'Home');
+  $('mxBoxSub').textContent = 'Week ' + week + ' · ' +
+    (st === 'final' ? 'Final' : st === 'live' ? 'In progress' : 'Not yet kicked off') +
+    ' · Starting lineups';
+  $('mxBoxGrid').innerHTML =
+    matchupBoxSide(game.awayTeam, as, week) +
+    matchupBoxSide(game.homeTeam, hs, week);
+
+  sheet.dataset.open = 'true';
+  syncBodyScrollLock();
+}
+
+function closeMatchupBox(){
+  const sheet = $('mxBoxSheet');
+  if(!sheet) return;
+  sheet.dataset.open = 'false';
+  syncBodyScrollLock();
+}
+
+/* One delegated listener for the whole board: the cards are rewritten on every
+   repaint, so per-card binding would have to be re-run each time. */
+document.addEventListener('click', (e)=>{
+  if(!e.target || !e.target.closest) return;
+  const sheet = $('mxBoxSheet');
+  if(sheet && sheet.dataset.open === 'true'){
+    if(e.target === sheet || e.target.closest('#mxBoxClose')){ closeMatchupBox(); return; }
+  }
+  const card = e.target.closest('.mx-card[data-mx-week]');
+  if(!card) return;
+  openMatchupBox(parseInt(card.dataset.mxWeek, 10) || effectiveWeek(), card.dataset.mxAway, card.dataset.mxHome);
+});
+document.addEventListener('keydown', (e)=>{
+  const sheet = $('mxBoxSheet');
+  if(e.key === 'Escape' && sheet && sheet.dataset.open === 'true'){ closeMatchupBox(); return; }
+  if(e.key !== 'Enter' && e.key !== ' ') return;
+  if(!e.target || !e.target.closest) return;
+  const card = e.target.closest('.mx-card[data-mx-week]');
+  if(!card || e.target !== card) return;
+  e.preventDefault();
+  openMatchupBox(parseInt(card.dataset.mxWeek, 10) || effectiveWeek(), card.dataset.mxAway, card.dataset.mxHome);
+});
+
 /* ============================================================
    SEASON STATS & ANALYTICS
 ============================================================ */
@@ -25244,15 +25928,28 @@ function analyticsTeamCell(row, rank){
   </span>`;
 }
 
-function analyticsTable(rows, headers, cells){
+/* `rowStyle` is optional: a model that wants to tint its rows on a scale (the
+   Schedule Hardship board) returns an inline style for each row, and every
+   other model passes nothing and gets the plain table it always had. */
+function analyticsTable(rows, headers, cells, rowStyle){
   if(!rows.length) return '<div class="analytics-empty">ESPN has not exposed enough completed data for this model yet.</div>';
+  const styleFor = (row)=>{
+    if(typeof rowStyle !== 'function') return '';
+    try{
+      const value = rowStyle(row);
+      return value ? ` style="${value}"` : '';
+    }catch(err){
+      console.warn('[Analytics] a row tint could not be computed; the row renders untinted', err);
+      return '';
+    }
+  };
   return `<div class="analytics-table-wrap no-bar"><table class="analytics-table">
     <thead><tr><th>Team</th>${headers.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead>
-    <tbody>${rows.map((row,index)=>`<tr><td class="analytics-team-cell">${analyticsTeamCell(row,index+1)}</td>${cells(row).map((cell,ci)=> cell.replace(/^(\s*)<td/, `$1<td data-label="${esc(headers[ci] || '')}"`)).join('')}</tr>`).join('')}</tbody>
+    <tbody>${rows.map((row,index)=>`<tr${styleFor(row)}><td class="analytics-team-cell">${analyticsTeamCell(row,index+1)}</td>${cells(row).map((cell,ci)=> cell.replace(/^(\s*)<td/, `$1<td data-label="${esc(headers[ci] || '')}"`)).join('')}</tr>`).join('')}</tbody>
   </table></div>`;
 }
 
-function analyticsModel(numberLabel, title, copy, accent, body, wide, tip){
+function analyticsModel(numberLabel, title, copy, accent, body, wide, tip, extraClass){
   // Plain-English tooltip trigger — sits next to the model title and explains the
   // stat in everyday language on hover/tap, replacing the textbook definition as
   // the reader's first point of contact.
@@ -25278,7 +25975,7 @@ function analyticsModel(numberLabel, title, copy, accent, body, wide, tip){
     </details>`;
   }
 
-  return `<article class="analytics-model${wide ? ' analytics-wide' : ''}" style="--model-accent:${accent}">
+  return `<article class="analytics-model${wide ? ' analytics-wide' : ''}${extraClass ? ' ' + extraClass : ''}" style="--model-accent:${accent}">
     <div class="analytics-model-head">
       <span class="analytics-model-num">${numberLabel}</span>
       <div class="min-w-0">
@@ -25350,6 +26047,94 @@ function normalizedStandingsStreak(value){
   const length=Math.max(0,Math.trunc(finiteStandingsNumber(value.length != null ? value.length : value.count)));
   return /^(W|L|T)$/.test(result) && length ? {result,length,label:result+length} : {result:"",length:0,label:"—"};
 }
+/* ---- STANDINGS SUPPORT ----
+   Rank movement, the point differential badge and the playoff cut line are all
+   presentation over FSNIntel.standingsThrough(); none of them recompute a
+   record or re-rank the league on their own terms. */
+
+/* The one comparator the board sorts by, factored out so the previous week's
+   table is ranked on exactly the same rule as this week's. Ranking one table
+   by a different rule than the other is how a movement arrow lies. */
+function standingsCompare(a, b){
+  return (b.wins-a.wins)||(b.ties-a.ties)||(b.pf-a.pf)||(a.pa-b.pa)||
+    String(a.name).localeCompare(String(b.name));
+}
+
+/* teamId -> rank, as of the end of the given week. Returns null (not an empty
+   map) when the week cannot be resolved, so the caller can tell "no prior
+   week" apart from "every team moved to rank 1". */
+function standingsRankMap(week){
+  if(!(Number(week) >= 1)) return null;
+  let rows = [];
+  try{
+    const computed = FSNIntel && typeof FSNIntel.standingsThrough === 'function'
+      ? FSNIntel.standingsThrough(week) : [];
+    rows = Array.isArray(computed) ? computed.filter(Boolean) : [];
+  }catch(err){
+    console.warn('[Standings] the Week ' + week + ' table could not be computed for rank movement; ' +
+      'the board shows no movement indicators.', err);
+    return null;
+  }
+  if(!rows.length) return null;
+
+  const normalized = [];
+  rows.forEach(function(row){
+    try{
+      const team = row && row.team && typeof row.team === 'object' ? row.team : {};
+      const id = team.id != null ? team.id : (row && row.teamId != null ? row.teamId : null);
+      if(id == null) return;
+      const nested = row.record && row.record.overall && typeof row.record.overall === 'object' ? row.record.overall : {};
+      normalized.push({
+        id:String(id),
+        wins:finiteStandingsNumber(row.wins != null ? row.wins : nested.wins),
+        losses:finiteStandingsNumber(row.losses != null ? row.losses : nested.losses),
+        ties:finiteStandingsNumber(row.ties != null ? row.ties : nested.ties),
+        pf:finiteStandingsNumber(row.pf != null ? row.pf : nested.pointsFor),
+        pa:finiteStandingsNumber(row.pa != null ? row.pa : nested.pointsAgainst),
+        name:String(team.name || row.teamName || ('Team ' + id)),
+      });
+    }catch(err){
+      console.warn('[Standings] a malformed row was skipped while ranking Week ' + week + ' for movement', err);
+    }
+  });
+  if(!normalized.length) return null;
+
+  normalized.sort(standingsCompare);
+  const map = {};
+  normalized.forEach(function(row, index){ map[row.id] = index + 1; });
+  return map;
+}
+
+/* ▲ / ▼ / — against last week's table. A team with no prior-week rank (an
+   expansion row, or Week 1) gets the neutral dash rather than a fabricated
+   climb. */
+function standingsMovement(prevRanks, teamId, rank){
+  if(!prevRanks) return '';
+  const was = prevRanks[String(teamId)];
+  if(!(was >= 1)) return '<span class="standings-move is-flat" title="No prior-week rank">—</span>';
+  const delta = was - rank;
+  const places = (n)=> n + ' place' + (n === 1 ? '' : 's');
+  if(delta > 0) return '<span class="standings-move is-up" title="Up ' + places(delta) + ' since last week">▲ ' + delta + '</span>';
+  if(delta < 0) return '<span class="standings-move is-down" title="Down ' + places(Math.abs(delta)) + ' since last week">▼ ' + Math.abs(delta) + '</span>';
+  return '<span class="standings-move is-flat" title="No change">—</span>';
+}
+
+/* How many seeds this league actually takes to the title bracket. Read from
+   the league's own settings, never assumed, so the cut line is drawn where
+   this league draws it. */
+function playoffSeedCount(){
+  try{
+    const d = LeagueData.espnData;
+    const settings = d && d.settings && d.settings.scheduleSettings;
+    const count = Number(settings && settings.playoffTeamCount);
+    return count >= 2 ? Math.trunc(count) : 0;
+  }catch(err){
+    console.warn('[Standings] the playoff field size could not be read from league settings; ' +
+      'no cut line is drawn.', err);
+    return 0;
+  }
+}
+
 function renderSeasonStandings(){
   let week=1;
   try{
@@ -25423,12 +26208,22 @@ function renderSeasonStandings(){
     }
   });
 
+  /* Ranked through the shared comparator so the prior-week table the movement
+     arrows read is ordered by the identical rule. */
   rows.sort(function(a,b){
-    return (b.wins-a.wins)||(b.ties-a.ties)||(b.pf-a.pf)||(a.pa-b.pa)||String(a.team.name).localeCompare(String(b.team.name));
+    return standingsCompare(
+      { wins:a.wins, ties:a.ties, pf:a.pf, pa:a.pa, name:a.team.name },
+      { wins:b.wins, ties:b.ties, pf:b.pf, pa:b.pa, name:b.team.name });
   });
   if(!rows.length){
     return '<div class="analytics-empty">No valid team records are available for Week '+week+'.</div>';
   }
+
+  /* Last week's table, ranked the same way, so each row can say how far it
+     moved. Null on Week 1 or when the prior week cannot be computed — the rows
+     then print the neutral dash instead of a made-up climb. */
+  const prevRanks = week > 1 ? standingsRankMap(week - 1) : null;
+  const seedCount = playoffSeedCount();
 
   const teamCards=rows.map(function(row,index){
     let rawStreak=null;
@@ -25458,9 +26253,32 @@ function renderSeasonStandings(){
       teamMark='<span class="analytics-model-num" aria-hidden="true">TM</span>';
     }
 
-    return '<article class="standings-team-card" style="--model-accent:var(--cyan)" aria-label="'+esc(row.team.name)+' standings">'+
+    const diff=row.pf-row.pa;
+    const diffClass=diff>0.05 ? 'is-pos' : (diff<-0.05 ? 'is-neg' : '');
+    const diffLabel=(diff>0 ? '+' : diff<0 ? '−' : '±')+Math.abs(diff).toFixed(1)+' DIFF';
+    let movement='';
+    try{
+      movement=standingsMovement(prevRanks,row.team.id,index+1);
+    }catch(err){
+      console.warn('[Standings] rank movement could not be resolved for team '+row.team.id,err);
+      movement='';
+    }
+
+    /* The dashed cut line is drawn ABOVE the first team outside the bracket,
+       so it separates the last seed that is in from the first that is out. It
+       is only drawn when the league's own settings name a field size and the
+       board is long enough for the line to mean something. */
+    const cutline=(seedCount && index===seedCount && rows.length>seedCount)
+      ? '<div class="standings-cutline" role="separator" aria-label="Playoff seed line">Playoff Seed Line</div>'
+      : '';
+
+    return cutline+
+      '<article class="standings-team-card" style="--model-accent:var(--cyan)" aria-label="'+esc(row.team.name)+' standings">'+
       '<div class="standings-team-card-head">'+
-        '<span class="standings-team-rank" aria-label="Rank '+(index+1)+'">'+(index+1)+'</span>'+
+        '<span class="standings-rank-wrap">'+
+          '<span class="standings-team-rank" aria-label="Rank '+(index+1)+'">'+(index+1)+'</span>'+
+          movement+
+        '</span>'+
         '<span class="standings-team-logo" aria-hidden="true">'+teamMark+'</span>'+
         '<span class="standings-team-identity">'+
           '<span class="standings-team-name" title="'+esc(row.team.name)+'">'+esc(row.team.name)+'</span>'+
@@ -25474,6 +26292,7 @@ function renderSeasonStandings(){
         '<div class="standings-stat">'+
           '<span class="standings-stat-label">PF</span>'+
           '<span class="standings-stat-value">'+n1(row.pf)+'</span>'+
+          '<span class="standings-diff '+diffClass+'" title="Points for minus points against">'+esc(diffLabel)+'</span>'+
         '</div>'+
         '<div class="standings-stat">'+
           '<span class="standings-stat-label">PA</span>'+
@@ -25501,10 +26320,40 @@ function renderSeasonStandings(){
 }
 
 /* ---- FSN POWER INDEX — card grid for the expanded 4-pillar engine ---- */
-function fsnIndexPill(label, value, sub){
+
+/* The composite score's own tier, on the published 0–100 scale. The bands are
+   presentation only: nothing here re-weights or re-scores the index, it only
+   names the band the engine's number already falls in. 70–74 is deliberately
+   unlabelled as a verdict — it is the middle of the table, so it says so. */
+function fsnIndexTier(score){
+  const n = Number(score);
+  if(!Number.isFinite(n)) return null;
+  if(n >= 85) return { cls:'is-contender', glyph:'👑', label:'Contender' };
+  if(n >= 75) return { cls:'is-lock',      glyph:'⚔️', label:'Playoff Lock' };
+  if(n >= 70) return { cls:'is-bubble',    glyph:'●',       label:'In the Hunt' };
+  return { cls:'is-hotseat', glyph:'⚠️', label:'Hot Seat' };
+}
+
+function fsnIndexTierBadge(score){
+  const tier = fsnIndexTier(score);
+  if(!tier) return '';
+  return '<span class="fsn-tier ' + tier.cls + '" title="FSN Power Index ' + esc(n1(score)) + ' of 100">' +
+    '<span aria-hidden="true">' + tier.glyph + '</span>' + esc(tier.label.toUpperCase()) + '</span>';
+}
+
+/* A bar for a 0–100 percentage. Used for coaching efficiency, where the number
+   alone ("93.4% Optimal") makes every team look alike at a glance. */
+function fsnMiniBar(pct, color){
+  const value = Math.max(0, Math.min(100, Number(pct) || 0));
+  return '<span class="mini-bar" aria-hidden="true"><i style="width:' + value.toFixed(1) + '%' +
+    (color ? ';background:' + color : '') + '"></i></span>';
+}
+
+function fsnIndexPill(label, value, sub, extra){
   return '<div class="fsn-index-pill">'+
     '<span class="fsn-index-pill-label">'+esc(label)+'</span>'+
     '<span class="fsn-index-pill-value">'+value+'</span>'+
+    (extra || '')+
     (sub ? '<span class="fsn-index-pill-sub">'+esc(sub)+'</span>' : '')+
   '</div>';
 }
@@ -25568,24 +26417,38 @@ function renderFsnIndex(){
     const conFlag = con.shrunk ? ' <span class="fsn-pill-flag">EARLY</span>' : '';
 
     const ctx = row.context || {};
-    const ctxValue = ctx.mode === 'optimal' ? n1(ctx.score) + '% Optimal' : n1(ctx.score) + ' SOS';
-    const ctxSub = ctx.mode === 'optimal' ? 'Optimal start %' : 'Schedule hardship';
+    const isOptimal = ctx.mode === 'optimal';
+    const ctxValue = isOptimal ? n1(ctx.score) + '% Optimal' : n1(ctx.score) + ' SOS';
+    const ctxSub = isOptimal ? 'Optimal start %' : 'Schedule hardship';
+    /* Coaching efficiency reads as a bar as well as a number: 91% and 78% are
+       a full tier apart and the raw figures do not show it. The SOS fallback
+       is not a percentage, so it keeps the plain value. */
+    const ctxBar = isOptimal
+      ? fsnMiniBar(ctx.score, Number(ctx.score) >= 92 ? 'var(--green)' : (Number(ctx.score) < 82 ? 'var(--red)' : 'var(--cyan)'))
+      : '';
 
-    return '<article class="fsn-index-card" style="--model-accent:var(--cyan)" aria-label="'+esc(row.team.name)+' FSN Power Index">'+
+    /* The composite drives a fill along the foot of the card and a tier badge
+       beside the score. Both read the engine's published index — no rescaling. */
+    const fill = Math.max(0, Math.min(100, Number(row.index) || 0));
+
+    return '<article class="fsn-index-card" style="--model-accent:var(--cyan);--fsn-fill:'+fill.toFixed(1)+'%" aria-label="'+esc(row.team.name)+' FSN Power Index">'+
       '<div class="fsn-index-card-head">'+
         '<span class="fsn-index-rank" aria-label="Rank '+row.rank+'">'+row.rank+'</span>'+
         '<span class="fsn-index-logo" aria-hidden="true">'+mark+'</span>'+
         '<span class="fsn-index-identity">'+
           '<span class="fsn-index-name" title="'+esc(row.team.name)+'">'+esc(row.team.name)+'</span>'+
           '<span class="fsn-index-sub">FSN Power Index · Week '+week+'</span>'+
+          fsnIndexTierBadge(row.index)+
         '</span>'+
-        '<span class="fsn-index-score" aria-label="FSN Index '+n1(row.index)+' of 100"><strong>'+n1(row.index)+'</strong><em>/ 100</em></span>'+
+        '<span class="fsn-index-score" aria-label="FSN Index '+n1(row.index)+' of 100"><strong>'+n1(row.index)+'</strong><em>/ 100</em>'+
+          '<span class="fsn-index-meter" aria-hidden="true"><i style="width:'+fill.toFixed(1)+'%"></i></span>'+
+        '</span>'+
       '</div>'+
       '<div class="fsn-index-grid">'+
         fsnIndexPill('All-Play', '<strong>'+esc(apRecord)+'</strong> <span class="fsn-pill-pct">'+esc(apPct)+'</span>', 'Schedule-neutral')+
         fsnIndexPill('PPG', '<strong>'+n1(row.ppg.avg)+'</strong> / '+n1(row.ppg.max)+' max', 'vs. League Max')+
         fsnIndexPill('Consistency', '<strong>'+n1(con.cf)+' CF</strong> • '+n1(con.cvPct)+'% CV'+conFlag, 'Lower CV = steadier')+
-        fsnIndexPill('Roster Context', '<strong>'+esc(ctxValue)+'</strong>', ctxSub)+
+        fsnIndexPill('Roster Context', '<strong>'+esc(ctxValue)+'</strong>', ctxSub, ctxBar)+
       '</div>'+
     '</article>';
   }).join('');
@@ -25731,18 +26594,57 @@ function renderAnalytics(){
     return;
   }
 
+  /* Luck Δ is the one column in this model a reader acts on, and a bare signed
+     decimal buries it among four other decimals. The badge names the verdict
+     the number already carries; the threshold is the same ±.01 the colour
+     classes used, so nothing is reclassified. */
+  const luckBadge = (delta)=>{
+    const value = Number(delta);
+    if(!Number.isFinite(value)) return '<span class="luck-badge is-even">—</span>';
+    if(value > .01){
+      return `<span class="luck-badge is-lucky"><span aria-hidden="true">🍀</span>+${analyticsValue(value)}<span class="luck-tag">(LUCKY)</span></span>`;
+    }
+    if(value < -.01){
+      return `<span class="luck-badge is-unlucky"><span aria-hidden="true">💔</span>${analyticsValue(value)}<span class="luck-tag">(UNLUCKY)</span></span>`;
+    }
+    return `<span class="luck-badge is-even">${analyticsValue(value)}<span class="luck-tag">(EVEN)</span></span>`;
+  };
+
   const expectedRows = scored.slice().sort((a,b)=> (b.expectedWins-a.expectedWins) || (b.ppg-a.ppg));
   const expectedTable = analyticsTable(expectedRows, ['Actual W','XW','Luck Δ','PPG'], row=>[
     `<td>${analyticsValue(row.actualWins)}</td>`,
     `<td class="analytics-good">${analyticsValue(row.expectedWins)}</td>`,
-    `<td class="${row.luckDelta > .01 ? 'analytics-good' : row.luckDelta < -.01 ? 'analytics-bad' : 'analytics-muted'}">${row.luckDelta > 0 ? '+' : ''}${analyticsValue(row.luckDelta)}</td>`,
+    `<td>${luckBadge(row.luckDelta)}</td>`,
     `<td>${analyticsValue(row.ppg)}</td>`,
   ]);
 
+  /* Wasted points alone never said what they were wasted against: 40 points on
+     the bench is a different story behind a 1,400-point season than behind a
+     700-point one. The split bar shows the started total and the bench total
+     side by side, both read straight off the model's own accumulators. */
+  const lineupSplit = (row)=>{
+    const active = Number(row.lineupActual);
+    const wasted = Number(row.wastedPoints);
+    if(!Number.isFinite(active) || !Number.isFinite(wasted) || active + wasted <= 0){
+      return `<span class="analytics-muted">${analyticsValue(row.wastedPoints)}</span>`;
+    }
+    const total = active + wasted;
+    const activePct = (active / total) * 100;
+    /* Bar and legend are one value, not two cells: the mobile table lays a row
+       out as label-left / value-right, so they have to travel together or the
+       legend is squeezed out beside the bar. */
+    return `<span class="lineup-split">` +
+      `<span class="mini-bar is-split" aria-hidden="true">` +
+        `<i class="is-active" style="width:${activePct.toFixed(1)}%"></i>` +
+        `<i class="is-wasted" style="width:${(100 - activePct).toFixed(1)}%"></i></span>` +
+      `<span class="mini-bar-legend"><span class="is-active">${analyticsValue(active)} ON</span>` +
+      `<span class="is-wasted">${analyticsValue(wasted)} BENCH</span></span></span>`;
+  };
+
   const lineupRows = rows.filter(row=> row.lineupEfficiency != null).sort((a,b)=> (b.lineupEfficiency-a.lineupEfficiency) || (a.wastedPoints-b.wastedPoints));
-  const lineupTable = analyticsTable(lineupRows, ['Efficiency','Wasted','Blunders','Weeks'], row=>[
+  const lineupTable = analyticsTable(lineupRows, ['Efficiency','Active vs Bench','Blunders','Weeks'], row=>[
     `<td class="${row.lineupEfficiency >= 90 ? 'analytics-good' : row.lineupEfficiency < 80 ? 'analytics-bad' : ''}">${analyticsValue(row.lineupEfficiency)}%</td>`,
-    `<td>${analyticsValue(row.wastedPoints)}</td>`,
+    `<td class="analytics-split-cell">${lineupSplit(row)}</td>`,
     `<td class="${row.benchBlunders ? 'analytics-bad' : 'analytics-good'}">${row.benchBlunders}</td>`,
     `<td>${row.lineupSamples}</td>`,
   ]);
@@ -25756,6 +26658,19 @@ function renderAnalytics(){
   ]);
 
   const hardshipRows = rows.filter(row=> row.scheduleDelta != null).sort((a,b)=> b.opponentPpg-a.opponentPpg);
+  /* The board is already sorted hardest-to-easiest, so a continuous red-to-green
+     wash across the rows makes the scale readable without another column. The
+     tint is derived from the row's own delta against the widest delta on the
+     board, so a flat league stays flat instead of being stretched to look
+     dramatic. */
+  const hardshipPeak = hardshipRows.reduce((max,row)=> Math.max(max, Math.abs(Number(row.scheduleDelta) || 0)), 0);
+  const hardshipTint = (row)=>{
+    const delta = Number(row.scheduleDelta) || 0;
+    if(hardshipPeak <= 0) return '';
+    const weight = Math.min(1, Math.abs(delta) / hardshipPeak) * 0.13;
+    const tone = delta > 0 ? '255,45,85' : '57,255,140';
+    return `background:linear-gradient(90deg,rgba(${tone},${weight.toFixed(3)}),transparent 78%)`;
+  };
   const hardshipTable = analyticsTable(hardshipRows, ['Opp PPG','vs League','Games','Hardship'], row=>{
     const delta = row.scheduleDelta;
     return [
@@ -25764,7 +26679,7 @@ function renderAnalytics(){
       `<td>${row.games}</td>`,
       `<td class="${delta > 4 ? 'analytics-bad' : delta < -4 ? 'analytics-good' : 'analytics-muted'}">${delta > 4 ? 'BRUTAL' : delta < -4 ? 'SOFT' : 'NEUTRAL'}</td>`,
     ];
-  });
+  }, hardshipTint);
 
   const marginRows = rows.filter(row=> row.games > 0).sort((a,b)=> (b.marginIndex-a.marginIndex) || (b.blowoutWins-a.blowoutWins));
   const marginTable = analyticsTable(marginRows, ['Blowout W','Heartbreak L','Index','Games'], row=>[
@@ -25787,9 +26702,9 @@ function renderAnalytics(){
 
   body.innerHTML = status + `<div class="analytics-grid">
     ${analyticsModel('01','Expected Wins','Schedule-neutral all-play math: each week your score is run head-to-head against every other team, and XW is that all-play win rate scaled back to your games — the identical all-play measure behind the FSN Index. Luck Δ compares real wins with that expectation.','var(--cyan)',expectedTable,false,'How many wins your scoring actually earned against the whole league. Positive Luck Δ = you’ve won more than your points deserve; negative = unlucky.')}
-    ${analyticsModel('02','Lineup Efficiency & Bench Blunders','Actual legal starters divided by the best legal lineup. A blunder is a fatal swap or at least 10 recoverable bench points.','var(--gold)',lineupTable,false,'How close you get to your perfect lineup each week. 100% = you started your best possible team; blunders are points you left on the bench.')}
+    ${analyticsModel('02','Lineup Efficiency & Bench Blunders','Actual legal starters divided by the best legal lineup. The split bar sets the points you actually started against the points that sat on your bench. A blunder is a fatal swap or at least 10 recoverable bench points.','var(--gold)',lineupTable,false,'How close you get to your perfect lineup each week. 100% = you started your best possible team; the red half of the bar is what you left on the bench.')}
     ${analyticsModel('03','Scoring Consistency CV','Population standard deviation divided by average scoring. Lower CV means a steadier weekly floor.','var(--green)',consistencyTable,false,'Measures week-to-week volatility. Lower % = steady, reliable floor; higher % = boom-or-bust.')}
-    ${analyticsModel('04','Schedule Hardship','Opponent points per game compared with the league’s opponent-scoring baseline. Positive means a tougher draw.','#a78bfa',hardshipTable,false,'How tough your opponents have been. Positive = you’ve faced hotter teams than average; negative = an easier road.')}
+    ${analyticsModel('04','Schedule Hardship','Opponent points per game compared with the league’s opponent-scoring baseline. Positive means a tougher draw, and the rows wash from red at the brutal end of the board to green at the soft end.','#a78bfa',hardshipTable,false,'How tough your opponents have been. Positive = you’ve faced hotter teams than average; negative = an easier road.','is-hardship')}
     ${analyticsModel('05','Heartbreak / Blowout Index','Blowout credit begins beyond 24 points; heartbreak pressure applies to losses of 12 or fewer. The signed index measures the excess margin.','var(--red)',marginTable,true,'Rewards dominant wins and punishes gut-punch close losses. Positive = you win big; negative = you keep losing nail-biters.')}
     ${analyticsModel('06','Waiver Wire Gems','Points scored after an executed add. Skill positions only; K and D/ST excluded.','var(--cyan)',gemBody,true,'Which pickups produced the most points after joining their team.')}
   </div>`;
@@ -25869,6 +26784,72 @@ function syncRecordBookScope(){
 }
 
 /* ---- FRANCHISE RESUMES ---- */
+/* ---- FRANCHISE STATUS ----
+   A one-line verdict on a franchise's era, derived from the résumé the history
+   engine already built: rings, runner-up finishes and playoff rate. It reads
+   computeFranchiseResume()'s output and computes nothing of its own, so it can
+   never disagree with the vitals printed beside it. A franchise with fewer
+   than three archived seasons gets no badge at all rather than a verdict drawn
+   from one or two years. */
+function franchiseStatus(resume){
+  const seasons = Number(resume && resume.seasons) || 0;
+  if(seasons < 3) return null;
+  const champs = Number(resume.champs) || 0;
+  const playoffRate = Number(resume.playoffApps || 0) / seasons;
+  const runnerUps = (resume.seasonHistory || []).filter(row=> Number(row.finalRank) === 2).length;
+
+  if(champs >= 2) return { cls:'is-dynasty', glyph:'👑', label:'Dynasty' };
+  if(champs === 0 && (runnerUps >= 2 || playoffRate >= 0.6)){
+    return { cls:'is-bridesmaid', glyph:'⚔️', label:'Always a Bridesmaid' };
+  }
+  if(playoffRate < 0.34) return { cls:'is-rebuilding', glyph:'📉', label:'Rebuilding Era' };
+  return { cls:'is-steady', glyph:'◆', label:'Established' };
+}
+
+function franchiseStatusBadge(resume){
+  let status = null;
+  try{ status = franchiseStatus(resume); }
+  catch(err){
+    console.warn('[RecordBook] the franchise status badge could not be derived; the card renders without one', err);
+    return '';
+  }
+  if(!status) return '';
+  return `<span class="franchise-status ${status.cls}"><span aria-hidden="true">${status.glyph}</span>${esc(status.label.toUpperCase())}</span>`;
+}
+
+/* A thumbnail of the same year-by-year finish the dossier draws full size, so
+   the list card shows the shape of a career without opening it. Inverted like
+   the big chart: first place is the top of the box. */
+function franchiseSparkline(resume){
+  const rows = ((resume && resume.yearRanks) || []).slice().sort((a,b)=> a.year-b.year);
+  if(rows.length < 2) return '';
+
+  const width = 200, height = 34, pad = 3;
+  const maxRank = Math.max(2, ...rows.map(row=> Number(row.teamCount || row.rank || 2)));
+  const xAt = (i)=> pad + (width - pad*2) * i / (rows.length - 1);
+  const yAt = (rank)=> pad + ((Math.max(1, Number(rank)) - 1) / (maxRank - 1)) * (height - pad*2);
+  const points = rows.map((row,i)=> `${xAt(i).toFixed(1)},${yAt(row.rank).toFixed(1)}`).join(' ');
+  const area = `${pad},${height-pad} ${points} ${(width-pad)},${height-pad}`;
+  const last = rows[rows.length-1];
+
+  const champMarks = rows.map((row,i)=> Number(row.rank) === 1
+    ? `<circle class="fr-spark-champ" cx="${xAt(i).toFixed(1)}" cy="${yAt(row.rank).toFixed(1)}" r="2.6"/>` : '').join('');
+
+  return `<div class="fr-spark-wrap">
+    <div class="fr-spark-head">
+      <span>Finish Trajectory</span>
+      <span>${rows[0].year}–${last.year} · last #${esc(String(last.rank))}</span>
+    </div>
+    <svg class="fr-spark" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none" role="img"
+      aria-label="Final-rank trajectory from ${rows[0].year} to ${last.year}, most recent finish number ${esc(String(last.rank))}">
+      <polygon class="fr-spark-area" points="${area}"/>
+      <polyline class="fr-spark-line" points="${points}"/>
+      ${champMarks}
+      <circle class="fr-spark-last" cx="${xAt(rows.length-1).toFixed(1)}" cy="${yAt(last.rank).toFixed(1)}" r="2.6"/>
+    </svg>
+  </div>`;
+}
+
 function renderFranchises(){
   const managers = LeagueData.getManagers();
 
@@ -25902,6 +26883,11 @@ function renderFranchises(){
           <div class="franchise-identity">
             <div class="franchise-team">${esc(info.teamName || m.name)}</div>
             <div class="franchise-manager">${esc(m.name)} · ${r.seasons} active season${r.seasons===1?'':'s'}</div>
+            ${/* The status rides inside the identity block, not in .franchise-rings:
+                  the rings shelf is deliberately hidden below 520px, which is most
+                  of the phones this app is built for, and a verdict nobody on a
+                  phone can see is not a verdict. */''}
+            ${franchiseStatusBadge(r)}
           </div>
           <div class="franchise-rings">${titlePill}</div>
           <span class="franchise-open-mark" aria-hidden="true">›</span>
@@ -25913,6 +26899,8 @@ function renderFranchises(){
           ${franchiseMetric('Career PPG', r.careerPpg.toFixed(1), 'var(--gold)')}
           ${franchiseMetric('Career PAPG', r.careerPapg.toFixed(1), 'var(--off)')}
         </div>
+
+        ${franchiseSparkline(r)}
 
         <div class="franchise-open-hint">Open dossier for the full Finish Trend chart →</div>
       </div>
@@ -25960,11 +26948,21 @@ function franchiseTrendSvg(resume, chartId){
         <polygon class="fr-trend-area" points="${area}" style="fill:url(#${chartId})"/>
         <polyline class="fr-trend-line" points="${points}"/>
         ${rows.map((row,index)=>{
-          const label = `${row.year} · ${row.teamName} · Final Rank #${row.rank}`;
-          return `<g class="fr-trend-node ${row.rank===1?'is-champ':''}" tabindex="0" role="button"
+          /* A title year and a last-place year are the two finishes a reader
+             scans this chart for, so each one carries its own glyph above the
+             node instead of being one more dot on the line. "Last" is the
+             season's own field size, never an assumed twelve. */
+          const field = Number(row.teamCount || 0);
+          const isChamp = Number(row.rank) === 1;
+          const isBasement = field > 1 && Number(row.rank) === field;
+          const label = `${row.year} · ${row.teamName} · Final Rank #${row.rank}` +
+            (isChamp ? ' · Champion' : (isBasement ? ' · Last place' : ''));
+          const glyph = isChamp ? '\ud83c\udfc6' : (isBasement ? '\ud83d\udebd' : '');
+          return `<g class="fr-trend-node ${isChamp?'is-champ':''}${isBasement?' is-basement':''}" tabindex="0" role="button"
             data-year="${row.year}" data-rank="${row.rank}" data-team="${encodeURIComponent(row.teamName || '')}"
             aria-label="${esc(label)}" transform="translate(${xAt(index)},${yAt(row.rank)})">
             <circle r="6.5"><title>${esc(label)}</title></circle>
+            ${glyph ? `<text class="fr-trend-glyph" text-anchor="middle" x="0" y="-13">${glyph}</text>` : ''}
           </g>`;
         }).join('')}
         ${rows.map((row,index)=> `<text class="fr-trend-axis" text-anchor="middle" x="${xAt(index)}" y="${height - 14}">'${String(row.year).slice(-2)}</text>`).join('')}
@@ -26177,6 +27175,7 @@ function openFranchiseModal(ownerId){
             <div class="dossier-pills">
               <span class="pill pill-gold">🏆 ${esc(titleText)}</span>
               <span class="pill pill-cyan">${resume.playoffApps} Playoff Berth${resume.playoffApps===1?'':'s'}</span>
+              ${franchiseStatusBadge(resume)}
             </div>
           </div>
         </div>
@@ -26465,6 +27464,85 @@ function renderRivalries(){
   renderRivalryResult();
 }
 
+/* ---- RIVALRY DEPTH ----
+   getH2H() publishes the series totals and a playoff MEETING count, but not
+   how those playoff meetings were split, and not the typical margin. Both are
+   derived here in the UI layer from the same immutable meeting log the engine
+   already built — computeLeagueHistoryStats stays read-only, exactly as the
+   Closest Nail-Biters board above derives its rows from gameLog. */
+function rivalryDetail(ownerA, ownerB){
+  const empty = { playoffWinsA:0, playoffWinsB:0, playoffTies:0, playoffMeetings:0, avgMargin:null };
+  let hist = null;
+  try{ hist = LeagueData.leagueHistory; }
+  catch(err){
+    console.warn('[Rivalries] league history could not be read for the rivalry detail panel', err);
+    return empty;
+  }
+  const rec = hist && hist.h2h && hist.h2h[[ownerA, ownerB].sort().join('__')];
+  const meetings = rec && Array.isArray(rec.meetings) ? rec.meetings : null;
+  if(!meetings || !meetings.length) return empty;
+
+  let playoffWinsA = 0, playoffWinsB = 0, playoffTies = 0, playoffMeetings = 0, marginSum = 0, marginCount = 0;
+  meetings.forEach(m=>{
+    const margin = Math.abs(Number(m.scoreA) - Number(m.scoreB));
+    if(Number.isFinite(margin)){ marginSum += margin; marginCount++; }
+    if(!m.isPlayoff) return;
+    playoffMeetings++;
+    if(!m.winnerOwnerId) playoffTies++;
+    else if(String(m.winnerOwnerId) === String(ownerA)) playoffWinsA++;
+    else if(String(m.winnerOwnerId) === String(ownerB)) playoffWinsB++;
+  });
+
+  return {
+    playoffWinsA, playoffWinsB, playoffTies, playoffMeetings,
+    avgMargin: marginCount ? marginSum / marginCount : null,
+  };
+}
+
+/* The verdict on a series: how long it has run, how lopsided it is, and how
+   close the games themselves have been. A short series is named for what it
+   is rather than being promoted to a feud on three games. */
+function rivalryIntensity(h, avgMargin){
+  const meetings = Number(h && h.meetingCount) || 0;
+  if(meetings < 3) return { cls:'is-casual', glyph:'◆', label:'New Rivalry' };
+
+  const best = Math.max(Number(h.winsFor) || 0, Number(h.winsAgainst) || 0);
+  const decided = (Number(h.winsFor) || 0) + (Number(h.winsAgainst) || 0);
+  const dominance = decided ? best / decided : 0;
+  if(meetings >= 5 && dominance >= 0.75){
+    return { cls:'is-onesided', glyph:'🧹', label:'One-Sided Dominance' };
+  }
+  if(meetings >= 10 && avgMargin != null && avgMargin <= 15){
+    return { cls:'is-feud', glyph:'🩸', label:'Blood Feud' };
+  }
+  if(meetings >= 6 && avgMargin != null && avgMargin <= 25){
+    return { cls:'is-heated', glyph:'🔥', label:'Heated Rivalry' };
+  }
+  return { cls:'is-casual', glyph:'◆', label:'Even Footing' };
+}
+
+/* The all-time series as a single bar: a tie segment sits between the two
+   win blocks so a drawn game is visible rather than rounded away. */
+function rivalryTugBar(h, nameA, nameB){
+  const a = Number(h.winsFor) || 0, b = Number(h.winsAgainst) || 0, t = Number(h.ties) || 0;
+  const total = a + b + t;
+  if(!total) return '';
+  const pct = (n)=> ((n / total) * 100).toFixed(1);
+  return `<div class="rival-tug">
+    <div class="rival-tug-track" role="img"
+      aria-label="${esc(nameA)} ${a}, ${esc(nameB)} ${b}${t ? ', ' + t + ' tied' : ''} all-time">
+      <span class="rival-tug-seg is-a" style="flex:0 0 ${pct(a)}%"></span>
+      ${t ? `<span class="rival-tug-seg is-tie" style="flex:0 0 ${pct(t)}%"></span>` : ''}
+      <span class="rival-tug-seg is-b" style="flex:0 0 ${pct(b)}%"></span>
+    </div>
+    <div class="rival-tug-legend">
+      <span class="is-a">${a} · ${pct(a)}%</span>
+      <span class="is-mid">${t ? t + ' DRAWN' : 'ALL-TIME SERIES'}</span>
+      <span class="is-b">${pct(b)}% · ${b}</span>
+    </div>
+  </div>`;
+}
+
 function renderRivalryResult(){
   const box = $('rivalryResult');
   if(ui.rivalA === ui.rivalB){
@@ -26484,6 +27562,17 @@ function renderRivalryResult(){
   const aLeads = h.winsFor > h.winsAgainst;
   const streakName = h.streakOwnerId ? managerLatestInfo(h.streakOwnerId).name : null;
   const last = h.lastMeeting;
+
+  let detail, intensity;
+  try{
+    detail = rivalryDetail(ui.rivalA, ui.rivalB);
+    intensity = rivalryIntensity(h, detail.avgMargin);
+  }catch(err){
+    console.error('[Rivalries] the series depth panel failed for ' + ui.rivalA + ' vs ' + ui.rivalB +
+      '; the card renders the totals without it.', err);
+    detail = { playoffWinsA:0, playoffWinsB:0, playoffTies:0, playoffMeetings:0, avgMargin:null };
+    intensity = { cls:'is-casual', glyph:'◆', label:'Series Recorded' };
+  }
 
   box.innerHTML = `<div class="card card-accent accent-cyan">
     <div class="pl-5 pr-4 py-4">
@@ -26506,6 +27595,20 @@ function renderRivalryResult(){
           ${crest(B.teamName || B.name, B.logo, 46)}
           <div class="font-display text-[12.5px] mt-2 leading-tight" style="overflow-wrap:anywhere">${esc(B.name.toUpperCase())}</div>
         </div>
+      </div>
+
+      ${rivalryTugBar(h, A.name, B.name)}
+
+      <div class="mt-3.5 flex items-center gap-2 flex-wrap">
+        <span class="rival-intensity ${intensity.cls}"><span aria-hidden="true">${intensity.glyph}</span>${esc(intensity.label.toUpperCase())}</span>
+        ${detail.avgMargin != null ? `<span class="rival-intensity is-casual">AVG MARGIN ${esc(detail.avgMargin.toFixed(1))}</span>` : ''}
+      </div>
+
+      <div class="rival-playoff">
+        <span class="rival-playoff-label">Playoff Head-to-Head</span>
+        <span class="rival-playoff-value">${detail.playoffMeetings
+          ? `${esc(A.name)} ${detail.playoffWinsA}–${detail.playoffWinsB}${detail.playoffTies ? '–' + detail.playoffTies : ''} ${esc(B.name)}`
+          : '<span class="none">Never met in the bracket</span>'}</span>
       </div>
 
       <div class="grid grid-cols-3 gap-2 mt-4">
@@ -26614,6 +27717,31 @@ function renderRecords(){
 /* All-time franchise FSN Power Index board. Reuses the leaderboard shell the
    career PPG / Points boards use; identity resolves through managerLatestInfo
    so a franchise reads under its current crest across every rename. */
+/* ---- LEADERBOARD HONOURS ----
+   The #1 row on a board that celebrates something wears the crown; the #1 row
+   on a board that indicts something wears the crimson. Which boards are which
+   is stated here rather than inferred from a title, so a board renamed upstream
+   cannot silently flip a crown onto a wall of shame. Boards that are neither
+   (the Bad Beat Award, the Most Cursed Schedule, Most Points in a Loss) are
+   sympathetic, not shameful, and stay in the neutral style they have today. */
+const RB_SHAME_BOARDS = {
+  luck:        { glyph:'🤡', label:'Fraud of the Decade' },
+  fsnIndexLow: { glyph:'📉', label:'Historic Floor' },
+};
+const RB_NEUTRAL_BOARDS = { unluck:true, papg:true, pointsInLoss:true };
+
+function rbCrownRow(){
+  return { rowClass:' is-crown', mark:'<span class="record-book-leader-crown" aria-hidden="true">👑</span> ', badge:'' };
+}
+
+function rbShameRow(entry){
+  return {
+    rowClass:' is-shame',
+    mark:'',
+    badge:`<span class="leader-badge is-shame"><span aria-hidden="true">${entry.glyph}</span>${esc(entry.label.toUpperCase())}</span>`,
+  };
+}
+
 function fsnFranchisePanel(rows){
   return `<section class="record-book-leaderboard">
     <header class="record-book-leaderboard-head">
@@ -26633,10 +27761,11 @@ function fsnFranchisePanel(rows){
         const franchise = info.teamName || row.teamName || 'Franchise';
         const sub = `${row.seasons} season${row.seasons===1?'':'s'}` +
           (row.bestIndex != null ? ` · Peak ${(Math.round(row.bestIndex*10)/10).toFixed(1)}${row.bestYear ? ' (' + row.bestYear + ')' : ''}` : '');
-        return `<div class="record-book-leader-row">
+        const crown = index === 0 ? rbCrownRow() : null;
+        return `<div class="record-book-leader-row${crown ? crown.rowClass : ''}">
           <div class="record-book-leader-rank">${index+1}</div>
           ${crest(franchise, info.logo || row.logo, 34)}
-          <div class="record-book-leader-name"><strong>${esc(manager)}</strong><span>${esc(franchise)}</span></div>
+          <div class="record-book-leader-name"><strong>${crown ? crown.mark : ''}${esc(manager)}</strong><span>${esc(franchise)}</span></div>
           <div class="record-book-leader-value"><strong>${esc((Math.round(row.index*10)/10).toFixed(1))}</strong><span>${esc(sub)}</span></div>
         </div>`;
       }).join('')}
@@ -26689,6 +27818,9 @@ function renderSeasonRecords(){
    the metric, and the year the record was set. Only boards that carry rows are
    rendered (see renderSeasonRecords), so this always has data to show. */
 function seasonLeaderboardPanel(boardData){
+  const shame = RB_SHAME_BOARDS[boardData.key] || null;
+  const neutral = !!RB_NEUTRAL_BOARDS[boardData.key];
+
   const rows = boardData.rows.map(row=>{
     // Latest known identity for the manager, with this season's own franchise
     // name and crest layered on top so a record reads as it did that year.
@@ -26703,12 +27835,17 @@ function seasonLeaderboardPanel(boardData){
     const franchise = row.teamName || info.teamName || 'Franchise';
     const logo = row.logo || info.logo || '';
 
-    return `<div class="record-book-leader-row">
+    /* Only the top row of a board is decorated: it is the record, and the four
+       rows behind it are context. */
+    const honour = row.rank !== 1 ? null : (shame ? rbShameRow(shame) : (neutral ? null : rbCrownRow()));
+
+    return `<div class="record-book-leader-row${honour ? honour.rowClass : ''}">
       <div class="record-book-leader-rank">${row.rank}</div>
       ${crest(franchise, logo, 34)}
       <div class="record-book-leader-name">
-        <strong>${esc(manager)}</strong>
+        <strong>${honour ? honour.mark : ''}${esc(manager)}</strong>
         <span>${esc(franchise)} · ${esc(row.detail)}</span>
+        ${honour && honour.badge ? honour.badge : ''}
       </div>
       <div class="record-book-leader-value">
         <strong>${esc(row.value)}</strong>
@@ -26717,9 +27854,9 @@ function seasonLeaderboardPanel(boardData){
     </div>`;
   }).join('');
 
-  return `<section class="record-book-leaderboard">
+  return `<section class="record-book-leaderboard${shame ? ' is-negative' : ''}">
     <header class="record-book-leaderboard-head">
-      <div class="kicker text-[var(--gold)]">Single-Season Top 5</div>
+      <div class="kicker ${shame ? 'text-[var(--red)]' : 'text-[var(--gold)]'}">Single-Season Top 5</div>
       <div class="record-book-leaderboard-title">${esc(boardData.title)}</div>
       <div class="record-book-leaderboard-sub">${esc(boardData.subtitle)}</div>
     </header>
@@ -26745,10 +27882,11 @@ function careerLeaderboardPanel(title, subtitle, rows, mode){
         const sub = mode === 'ppg'
           ? `${row.totalGames} games · Best ${row.bestSeasonPpg.toFixed(1)} PPG`
           : `${row.totalGames} games · ${row.seasons} season${row.seasons===1?'':'s'}`;
-        return `<div class="record-book-leader-row">
+        const crown = index === 0 ? rbCrownRow() : null;
+        return `<div class="record-book-leader-row${crown ? crown.rowClass : ''}">
           <div class="record-book-leader-rank">${index+1}</div>
           ${crest(info.teamName || info.name, info.logo, 34)}
-          <div class="record-book-leader-name"><strong>${esc(info.name)}</strong><span>${esc(info.teamName || 'Franchise')}</span></div>
+          <div class="record-book-leader-name"><strong>${crown ? crown.mark : ''}${esc(info.name)}</strong><span>${esc(info.teamName || 'Franchise')}</span></div>
           <div class="record-book-leader-value"><strong>${esc(main)}</strong><span>${esc(sub)}</span></div>
         </div>`;
       }).join('') || `<div class="p-4 text-[11px] text-[var(--dim)]">No qualifying franchises.</div>`}
@@ -31773,16 +32911,102 @@ function railCard(a, idx){
 }
 
 /* ---- Lead story on the News tab ---- */
+/* ---- LEAD-STORY HERO BANNERS ----
+   Only the two lead shapes that have real media behind them get a banner: an
+   injury sweep, which composites the designated players the wire is actually
+   about, and a decided matchup, which shows the two crests and the score the
+   story was written from. Everything else leads with type alone rather than
+   with decorative filler. The banner reads the article's own `facts` and the
+   live injury index — it never reaches into narrative copy. */
+function newsHeroShots(rows){
+  return rows.slice(0, 3).map(row=>{
+    const url = playerHeadshotUrl(row && row.id);
+    if(!url) return '';
+    return `<img class="news-hero-shot" src="${esc(url)}" alt="" loading="lazy" onerror="this.remove()">`;
+  }).filter(Boolean).join('');
+}
+
+function newsInjuryHero(){
+  let list = [];
+  try{ list = FSNIntel.injuries() || []; }
+  catch(err){
+    console.warn('[NewsDesk] the injury index could not be read for the lead banner; ' +
+      'the lead renders without one.', err);
+    return '';
+  }
+  const shots = newsHeroShots(list.map(row=> row && row.player).filter(Boolean));
+  if(!shots) return '';
+  return `<div class="news-hero" data-hero="injury" aria-hidden="true">
+    <div class="news-hero-shots">${shots}</div>
+    <div class="news-hero-overlay"></div>
+    <div class="news-hero-label">Injury Wire</div>
+  </div>`;
+}
+
+/* The banner is only honest on a story that declares a single game as its
+   subject. gameSubjectKey is that declaration: the matrix recaps set it from
+   the game they were written about, while a league-wide filing that merely
+   BORROWS one game's facts for context (the weekly margin distribution piece)
+   leaves it empty and names an excludedGameSubjectKey instead. Without that
+   gate, the parity story would fly a scoreline it deliberately refuses to
+   headline. */
+function newsRecapHero(article){
+  if(!article || !article.gameSubjectKey) return '';
+  const facts = article.facts;
+  const w = facts && facts.winner, l = facts && facts.loser;
+  const ws = Number(facts && facts.winnerScore), ls = Number(facts && facts.loserScore);
+  if(!w || !l || !Number.isFinite(ws) || !Number.isFinite(ls)) return '';
+  const mark = (team)=>{
+    if(team && team.logo){
+      const mono = `<span class="news-hero-crest" style="display:grid;place-items:center;font-family:'Anton',sans-serif;font-size:11px;color:#8b95a7">${esc(initialsFrom(team.name))}</span>`;
+      return `<img class="news-hero-crest" src="${esc(team.logo)}" alt="" loading="lazy"` +
+        ` onerror="this.outerHTML=${JSON.stringify(mono).replace(/"/g, '&quot;')}">`;
+    }
+    return `<span class="news-hero-crest" style="display:grid;place-items:center;font-family:'Anton',sans-serif;font-size:11px;color:#8b95a7">${esc(initialsFrom(team && team.name))}</span>`;
+  };
+  const shots = newsHeroShots([facts.winnerTop, facts.loserTop].filter(Boolean));
+  return `<div class="news-hero" data-hero="recap" aria-hidden="true">
+    <div class="news-hero-shots">${shots}</div>
+    <div class="news-hero-overlay"></div>
+    <div class="news-hero-label">Final</div>
+    <div class="news-hero-h2h">
+      ${mark(w)}
+      <span class="news-hero-score">${n1(ws)}<span class="sep">–</span>${n1(ls)}</span>
+      ${mark(l)}
+    </div>
+  </div>`;
+}
+
+/* Driven by what the story carries, not by which desk it was filed under: a
+   blowout recap is filed as breaking news, and it still has two crests and a
+   final score behind it. */
+function newsHeroBanner(a){
+  try{
+    if(!a) return '';
+    const recap = newsRecapHero(a);
+    if(recap) return recap;
+    if(String(a.kind || '') === 'injury' ||
+       String(a.tag || '').toUpperCase() === 'INJURY WIRE') return newsInjuryHero();
+    return '';
+  }catch(err){
+    console.error('[NewsDesk] the lead hero banner failed for story ' + (a && a.id) +
+      '; the lead renders without one.', err);
+    return '';
+  }
+}
+
 function leadCard(a){
   const c = toneVar(a.tone);
   /* Every interactive surface of the lead carries the story id, so a tap on the
      tag pill or the READ button resolves to the same article as a tap on the
      card body even if something upstream stops the event from bubbling. */
   const id = esc(a.id);
+  const hero = newsHeroBanner(a);
   return `<button id="leadStoryCard" class="card news-lead-card lead-story-banner w-full text-left"
       data-article="${id}" data-story-id="${id}" aria-label="Read: ${esc(String(a.headline || '').replace(/<[^>]+>/g, ''))}"
       style="border-color:${c}33">
     <div style="height:3px;background:${c};box-shadow:0 0 18px ${c}"></div>
+    ${hero}
     <div class="p-4" style="background:radial-gradient(130% 100% at 0% 0%, ${c}14, transparent 60%)">
       <div class="flex items-center gap-2 mb-3">
         ${tagPill(a, 'lead-tag-pill', id)}
@@ -33063,6 +34287,66 @@ function dayLabel(at){
   return (d.getMonth() + 1) + '/' + d.getDate();
 }
 
+/* ---- TIMELINE CATEGORY NODES ----
+   The spine used to mark every story with the same accent dot. These are the
+   five desks a reader scans for, each with its own badge, matched on the tag
+   the generator already published (falling back to the story's kind). Nothing
+   here reads or rewrites narrative copy: an unmatched story keeps the plain
+   dot, which is why the map is allowed to be deliberately narrow. */
+const TL_NODES = {
+  breaking: { glyph:'🚨', label:'Breaking' },
+  rage:     { glyph:'🔥', label:'Rage drop' },
+  power:    { glyph:'📈', label:'Power rankings' },
+  steal:    { glyph:'🎯', label:'Steal of the draft' },
+  recap:    { glyph:'⚔️', label:'Matchup recap' },
+};
+
+/* Resolution runs tag -> kind -> topic, narrowest signal first. The topic
+   fallback is what makes the badges cover the whole stream rather than the
+   handful of tags that happened to be spelled out here: every deterministic
+   story already declares one of five topics, and those five are exactly the
+   desks the badges name. A story whose topic is none of them (community copy,
+   the waiver wire outside a rage drop) keeps the plain accent dot. */
+const TL_NODE_BY_TAG = {
+  'RAGE DROP':'rage',
+  'STEAL OF THE DRAFT':'steal',
+};
+
+const TL_NODE_BY_KIND = {
+  rage:'rage', injury:'breaking', draft:'steal',
+};
+
+const TL_NODE_BY_TOPIC = {
+  breaking:'breaking', power:'power', draft:'steal', matchups:'recap',
+};
+
+function timelineNodeKey(a){
+  if(!a) return '';
+  const tag = String(a.tag || '').trim().toUpperCase();
+  if(TL_NODE_BY_TAG[tag]) return TL_NODE_BY_TAG[tag];
+  const kind = String(a.kind || '').trim().toLowerCase();
+  if(TL_NODE_BY_KIND[kind]) return TL_NODE_BY_KIND[kind];
+  const topic = String(a.topic || '').trim().toLowerCase();
+  return TL_NODE_BY_TOPIC[topic] || '';
+}
+
+function timelineNodeHtml(key){
+  const node = TL_NODES[key];
+  if(!node) return '';
+  return `<span class="tl-node" data-node="${esc(key)}" role="img" aria-label="${esc(node.label)}">${node.glyph}</span>`;
+}
+
+/* A manager crest set into the running line of the dek, at cap height. It is
+   prepended to the dek markup rather than written into it: the generator's
+   sentence is untouched, and a story with no subject simply gets no avatar. */
+function inlineCrestHtml(crest){
+  if(!crest || !crest.name) return '';
+  const mono = `<span class="tl-inline-mono">${esc(initialsFrom(crest.name))}</span>`;
+  if(!crest.logo) return mono;
+  return `<img class="tl-inline-avatar" src="${esc(crest.logo)}" alt="" loading="lazy"` +
+    ` onerror="this.outerHTML=${JSON.stringify(mono).replace(/"/g, '&quot;')}">`;
+}
+
 /* One feed card: crest, badge, headline, dek, timestamp metadata. */
 function timelineCard(a){
   const c = TOPIC_TONE[a.topic] || toneVar(a.tone);
@@ -33073,7 +34357,21 @@ function timelineCard(a){
 
   const live = a.live ? '<span class="now">● LIVE</span><span class="sep">/</span>' : '';
 
-  return `<div class="tl-item" data-live="${a.live ? 'true' : 'false'}" style="--tl-accent:${c}">
+  let nodeKey = '';
+  try{ nodeKey = timelineNodeKey(a); }
+  catch(err){
+    console.warn('[NewsDesk] the timeline node category could not be resolved for story ' +
+      (a && a.id) + '; it keeps the plain accent dot.', err);
+    nodeKey = '';
+  }
+  const nodeHtml = nodeKey ? timelineNodeHtml(nodeKey) : '';
+
+  const dek = a.dek
+    ? `<p class="tl-dek">${inlineCrestHtml(a.crest)}${a.dek}</p>`
+    : '';
+
+  return `<div class="tl-item" data-live="${a.live ? 'true' : 'false'}"${nodeKey ? ` data-node="${esc(nodeKey)}"` : ''} style="--tl-accent:${c}">
+    ${nodeHtml}
     <div class="tl-card" data-article="${esc(a.id)}">
       <span class="rail"></span>
       <div class="tl-body">
@@ -33085,7 +34383,7 @@ function timelineCard(a){
             <h3 class="tl-title">${a.headline}</h3>
           </div>
         </div>
-        ${a.dek ? `<p class="tl-dek">${a.dek}</p>` : ''}
+        ${dek}
         <div class="tl-foot">
           <span class="byline truncate">${esc(a.byline)}</span>
           <span class="tl-read">Read ›</span>
@@ -33515,6 +34813,58 @@ function lbSigned(value){
   return (n > 0 ? '+' : '') + lbNum(n);
 }
 
+/* ---- OFFICIAL MEDIA ----
+   Player headshots and pro-team marks come from the same public ESPN CDN the
+   team crests already come from, keyed by the ESPN player id the article rows
+   carry. Every consumer wraps these in an image whose onerror degrades to a
+   monogram, so a player the CDN has no portrait for is a plain badge rather
+   than a broken frame. */
+function playerHeadshotUrl(playerId){
+  const id = String(playerId == null ? '' : playerId).trim();
+  return /^\d+$/.test(id) ? 'https://a.espncdn.com/i/headshots/nfl/players/full/' + id + '.png' : '';
+}
+function proTeamLogoUrl(abbrev){
+  const key = String(abbrev || '').trim().toLowerCase();
+  return /^[a-z]{2,4}$/.test(key) && key !== 'fa'
+    ? 'https://a.espncdn.com/i/teamlogos/nfl/500/' + key + '.png' : '';
+}
+
+/* The pro team a tracked player belongs to, resolved through this league's own
+   player index. A player the index does not know simply carries no team badge. */
+function proTeamForPlayer(playerId){
+  const id = String(playerId == null ? '' : playerId).trim();
+  if(!id) return '';
+  try{
+    const rec = FSNIntel.player(id);
+    return (rec && rec.proTeam) || '';
+  }catch(err){
+    console.warn('[LeagueBlog] the player index could not resolve a pro team for player ' + id +
+      '; the chip renders without a team badge.', err);
+    return '';
+  }
+}
+
+/* A square portrait that always renders something: the official headshot when
+   the CDN has one, the player's initials when it does not. */
+function playerFaceHtml(playerId, name, proTeam){
+  const shot = playerHeadshotUrl(playerId);
+  const logo = proTeamLogoUrl(proTeam);
+  const mono = '<span class="lb-chip-mono">' + esc(initialsFrom(name)) + '</span>';
+  /* LeagueData.esc() escapes <, > and & but deliberately not quotes, so the
+     inline handler below is quote-escaped the same way crest() does it —
+     otherwise the first quote in the fallback markup would close the
+     attribute. */
+  const face = shot
+    ? '<img class="lb-chip-shot" src="' + esc(shot) + '" alt="" loading="lazy"' +
+      ' onerror="this.outerHTML=' + JSON.stringify(mono).replace(/"/g, '&quot;') + '">'
+    : mono;
+  const badge = logo
+    ? '<img class="lb-chip-logo" src="' + esc(logo) + '" alt="" loading="lazy"' +
+      ' onerror="this.remove()">'
+    : '';
+  return '<span class="lb-chip-face">' + face + badge + '</span>';
+}
+
 /* Chips are keyed by their position in the article's tracked_players array
    rather than by player id: two rows can legitimately name the same player
    (one per side of a matchup) and the sheet must open the row that was
@@ -33526,9 +34876,24 @@ function lbChips(article, articleIndex){
   const chips = rows.map((row, i)=>{
     const name = String((row && row.player_name) || '').trim() || 'Unnamed player';
     const flag = String((row && row.outcome_flag) || '');
+    const id = (row && row.player_id) != null ? row.player_id : '';
+    const pts = Number(row && row.player_points);
+    /* The week's fantasy points ride on the chip so the micro-card answers the
+       reader's first question without opening the sheet. A row with no scored
+       total says so rather than printing a fabricated 0.0. */
+    const ptsLabel = Number.isFinite(pts) ? lbNum(pts) + ' PTS' : 'NO SCORE';
+    const slot = String((row && row.slot) || '').trim();
     return '<button type="button" class="lb-chip" data-lb-article="' + articleIndex + '" data-lb-player="' + i + '"' +
       (flag ? ' data-flag="' + esc(flag) + '"' : '') + '>' +
-      '<span class="dot"></span>' + esc(name) + '</button>';
+      playerFaceHtml(id, name, proTeamForPlayer(id)) +
+      '<span class="lb-chip-copy">' +
+        '<span class="lb-chip-name">' + esc(name) + '</span>' +
+        '<span class="lb-chip-meta">' +
+          (slot ? '<span>' + esc(slot) + '</span>' : '') +
+          '<span class="lb-chip-pts">' + esc(ptsLabel) + '</span>' +
+        '</span>' +
+      '</span>' +
+      '<span class="dot"></span></button>';
   }).join('');
   return '<div class="lb-chips-head">' + count + ' PLAYER' + (count === 1 ? '' : 'S') + ' TRACKED</div>' +
     '<div class="lb-chips">' + chips + '</div>';

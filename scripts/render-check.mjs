@@ -560,9 +560,17 @@ try {
 
   /* ---- 6.7 MATCHUP CARD SCORE / PROJECTION SPLIT ------------------------
      The true score is the primary value on every card at every state, and the
-     projection is a labelled sub-line beneath it. A week that has not kicked
-     off must read 0.0 with "Projected: ..." underneath — never the projection
-     promoted into the score slot. */
+     projection is a labelled secondary value beneath it — never the projection
+     promoted into the score slot.
+
+     The secondary value takes one of two shapes, per SIDE:
+       • a side with no points yet reads "Projected: N", the only forecast it
+         has;
+       • a side that has scored reads a signed "±N.N vs PROJ" delta, whose
+         title attribute still names the projected number.
+     Both shapes carry data-score-projected, so the split assertion below is
+     shape-independent: what it proves is that the projection never reaches the
+     data-score-actual slot. */
   for (const scenario of ['pregame', 'live', 'live-espn']) {
     const data = syntheticLeague();
     data.schedule.forEach(game=>{
@@ -600,9 +608,38 @@ try {
     else pass('matchup cards (' + scenario + ') show true scores ' + JSON.stringify(wantActual) +
       ' with projections ' + JSON.stringify(wantProjected) + ' beneath');
 
-    const mislabelled = board.find(card=> !/Projected: 109\.4/.test(card.text) || !/Projected: 127\.8/.test(card.text));
-    if(mislabelled) fail('projection sub-label copy missing (' + scenario + '): ' + mislabelled.text);
-    else pass('projection sub-labels read "Projected: ..." (' + scenario + ')');
+    /* Which side reads which shape is decided by whether that side has points
+       on the board, so the expectation is written out per scenario rather than
+       inferred from the scenario name. */
+    const wantShape = {
+      pregame:      ['projected', 'projected'],
+      live:         ['projected', 'delta'],       // away 0.0, home 42.7
+      'live-espn':  ['delta', 'delta'],
+    }[scenario];
+
+    const shapes = await page.evaluate(()=> Array.from(document.querySelectorAll('#matchupList .card')).map(card=>
+      Array.from(card.querySelectorAll('[data-score-projected]')).map(el=>({
+        shape: el.classList.contains('mx-proj') ? 'delta' : 'projected',
+        projected: el.dataset.scoreProjected,
+        text: (el.textContent || '').replace(/\s+/g, ' ').trim(),
+        title: el.getAttribute('title') || '',
+      }))));
+
+    const badShape = shapes.find(card=>
+      JSON.stringify(card.map(side=> side.shape)) !== JSON.stringify(wantShape));
+    if(badShape) fail('projection sub-value shape wrong (' + scenario + '): ' + JSON.stringify(badShape));
+    else pass('projection sub-values take the ' + wantShape.join(' / ') + ' shape (' + scenario + ')');
+
+    /* Whichever shape a side takes, the projected number has to still be
+       readable on it — in the copy for the labelled line, in the title for
+       the delta. A delta with no projection named anywhere is a number with no
+       referent. */
+    const unreadable = shapes.find(card=> card.some(side=> side.shape === 'projected'
+      ? !new RegExp('Projected: ' + side.projected.replace('.', '\\.')).test(side.text)
+      : !(new RegExp('vs PROJ').test(side.text) &&
+          new RegExp('Projected ' + side.projected.replace('.', '\\.')).test(side.title))));
+    if(unreadable) fail('projection sub-value does not name its projection (' + scenario + '): ' + JSON.stringify(unreadable));
+    else pass('projection sub-values name their projection (' + scenario + ')');
 
     /* ---- Matchup of the Week ----
        The marquee card carries no projection at all: its two scores are real,
