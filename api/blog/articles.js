@@ -100,7 +100,7 @@ const globalHandler = require('../../lib/blog-global');
 /* The published columns, and only those. Listed explicitly rather than with
    select('*') so a column added to the table later is never published by
    accident. */
-const LEGACY_COLUMNS = 'slug,title,excerpt,content_markdown,article_type,tracked_players,season,week,published_at';
+const LEGACY_COLUMNS = 'league_id,slug,title,excerpt,content_markdown,article_type,tracked_players,season,week,published_at';
 const PUBLIC_COLUMNS = LEGACY_COLUMNS + ',headline,match_impact_summary,content,category,author';
 
 /* PostgREST's code for "column does not exist". The three-tier columns are
@@ -196,6 +196,12 @@ function readScope(req) {
     season: intParam(req, 'season', { min: 1990, max: 2100 }),
     week: intParam(req, 'week', { min: 1, max: 18 }),
     active: flagParam(req, 'active'),
+    /* Opt in, not on by default. A caller that asked for one league's week
+       and silently received league-wide editorial mixed into the same array
+       would present a global waiver column under that week's heading as if
+       the league's own desk had written it. The flag makes a caller say it
+       wants both, and `scope` on every row lets it tell them apart. */
+    include_global: flagParam(req, 'include_global'),
     limit: intParam(req, 'limit', { min: 1, max: MAX_LIMIT }) || DEFAULT_LIMIT,
   };
 }
@@ -207,6 +213,11 @@ function readScope(req) {
    wrong place to discover that. */
 function toArticle(row) {
   const title = String(row.title || '').trim();
+  /* A null league is the database's definition of a global article, enforced
+     by blog_articles_scope_check. Named on every row so a client never has to
+     infer it, and never labels league-wide editorial as this league's own
+     coverage. */
+  const scope = row.league_id == null ? 'global' : 'league';
   const contentMarkdown = String(row.content_markdown || '');
   const articleType = String(row.article_type || '');
   return {
@@ -231,7 +242,35 @@ function toArticle(row) {
     season: row.season == null ? null : Number(row.season),
     week: row.week == null ? null : Number(row.week),
     published_at: row.published_at || null,
+
+    /* 'league' or 'global'. The league id itself is deliberately NOT echoed:
+       the caller supplied it, and a global row has none to give. */
+    scope,
   };
+}
+
+/**
+ * League-wide editorial for a league that has none of its own.
+ *
+ * Deliberately not week-filtered, for the reason given at the call site. It is
+ * still season-filtered: a 2019 retro view has no business showing copy
+ * written about this season. The `active` floor is carried through so a staged
+ * article cannot surface early through the fallback when it would not surface
+ * through the main read.
+ */
+async function runGlobalFallback(supabase, scope) {
+  const run = (columns) => {
+    let query = supabase
+      .from('blog_articles')
+      .select(columns)
+      .is('league_id', null);
+    if (scope.season != null) query = query.eq('season', scope.season);
+    if (scope.active) query = query.lte('published_at', new Date().toISOString());
+    return query.order('published_at', { ascending: false }).limit(scope.limit);
+  };
+  const result = await run(PUBLIC_COLUMNS);
+  if (result.error && isMissingColumn(result.error)) return run(LEGACY_COLUMNS);
+  return result;
 }
 
 async function handler(req, res) {
@@ -293,8 +332,19 @@ async function handler(req, res) {
   const runQuery = (columns) => {
     let query = supabase
       .from('blog_articles')
-      .select(columns)
-      .eq('league_id', scope.league_id);
+      .select(columns);
+    if (scope.include_global) {
+      /* Both scopes in one read. `league_id` is interpolated into a PostgREST
+         filter expression here rather than passed as a bound value, which is
+         exactly the shape that becomes an injection if the input is not
+         constrained. It is: readScope() rejects anything outside
+         [A-Za-z0-9._-]{1,64} with a 400 before this line can run, so no
+         comma, parenthesis or operator can reach the expression. Keep that
+         validation immediately in front of this, and keep it strict. */
+      query = query.or('league_id.eq.' + scope.league_id + ',league_id.is.null');
+    } else {
+      query = query.eq('league_id', scope.league_id);
+    }
     if (scope.season != null) query = query.eq('season', scope.season);
     if (scope.week != null) query = query.eq('week', scope.week);
     /* The active floor. Applied as part of the query rather than by filtering
@@ -318,12 +368,48 @@ async function handler(req, res) {
     }
     if (result.error) throw result.error;
 
-    const articles = (result.data || []).map(toArticle);
+    let articles = (result.data || []).map(toArticle);
+    let fallback = false;
+
+    /* THE FALLBACK.
+       A league with no recaps of its own is the ordinary case, not an error:
+       the pipeline publishes three mornings a week, and a league whose ESPN
+       connection has lapsed produces none at all until a member reconnects it.
+       Either way the reader is looking at an empty feed, and league-wide
+       editorial is the honest thing to put there.
+
+       It is a second query rather than a widening of the first because the
+       first is scoped to a week, and a global article carries the week it was
+       written in, not the week this reader is looking at. Requiring them to
+       agree would make the fallback fire exactly never. So: same season, any
+       week, newest first. */
+    if (scope.include_global && !articles.some((article) => article.scope === 'league')) {
+      const globals = await runGlobalFallback(supabase, scope);
+      if (globals.error) {
+        /* The league's own read succeeded and is what was asked for. Losing
+           the stand-in is worth saying, not worth turning a good answer into
+           a 502. */
+        console.warn(
+          '[BlogArticles] the global fallback read failed for league ' + scope.league_id +
+            '; serving this league\'s own rows only',
+          globals.error,
+        );
+      } else if ((globals.data || []).length) {
+        articles = (globals.data || []).map(toArticle);
+        fallback = true;
+      }
+    }
+
     res.status(200).json({
       league_id: scope.league_id,
       season: scope.season,
       week: scope.week,
       active: scope.active,
+      include_global: scope.include_global,
+      /* True when every row below is league-wide editorial standing in for a
+         league that has nothing of its own for this view. A client that shows
+         these under the league's own heading is mislabelling them. */
+      global_fallback: fallback,
       count: articles.length,
       articles,
     });

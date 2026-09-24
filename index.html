@@ -9111,6 +9111,13 @@ function fsnArticleTiers(row){
     season: Number(src.season) || null,
     week: Number(src.week) || null,
     published_at: src.published_at || null,
+
+    /* 'league' or 'global', as the endpoint labelled it. Anything that is not
+       explicitly global is treated as this league's own, because that is the
+       safe direction to be wrong in: league-wide editorial shown under a
+       league heading is a mislabel, while a league's own recap shown as
+       league-wide would be putting private coverage under a public name. */
+    scope: String(src.scope || '') === 'global' ? 'global' : 'league',
   };
 }
 
@@ -9445,10 +9452,20 @@ window.FSNSupabaseArticles = (function(){
     return { leagueId: league, key: league };
   }
 
+  /* `include_global=1` asks the endpoint for this league's own stories AND
+     league-wide editorial, each row labelled with its scope. It is what lets a
+     league with no recaps of its own show something rather than nothing: the
+     pipeline publishes three mornings a week, and a league whose saved ESPN
+     connection has lapsed produces none at all until a member reconnects it.
+
+     It does not change what this feed shows when the league HAS coverage. The
+     renderer prefers league rows and only reaches for the global ones when
+     there are none, so the ordinary case is untouched. */
   function urlFor(scope){
     return ENDPOINT +
       '?league_id=' + encodeURIComponent(scope.leagueId) +
       '&active=1' +
+      '&include_global=1' +
       '&limit=' + MAX_ARTICLES;
   }
 
@@ -33695,6 +33712,44 @@ function lbWire(){
    A row with no season or week cannot be placed and is dropped. The pipeline
    writes both on every row and the columns are NOT NULL, so that is a
    malformed payload rather than an ordinary case. */
+/* This league's own stories, never league-wide editorial.
+
+   The endpoint is asked for both scopes with include_global=1, and every row
+   it returns is labelled. Everything the section does under a WEEK n heading
+   runs through this first, so a global article can never be presented as
+   this league's coverage of that week. */
+function lbLeagueOnly(articles){
+  const rows = Array.isArray(articles) ? articles : [];
+  return rows.filter((article)=> !article || article.scope !== 'global');
+}
+
+/* League-wide editorial to stand in when this league has none of its own.
+
+   Deliberately NOT filtered to the week on screen. A global article carries
+   the week it was written in, not the week this reader is looking at, so
+   requiring them to agree would make the fallback fire exactly never.
+
+   The desk wire above this section paints from the same global corpus, so
+   whatever it is showing right now is dropped here. Without that the same
+   story appears twice on one screen, once in each surface. A desk wire that
+   cannot be read is not a reason to drop the fallback: it means nothing is
+   being shown up there to collide with. */
+function lbGlobalFallback(articles){
+  const rows = Array.isArray(articles) ? articles : [];
+  const globals = rows.filter((article)=> article && article.scope === 'global');
+  if(!globals.length) return [];
+
+  let wireSlug = '';
+  try{
+    const wire = window.FSNArticles && FSNArticles.current();
+    wireSlug = String((wire && wire.post && wire.post.slug) || '').trim();
+  }catch(err){
+    console.warn('[LeagueBlog] could not read what the desk wire is showing, so the league-wide ' +
+      'fallback is not de-duplicated against it', err);
+  }
+  return wireSlug ? globals.filter((article)=> String(article.slug || '') !== wireSlug) : globals;
+}
+
 function lbForViewedWeek(articles, season, week){
   const rows = Array.isArray(articles) ? articles : [];
   if(!week || !season) return [];
@@ -33780,7 +33835,7 @@ function lbPaint(){
      filtered out becomes 'empty', which is what it now means for this view:
      the read succeeded and this week has nothing in it. */
   const forThisWeek = (snap)=>{
-    const articles = lbForViewedWeek(snap.articles, view.season, view.week);
+    const articles = lbForViewedWeek(lbLeagueOnly(snap.articles), view.season, view.week);
     return {
       status: (snap.status === 'ready' && !articles.length) ? 'empty' : snap.status,
       articles,
@@ -33792,8 +33847,9 @@ function lbPaint(){
   const weekSnap = view.weekScope
     ? forThisWeek(FSNLeagueArticles.read(view.leagueId, view.week, view.season))
     : idle;
-  const activeSnap = view.activeScope
-    ? forThisWeek(FSNSupabaseArticles.read(view.leagueId))
+  const activeRaw = view.activeScope ? FSNSupabaseArticles.read(view.leagueId) : null;
+  const activeSnap = activeRaw
+    ? Object.assign(forThisWeek(activeRaw), { rawArticles: activeRaw.articles || [] })
     : idle;
 
   /* Both snapshots have already been narrowed to the week on screen, so
@@ -33833,8 +33889,28 @@ function lbPaint(){
     return;
   }
 
-  /* 5. Nothing published for this week from either feed. Say nothing at all
-     rather than occupying the screen with an absence. */
+  /* 5. Neither feed has this league's own coverage for this week. Before
+     giving up the slot, stand league-wide editorial in its place.
+
+     This is the case a reader in a league with no recaps sees on every visit,
+     and it is common: the pipeline publishes three mornings a week, and a
+     league whose saved ESPN connection has lapsed publishes nothing at all
+     until a member reconnects it. An empty screen reads as a broken app.
+
+     Two things it is careful about. The label says LEAGUE-WIDE, never WEEK n,
+     because this is not this league's coverage and must never be dressed as
+     it. And anything the desk wire above is already showing is dropped: the
+     two surfaces sit on the same screen and read from the same global
+     corpus, so without this the same story paints twice, once in each. */
+  const globals = lbGlobalFallback(activeSnap.rawArticles || []);
+  if(globals.length){
+    show(globals, 'LEAGUE-WIDE', false);
+    return;
+  }
+
+  /* 6. Nothing published for this week from either feed, and no league-wide
+     story to stand in. Say nothing at all rather than occupying the screen
+     with an absence. */
   label('');
   hide();
 }

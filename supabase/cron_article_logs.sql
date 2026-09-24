@@ -62,3 +62,33 @@ alter table public.cron_article_logs enable row level security;
 -- it is never exposed to a browser.
 revoke all on public.cron_article_logs from anon, authenticated;
 grant all on public.cron_article_logs to service_role;
+
+-- ---------------------------------------------------------------------------
+-- WHY A LEAGUE PRODUCED NO ARTICLE
+--
+-- `error_message` holds the provider's own words, which is what you need once
+-- you already know which league to look at. It is the wrong shape for the
+-- question that actually gets asked, which is "articles show up in some
+-- leagues and not others, why": that one is answered by grouping, and you
+-- cannot group on free text.
+--
+-- `failure_reason` is the groupable form, written by classifyFailure() in
+-- lib/article-cron.ts. The distinction that matters most is ESPN_AUTH against
+-- everything else: a league whose saved ESPN connection no longer
+-- authenticates will never publish no matter how many times the run is
+-- retried, because a member has to reconnect it, while TIMEOUT and
+-- PROVIDER_DOWN are worth retrying. Those need opposite responses and the raw
+-- message buries the difference.
+--
+-- Nullable, with no default and no check constraint: it is null for every
+-- 'created' and 'skipped' row and for every row written before this column
+-- existed, and a new cause should be able to start being recorded without a
+-- migration standing between it and the log.
+-- ---------------------------------------------------------------------------
+
+alter table public.cron_article_logs add column if not exists failure_reason text;
+
+-- The operator's query: the causes behind one week's missing articles.
+create index if not exists cron_article_logs_failure_reason_idx
+  on public.cron_article_logs (season, week, failure_reason)
+  where failure_reason is not null;

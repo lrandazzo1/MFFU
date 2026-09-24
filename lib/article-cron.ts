@@ -30,12 +30,32 @@ import {
 
 export type CronStatus = 'created' | 'skipped' | 'failed';
 
+/**
+ * Why a league produced no article, in one word an operator can group by.
+ *
+ * The message alone is not enough. "Articles show up in some leagues and not
+ * others" is answered by counting these, not by reading twelve provider
+ * strings: ESPN_AUTH means that league's saved connection no longer
+ * authenticates and a member has to reconnect it, which no amount of retrying
+ * fixes, while TIMEOUT or PROVIDER_DOWN means try again. They need opposite
+ * responses and the raw message buries the difference.
+ */
+export type CronFailureReason =
+  | 'ESPN_AUTH'
+  | 'NO_MATCHUP_DATA'
+  | 'TIMEOUT'
+  | 'PROVIDER_DOWN'
+  | 'STORAGE'
+  | 'OTHER';
+
 export interface CronLeagueResult {
   league_id: string;
   article_type: ArticleType;
   status: CronStatus;
   slug: string;
   error_message: string | null;
+  /** Set only on a failure. Null on 'created' and 'skipped'. */
+  failure_reason?: CronFailureReason | null;
 }
 
 export interface CronRunSummary {
@@ -51,6 +71,9 @@ export interface CronRunSummary {
   /** Leagues the run never got to before its time budget ran out. They are not
    *  lost: the next scheduled run finds no article for them and publishes. */
   not_attempted: number;
+  /** Failures tallied by cause, so one glance says whether this run needs a
+   *  retry or needs somebody to reconnect a league. Absent keys are zero. */
+  failed_by_reason: Partial<Record<CronFailureReason, number>>;
   dry_run: boolean;
   results: CronLeagueResult[];
 }
@@ -209,6 +232,7 @@ async function recordOutcome(
       article_type: row.article_type,
       status: row.status,
       error_message: row.error_message,
+      failure_reason: row.failure_reason || null,
       season: row.season,
       week: row.week,
       slug: row.slug,
@@ -223,6 +247,45 @@ async function recordOutcome(
     );
   }
 }
+
+/**
+ * Sort one league's failure into a cause.
+ *
+ * Ordered most specific first. HTTP status is checked before message text
+ * because a provider is free to reword its body and not free to change what
+ * 401 means. Anything unrecognised stays OTHER rather than being forced into
+ * the nearest bucket: a wrong label is worse than an honest unknown, because
+ * an operator acts on it.
+ */
+export function classifyFailure(err: any): CronFailureReason {
+  const status = Number(err && err.status) || 0;
+  const text = String((err && err.message) || err || '').toLowerCase();
+
+  if (status === 401 || status === 403) return 'ESPN_AUTH';
+  if (status === 408 || status === 504) return 'TIMEOUT';
+  if (status === 429 || (status >= 500 && status < 600)) return 'PROVIDER_DOWN';
+
+  if (/\b(401|403|unauthor|forbidden|not authenticated|cookie|espn_s2|swid|credential)\b/.test(text)) {
+    return 'ESPN_AUTH';
+  }
+  if (/\b(timed out|timeout|etimedout|aborted|abort)\b/.test(text)) return 'TIMEOUT';
+  if (/\b(no matchup|no completed|no box score|missing (?:matchup|schedule|score)|empty schedule|not been played)\b/.test(text)) {
+    return 'NO_MATCHUP_DATA';
+  }
+  if (/\b(supabase|postgrest|database|storage)\b/.test(text)) return 'STORAGE';
+  return 'OTHER';
+}
+
+/** What an operator should do about each cause, said in the log line itself so
+ *  nobody has to come back to this file to interpret one. */
+const REASON_HINT: Record<CronFailureReason, string> = {
+  ESPN_AUTH: 'ESPN rejected this league\'s stored connection, so a member has to reconnect it',
+  NO_MATCHUP_DATA: 'the week has no completed matchup data to write about yet',
+  TIMEOUT: 'the provider read ran out of time and is worth retrying',
+  PROVIDER_DOWN: 'the provider answered with an error of its own and is worth retrying',
+  STORAGE: 'the article could not be stored, so the database is the thing to look at',
+  OTHER: 'an unrecognised failure, so read the message',
+};
 
 /** Keep a provider's error readable in a text column without truncating the
  *  part an operator actually needs. */
@@ -267,7 +330,7 @@ export async function runArticleCron(
   const summary: CronRunSummary = {
     day, article_type: articleType, season, week, run_id: runId,
     leagues: leagueIds.length, created: 0, skipped: 0, failed: 0, not_attempted: 0,
-    dry_run: dryRun, results: [],
+    failed_by_reason: {}, dry_run: dryRun, results: [],
   };
 
   if (!leagueIds.length) {
@@ -299,7 +362,10 @@ export async function runArticleCron(
     }
 
     const slug = articleSlug({ league_id, season, week, day });
-    const result: CronLeagueResult = { league_id, article_type: articleType, status: 'skipped', slug, error_message: null };
+    const result: CronLeagueResult = {
+      league_id, article_type: articleType, status: 'skipped', slug,
+      error_message: null, failure_reason: null,
+    };
 
     if (published.has(league_id)) {
       // Already written by an earlier run. Re-generating would rewrite a story
@@ -323,18 +389,43 @@ export async function runArticleCron(
       summary.created++;
     } catch (err) {
       // The whole point of the loop: this league is lost, the rest are not.
+      const reason = classifyFailure(err);
       console.error(
         '[ArticleCron] ' + articleType + ' generation failed for league ' + league_id +
-          ' (' + season + ' week ' + week + '); continuing with the remaining leagues',
+          ' (' + season + ' week ' + week + ') with reason ' + reason + ': ' + REASON_HINT[reason] +
+          '. Continuing with the remaining ' + (leagueIds.length - index - 1) + ' league(s)',
         err,
       );
       result.status = 'failed';
       result.error_message = errorMessage(err);
+      result.failure_reason = reason;
       summary.failed++;
+      summary.failed_by_reason[reason] = (summary.failed_by_reason[reason] || 0) + 1;
     }
 
     summary.results.push(result);
     await recordOutcome(db, { ...result, season, week, run_id: runId });
+  }
+
+  /* One line that answers "why do only some leagues have articles". Without
+     it the answer is twelve scattered per-league errors nobody reads, and a
+     run where every league failed for the same fixable reason looks the same
+     as a run where each failed differently. */
+  if (summary.failed) {
+    const tally = Object.keys(summary.failed_by_reason)
+      .map((reason) => reason + '=' + summary.failed_by_reason[reason as CronFailureReason])
+      .sort()
+      .join(' ');
+    console.warn(
+      '[ArticleCron] ' + runId + ': ' + summary.created + ' created, ' + summary.skipped +
+        ' already published, ' + summary.failed + ' failed of ' + leagueIds.length +
+        ' league(s). Failures by cause: ' + tally + '.' +
+        (summary.failed_by_reason.ESPN_AUTH
+          ? ' ' + summary.failed_by_reason.ESPN_AUTH + ' league(s) need a member to reconnect ESPN; ' +
+            'retrying the run will not produce their articles.'
+          : ''),
+      new Error('LEAGUES_WITHOUT_ARTICLES'),
+    );
   }
 
   return summary;

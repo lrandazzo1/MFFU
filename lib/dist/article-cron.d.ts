@@ -16,12 +16,25 @@
  */
 import { generateAndPublishBlogArticle, type ArticleDay, type ArticleType, type GenerateDependencies } from './article-generator';
 export type CronStatus = 'created' | 'skipped' | 'failed';
+/**
+ * Why a league produced no article, in one word an operator can group by.
+ *
+ * The message alone is not enough. "Articles show up in some leagues and not
+ * others" is answered by counting these, not by reading twelve provider
+ * strings: ESPN_AUTH means that league's saved connection no longer
+ * authenticates and a member has to reconnect it, which no amount of retrying
+ * fixes, while TIMEOUT or PROVIDER_DOWN means try again. They need opposite
+ * responses and the raw message buries the difference.
+ */
+export type CronFailureReason = 'ESPN_AUTH' | 'NO_MATCHUP_DATA' | 'TIMEOUT' | 'PROVIDER_DOWN' | 'STORAGE' | 'OTHER';
 export interface CronLeagueResult {
     league_id: string;
     article_type: ArticleType;
     status: CronStatus;
     slug: string;
     error_message: string | null;
+    /** Set only on a failure. Null on 'created' and 'skipped'. */
+    failure_reason?: CronFailureReason | null;
 }
 export interface CronRunSummary {
     day: ArticleDay;
@@ -36,6 +49,9 @@ export interface CronRunSummary {
     /** Leagues the run never got to before its time budget ran out. They are not
      *  lost: the next scheduled run finds no article for them and publishes. */
     not_attempted: number;
+    /** Failures tallied by cause, so one glance says whether this run needs a
+     *  retry or needs somebody to reconnect a league. Absent keys are zero. */
+    failed_by_reason: Partial<Record<CronFailureReason, number>>;
     dry_run: boolean;
     results: CronLeagueResult[];
 }
@@ -97,6 +113,16 @@ export declare function leaguesAlreadyPublished(db: any, scope: {
     week: number;
     article_type: ArticleType;
 }): Promise<Set<string>>;
+/**
+ * Sort one league's failure into a cause.
+ *
+ * Ordered most specific first. HTTP status is checked before message text
+ * because a provider is free to reword its body and not free to change what
+ * 401 means. Anything unrecognised stays OTHER rather than being forced into
+ * the nearest bucket: a wrong label is worse than an honest unknown, because
+ * an operator acts on it.
+ */
+export declare function classifyFailure(err: any): CronFailureReason;
 /**
  * Generate and publish this day's article for every active league that does
  * not already have one.

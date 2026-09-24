@@ -163,6 +163,22 @@ const LEGACY_ARTICLE = {
   tracked_players: [],
 };
 
+/* League-wide editorial: scope 'global', and a week that is NOT the week the
+   reader is on, which is the normal case and the reason the fallback cannot be
+   week filtered. */
+const GLOBAL_ARTICLE = {
+  ...ARTICLE,
+  slug: '2026-09-24-week-3-trending-adds',
+  headline: 'Week 3 trending adds',
+  title: 'Week 3 trending adds',
+  match_impact_summary: '',
+  category: 'Waiver Wire',
+  author: 'FSN Desk',
+  article_type: 'global_editorial',
+  scope: 'global',
+  week: 3,
+};
+
 const requests = [];
 let serveArticles = [];
 let serveActive = [];
@@ -181,6 +197,7 @@ function startServer() {
           season: url.searchParams.get('season'),
           week: url.searchParams.get('week'),
           limit: url.searchParams.get('limit'),
+          include_global: url.searchParams.get('include_global'),
           active,
         });
         /* The two feeds hit the same path and are told apart by `active`,
@@ -582,6 +599,85 @@ try {
   /* Both feeds, or the reader gets fresh copy in one slot and this morning's
      in the other. */
   truthy(activeRequests().length > activeBefore, 'the refresh control forces a new active read');
+
+  /* ---- 7b. THE LEAGUE-WIDE FALLBACK ---------------------------------
+     A league with no recaps of its own. Common: the pipeline publishes three
+     mornings a week, and a league whose saved ESPN connection has lapsed
+     publishes none at all until a member reconnects it. The slot must stand
+     league-wide editorial in rather than going blank, and must never dress it
+     up as this league's own coverage of the week on screen. */
+  truthy(
+    activeRequests().every((row) => row.include_global === '1'),
+    'the active read asks the endpoint for league-wide editorial as well',
+  );
+
+  serveArticles = [];
+  serveActive = [GLOBAL_ARTICLE];
+  await page.evaluate(() => {
+    window.FSNLeagueArticles.refresh();
+    window.FSNSupabaseArticles.refresh();
+  });
+  await page.waitForTimeout(1200);
+  await page.evaluate(() => window.FSNBridge.call('renderLeagueBlog'));
+  await page.waitForTimeout(600);
+
+  const fallback = await page.evaluate(() => ({
+    hidden: document.getElementById('leagueBlogWrap').hidden,
+    label: (document.getElementById('leagueBlogState') || {}).textContent || '',
+    text: (document.getElementById('leagueBlogFeed') || {}).innerText || '',
+  }));
+  expect(fallback.hidden, false, 'a league with no recaps still shows something');
+  expect(fallback.label.trim(), 'LEAGUE-WIDE', 'the label says league-wide, never WEEK n');
+  truthy(fallback.text.includes('Week 3 trending adds'), 'the league-wide story is the one painted');
+
+  /* The other direction: the league's own coverage always wins, and a global
+     row must never be mixed into a WEEK n list. */
+  serveArticles = [ARTICLE];
+  serveActive = [GLOBAL_ARTICLE];
+  await page.evaluate(() => {
+    window.FSNLeagueArticles.refresh();
+    window.FSNSupabaseArticles.refresh();
+  });
+  await page.waitForTimeout(1200);
+  await page.evaluate(() => window.FSNBridge.call('renderLeagueBlog'));
+  await page.waitForTimeout(600);
+
+  const owned = await page.evaluate(() => ({
+    label: (document.getElementById('leagueBlogState') || {}).textContent || '',
+    text: (document.getElementById('leagueBlogFeed') || {}).innerText || '',
+  }));
+  truthy(owned.label.includes('WEEK'), 'a league with its own recap keeps its week label');
+  truthy(!owned.text.includes('Week 3 trending adds'), 'league-wide editorial never joins a week list');
+
+  /* The case the scope filter actually defends, and the only configuration
+     that can expose it. A global article dated to the SAME week the reader is
+     on passes every week comparison, so nothing but its scope keeps it out of
+     the week-labelled list. The week read has to be empty for the active read
+     to be consulted at all, so that is the setup here, and the discriminator
+     is the LABEL: with the scope filter the story appears under LEAGUE-WIDE,
+     without it under WEEK 2, as though this league's desk had written it. */
+  serveArticles = [];
+  serveActive = [{ ...GLOBAL_ARTICLE, week: 2, headline: 'Same week league-wide story', title: 'Same week league-wide story' }];
+  await page.evaluate(() => {
+    window.FSNLeagueArticles.refresh();
+    window.FSNSupabaseArticles.refresh();
+  });
+  await page.waitForTimeout(1200);
+  await page.evaluate(() => window.FSNBridge.call('renderLeagueBlog'));
+  await page.waitForTimeout(600);
+
+  const sameWeek = await page.evaluate(() => ({
+    label: (document.getElementById('leagueBlogState') || {}).textContent || '',
+    text: (document.getElementById('leagueBlogFeed') || {}).innerText || '',
+  }));
+  expect(
+    sameWeek.label.trim(), 'LEAGUE-WIDE',
+    'a global article dated to the viewed week is labelled league-wide, not WEEK n',
+  );
+  truthy(
+    sameWeek.text.includes('Same week league-wide story'),
+    'and it is still shown rather than dropped',
+  );
 
   /* ---- 8. CLEAN ------------------------------------------------------ */
   const snag = await page.evaluate(() => document.body.innerText.includes('hit a snag'));
