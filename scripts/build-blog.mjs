@@ -659,6 +659,55 @@ function build() {
     for (const dir of BLOG_SURFACE) walk(dir);
     if (leaks) process.exit(1);
 
+    /* ---- FRESHNESS -------------------------------------------------------
+
+       The app's desk wire only accepts copy inside a freshness window: a
+       Wednesday with no waiver piece must not surface last month's as a live
+       recommendation. The consequence is that a desk which has not published
+       for longer than that window shows NOTHING, silently, and the first
+       anyone hears of it is "the blog feed is broken" when the feed is fine
+       and the content is old.
+
+       So the build says so. A warning rather than a failure: stale content is
+       an editorial state, not a broken build, and failing CI over it would
+       block unrelated work every time a publishing week slipped.
+
+       The window is read out of index.html rather than copied, so the two
+       cannot drift. A rename there fails this loudly instead of silently
+       disabling the warning. */
+    const appSource = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+    const windowMatch = /const\s+MAX_AGE_DAYS\s*=\s*(\d+)\s*;/.exec(appSource);
+    if (!windowMatch) {
+      console.error('[blog] check: MAX_AGE_DAYS could not be found in index.html, so article freshness ' +
+        'cannot be checked. Update the pattern in scripts/build-blog.mjs to match the renamed constant.');
+      drift = true;
+    } else {
+      const windowDays = Number(windowMatch[1]);
+      const today = new Date();
+      const newestDate = posts
+        .map((p) => p.publishDate)
+        .filter(Boolean)
+        .sort()
+        .pop();
+      const ageDays = newestDate
+        ? Math.round((Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate())
+            - Date.parse(newestDate + 'T00:00:00Z')) / 86400000)
+        : null;
+
+      if (ageDays == null) {
+        console.warn('[blog] no article carries a publish date, so the desk wire can route none of them.');
+      } else if (ageDays > windowDays) {
+        console.warn(
+          `[blog] STALE: the newest global article is ${newestDate} (${ageDays} days old) and the app's ` +
+          `desk wire only accepts copy within ${windowDays} days. The wire is showing NOTHING right now. ` +
+          'This is a publishing gap, not a bug: add an article to landing/content/blog and rebuild.',
+        );
+      } else {
+        console.log(`[blog] freshness: newest article ${newestDate}, ${ageDays} day(s) old, inside the ` +
+          `${windowDays} day desk-wire window.`);
+      }
+    }
+
     if (drift) process.exit(1);
     console.log(`[blog] check passed. ${articles.length} article(s), punctuation clean, ` +
       `per-article metadata stamped, sitemap current, ${scanned.length} landing file(s) free of league-scoped reads.`);

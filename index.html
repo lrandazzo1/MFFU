@@ -33215,6 +33215,10 @@ function wireContextLine(view, slot){
   return `<div class="wire-context">${parts.join('<span class="sep" style="margin:0 4px">•</span>')}</div>`;
 }
 
+/* The last reason the wire went blank, so the explanation is logged when it
+   changes rather than on every repaint. */
+let lastWireReason = '';
+
 function renderDeskWire(){
   const wrap = $('deskWireWrap');
   if(!wrap) return;
@@ -33260,7 +33264,26 @@ function renderDeskWire(){
   /* 'empty' (nothing published for today's slot) and 'offline' (the feed could
      not be read and no cached copy applies) are both ordinary, expected states
      — the slot disables itself and the layout closes over it cleanly. */
-  if(!snapshot || snapshot.status !== 'ready' || !snapshot.post){ hide(); return; }
+  if(!snapshot || snapshot.status !== 'ready' || !snapshot.post){
+    /* Say why, once per distinct reason. An empty wire is an ordinary state,
+       so it is not an error and it does not repeat on every repaint, but a
+       blank card that explains nothing is indistinguishable from a broken
+       read: "no article is published for today's slot" and "the feed could
+       not be reached" need different responses and look identical on screen.
+
+       The commonest cause is the publishing cadence slipping: the engine only
+       accepts copy inside its freshness window, so a desk that has not posted
+       for longer than that window silently shows nothing. */
+    const why = (snapshot && String(snapshot.reason || '').trim()) || 'no article state yet';
+    if(why !== lastWireReason){
+      lastWireReason = why;
+      console.warn('[FSNArticles] the desk wire is showing nothing: ' + why +
+        ' (status "' + ((snapshot && snapshot.status) || 'none') + '").');
+    }
+    hide();
+    return;
+  }
+  lastWireReason = '';
 
   const view = FSNArticles.annotated();
   /* Annotation runs for its match list (which powers wireContextLine); the
