@@ -8,18 +8,27 @@ the two share no data.
 |---|---|---|
 | Source | `landing/content/blog/**` (files in this repo) | `blog_articles` in Supabase |
 | Built by | `scripts/build-blog.mjs` | `lib/article-generator.ts`, three mornings a week |
-| Scope | Global | One league, `league_id` NOT NULL on every row |
+| Scope | Global | One league, `league_id` set on every row |
 | Served at | `fantasysportsnetwork.app/blog` | Inside the app, News Desk |
 
 ## Why private league recaps cannot leak onto it
 
 Not a filter. There is no read path.
 
-`blog_articles` holds one thing: per-league recaps. Every row carries a NOT
-NULL `league_id`, so there is no such row as a "global" article to select, and
-`/api/blog/articles` rejects any request that does not name a league, so the
-table cannot be enumerated. The public blog is compiled from files and never
-queries it.
+The public blog is compiled from files in this repo and never queries Supabase
+at all. That is the whole answer, and it does not depend on any query being
+written correctly.
+
+`blog_articles` does hold two scopes, so the second line of defence is worth
+stating. A per-league recap carries a `league_id`; a global editorial (written
+from public sources by `scripts/generate-editorial.mjs`) carries `league_id`
+NULL and `article_type = 'global_editorial'`, and `blog_articles_scope_check`
+makes those two facts imply each other in both directions. A private recap
+therefore cannot become global by blanking one column, and
+`/api/blog/articles` still rejects any request that does not name a league, so
+the table cannot be enumerated. Writing a global row publishes nothing on its
+own: `/blog` serves the compiled file payload, and a global article reaches it
+the same way every other one does, as a committed source file.
 
 The failure mode is somebody adding a convenience fetch to a blog page later
 and quietly publishing a dozen leagues' private matchups. `npm run check:blog`

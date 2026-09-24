@@ -2,13 +2,23 @@
 
 > **The public blog at `fantasysportsnetwork.app/blog` is a different thing
 > from everything below.** It is file-backed from `landing/content/blog`,
-> compiled by `scripts/build-blog.mjs`, and reads no Supabase at all. The
-> table documented here holds only per-league recaps, every row with a NOT
-> NULL `league_id`, and `/api/blog/articles` refuses a request that does not
-> name one. That is why no league's private content can reach the public blog
-> or its sitemap: not a filter, an absence of any read path.
-> `npm run check:blog` fails the build if a blog page ever gains one. See
-> `docs/public-blog-seo.md`.
+> compiled by `scripts/build-blog.mjs`, and reads no Supabase at all. That is
+> why no league's private content can reach the public blog or its sitemap: not
+> a filter, an absence of any read path. `npm run check:blog` fails the build if
+> a blog page ever gains one. See `docs/public-blog-seo.md`.
+>
+> **Two scopes live in `blog_articles`, and the database keeps them apart.**
+> A per-league recap has a `league_id` and one of the three scheduled types or
+> `league_dispatch`. A global editorial (what `scripts/generate-editorial.mjs`
+> writes from public sources) has `league_id` NULL and
+> `article_type = 'global_editorial'`. `blog_articles_scope_check` makes those
+> two facts imply each other in both directions, so a private recap cannot be
+> promoted to global by blanking one column, and a global article cannot be
+> filed into a league. Every league read is an equality filter on `league_id`
+> and `/api/blog/articles` refuses a request that does not name one, so a
+> global row is invisible to every league feed and a league row is invisible to
+> a global read (`league_id IS NULL`). Writing a global row does not publish
+> anything: `/blog` still serves the compiled file payload.
 
 The foundation for AI-written league stories on the public blog. Three pieces:
 a Supabase table, a math layer that decides what a performance meant, and a

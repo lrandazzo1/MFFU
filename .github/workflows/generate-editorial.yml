@@ -1,0 +1,104 @@
+# Live verification for the public editorial generator.
+#
+# scripts/generate-editorial.mjs reads Sleeper's free public API. That API is
+# unauthenticated, so this workflow needs no secret to do the interesting part,
+# but it does need outbound network: the development container this repo is
+# usually worked in denies api.sleeper.app at its egress proxy, so a run there
+# reports "no verified source" and writes nothing. A GitHub runner can reach it.
+# This is where the live path is exercised.
+#
+# It deliberately does NOT commit. The generated source file is uploaded as an
+# artifact and printed into the run summary so it can be read before it becomes
+# a public page. Putting an article on /blog is still the ordinary two steps:
+# commit the file into landing/content/blog/, and let the landing deploy serve
+# the payload `npm run build:blog` compiled.
+#
+# Optional repository secrets (only for the Supabase half):
+#   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+# With either missing the generator says so and still writes the source file.
+
+name: Public editorial generator
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Source to read.
+        type: choice
+        options: [auto, sleeper, rss]
+        default: sleeper
+        required: true
+      publish_supabase:
+        description: Also upsert the global row into blog_articles (league_id null).
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: generate-editorial
+  cancel-in-progress: false
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # The generator itself is dependency free. build:blog is too. `npm ci`
+      # is here only because the repo's other checks expect node_modules, and
+      # it is cheap enough to keep the two steps in one job.
+      - name: Install
+        run: npm ci
+
+      - name: Generate from the live source
+        env:
+          MODE: ${{ inputs.mode }}
+          SUPABASE_URL: ${{ inputs.publish_supabase && secrets.SUPABASE_URL || '' }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ inputs.publish_supabase && secrets.SUPABASE_SERVICE_ROLE_KEY || '' }}
+        run: |
+          set -euo pipefail
+          args=(--mode "${MODE}")
+          if [ "${{ inputs.publish_supabase }}" != "true" ]; then
+            args+=(--no-supabase)
+          fi
+          node scripts/generate-editorial.mjs "${args[@]}"
+
+      - name: Report what was written
+        run: |
+          set -euo pipefail
+          # Anything the generator added or changed under the blog source tree.
+          mapfile -t changed < <(git status --porcelain -- landing/content/blog | awk '{print $2}')
+          if [ "${#changed[@]}" -eq 0 ]; then
+            echo '### No article was written' >> "$GITHUB_STEP_SUMMARY"
+            echo 'The generator found no verified source. That is its safe outcome, not a failure.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          for file in "${changed[@]}"; do
+            echo "### $file" >> "$GITHUB_STEP_SUMMARY"
+            echo '```markdown' >> "$GITHUB_STEP_SUMMARY"
+            cat "$file" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          done
+
+      - name: Compile and check the blog payload
+        run: |
+          set -euo pipefail
+          npm run build:blog
+          npm run check:blog
+
+      - name: Upload the generated source and payload
+        uses: actions/upload-artifact@v4
+        with:
+          name: editorial-output
+          if-no-files-found: warn
+          path: |
+            landing/content/blog/*.md
+            landing/content/blog/*.json
+            landing/content/generated/blog/**

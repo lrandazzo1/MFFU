@@ -1,0 +1,28 @@
+{
+  "comment": [
+    "Consensus-owned roster anchors: locked-in starters and universally drafted",
+    "players who are never legitimate standard 12-team waiver claims.",
+    "",
+    "Two consumers read this list, which is why it lives in its own file rather",
+    "than inline in either of them:",
+    "  - scripts/build-blog.mjs fails the build if a Waiver Wire article lists",
+    "    one of these players as a claim.",
+    "  - scripts/generate-editorial.mjs leaves them off a generated waiver board",
+    "    before the build ever sees the file, because Sleeper's platform-wide",
+    "    add counts include the drop/add churn around big names.",
+    "A copy in each file would drift, and the drift would only surface as a",
+    "failed build on an article that was already written.",
+    "",
+    "Matched case-insensitively against the normalized full name. Extend as the",
+    "consensus baseline shifts week to week."
+  ],
+  "anchors": [
+    "christian mccaffrey", "bijan robinson", "saquon barkley", "jahmyr gibbs",
+    "jaylen warren", "derrick henry", "jonathan taylor", "de'von achane",
+    "justin jefferson", "ja'marr chase", "ceedee lamb", "amon-ra st. brown",
+    "jayden reed", "a.j. brown", "tyreek hill", "nico collins",
+    "puka nacua", "sam laporta", "travis kelce", "trey mcbride",
+    "george kittle", "josh allen", "lamar jackson", "jalen hurts",
+    "patrick mahomes"
+  ]
+}

@@ -211,3 +211,55 @@ from public.blog_articles;
 
 revoke all on public.articles from anon, authenticated;
 grant select on public.articles to service_role;
+
+-- ---------------------------------------------------------------------------
+-- GLOBAL ARTICLES — `league_id IS NULL`
+--
+-- Everything above this line is one league's private story. This block adds the
+-- other kind: a global editorial that belongs to no league and is written for
+-- everyone, which is what scripts/generate-editorial.mjs produces from public
+-- sources (Sleeper's public API, public news feeds).
+--
+-- The two corpora must never mix. A league recap names real people and real
+-- teams and is private by contract; a global article is published on the open
+-- web. So the separation is enforced in the database rather than left to every
+-- caller to remember:
+--
+--   * `league_id` becomes nullable, and NULL means global. The pre-existing
+--     length check still holds for non-null values (a CHECK passes on NULL),
+--     so a league id cannot become empty or oversized.
+--   * `global_editorial` joins the article_type enum, and a new check makes
+--     NULL league and that one type imply each other in BOTH directions. A
+--     private recap cannot be promoted to global by blanking its league_id,
+--     and a global article cannot be filed into a league.
+--
+-- That is the whole privacy story on the read side too, without a single new
+-- filter: every existing read is an equality filter on league_id
+-- (api/blog/articles.js, lib/article-generator.ts, lib/article-cron.ts), and
+-- `league_id = '123'` never matches NULL. Global rows are invisible to every
+-- league feed that exists today, and league rows are invisible to a global read
+-- (`league_id IS NULL`).
+--
+-- Additive and re-runnable: the constraint is widened, never narrowed, and
+-- every row written before this block satisfies the new check as it stands
+-- (they all have a league_id and none of them is a global_editorial).
+-- ---------------------------------------------------------------------------
+
+alter table public.blog_articles alter column league_id drop not null;
+
+alter table public.blog_articles drop constraint if exists blog_articles_article_type_check;
+alter table public.blog_articles add constraint blog_articles_article_type_check check (
+  article_type in ('monday_sweat', 'tuesday_verdict', 'friday_tnf_preview', 'league_dispatch', 'global_editorial')
+);
+
+alter table public.blog_articles drop constraint if exists blog_articles_scope_check;
+alter table public.blog_articles add constraint blog_articles_scope_check check (
+  (league_id is null and article_type = 'global_editorial')
+  or (league_id is not null and article_type <> 'global_editorial')
+);
+
+-- The global feed: newest first, across no league. A partial index so it stays
+-- small no matter how many league recaps the table holds.
+create index if not exists blog_articles_global_idx
+  on public.blog_articles (published_at desc)
+  where league_id is null;

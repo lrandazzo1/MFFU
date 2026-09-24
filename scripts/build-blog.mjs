@@ -82,15 +82,32 @@ const normName = (s) => String(s == null ? '' : s)
 // players who are never legitimate standard 12-team waiver claims. Waiver Wire
 // stories must focus on true low-owned targets, direct injury replacements, or
 // viable streaming options instead. Matched case-insensitively by normalized
-// full name. Extend this list as the consensus baseline shifts week to week.
-const WAIVER_ANCHOR_BLOCKLIST = new Set([
-  'christian mccaffrey', 'bijan robinson', 'saquon barkley', 'jahmyr gibbs',
-  'jaylen warren', 'derrick henry', 'jonathan taylor', 'de\'von achane',
-  'justin jefferson', 'ja\'marr chase', 'ceedee lamb', 'amon-ra st. brown',
-  'jayden reed', 'a.j. brown', 'tyreek hill', 'puka nacua', 'nico collins',
-  'sam laporta', 'travis kelce', 'trey mcbride', 'george kittle',
-  'josh allen', 'lamar jackson', 'jalen hurts', 'patrick mahomes',
-]);
+// full name.
+//
+// The list itself lives in scripts/data/waiver-anchors.json because
+// scripts/generate-editorial.mjs reads the same file to keep these names off a
+// generated waiver board in the first place. Two inline copies would drift,
+// and the drift would only ever surface as a failed build on an article that
+// was already written.
+const WAIVER_ANCHOR_BLOCKLIST = loadWaiverAnchors();
+
+function loadWaiverAnchors() {
+  const file = path.join(ROOT, 'scripts', 'data', 'waiver-anchors.json');
+  let parsed;
+  try {
+    parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
+  } catch (err) {
+    // Not a soft failure: with an empty blocklist the waiver realism guard
+    // silently passes everything, which is exactly the regression it exists
+    // to catch. Refuse to build rather than build without it.
+    throw new Error('[blog] could not read the waiver anchor list at scripts/data/waiver-anchors.json: ' + err.message);
+  }
+  const anchors = parsed && parsed.anchors;
+  if (!Array.isArray(anchors) || !anchors.length) {
+    throw new Error('[blog] scripts/data/waiver-anchors.json has no "anchors" array; refusing to build with an empty waiver blocklist.');
+  }
+  return new Set(anchors.map((name) => normName(name)).filter(Boolean));
+}
 
 const errors = [];
 const fail = (msg) => errors.push(msg);

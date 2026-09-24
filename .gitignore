@@ -20,3 +20,7 @@ DerivedData/
 
 # npm run shot:news output — a look at the League Blog card, not an artifact.
 news-screen.png
+
+# Sleeper player index cache (scripts/generate-editorial.mjs). Several MB of
+# public reference data, refetched on demand. Never source-controlled.
+scripts/data/.cache/
