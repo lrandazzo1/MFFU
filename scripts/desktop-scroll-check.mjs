@@ -257,10 +257,14 @@ try {
 
   /* ---- 2. Behavioural: the wheel actually moves the page ----------------- */
   const tabs = await page.$$eval('#tabBar .tab-btn', (els) => els.map((e) => e.getAttribute('data-tab')));
-  if (tabs.length !== 6) fail('expected 6 tabs, found ' + tabs.length);
+  if (tabs.length !== 5) fail('expected 5 tabs, found ' + tabs.length);
 
-  for (const tab of tabs) {
-    await page.click('#tabBar .tab-btn[data-tab="' + tab + '"]');
+  /* Setup left the bottom nav for the header gear, so it is reached by clicking
+     that gear rather than a tab — but it still has to scroll like every other
+     screen, so it stays in this walk. */
+  for (const tab of tabs.concat(['setup'])) {
+    if (tab === 'setup') await page.click('.screen[data-active="true"] .gear-btn');
+    else await page.click('#tabBar .tab-btn[data-tab="' + tab + '"]');
     await page.waitForTimeout(420);
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.waitForTimeout(80);

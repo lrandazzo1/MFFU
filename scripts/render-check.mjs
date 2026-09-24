@@ -295,8 +295,10 @@ try {
 
   /* ---- 3. Walk every screen --------------------------------------------- */
   const tabs = await page.$$eval('#tabBar .tab-btn', (els) => els.map((e) => e.getAttribute('data-tab')));
-  if (tabs.length !== 6) fail('expected 6 tabs, found ' + tabs.length);
-  else pass('found all 6 tabs: ' + tabs.join(', '));
+  if (tabs.length !== 5) fail('expected 5 tabs, found ' + tabs.length);
+  else pass('found all 5 tabs: ' + tabs.join(', '));
+  if (tabs.includes('setup')) fail('Setup is still in the bottom nav; it belongs behind the header gear');
+  else pass('Setup is out of the bottom nav');
 
   for (const tab of tabs) {
     await page.click('#tabBar .tab-btn[data-tab="' + tab + '"]');
@@ -312,9 +314,29 @@ try {
     if (snag) fail('"hit a snag" rendered on screen: ' + tab);
   }
 
+  /* ---- 3b. The header gear is the one route to Setup --------------------- */
+  const gears = await page.$$eval('.screen .gear-btn', (els) =>
+    els.map((e) => e.closest('.screen').getAttribute('data-screen')));
+  const gearScreens = ['home', 'matchups', 'news', 'analytics', 'recordbook', 'setup'];
+  const missingGear = gearScreens.filter((s) => !gears.includes(s));
+  if (missingGear.length) fail('screens with no header gear: ' + missingGear.join(', '));
+  else pass('every screen carries a header Setup gear');
+
+  await page.click('.screen[data-active="true"] .gear-btn');
+  await page.waitForTimeout(450);
+  if ((await page.getAttribute('.screen[data-screen="setup"]', 'data-active')) === 'true') {
+    pass('the header gear routes to Setup');
+  } else {
+    fail('the header gear did not route to Setup');
+  }
+  const setupSnag = await page.evaluate(() => {
+    const screen = document.querySelector('.screen[data-screen="setup"]');
+    return screen ? /hit a snag/i.test(screen.innerText) : false;
+  });
+  if (setupSnag) fail('"hit a snag" rendered on screen: setup');
+
   /* ---- 4. The push card renders its unconfigured state honestly ---------- */
-  await page.click('#tabBar .tab-btn[data-tab="setup"]');
-  await page.waitForTimeout(500);
+  await page.waitForTimeout(400);
 
   const card = await page.evaluate(() => {
     const el = document.getElementById('notifyCard');
@@ -418,7 +440,7 @@ try {
      Back tracking the position), confirm each tab tour renders its mini
      bottom-nav map, then finish and confirm both that it closed and that
      completion persisted to the localStorage flag the boot check reads. */
-  await page.click('#tabBar .tab-btn[data-tab="setup"]');
+  await page.click('.screen[data-active="true"] .gear-btn');
   await page.waitForTimeout(300);
 
   if (!(await page.$('#ftuReopenBtn'))) {
