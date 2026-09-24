@@ -549,6 +549,10 @@ function build() {
       excerpt: a.excerpt,
       author: a.author,
       entityCount: a.entities.length,
+    /* The manifest carries the tracked players too, so the app can decide
+       which story is relevant to a reader's roster from ONE request instead
+       of downloading every article body to find out. */
+    tracked_players: a.entities,
     })),
   };
 
@@ -561,6 +565,11 @@ function build() {
     author: a.author,
     format: a.format,
     entities: a.entities,
+    /* The same list under the name the rest of the product uses for "the
+       players this article is about". `entities` is kept beside it because
+       the compiled payload is public and cached at the edge for a day, so a
+       client running older code must keep working through the rollover. */
+    tracked_players: a.entities,
     bodyHtml: renderMarkdown(a.body),
   }));
 

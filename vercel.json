@@ -44,6 +44,10 @@
     {
       "source": "/api/blog/articles/publish",
       "destination": "/api/blog/articles?action=publish"
+    },
+    {
+      "source": "/api/blog/global",
+      "destination": "/api/blog/articles?action=global"
     }
   ],
   "headers": [

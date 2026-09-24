@@ -9,46 +9,45 @@
    against the running engine. This is that check for FSNArticles: the app's
    reader for the root-domain blog payload.
 
-   ---- WHAT THIS CHECK GUARDS NOW ----
+   ---- WHAT THIS CHECK GUARDS ----
 
-   External editorial is DISCONNECTED from the app on purpose. FSNArticles no
-   longer fetches the root-domain blog payload, no longer routes a post into the
-   News Desk, and there is no `#deskWireWrap` card on the News screen; the app's
-   own coverage comes from the deterministic News Desk (block 4) and from each
-   league's own published articles (the League Blog, `/api/blog/articles`, which
-   scripts/league-blog-check.mjs covers end to end).
+   The GLOBAL blog feed: real-world NFL copy, identical for every reader,
+   compiled from landing/content/blog and read by the app through
+   /api/blog/global (falling back to the compiled payload). The point of the
+   feature is the last step: the players an article names are matched against
+   the reader's OWN roster, so a waiver piece reads as "on your roster" or
+   "week 3 opponent" rather than as generic news.
 
-   So this check asserts two things:
+   This is a different corpus from the League Blog, which is one league's own
+   private recaps out of `blog_articles` and is covered by
+   scripts/league-blog-check.mjs. Nothing here touches that table.
 
-     A. THE DISCONNECTION HOLDS. Even with a reachable, well-formed blog payload
-        served on the origin the engine points at, the app never reads it: zero
-        requests to /content/generated/blog/, the engine settles to `empty` with
-        no post, `annotated()` stays null, nothing from the payload executes,
-        and the News Desk paints its own copy with no "hit a snag". This is the
-        assertion that would catch external editorial being wired back in by
-        accident.
+     A. THE PIPE WORKS END TO END, against a reachable payload:
 
-     B. THE PURE HELPERS STILL BEHAVE. The cadence router, the slot selector and
-        the roster-matching layer are pure, live code at global scope, and they
-        are what any future re-enablement would be built back on top of:
-
-          1. the weekly cadence routes every day to the slot the desk publishes
+          1. the weekly cadence routes every day to the slot the desk
+             publishes, and every day comes back with that slot's article
           2. selection is deterministic, rejects unpublished and out-of-window
              copy, and breaks a same-day tie on slug rather than manifest order
-          3. entities match this league's rosters by Sleeper id AND by name,
-             through the punctuation and suffix variance between a desk's copy
-             and a provider's roster, reading each team's LATEST week
-          4. ownership is framed relative to the reader — their own player, this
-             week's opponent's player, anyone else's — and degrades to the
+          3. tracked_players survives build -> payload -> endpoint -> engine
+          4. those players match this league's rosters by Sleeper id AND by
+             name, through the punctuation and suffix variance between a
+             desk's copy and a provider's roster, reading each team's LATEST
+             week
+          5. ownership is framed relative to the reader: their own player,
+             this week's opponent's player, anyone else's, degrading to the
              neutral label when no team is claimed
+          6. the card paints, with that reader-scoped context line on it
 
-   NOT COVERED HERE, DELIBERATELY: the body sanitizer and the first-mention
-   ownership injector are reachable only through `FSNArticles.annotated()`,
-   which requires a `ready` snapshot that the disconnected engine can never
-   produce. That coverage is parked with the surface it belongs to. If external
-   editorial is ever re-enabled, restore it here in the same commit — the
-   sanitizer is what stands between a bad blog deploy and script execution
-   inside a native shell.
+        THE SANITIZER is asserted here too. The fixture body carries an
+        <img onerror>, a <script> and a javascript: link, and none may become
+        live: this is what stands between a bad blog deploy and script
+        execution inside a native shell.
+
+     B. AN UNREACHABLE ORIGIN COSTS EXACTLY THE CARD. The engine reports
+        `offline` with a reason, no card paints, and the deterministic News
+        Desk underneath is untouched, with no uncaught error and no "hit a
+        snag". It must still ATTEMPT the read: a silent no-read would mean the
+        feature had been switched off rather than degrading.
 
    Exit code 0 means clean.
 ============================================================================ */
@@ -486,12 +485,12 @@ try {
   /* Leave the reader as a guest for the desk assertions below. */
   await page.evaluate(() => window.FSNStore.set('fsn_active_team_id', ''));
 
-  /* ---- 5. The engine stays inert, every day of the week -----------------
+  /* ---- 5. The engine routes and reads, every day of the week ------------
      The page clock is pinned to each of the next seven calendar days in turn
      and the engine is re-driven. Every day must route to its own slot (so the
-     calendar router is exercised end to end) and every day must settle to
-     `empty` with no post: external editorial is disconnected, not merely
-     unrouted. */
+     calendar router is exercised end to end) AND come back with the article
+     that slot publishes. The fixture manifest carries a post for every slot,
+     so a day that settles empty means the read or the routing broke. */
   const base = new Date();
   base.setHours(12, 0, 0, 0);
   for (let i = 0; i < 7; i++) {
@@ -510,20 +509,20 @@ try {
         hasPost: !!state.post,
         readerUrl: state.readerUrl,
         reason: state.reason,
+        slug: state.post && state.post.slug,
         annotated: window.FSNArticles.annotated(),
       };
     });
     if (row.slot !== slotId) fail(DAY_NAMES[day] + ': routed to slot ' + row.slot + ', expected ' + slotId);
-    else if (row.status !== 'empty') fail(DAY_NAMES[day] + ': engine status is "' + row.status + '", expected "empty"');
-    else if (row.hasPost) fail(DAY_NAMES[day] + ': the disconnected engine produced a post');
-    else if (row.annotated !== null) fail(DAY_NAMES[day] + ': annotated() returned a view with no post behind it');
-    else if (row.readerUrl) fail(DAY_NAMES[day] + ': the engine published a reader URL: ' + row.readerUrl);
-    else if (!String(row.reason || '').trim()) fail(DAY_NAMES[day] + ': the empty slot carries no reason');
-    else pass(DAY_NAMES[day] + ' -> ' + slotId + ' -> disconnected (' + row.reason + ')');
+    else if (row.status !== 'ready') fail(DAY_NAMES[day] + ': engine status is "' + row.status + '", expected "ready"');
+    else if (!row.hasPost) fail(DAY_NAMES[day] + ': routed to ' + slotId + ' but produced no post');
+    else if (row.annotated === null) fail(DAY_NAMES[day] + ': annotated() returned nothing for a ready post');
+    else if (!row.readerUrl) fail(DAY_NAMES[day] + ': the engine published no reader URL for its post');
+    else pass(DAY_NAMES[day] + ' -> ' + slotId + ' -> ' + row.slug);
   }
   await page.clock.setFixedTime(new Date());
 
-  /* ---- 6. The News Desk carries no external-editorial surface ----------- */
+  /* ---- 6. The News Desk carries the wire, matched to this roster -------- */
   await page.click('#tabBar .tab-btn[data-tab="news"]');
   await page.waitForTimeout(900);
   await page.evaluate(() => window.FSNArticles.refresh({ force: true }));
@@ -541,20 +540,70 @@ try {
       snag: screen ? /hit a snag/i.test(screen.innerText) : true,
     };
   });
-  expect(desk.wireWrap, false, 'no #deskWireWrap card is mounted on the News Desk');
-  expect(desk.wireCards, 0, 'no wire card is painted anywhere on the page');
-  expect(desk.wireRegistered, false, 'no desk-wire renderer is registered on FSNBridge');
-  expect(desk.deskPainted, true, 'the deterministic News Desk painted its own lead');
+  expect(desk.wireWrap, true, 'the #deskWireWrap card is mounted on the News Desk');
+  expect(desk.wireRegistered, true, 'the desk-wire renderer is registered on FSNBridge');
+  expect(desk.deskPainted, true, 'the deterministic News Desk still painted its own lead');
   if (desk.timelinePainted > 0) pass('the deterministic timeline painted ' + desk.timelinePainted + ' cards');
   else fail('the deterministic timeline painted nothing');
-  expect(desk.injected, false, 'nothing from the blog payload executed');
   expect(desk.snag, false, '"hit a snag" on the News Desk');
 
-  /* THE ASSERTION THIS CHECK EXISTS FOR. The payload was served, reachable and
-     well-formed for the whole run above. If a single request reached it, the
-     app is ingesting external editorial again. */
-  expect(live.blogRequests.length, 0, 'requests the page made to the blog payload');
-  expect(liveServer.state.blogReads.length, 0, 'reads the blog origin served to the app');
+  /* THE WHOLE POINT OF THE FEATURE: the story is on screen, and the players it
+     names are labelled against the reader's own roster. */
+  if (desk.wireCards > 0) pass('a wire card is painted (' + desk.wireCards + ')');
+  else fail('the wire read an article but painted no card');
+
+  const wired = await page.evaluate(() => {
+    const view = window.FSNArticles.annotated();
+    const wrap = document.getElementById('deskWireWrap');
+    return {
+      matched: (view && view.matches || []).map((m) => ({ name: m.name, role: m.role, owner: !!m.owner })),
+      unmatched: (view && view.unmatched || []).map((u) => u.name),
+      tracked: (view && view.post && view.post.tracked_players || []).map((t) => t.name),
+      contextText: wrap ? (wrap.querySelector('.wire-context') || {}).textContent || '' : '',
+    };
+  });
+
+  /* tracked_players is what the parser extracted and what the app matches on.
+     It must survive the whole pipe: build -> payload -> endpoint -> engine. */
+  if (wired.tracked.length > 0) pass('tracked_players reached the app: ' + wired.tracked.join(', '));
+  else fail('the article arrived with no tracked_players to match');
+
+  const owned = wired.matched.filter((m) => m.owner);
+  if (owned.length > 0) pass('tracked players matched to a roster: ' + owned.map((m) => m.name + ' (' + m.role + ')').join(', '));
+  else fail('no tracked player matched any roster: ' + JSON.stringify(wired));
+
+  if (/roster|opponent|available|around the league/i.test(wired.contextText)) {
+    pass('the card frames them for the reader: ' + JSON.stringify(wired.contextText.slice(0, 80)));
+  } else fail('the card painted no reader-scoped context line: ' + JSON.stringify(wired.contextText));
+
+  /* ---- 6b. THE SANITIZER --------------------------------------------------
+     The header of this file required this coverage be restored in the same
+     commit that re-enables external editorial, and it is right to: this is
+     what stands between a bad blog deploy and script execution inside a
+     native shell. The fixture body carries an <img onerror>, a <script> and a
+     javascript: link. None may become live. */
+  expect(desk.injected, false, 'nothing from the blog payload executed');
+
+  const sanitized = await page.evaluate(() => {
+    const wrap = document.getElementById('deskWireWrap');
+    const html = wrap ? wrap.innerHTML : '';
+    return {
+      scripts: wrap ? wrap.querySelectorAll('script').length : -1,
+      images: wrap ? wrap.querySelectorAll('img').length : -1,
+      onerror: /onerror\s*=/i.test(html),
+      jsHref: /href\s*=\s*["']?javascript:/i.test(html),
+      injected: window.__fsnWireInjected === true,
+    };
+  });
+  expect(sanitized.scripts, 0, 'no <script> survived into the wire card');
+  expect(sanitized.images, 0, 'no <img> survived into the wire card');
+  expect(sanitized.onerror, false, 'no onerror attribute survived into the wire card');
+  expect(sanitized.jsHref, false, 'no javascript: href survived into the wire card');
+  expect(sanitized.injected, false, 'the payload still executed nothing after painting');
+
+  /* The read itself happened. */
+  if (liveServer.state.blogReads.length > 0) pass('the app read the blog origin (' + liveServer.state.blogReads.length + ' read(s))');
+  else fail('the app made no read of the blog origin');
 
   if (live.pageErrors.length) fail('page errors with a reachable blog origin: ' + JSON.stringify(live.pageErrors.slice(0, 3)));
   else pass('no uncaught page errors with a reachable blog origin');
@@ -563,10 +612,12 @@ try {
   await page.close();
 
   /* ---- B. The origin is unreachable ------------------------------------
-     The disconnected engine does not read the origin at all, so an unreachable
-     one has to be indistinguishable from a reachable one: same inert state, same
-     intact desk, and no failed request in the network log either. */
-  console.log('\n[B] the blog origin is unreachable — nothing about the app may change');
+     A phone is offline often, and the blog is a card on a screen, not the
+     screen. So an unreachable origin must cost exactly that card: the engine
+     reports `offline` with a reason, the wire paints nothing, and the
+     deterministic News Desk underneath is untouched, with no uncaught error
+     and no "hit a snag" anywhere. */
+  console.log('\n[B] the blog origin is unreachable - the desk below must be untouched');
   const dead = await openApp(liveBase, deadBase);
   await seedLeague(dead.page);
   await dead.page.click('#tabBar .tab-btn[data-tab="news"]');
@@ -584,16 +635,30 @@ try {
       hasPost: !!state.post,
       snag: screen ? /hit a snag/i.test(screen.innerText) : true,
       deskPainted: !!document.getElementById('newsLeadWrap').innerHTML.trim(),
+      wireCards: document.querySelectorAll('.wire-card-compact').length,
+      reason: state.reason,
+      timelinePainted: document.querySelectorAll('#timelineFeed .tl-card').length,
     };
   });
-  expect(degraded.wireWrap, false, 'still no wire surface with an unreachable origin');
-  expect(degraded.bootStatus, 'idle', 'engine status after boot against an unreachable origin');
-  expect(degraded.status, 'empty', 'engine status after an explicit refresh against an unreachable origin');
+  /* The mount point is always in the document; what changes is whether the
+     renderer put a card in it. */
+  expect(degraded.wireWrap, true, 'the wire mount point is still in the document');
+  expect(degraded.status, 'offline', 'engine status after an explicit refresh against an unreachable origin');
   expect(degraded.hasPost, false, 'no post with an unreachable origin');
+  expect(degraded.wireCards, 0, 'no wire card is painted with an unreachable origin');
+  if (String(degraded.reason || '').trim()) pass('the offline state says why: ' + JSON.stringify(degraded.reason));
+  else fail('the offline state carries no reason');
+
+  /* What must NOT change. */
   expect(degraded.snag, false, '"hit a snag" on the News Desk with an unreachable origin');
   expect(degraded.deskPainted, true, 'the deterministic News Desk still painted');
-  expect(dead.blogRequests.length, 0, 'requests the page made to the unreachable blog origin');
-  expect(deadServer.state.blogReads.length, 0, 'reads the unreachable blog origin was asked for');
+  if (degraded.timelinePainted > 0) pass('the deterministic timeline still painted ' + degraded.timelinePainted + ' cards');
+  else fail('an unreachable blog origin took the deterministic timeline down with it');
+
+  /* It did try. A silent no-read here would mean the feature is off again
+     rather than degrading, which is the regression this section now guards. */
+  if (dead.blogRequests.length > 0) pass('the app attempted the read (' + dead.blogRequests.length + ' request(s))');
+  else fail('the app made no attempt to read the blog origin');
 
   if (dead.pageErrors.length) fail('page errors with an unreachable origin: ' + JSON.stringify(dead.pageErrors.slice(0, 3)));
   else pass('no uncaught page errors with an unreachable origin');

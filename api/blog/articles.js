@@ -92,6 +92,10 @@
    /api/blog/articles/publish onto it. Same shape as
    /api/notifications-register and /api/auth/yahoo/callback. */
 const publishHandler = require('../../lib/blog-publish');
+/* The GLOBAL blog, which is a different corpus entirely: real-world NFL copy
+   compiled from files, identical for every reader, with no league in it. It
+   shares this file only because of the twelve-function budget. */
+const globalHandler = require('../../lib/blog-global');
 
 /* The published columns, and only those. Listed explicitly rather than with
    select('*') so a column added to the table later is never published by
@@ -237,8 +241,15 @@ async function handler(req, res) {
      Selected only by an explicit action=publish, so a stray POST to the read
      URL stays the 405 it has always been rather than being taken for a
      publish attempt. */
-  if (queryParam(req, 'action').toLowerCase() === 'publish') {
+  const action = queryParam(req, 'action').toLowerCase();
+  if (action === 'publish') {
     return publishHandler(req, res);
+  }
+  /* The global blog read. Routed before the league scope is parsed, because it
+     takes no league_id: requiring one would be asking which league the
+     general-audience blog belongs to. */
+  if (action === 'global') {
+    return globalHandler(req, res);
   }
 
   applyHeaders(res);

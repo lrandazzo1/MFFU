@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-23T21:18:16.719Z",
+  "generatedAt": "2026-09-24T02:34:51.652Z",
   "count": 4,
   "posts": [
     {
@@ -9,7 +9,34 @@
       "category": "Recap",
       "excerpt": "Chicago and Baltimore turned their openers into highlight reels, Detroit needed overtime to hold off New Orleans, and two more games came down to the final minute. Here is what actually happened in Week 1, and what it means before you overreact to one week of box scores.",
       "author": "FSN Desk",
-      "entityCount": 5
+      "entityCount": 5,
+      "tracked_players": [
+        {
+          "name": "Jahmyr Gibbs",
+          "position": "RB",
+          "sleeperPlayerId": ""
+        },
+        {
+          "name": "Derrick Henry",
+          "position": "RB",
+          "sleeperPlayerId": ""
+        },
+        {
+          "name": "Josh Allen",
+          "position": "QB",
+          "sleeperPlayerId": ""
+        },
+        {
+          "name": "D'Andre Swift",
+          "position": "RB",
+          "sleeperPlayerId": ""
+        },
+        {
+          "name": "Caleb Williams",
+          "position": "QB",
+          "sleeperPlayerId": ""
+        }
+      ]
     },
     {
       "title": "Jayden Higgins' torn ACL just reshaped the Texans' passing game",
@@ -18,7 +45,24 @@
       "category": "Analysis",
       "excerpt": "Houston lost a projected starting receiver for the season, and the target share is already moving. Here is who actually benefits, and why the shift is bigger than one fantasy roster spot.",
       "author": "FSN Desk",
-      "entityCount": 3
+      "entityCount": 3,
+      "tracked_players": [
+        {
+          "name": "Jayden Higgins",
+          "position": "WR",
+          "sleeperPlayerId": ""
+        },
+        {
+          "name": "Dalton Schultz",
+          "position": "TE",
+          "sleeperPlayerId": ""
+        },
+        {
+          "name": "Nico Collins",
+          "position": "WR",
+          "sleeperPlayerId": ""
+        }
+      ]
     },
     {
       "title": "Waiver wire risers for week two",
@@ -27,7 +71,19 @@
       "category": "Waiver Wire",
       "excerpt": "Two low-owned names worth a real bid before Wednesday. A backfield just cracked open, and a slot receiver is quietly trending up on standard wires.",
       "author": "FSN Desk",
-      "entityCount": 2
+      "entityCount": 2,
+      "tracked_players": [
+        {
+          "name": "Kimani Vidal",
+          "position": "RB",
+          "sleeperPlayerId": ""
+        },
+        {
+          "name": "Jalen McMillan",
+          "position": "WR",
+          "sleeperPlayerId": ""
+        }
+      ]
     },
     {
       "title": "Trade deadline watch, the buyers and the sellers",
@@ -36,7 +92,19 @@
       "category": "Analysis",
       "excerpt": "Three contenders should be buying now, before prices climb. Two rebuilds should be selling veterans while the names still carry weight.",
       "author": "FSN Desk",
-      "entityCount": 2
+      "entityCount": 2,
+      "tracked_players": [
+        {
+          "name": "Justin Jefferson",
+          "position": "WR",
+          "sleeperPlayerId": "6794"
+        },
+        {
+          "name": "Christian McCaffrey",
+          "position": "RB",
+          "sleeperPlayerId": "4034"
+        }
+      ]
     }
   ]
 }
