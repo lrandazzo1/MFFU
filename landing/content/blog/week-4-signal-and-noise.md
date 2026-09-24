@@ -1,9 +1,9 @@
 ---
-title: Week 4 is where the noise starts to clear
+title: Week 3 is where the noise starts to clear
 slug: week-4-signal-and-noise
 publishDate: 2026-09-24
 category: Analysis
-excerpt: Three weeks is enough to trust how a player is being used. It is not enough to trust what he did with it. Here is how to tell the two apart before you make a move you cannot take back.
+excerpt: Two weeks is already enough to see how a player is being used. It is nowhere near enough to trust what he did with it. Here is how to tell the two apart before you make a move you cannot take back.
 author: FSN Desk
 entities:
   - name: Bijan Robinson
@@ -17,7 +17,7 @@ entities:
     sleeperPlayerId: "9502"
 ---
 
-Every year the same thing happens around now. Three weeks of box scores land,
+Every year the same thing happens around now. Two weeks of box scores land,
 the standings look nothing like the draft board, and half the league starts
 trading on a sample that cannot support the weight.
 
@@ -26,8 +26,8 @@ almost always the same, and it is not subtle once you know where to look.
 
 ## Usage is signal. Efficiency is noise.
 
-Three games is plenty to learn how a coaching staff intends to use somebody.
-It is nowhere near enough to learn how good he is going to be at it.
+Two games is already enough to see how a coaching staff intends to use
+somebody. It is nowhere near enough to learn how good he is going to be at it.
 
 Snap share, route participation, carries inside the ten, target share when the
 game is close: these stabilize fast, because they are decisions rather than
@@ -35,14 +35,14 @@ outcomes. Somebody chose them. They will keep choosing them until they have a
 reason not to.
 
 Yards per carry, touchdown rate, catch rate on contested balls: these do not
-stabilize for months. A back can run for six yards a carry across three weeks
-and tell you almost nothing about week ten.
+stabilize for months. A back can run for six yards a carry across two weeks and
+tell you almost nothing about week ten.
 
 So the question to ask about **Bijan Robinson**, or any back you are trying to
 value right now, is not what his average looks like. It is whether he is on the
 field on third down and whether he is the one carrying it from the two. If both
 are true, the production is coming whether or not it has arrived. If neither is
-true, a good three weeks is a good three weeks and not a role.
+true, a good two weeks is a good two weeks and not a role.
 
 ## The trap is a good player in a bad situation
 
@@ -58,8 +58,8 @@ reliably than production regresses toward volume.
 
 The inverse is the one that costs people their season. A player scoring well on
 usage that is not his: a back getting goal line work only because somebody else
-is hurt, a receiver running a full route tree for two weeks while the depth
-chart sorts itself out. That production is real and it is also borrowed.
+is hurt, a receiver running a full route tree while the depth chart sorts
+itself out. That production is real and it is also borrowed.
 
 ## Tight end is its own problem
 
@@ -68,8 +68,8 @@ Do not evaluate tight ends on the same clock as everyone else.
 The position takes longer to sort out, the weekly range is wider, and the
 replacement level is so low that a mediocre starter is worth more than the
 waiver wire's best week. If you drafted **Sam LaPorta** or anyone in that tier
-and the first three weeks have been uneven, you are not learning what you think
-you are learning. Three games of tight end data is close to no data at all.
+and the first two weeks have been uneven, you are not learning what you think
+you are learning. Two games of tight end data is close to no data at all.
 
 Cut the position more rope than feels comfortable. The people who panic at tight
 end in September are reliably the people streaming it in November.
@@ -80,7 +80,7 @@ end in September are reliably the people streaming it in November.
    two columns. That gap is your buy list and your sell list.
 2. Make one trade offer on a player whose usage is strong and whose box score
    is not. That window closes the moment his numbers catch up.
-3. Leave your bench alone. Three weeks of a bench player is the single least
+3. Leave your bench alone. Two weeks of a bench player is the single least
    reliable data in the sport.
 4. Check the schedule, not the standings. Records this early are mostly a
    record of who you played.
