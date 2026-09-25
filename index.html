@@ -19634,6 +19634,67 @@ const DAY_NAMES = ['SUNDAY','MONDAY','TUESDAY','WEDNESDAY','THURSDAY','FRIDAY','
 const MIN = 60000, HOUR = 60 * MIN, DAY = 24 * HOUR;
 
 /* ============================================================
+   DRAFT / PRESEASON WEEK CLAMP
+
+   The draft desk reports on an event that happens once, before the season
+   starts. Its four cards used to carry no week of their own, so
+   ensureArticleIdentity() stamped them with whatever week the reader happened
+   to be sitting on — which meant the Round 1 Shocker, the Reach, the Steal and
+   the report cards re-keyed themselves into Week 3 and rode the Week 3 wire on
+   a Week 3 timestamp. Two separate bugs in one: the cards leaked forward, and
+   the same draft story got a different deterministic article key (and therefore
+   a different narrative draw) in every week it leaked into.
+
+   Both are fixed by pinning the desk to the week it belongs to. DRAFT_WEEK is
+   the canonical home for every draft and preseason card; DRAFT_EVENT_TYPE is
+   the explicit type tag the stream filter matches on, so a future draft-desk
+   generator is clamped by declaring `eventType: DRAFT_EVENT_TYPE` rather than
+   by being added to a list somewhere else.
+============================================================ */
+const DRAFT_WEEK = 1;
+const DRAFT_EVENT_TYPE = 'DRAFT';
+
+/* True for anything filed by a draft desk, by explicit type first and by the
+   topic/kind the generators already publish second. */
+function isDraftDeskEvent(e){
+  if(!e) return false;
+  return e.eventType === DRAFT_EVENT_TYPE || e.topic === 'draft' || e.kind === 'draft';
+}
+
+/* The week a card DECLARES it belongs to, which is not the same thing as the
+   week it happens to carry.
+
+   `a.week` is assigned by ensureArticleIdentity() from effectiveWeek() whenever
+   a generator does not set one, so for almost every card it records the week
+   the reader was sitting on at generation time rather than a claim about the
+   card's subject. It is therefore useless as a filter input — and actively
+   misleading inside editorialScheduleEngine's routeWeek(), which builds the
+   previous week's stream while the UI is parked on the current one.
+
+   A declared week is the opposite: a generator stating that its card belongs to
+   one specific week no matter which wire asked for it. The draft desk is the
+   only such generator today, and DRAFT_WEEK is its declaration. Everything else
+   returns null and passes the filter untouched, because a card built from
+   weekContext(week) is week-correct by construction. */
+function timelineDeclaredWeek(e){
+  if(!e) return null;
+  if(isDraftDeskEvent(e)) return DRAFT_WEEK;
+  const wk = Number(e.declaredWeek);
+  return Number.isFinite(wk) && wk > 0 ? wk : null;
+}
+
+/* The draft desk is on the air only while the reader is on the week it is
+   filed under. Week 2 onward the board is history, not news — and it is not
+   lost either: matchupDraftSnapshot() keeps each team's first pick and draft
+   grade inside the week's own Matchup of the Week, which is where draft
+   context still belongs once the games have started. */
+function draftDeskOnAir(week){
+  const wk = Number(week);
+  if(!Number.isFinite(wk)) return true;
+  return wk <= DRAFT_WEEK;
+}
+
+/* ============================================================
    LIVE SEASON RELEASE CALENDAR
 
    Off-season and in the archives the desk is a time machine: every slot is
@@ -19877,6 +19938,14 @@ function tl(o){
   a.slot = slot;
   a.topic = o.topic || def.topic;
   a.at = at;
+  /* Explicit event type, carried alongside the topic so the stream's week
+     filter has a declared signal to match on rather than inferring one from
+     copy. Draft coverage defaults to it even when a generator forgets. */
+  a.eventType = o.eventType || (a.topic === 'draft' ? DRAFT_EVENT_TYPE : null);
+  /* A generator that passed an explicit week is claiming this card belongs to
+     that week and no other. Recorded separately from a.week, which the identity
+     pass fills in from the viewed week whenever nobody declared one. */
+  a.declaredWeek = o.week != null && Number(o.week) > 0 ? Number(o.week) : null;
   a.metaTag = o.metaTag || def.label;
   a.meta = stamp(at) + ' · ' + a.metaTag;
   a.stream = o.stream || null;         // extra payload for special cards (studio launcher)
@@ -21150,6 +21219,10 @@ function tlInjury(ctx){
    DRAFT SEASON
 ============================================================ */
 function tlDraft(ctx){
+  /* Week gate first, before any board work: outside the draft week this desk
+     has nothing to file, and generating four cards only to have the stream
+     filter drop them is wasted work that also pollutes the row store. */
+  if(!draftDeskOnAir(ctx && ctx.week)) return [];
   const board = FSNIntel.draft();
   if(!board || !board.picks.length) return [];
   const out = [];
@@ -21166,6 +21239,7 @@ function tlDraft(ctx){
     out.push(tl({
       id: 'tl-draft-r1',
       kind:'draft', topic:'draft', at: at(1),
+      week: DRAFT_WEEK, eventType: DRAFT_EVENT_TYPE,
       metaTag:'ROUND 1',
       tag:'ROUND 1 SHOCKER', tone:'gold', priority: 96,
       byline:'FSN Draft Desk',
@@ -21200,6 +21274,7 @@ function tlDraft(ctx){
     out.push(tl({
       id: 'tl-draft-reach',
       kind:'draft', topic:'draft', at: at(3),
+      week: DRAFT_WEEK, eventType: DRAFT_EVENT_TYPE,
       metaTag:'DRAFT',
       tag:'REACH OF THE DRAFT', tone:'red', priority: 92,
       byline:'FSN Draft Desk',
@@ -21231,6 +21306,7 @@ function tlDraft(ctx){
     out.push(tl({
       id: 'tl-draft-steal',
       kind:'draft', topic:'draft', at: at(5),
+      week: DRAFT_WEEK, eventType: DRAFT_EVENT_TYPE,
       metaTag:'DRAFT',
       tag:'STEAL OF THE DRAFT', tone:'green', priority: 90,
       byline:'FSN Draft Desk',
@@ -21262,6 +21338,7 @@ function tlDraft(ctx){
     out.push(tl({
       id: 'tl-draft-grades',
       kind:'draft', topic:'draft', at: at(8),
+      week: DRAFT_WEEK, eventType: DRAFT_EVENT_TYPE,
       metaTag:'REPORT CARDS',
       tag:'DRAFT GRADES', tone:'cyan', priority: 88,
       byline:'FSN Draft Desk',
@@ -22705,6 +22782,42 @@ function getTimelineStream(week){
       released.push(held[0]);
     }
     events = released;
+  }
+
+  /* ---- STRICT WEEK FILTER ----
+     The stream is ordered by timestamp, but it must not be *scoped* by one.
+     A timestamp only says when a card would have broken; the week says which
+     wire it belongs on. Draft coverage is the case that proves the difference:
+     its cards are stamped into the recent past so they read as a weekend of
+     programming, and on a Week 3 wire that stamp put them at the top of TODAY —
+     four draft cards above the actual Week 3 slate.
+
+     So every card that DECLARES a week (see timelineDeclaredWeek) is matched
+     against the week being assembled before it reaches the feed. The draft desk
+     declares DRAFT_WEEK, which confines it to the Week 1 wire and keeps it one
+     click away rather than gone: switch the week selector back to Week 1 and
+     the whole desk is there. A card that declares nothing passes untouched —
+     it was built from weekContext(week) and is week-correct by construction,
+     and its a.week is a generation artifact, not a claim.
+
+     Community copy is exempt: it is week-scoped at the source by
+     scopedCustom() and is the one desk the app does not overrule. */
+  const wireWeek = Number(week);
+  if(Number.isFinite(wireWeek) && wireWeek > 0){
+    const offWire = [];
+    events = events.filter(e=>{
+      if(!e) return false;
+      if(e.custom) return true;
+      const declared = timelineDeclaredWeek(e);
+      if(declared == null || declared === wireWeek) return true;
+      offWire.push(e);
+      return false;
+    });
+    if(offWire.length){
+      console.info('[Timeline] held ' + offWire.length + ' off-week card(s) off the Week ' +
+        wireWeek + ' wire: ' + offWire.map(e=>
+          (e.id || 'unknown') + ' → week ' + timelineDeclaredWeek(e)).join(', '));
+    }
   }
 
   let list = upsertDeterministicArticleRows(events).sort((a,b)=> b.at - a.at);
