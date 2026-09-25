@@ -18,7 +18,7 @@
  * generators, the historical pipelines, the leagues table, or the existing
  * file-based `landing/content/blog` ingestion. It owns exactly one new table.
  */
-import { type KickoffIndex, type TrackedPlayer } from './article-math';
+import { type GameSlot, type KickoffIndex, type TrackedPlayer } from './article-math';
 export type ArticleDay = 'mon' | 'tue' | 'fri';
 export type ArticleType = 'monday_sweat' | 'tuesday_verdict' | 'friday_tnf_preview';
 export interface GenerateInput {
@@ -56,6 +56,21 @@ export interface ComposeRequest {
     day: ArticleDay;
     article_type: ArticleType;
     tracked_players: TrackedPlayer[];
+    /** Every starter the math evaluated, not just the featured rows that get
+     *  persisted. A preview is a story about MATCHUPS, and the eight featured
+     *  rows are scattered across six of them, so a head to head cannot be
+     *  reconstructed from `tracked_players` alone. Optional: a composer written
+     *  before this field falls back to the featured rows. */
+    all_players?: TrackedPlayer[];
+    /** The publication clock, in epoch milliseconds.
+     *
+     *  A preview covers a week that has usually already started: the Thursday
+     *  night game is played the evening before the Friday run. Without a clock a
+     *  composer cannot tell a projection apart from a result, so it is passed in
+     *  rather than read from `Date.now()` inside the composer. Injected for the
+     *  same reason `GenerateDependencies.now` is: a given box score plus a given
+     *  clock must always compose the same article. */
+    now?: number;
 }
 export interface ArticleDraft {
     title: string;
@@ -205,6 +220,119 @@ export declare function sentenceFor(row: TrackedPlayer, week?: number, variant?:
  *  what the callout is allowed to choose from. */
 export declare function decisiveRows(rows: TrackedPlayer[]): TrackedPlayer[];
 export declare function boardRows(rows: TrackedPlayer[], limit?: number): TrackedPlayer[];
+export type LiveState = 'PENDING' | 'LIVE' | 'FINAL' | 'UNKNOWN';
+/** How long after kickoff a game is still treated as running. Four hours
+ *  covers regulation, overtime, and the stat corrections that trail a game.
+ *  Erring long is the safe direction: calling a finished game LIVE understates
+ *  a number that is already settled, while calling a running game FINAL
+ *  asserts a result that can still move. */
+export declare const GAME_WINDOW_MS: number;
+export declare function liveStateOf(row: TrackedPlayer, now?: number | null): LiveState;
+/** Whether this starter's points are on the board yet. */
+export declare function hasPlayed(row: TrackedPlayer, now?: number | null): boolean;
+export interface PreviewSide {
+    team: string;
+    starters: TrackedPlayer[];
+    /** Starters whose games have begun, and those still to kick off. */
+    played: TrackedPlayer[];
+    pending: TrackedPlayer[];
+    /** Sum of the projections the payload carried. Null when it carried none:
+     *  zero would read as "projected to score nothing", which is a claim. */
+    projected: number | null;
+    /** Points already banked by the starters whose games have begun. */
+    scored: number;
+    /** This side's CURRENT matchup margin, summed off the board rather than read
+     *  from the payload's side total. Positive is a lead, null before anyone has
+     *  played. Mid week it is a running number, which is why nothing below calls
+     *  it final.
+     *
+     *  ---- WHY NOT `final_margin` ----
+     *
+     *  `TrackedPlayer.final_margin` is `side.total - opponent.total`, and ESPN's
+     *  fantasy endpoint reports both totals as 0 for a matchup period that has
+     *  not closed. Every row of a real week 3 payload came back
+     *  `final_margin: 0` while Bijan Robinson sat on 36.30 from Thursday night,
+     *  so a preview that trusted it would have called every live matchup dead
+     *  level. Starters are the only thing that scores in fantasy and the whole
+     *  evaluated board is in hand, so the difference of the points already
+     *  banked IS the margin, and it is built from per player numbers that the
+     *  payload does get right. */
+    margin: number | null;
+}
+export interface PreviewMatchup {
+    matchup_id: string;
+    a: PreviewSide;
+    b: PreviewSide;
+    /** True once either side has a starter on the board. */
+    live: boolean;
+    /** True only when a real clock reports every starter on both sides FINAL.
+     *  Without a clock this stays false: "the board is in" is a result claim and
+     *  points alone cannot establish that a game is over. */
+    complete: boolean;
+    /** Starters yet to kick off, across both sides. */
+    remaining: number;
+    /** The current margin as a positive number. Null when nothing resolves one. */
+    margin: number | null;
+    /** The projected margin as a positive number. */
+    projected_margin: number | null;
+}
+/**
+ * The week's head to head pairings, built from the starter rows.
+ *
+ * A group that does not resolve to exactly two sides is skipped rather than
+ * half told: one side is a bye or an unparsed half of a matchup, and more than
+ * two means the payload grouped something this code does not understand.
+ * Neither is a head to head, so neither gets a head to head story invented
+ * for it.
+ */
+export declare function previewMatchups(rows: TrackedPlayer[], now?: number | null): PreviewMatchup[];
+/**
+ * The order the slate reads in: what is already happening, tightest first,
+ * then what is still to come, tightest first.
+ *
+ * Deterministic throughout. Every tie falls through to the matchup id, so the
+ * same box score and the same clock always order the board the same way.
+ */
+export declare function orderPreviewMatchups(matchups: PreviewMatchup[]): PreviewMatchup[];
+export interface LeadSwing {
+    team: string;
+    /** How far behind this side was, as a positive number. */
+    from: number;
+    /** How far ahead it is now, as a positive number. */
+    to: number;
+    /** The kickoff window the lead changed hands in. */
+    window: GameSlot;
+}
+/**
+ * The last time this side's matchup lead actually changed hands.
+ *
+ * Built from margins the math already recorded. Every starter carries the
+ * margin his side held when HIS game kicked off, so the distinct kickoffs on
+ * one side, in order, plus the current margin, are that side's whole
+ * trajectory through the week. A sign flip between two consecutive points on
+ * it is a lead change.
+ *
+ * It is credited to the WINDOW it happened in and never to a player: several
+ * starters kick off together and nothing here can say which of them did it.
+ * Handing one man the credit is the exact overclaim the outcome contract
+ * exists to prevent, and `assertOutcomeLanguage` would be right to throw on
+ * it.
+ *
+ * Null when a margin is missing, when there is no trajectory to read, or when
+ * the lead simply never changed. A preview never invents one: a side that led
+ * from the first whistle has no swing to report, and saying so falsely is
+ * worse than saying nothing.
+ */
+export declare function leadSwing(side: PreviewSide): LeadSwing | null;
+/**
+ * One matchup, told as a story.
+ *
+ * A live block leads with the standing, then the number that produced it, then
+ * either the lead change it came out of or what is still to come. A block
+ * nobody has played yet leads with the gap and names the two performances the
+ * gap rests on.
+ */
+export declare function previewBlock(m: PreviewMatchup, variant: 0 | 1, now?: number | null): string[];
 export declare const CATEGORY_BY_TYPE: Record<ArticleType, string>;
 export declare const DEFAULT_AUTHOR = "FSN News Desk";
 /**
@@ -215,7 +343,10 @@ export declare const DEFAULT_AUTHOR = "FSN News Desk";
  * supports: only GAME_WINNER gets "just enough", and a big score in a loss is
  * "not enough" rather than anything warmer.
  */
-export declare function impactSummary(rows: TrackedPlayer[], articleType: ArticleType): string;
+export declare function impactSummary(rows: TrackedPlayer[], articleType: ArticleType, options?: {
+    now?: number | null;
+    slate?: TrackedPlayer[];
+}): string;
 export declare const defaultComposer: Composer;
 /** Service-role client. Browsers never hold this key: the article pipeline is
  *  a server-side job, same boundary as `/api/league` and the transaction wire. */
