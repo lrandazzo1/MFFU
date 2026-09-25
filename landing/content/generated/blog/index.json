@@ -1,7 +1,43 @@
 {
-  "generatedAt": "2026-09-24T14:39:40.596Z",
-  "count": 6,
+  "generatedAt": "2026-09-25T16:16:42.898Z",
+  "count": 7,
   "posts": [
+    {
+      "title": "Friday Morning Recap & Weekend Preview: Week 3",
+      "slug": "2026-09-25-friday-morning-recap-weekend-preview-week-3",
+      "publishDate": "2026-09-25",
+      "category": "Analysis",
+      "excerpt": "Thursday night is final and the weekend is not. The Thursday result, the games still to come, and the add counts that moved in the twenty four hours between them.",
+      "author": "FSN Desk",
+      "entityCount": 5,
+      "tracked_players": [
+        {
+          "name": "Emanuel Wilson",
+          "position": "RB",
+          "sleeperPlayerId": "11435"
+        },
+        {
+          "name": "Darren Waller",
+          "position": "TE",
+          "sleeperPlayerId": "2505"
+        },
+        {
+          "name": "AJ Dillon",
+          "position": "RB",
+          "sleeperPlayerId": "6828"
+        },
+        {
+          "name": "Adonai Mitchell",
+          "position": "WR",
+          "sleeperPlayerId": "11625"
+        },
+        {
+          "name": "Kyler Murray",
+          "position": "QB",
+          "sleeperPlayerId": "5849"
+        }
+      ]
+    },
     {
       "title": "Week 3 trending adds: where the waiver money is going",
       "slug": "2026-09-24-week-3-trending-adds-where-the-waiver-money-is-going",
