@@ -585,14 +585,13 @@ try {
      projection is a labelled secondary value beneath it — never the projection
      promoted into the score slot.
 
-     The secondary value takes one of two shapes, per SIDE:
-       • a side with no points yet reads "Projected: N", the only forecast it
-         has;
-       • a side that has scored reads a signed "±N.N vs PROJ" delta, whose
-         title attribute still names the projected number.
-     Both shapes carry data-score-projected, so the split assertion below is
-     shape-independent: what it proves is that the projection never reaches the
-     data-score-actual slot. */
+     The secondary value reads "Projected: N" in every state, on every side.
+     It used to flip to a signed "±N.N vs PROJ" delta once a side had points,
+     but mid-slate that reads as a verdict on a week that has barely started —
+     a lineup one player deep shows a −118.5 against its own projection and
+     looks like a collapse rather than a team yet to kick off. The line carries
+     data-score-projected in every state, so the split assertion below proves
+     the projection never reaches the data-score-actual slot. */
   for (const scenario of ['pregame', 'live', 'live-espn']) {
     const data = syntheticLeague();
     data.schedule.forEach(game=>{
@@ -630,14 +629,10 @@ try {
     else pass('matchup cards (' + scenario + ') show true scores ' + JSON.stringify(wantActual) +
       ' with projections ' + JSON.stringify(wantProjected) + ' beneath');
 
-    /* Which side reads which shape is decided by whether that side has points
-       on the board, so the expectation is written out per scenario rather than
-       inferred from the scenario name. */
-    const wantShape = {
-      pregame:      ['projected', 'projected'],
-      live:         ['projected', 'delta'],       // away 0.0, home 42.7
-      'live-espn':  ['delta', 'delta'],
-    }[scenario];
+    /* Every side reads the labelled projection, whether or not it has points
+       on the board. The delta shape is gone deliberately; a 'delta' here is a
+       regression, not an alternative. */
+    const wantShape = ['projected', 'projected'];
 
     const shapes = await page.evaluate(()=> Array.from(document.querySelectorAll('#matchupList .card')).map(card=>
       Array.from(card.querySelectorAll('[data-score-projected]')).map(el=>({
@@ -652,14 +647,10 @@ try {
     if(badShape) fail('projection sub-value shape wrong (' + scenario + '): ' + JSON.stringify(badShape));
     else pass('projection sub-values take the ' + wantShape.join(' / ') + ' shape (' + scenario + ')');
 
-    /* Whichever shape a side takes, the projected number has to still be
-       readable on it — in the copy for the labelled line, in the title for
-       the delta. A delta with no projection named anywhere is a number with no
-       referent. */
-    const unreadable = shapes.find(card=> card.some(side=> side.shape === 'projected'
-      ? !new RegExp('Projected: ' + side.projected.replace('.', '\\.')).test(side.text)
-      : !(new RegExp('vs PROJ').test(side.text) &&
-          new RegExp('Projected ' + side.projected.replace('.', '\\.')).test(side.title))));
+    /* The projected number has to be readable in the copy itself — a bare
+       number with no label is indistinguishable from a score. */
+    const unreadable = shapes.find(card=> card.some(side=>
+      !new RegExp('Projected: ' + side.projected.replace('.', '\\.')).test(side.text)));
     if(unreadable) fail('projection sub-value does not name its projection (' + scenario + '): ' + JSON.stringify(unreadable));
     else pass('projection sub-values name their projection (' + scenario + ')');
 

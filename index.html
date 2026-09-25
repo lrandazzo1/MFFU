@@ -27440,29 +27440,18 @@ function matchupSide(team, score, leading, status, projected, week){
       border-color:${won ? 'rgba(57,255,140,.4)' : 'rgba(255,45,85,.4)'};
       color:${won ? 'var(--green)' : 'var(--red)'};">${won ? 'W' : 'L'}${streak.length}</span>`;
   }
-  /* Before a side has scored, the projection is the only forecast there is, so
-     it rides under the score as a small muted annotation. Once real points are
-     on the board, the raw forecast is a second copy of a number the reader has
-     already read; what is actually new is the DISTANCE from it, so the line
-     becomes a signed delta — green over the projection, red under it.
-
-     The switch is per SIDE, not per game: in a live week one roster can be
-     mid-slate while the other has not played, and printing that team a
-     −109.4 deficit against its own projection would read as a collapse
-     rather than as a team whose players have not kicked off. A missing
-     projection drops the line entirely in both states. */
+  /* The projection rides under the score as a small muted annotation, in every
+     state. It used to flip to a signed delta once a side had points on the
+     board, but mid-slate that reads as a verdict on a week that has barely
+     started: a roster with one player done shows a −118.5 against its own
+     projection and looks like a collapse rather than a team whose players
+     have not kicked off. The plain forecast is honest at every point in the
+     week. A missing projection drops the line entirely. */
   const proj = projectedPoints(projected);
-  const hasScored = status !== 'pre' && Number(score) > 0;
   let projLine = '';
-  if(proj != null && !hasScored){
+  if(proj != null){
     projLine = `<div class="font-mono tabular text-[10px] text-[var(--dim)] leading-none mt-1.5 whitespace-nowrap"
          data-score-projected="${esc(formatPoints(proj))}">Projected: ${esc(formatPoints(proj))}</div>`;
-  } else if(proj != null){
-    const delta = Number(score) - proj;
-    const tone = delta > 0.05 ? 'is-over' : (delta < -0.05 ? 'is-under' : '');
-    const sign = delta > 0 ? '+' : (delta < 0 ? '−' : '±');
-    projLine = `<div class="mx-proj ${tone}" data-score-projected="${esc(formatPoints(proj))}"
-         title="Projected ${esc(formatPoints(proj))}">${sign}${Math.abs(delta).toFixed(1)} vs PROJ</div>`;
   }
 
   return `<div class="flex items-center gap-3">
