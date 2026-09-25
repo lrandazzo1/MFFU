@@ -825,9 +825,10 @@ export interface PreviewMatchup {
   b: PreviewSide;
   /** True once either side has a starter on the board. */
   live: boolean;
-  /** True only when a real clock reports every starter on both sides FINAL.
-   *  Without a clock this stays false: "the board is in" is a result claim and
-   *  points alone cannot establish that a game is over. */
+  /** True only when a real clock reports every starter on both sides FINAL,
+   *  AND both sides field a plausible lineup. Without a clock this stays
+   *  false: "the board is in" is a result claim, and points alone cannot
+   *  establish that a game is over. See `MIN_COMPLETE_ROSTER`. */
   complete: boolean;
   /** Starters yet to kick off, across both sides. */
   remaining: number;
@@ -836,6 +837,25 @@ export interface PreviewMatchup {
   /** The projected margin as a positive number. */
   projected_margin: number | null;
 }
+
+/**
+ * Starters a side must field before this module will call its matchup
+ * finished.
+ *
+ * "Every starter I was handed has played" is only "the matchup is over" when
+ * the rows ARE the lineup. Hand the composer a thin set, as the featured eight
+ * rows are, and a matchup whose Thursday players are done reads as a completed
+ * board while eight more starters are still to play on Sunday: it published
+ * "Choosin' Texas came out 6.60 pts to 1.00 pts, a 5.60 point result" off two
+ * tight ends. The pipeline passes the whole evaluated board so this does not
+ * arise in production, but a preview declaring a matchup decided is the one
+ * claim that must not rest on the caller having passed enough rows.
+ *
+ * Five is below any real fantasy football lineup (a standard ESPN side starts
+ * nine) and well above the handful a truncated set leaves behind, so it
+ * separates the two cases without assuming a roster format.
+ */
+const MIN_COMPLETE_ROSTER = 5;
 
 function buildPreviewSide(team: string, starters: TrackedPlayer[], now?: number | null): PreviewSide {
   const played: TrackedPlayer[] = [];
@@ -913,7 +933,8 @@ export function previewMatchups(rows: TrackedPlayer[], now?: number | null): Pre
     const b2 = buildPreviewSide(sides[1][0], sides[1][1], now);
     const live = a.played.length > 0 || b2.played.length > 0;
     const finished = (side: PreviewSide): boolean =>
-      side.starters.length > 0 && side.starters.every((row) => liveStateOf(row, now) === 'FINAL');
+      side.starters.length >= MIN_COMPLETE_ROSTER &&
+      side.starters.every((row) => liveStateOf(row, now) === 'FINAL');
 
     /* Off the board, not out of the payload's side totals. See the note on
        `PreviewSide.margin`. Null until somebody has played: a matchup nobody
@@ -1292,17 +1313,21 @@ export function impactSummary(
     if (live.length) {
       const m = live[0];
       const [lead, trail] = leaderFirst(m);
+      /* `complete`, never the pending count. A matchup with nobody left to
+         kick off but games still running is not a finished one, and the
+         callout is the most prominent line on the card. */
+      const outstanding = m.remaining
+        ? `with ${m.remaining} ${starterWord(m.remaining)} still to play`
+        : 'with the last of the board still on the field';
+
       if (m.margin == null || m.margin < 0.01) {
-        return m.remaining
-          ? `${lead.team} and ${trail.team} are level with ${m.remaining} ${starterWord(m.remaining)} ` +
-            'still to play.'
-          : `${lead.team} and ${trail.team} finished level.`;
+        return m.complete
+          ? `${lead.team} and ${trail.team} finished level.`
+          : `${lead.team} and ${trail.team} are level ${outstanding}.`;
       }
-      if (!m.remaining) {
-        return `${lead.team} came out ${num2(m.margin)} clear of ${trail.team}.`;
-      }
-      return `${lead.team} lead ${trail.team} by ${num2(m.margin)} with ${m.remaining} ` +
-        `${starterWord(m.remaining)} still to play.`;
+      return m.complete
+        ? `${lead.team} came out ${num2(m.margin)} clear of ${trail.team}.`
+        : `${lead.team} lead ${trail.team} by ${num2(m.margin)} ${outstanding}.`;
     }
 
     const next = matchups[0];

@@ -265,9 +265,10 @@ export interface PreviewMatchup {
     b: PreviewSide;
     /** True once either side has a starter on the board. */
     live: boolean;
-    /** True only when a real clock reports every starter on both sides FINAL.
-     *  Without a clock this stays false: "the board is in" is a result claim and
-     *  points alone cannot establish that a game is over. */
+    /** True only when a real clock reports every starter on both sides FINAL,
+     *  AND both sides field a plausible lineup. Without a clock this stays
+     *  false: "the board is in" is a result claim, and points alone cannot
+     *  establish that a game is over. See `MIN_COMPLETE_ROSTER`. */
     complete: boolean;
     /** Starters yet to kick off, across both sides. */
     remaining: number;
