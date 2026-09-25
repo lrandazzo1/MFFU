@@ -3411,6 +3411,14 @@ body.fsn-dd-lock{ overflow:hidden; }
 .mx-proj.is-over{ border-color:rgba(57,255,140,.42); background:rgba(57,255,140,.10); color:var(--green); }
 .mx-proj.is-under{ border-color:rgba(255,45,85,.42); background:rgba(255,45,85,.10); color:var(--red); }
 
+/* The live shape of the same pill: the margin while the game is being played,
+   rather than the variance against a forecast. Cyan when the sides are level,
+   so a 0.0-0.0 live card does not borrow the settled-result greens and reds. */
+.mx-live-delta{ letter-spacing:.09em; }
+.mx-live-delta:not(.is-over):not(.is-under){
+  border-color:rgba(0,229,255,.3); background:rgba(0,229,255,.08); color:var(--cyan);
+}
+
 /* The divider between the two sides is now a contribution bar: each segment is
    that team's share of the combined points, in its own accent. */
 .mx-dominance{ margin:11px 0 10px; }
@@ -5657,6 +5665,59 @@ function scheduleMatchupRosterStatus(game){
     remaining: remaining,
     states: states,
   };
+}
+
+/* Has this matchup actually kicked off?
+
+   `scheduleMatchupNarrativeFinal()` above answers "is it over"; the board also
+   needs to know the opposite end — "has it started" — and the two are not
+   complements. Between Thursday night and the Tuesday finalization a matchup
+   is neither pregame nor final, and a side of it can sit at a real 0.0 with
+   its starters already locked. Reading that state as "not started" is what
+   printed a pregame forecast on a live card.
+
+   SCHEDULE_OPEN_STATE_RE deliberately lumps 'pre' and 'scheduled' in with
+   'live' and 'in progress', because for completion purposes both mean "not
+   final". Underway needs the finer cut, so the active states get their own
+   pattern here rather than widening the shared one. */
+const SCHEDULE_ACTIVE_STATE_RE = /^(live|in[ _-]?progress|in[ _-]?game|in[ _-]?play|active|playing|halftime|half[ _-]?time|end[ _-]?period|delayed)$/i;
+
+/* One starter has begun scoring, or can no longer be moved out of the lineup:
+   his game is complete, it is on the clock right now, or he has already banked
+   points. A starter ruled out, on IR or on a bye reads 'final' to
+   scheduleEntryState() — settled, but never started — so that path is
+   deliberately NOT treated as activity here. */
+function scheduleEntryEngaged(entry){
+  if(!entry) return false;
+  const poolEntry = entry.playerPoolEntry || {};
+  const player = poolEntry.player || entry.player || {};
+  const flags = [entry, poolEntry, player];
+  if(flags.some(value=> value && (value.gameComplete === true || value.isGameComplete === true ||
+      value.completed === true || value.isFinal === true))) return true;
+
+  const statuses = scheduleStatusValues(entry);
+  if(statuses.some(status=> SCHEDULE_FINAL_STATE_RE.test(status))) return true;
+  if(statuses.some(status=> SCHEDULE_ACTIVE_STATE_RE.test(status))) return true;
+
+  const banked = Number(entry.appliedStatTotal);
+  return Number.isFinite(banked) && banked !== 0;
+}
+
+/* Is this head-to-head in its live window — any scoring starter on either
+   roster started, locked or already finished? Matchup-local by the same
+   reasoning as scheduleMatchupRosterStatus(): the board never infers a live
+   state from a broad NFL-week clock, only from the two rosters in front of it.
+
+   A payload with no lineups at all (archive seasons, cloud-restored weeks, the
+   third-party adapters) reports false, and the caller falls back to the score
+   read in gameStatus() exactly as it did before. */
+function scheduleMatchupUnderway(game){
+  if(!game || !game.home || !game.away) return false;
+  const starters = scheduleStarterEntries(game.home).concat(scheduleStarterEntries(game.away));
+  for(let i=0; i<starters.length; i++){
+    if(scheduleEntryEngaged(starters[i])) return true;
+  }
+  return false;
 }
 
 function scheduleEntryFinal(entry){
@@ -27319,15 +27380,22 @@ function matchupAccents(away, home){
   return { away:a, home:h };
 }
 
-/* The contribution bar that replaced the plain divider. Scored games split on
-   real points; a board that has not kicked off splits on projections when the
-   feed carries both, and otherwise sits evenly and says so. */
-function matchupDominanceBar(awayScore, homeScore, awayProj, homeProj, accents, scored){
+/* The contribution bar that replaced the plain divider.
+
+   The bar reports whichever number it is actually splitting, and names it: a
+   matchup in its live window splits real points under LIVE POINT SHARE, a
+   settled one under POINT SHARE, and only a matchup with nothing locked and
+   nothing scored falls back to PROJECTED SHARE. The label follows the card's
+   phase rather than the presence of points, so the first locked starter flips
+   the bar off projections even while the score is still 0.0 — the reader is
+   never shown a forecast split across a week already being played. */
+function matchupDominanceBar(awayScore, homeScore, awayProj, homeProj, accents, phase){
   let a = Number(awayScore) || 0, h = Number(homeScore) || 0;
-  let label = 'POINT SHARE';
-  if(!scored){
+  let label = phase === 'final' ? 'POINT SHARE' : 'LIVE POINT SHARE';
+  if(phase === 'pre'){
+    label = 'PROJECTED SHARE';
     const ap = projectedPoints(awayProj), hp = projectedPoints(homeProj);
-    if(ap != null && hp != null){ a = ap; h = hp; label = 'PROJECTED SHARE'; }
+    if(ap != null && hp != null){ a = ap; h = hp; }
     else { a = 0; h = 0; }
   }
   const total = a + h;
@@ -27342,7 +27410,7 @@ function matchupDominanceBar(awayScore, homeScore, awayProj, homeProj, accents, 
     </div>
     <div class="mx-dominance-legend">
       <span style="color:${even ? '#4d5769' : accents.away}">${even ? '\u2014' : awayPct.toFixed(0) + '%'}</span>
-      <span class="mx-dominance-mid">${even ? 'AWAITING KICKOFF' : label}</span>
+      <span class="mx-dominance-mid">${even ? (phase === 'pre' ? 'AWAITING KICKOFF' : label) : label}</span>
       <span style="color:${even ? '#4d5769' : accents.home}">${even ? '\u2014' : homePct.toFixed(0) + '%'}</span>
     </div>
   </div>`;
@@ -27358,20 +27426,44 @@ function matchupCard(g, motwKey, week){
   const as = actualOf(g, 'away') || 0;
   const homeProj = projectedOf(g, 'home');
   const awayProj = projectedOf(g, 'away');
-  const scored = st !== 'pre';
+
+  /* THE CARD'S DISPLAY PHASE.
+
+     gameStatus() can only see the scoreboard, so a matchup whose Thursday
+     starters are locked but scoreless still reads 'pre' to it — and the card
+     answered that by printing both sides' pregame projections under a
+     PROJECTED SHARE bar, a preview of a week that is already being played.
+     The roster read closes that gap: once any scoring starter on either side
+     has kicked off, locked or finished, the card is in its live window
+     whatever the scoreboard says.
+
+     A payload with no lineups (archive seasons, cloud restores, the
+     third-party adapters) reports nothing underway, so the phase falls back to
+     the score read those weeks have always used. */
+  let underway = false;
+  try{
+    underway = scheduleMatchupUnderway(g && g.raw ? g.raw : g);
+  }catch(err){
+    console.warn('[Matchups] the roster lock state could not be read for week ' + week +
+      '; this card falls back to its score-derived state.', err);
+    underway = false;
+  }
+  const phase = st === 'final' ? 'final' : ((st === 'live' || underway) ? 'live' : 'pre');
+  const scored = phase !== 'pre';
   /* Nobody leads a game that has not started, so a pre-kickoff card dims
      neither side instead of implying a projected winner. */
   const homeLeads = scored ? hs >= as : true;
   const awayLeads = scored ? !homeLeads : true;
   const margin = Math.abs(hs - as);
 
-  /* Only LIVE and FINAL earn a state pill. Pre-kickoff and mid-slate cards
-     drop the projection chip entirely and lean on the finalize sub-text below
-     the scores, so the board reads as a schedule rather than a live tracker
-     the app has never actually shipped. */
-  const statusPill = st === 'live'
+  /* Only LIVE and FINAL earn a state pill, and both now come off the card's
+     phase rather than the scoreboard — so a matchup whose starters are
+     locked reads LIVE from the moment it is being played, not from the moment
+     somebody scores. A card with nothing under way carries no pill at all and
+     leans on the finalize sub-text below the scores. */
+  const statusPill = phase === 'live'
     ? `<span class="pill pill-live"><span class="live-dot"></span>LIVE</span>`
-    : (st === 'final' ? `<span class="pill pill-final">FINAL</span>` : '');
+    : (phase === 'final' ? `<span class="pill pill-final">FINAL</span>` : '');
 
   const playoff = g.playoffTierType && g.playoffTierType !== 'NONE'
     ? `<span class="pill pill-gold">PLAYOFFS</span>` : '';
@@ -27384,13 +27476,15 @@ function matchupCard(g, motwKey, week){
   const motwTag = isMotw
     ? `<span class="mx-motw-tag"><span aria-hidden="true">★</span>GAME OF THE WEEK</span>` : '';
 
-  const accent = isMotw ? 'accent-gold' : (st === 'live' ? 'accent-red' : (st === 'final' ? 'accent-cyan' : 'accent-gold'));
+  const accent = isMotw ? 'accent-gold' : (phase === 'live' ? 'accent-red' : (phase === 'final' ? 'accent-cyan' : 'accent-gold'));
 
   /* Pre-game rows carry no margin at all — there is nothing to be tight or
-     lopsided about yet. Once real scoring exists the plain margin line becomes
-     an intensity badge: a nail-biter, a blowout, or the neutral middle. */
+     lopsided about yet. Nor does a card that is live but still scoreless: a
+     0.0-0.0 board is not a nail-biter, it is a slate that has not produced a
+     point. Once real scoring exists the plain margin line becomes an intensity
+     badge: a nail-biter, a blowout, or the neutral middle. */
   let marginBadge = '';
-  if(st !== 'pre'){
+  if(scored && (hs + as) > 0){
     const badge = matchupMarginBadge(margin);
     marginBadge = `<span class="mx-badge ${badge.cls}">` +
       (badge.glyph ? `<span class="mx-badge-glyph" aria-hidden="true">${badge.glyph}</span>` : '') +
@@ -27403,7 +27497,7 @@ function matchupCard(g, motwKey, week){
   // (pre-game, active, or awaiting the Tuesday roll) gets the clean editorial
   // notice directly beneath the score block. FINAL is the only state that
   // skips it, since those numbers are already the settled value.
-  const finalizeNotice = st !== 'final'
+  const finalizeNotice = phase !== 'final'
     ? `<div class="mt-2 text-[11px] text-[var(--dim)] leading-relaxed italic">Scores finalize Tuesday morning following stat corrections.</div>`
     : '';
 
@@ -27421,16 +27515,16 @@ function matchupCard(g, motwKey, week){
         <div class="flex items-center gap-1.5 flex-wrap min-w-0">${statusPill}${playoff}</div>
         ${marginBadge}
       </div>
-      ${matchupSide(g.awayTeam, as, awayLeads, st, awayProj, boxWeek)}
-      ${matchupDominanceBar(as, hs, awayProj, homeProj, accents, scored)}
-      ${matchupSide(g.homeTeam, hs, homeLeads, st, homeProj, boxWeek)}
+      ${matchupSide(g.awayTeam, as, awayLeads, phase, awayProj, boxWeek, margin)}
+      ${matchupDominanceBar(as, hs, awayProj, homeProj, accents, phase)}
+      ${matchupSide(g.homeTeam, hs, homeLeads, phase, homeProj, boxWeek, margin)}
       ${finalizeNotice}
       <div class="mx-cue"><span>View Box Score</span><span class="mx-cue-chev" aria-hidden="true">›</span></div>
     </div>
   </div>`;
 }
 
-function matchupSide(team, score, leading, status, projected, week){
+function matchupSide(team, score, leading, phase, projected, week, margin){
   const record = FSNIntel.getRecordAsOfWeek(team.id, week);
   const streak = FSNIntel.getStreakAsOfWeek(team.id, week);
   let streakChip = '';
@@ -27440,29 +27534,51 @@ function matchupSide(team, score, leading, status, projected, week){
       border-color:${won ? 'rgba(57,255,140,.4)' : 'rgba(255,45,85,.4)'};
       color:${won ? 'var(--green)' : 'var(--red)'};">${won ? 'W' : 'L'}${streak.length}</span>`;
   }
-  /* Before a side has scored, the projection is the only forecast there is, so
-     it rides under the score as a small muted annotation. Once real points are
-     on the board, the raw forecast is a second copy of a number the reader has
-     already read; what is actually new is the DISTANCE from it, so the line
-     becomes a signed delta — green over the projection, red under it.
+  /* The secondary line under the score takes one of three shapes, and the
+     card's PHASE picks it — never the side's own point total.
 
-     The switch is per SIDE, not per game: in a live week one roster can be
-     mid-slate while the other has not played, and printing that team a
-     −109.4 deficit against its own projection would read as a collapse
-     rather than as a team whose players have not kicked off. A missing
-     projection drops the line entirely in both states. */
+     — pre: the projection is the only forecast there is, so it rides under
+       the score as a small muted annotation.
+     — live: the reader is watching a game, and what a second number is worth
+       to them there is where the game stands, so the line becomes the live
+       margin — a signed lead for the side in front, the same figure as a
+       deficit for the side behind. The projection is deliberately absent: a
+       variance line is a post-mortem, and against a roster that has not
+       kicked off it prints a −118.5 that reads as a collapse rather than as
+       a team yet to play. That was the reported bug.
+     — final: the game is settled, the score has stopped moving, and the one
+       genuinely new number is the DISTANCE from the forecast, so the line is
+       the signed variance — green over the projection, red under it.
+
+     The shape is per CARD and no longer per side, because a side sitting at
+     0.0 in a live matchup is a team whose players have not played, not a team
+     in a different phase from its opponent.
+
+     The projection stays on the element as data-score-projected in all three
+     shapes, so the live-projection engine remains inspectable without that
+     number being shown to a reader mid-slate. A missing projection drops the
+     pre and final lines entirely; the live margin needs no projection and
+     renders either way. */
   const proj = projectedPoints(projected);
-  const hasScored = status !== 'pre' && Number(score) > 0;
+  const projAttr = proj != null ? ` data-score-projected="${esc(formatPoints(proj))}"` : '';
   let projLine = '';
-  if(proj != null && !hasScored){
-    projLine = `<div class="font-mono tabular text-[10px] text-[var(--dim)] leading-none mt-1.5 whitespace-nowrap"
-         data-score-projected="${esc(formatPoints(proj))}">Projected: ${esc(formatPoints(proj))}</div>`;
-  } else if(proj != null){
+  if(phase === 'live'){
+    const gap = Math.abs(Number(margin) || 0);
+    const level = gap < 0.05;
+    const tone = level ? '' : (leading ? 'is-over' : 'is-under');
+    const text = level ? 'LEVEL'
+      : (leading ? '+' + gap.toFixed(1) + ' LEAD' : '−' + gap.toFixed(1));
+    projLine = `<div class="mx-proj mx-live-delta ${tone}"${projAttr}>${esc(text)}</div>`;
+  } else if(proj == null){
+    projLine = '';
+  } else if(phase === 'final'){
     const delta = Number(score) - proj;
     const tone = delta > 0.05 ? 'is-over' : (delta < -0.05 ? 'is-under' : '');
     const sign = delta > 0 ? '+' : (delta < 0 ? '−' : '±');
-    projLine = `<div class="mx-proj ${tone}" data-score-projected="${esc(formatPoints(proj))}"
+    projLine = `<div class="mx-proj ${tone}"${projAttr}
          title="Projected ${esc(formatPoints(proj))}">${sign}${Math.abs(delta).toFixed(1)} vs PROJ</div>`;
+  } else {
+    projLine = `<div class="font-mono tabular text-[10px] text-[var(--dim)] leading-none mt-1.5 whitespace-nowrap"${projAttr}>Projected: ${esc(formatPoints(proj))}</div>`;
   }
 
   return `<div class="flex items-center gap-3">
@@ -27477,7 +27593,7 @@ function matchupSide(team, score, leading, status, projected, week){
     </div>
     <div class="text-right flex-none">
       <div class="font-mono tabular text-[23px] font-extrabold leading-none ${leading ? 'text-[var(--cyan)]' : 'text-[#5d6879]'}"
-           data-score-actual="${score.toFixed(1)}">${score.toFixed(1)}</div>
+           data-score-actual="${Number(score || 0).toFixed(1)}">${Number(score || 0).toFixed(1)}</div>
       ${projLine}
     </div>
   </div>`;

@@ -585,15 +585,20 @@ try {
      projection is a labelled secondary value beneath it — never the projection
      promoted into the score slot.
 
-     The secondary value takes one of two shapes, per SIDE:
-       • a side with no points yet reads "Projected: N", the only forecast it
-         has;
-       • a side that has scored reads a signed "±N.N vs PROJ" delta, whose
-         title attribute still names the projected number.
-     Both shapes carry data-score-projected, so the split assertion below is
+     The secondary value takes one of three shapes, chosen by the CARD's phase
+     rather than by whether that one side has points:
+       • a card with nothing locked and nothing scored reads "Projected: N" on
+         both sides, the only forecast it has;
+       • a card in its live window reads the live margin on both sides
+         ("+N.N LEAD" in front, "−N.N" behind), and names no projection at
+         all: a live actual measured against a pregame forecast prints a
+         −118.5 collapse for a roster that simply has not kicked off;
+       • a settled card reads the signed "±N.N vs PROJ" variance, whose title
+         attribute still names the projected number.
+     All three carry data-score-projected, so the split assertion below is
      shape-independent: what it proves is that the projection never reaches the
      data-score-actual slot. */
-  for (const scenario of ['pregame', 'live', 'live-espn']) {
+  for (const scenario of ['pregame', 'live', 'live-espn', 'final']) {
     const data = syntheticLeague();
     data.schedule.forEach(game=>{
       game.winner = 'UNDECIDED';
@@ -606,6 +611,11 @@ try {
       if(scenario === 'live-espn'){
         game.home.totalPointsLive = 118.6;
         game.away.totalPointsLive = 104.2;
+      }
+      if(scenario === 'final'){
+        game.winner = 'HOME';
+        game.home.totalPoints = 131.4;
+        game.away.totalPoints = 104.2;
       }
     });
     await page.evaluate(data=> window.LeagueData.setEspnData(data), data);
@@ -621,7 +631,8 @@ try {
     if(!board.length){ fail('matchup board rendered no cards (' + scenario + ')'); continue; }
 
     // Away side is rendered first, home second.
-    const wantActual = { live:['0.0','42.7'], 'live-espn':['104.2','118.6'] }[scenario] || ['0.0','0.0'];
+    const wantActual = { live:['0.0','42.7'], 'live-espn':['104.2','118.6'],
+      final:['104.2','131.4'] }[scenario] || ['0.0','0.0'];
     const wantProjected = ['109.4','127.8'];
     const broken = board.find(card=>
       JSON.stringify(card.actual) !== JSON.stringify(wantActual) ||
@@ -630,18 +641,21 @@ try {
     else pass('matchup cards (' + scenario + ') show true scores ' + JSON.stringify(wantActual) +
       ' with projections ' + JSON.stringify(wantProjected) + ' beneath');
 
-    /* Which side reads which shape is decided by whether that side has points
-       on the board, so the expectation is written out per scenario rather than
-       inferred from the scenario name. */
+    /* The shape is decided by the CARD's phase, so both sides of a card always
+       read the same one — including the side of a live game still sitting at
+       0.0, which is a team whose players have not played rather than a team in
+       a different phase from its opponent. */
     const wantShape = {
       pregame:      ['projected', 'projected'],
-      live:         ['projected', 'delta'],       // away 0.0, home 42.7
-      'live-espn':  ['delta', 'delta'],
+      live:         ['live', 'live'],             // away 0.0, home 42.7
+      'live-espn':  ['live', 'live'],
+      final:        ['variance', 'variance'],
     }[scenario];
 
     const shapes = await page.evaluate(()=> Array.from(document.querySelectorAll('#matchupList .card')).map(card=>
       Array.from(card.querySelectorAll('[data-score-projected]')).map(el=>({
-        shape: el.classList.contains('mx-proj') ? 'delta' : 'projected',
+        shape: el.classList.contains('mx-live-delta') ? 'live'
+          : (el.classList.contains('mx-proj') ? 'variance' : 'projected'),
         projected: el.dataset.scoreProjected,
         text: (el.textContent || '').replace(/\s+/g, ' ').trim(),
         title: el.getAttribute('title') || '',
@@ -652,16 +666,45 @@ try {
     if(badShape) fail('projection sub-value shape wrong (' + scenario + '): ' + JSON.stringify(badShape));
     else pass('projection sub-values take the ' + wantShape.join(' / ') + ' shape (' + scenario + ')');
 
-    /* Whichever shape a side takes, the projected number has to still be
-       readable on it — in the copy for the labelled line, in the title for
-       the delta. A delta with no projection named anywhere is a number with no
-       referent. */
+    /* A pregame line names the projection in its copy and a settled variance
+       names it in its title; a number with no referent anywhere is the failure
+       both guard against. The live shape is held to the opposite rule: it must
+       quote a margin and must NOT put a forecast in front of the reader. */
     const unreadable = shapes.find(card=> card.some(side=> side.shape === 'projected'
       ? !new RegExp('Projected: ' + side.projected.replace('.', '\\.')).test(side.text)
-      : !(new RegExp('vs PROJ').test(side.text) &&
-          new RegExp('Projected ' + side.projected.replace('.', '\\.')).test(side.title))));
+      : (side.shape === 'variance'
+        ? !(new RegExp('vs PROJ').test(side.text) &&
+            new RegExp('Projected ' + side.projected.replace('.', '\\.')).test(side.title))
+        : !/^[+\u2212]\d+\.\d( LEAD)?$|^LEVEL$/.test(side.text))));
     if(unreadable) fail('projection sub-value does not name its projection (' + scenario + '): ' + JSON.stringify(unreadable));
     else pass('projection sub-values name their projection (' + scenario + ')');
+
+    /* THE REPORTED BUG, pinned. A live card may not print a pregame forecast
+       anywhere a reader can read it — not as "Projected: N" under a scoreless
+       side, not as a "vs PROJ" variance, and not in a tooltip. */
+    if(scenario === 'live' || scenario === 'live-espn'){
+      const leakedCard = await page.evaluate(()=> Array.from(document.querySelectorAll('#matchupList .card'))
+        .map(card=>({
+          text: (card.textContent || '').replace(/\s+/g, ' ').trim(),
+          titles: Array.from(card.querySelectorAll('[title]')).map(el=> el.getAttribute('title')).join(' '),
+        }))
+        .find(card=> /Projected|vs PROJ/i.test(card.text + ' ' + card.titles)));
+      if(leakedCard) fail('a live card surfaced a projection (' + scenario + '): ' + JSON.stringify(leakedCard));
+      else pass('live cards surface no projection copy at all (' + scenario + ')');
+
+      const bars = await page.evaluate(()=> Array.from(document.querySelectorAll('#matchupList .mx-dominance-mid'))
+        .map(el=> (el.textContent || '').trim()));
+      const wrongBar = bars.find(label=> label !== 'LIVE POINT SHARE');
+      if(wrongBar != null) fail('a live card\'s share bar read "' + wrongBar + '" (' + scenario + ')');
+      else pass('live cards split real points under LIVE POINT SHARE (' + scenario + ')');
+    }
+    if(scenario === 'pregame'){
+      const bars = await page.evaluate(()=> Array.from(document.querySelectorAll('#matchupList .mx-dominance-mid'))
+        .map(el=> (el.textContent || '').trim()));
+      const wrongBar = bars.find(label=> label !== 'PROJECTED SHARE');
+      if(wrongBar != null) fail('a pregame card\'s share bar read "' + wrongBar + '" instead of PROJECTED SHARE');
+      else pass('pregame cards still split projections under PROJECTED SHARE');
+    }
 
     /* ---- Matchup of the Week ----
        The marquee card carries no projection at all: its two scores are real,
@@ -688,7 +731,7 @@ try {
       pass('Matchup of the Week carries no unlabelled projection (' + scenario + ')');
     }
 
-    const wantCombined = { live:'42.7', 'live-espn':'222.8' }[scenario];
+    const wantCombined = { live:'42.7', 'live-espn':'222.8', final:'235.6' }[scenario];
     if(!wantCombined){
       // A board with nothing scored quotes no combined total at all.
       // "Combined scoring will land once the slate finalizes" is the pregame
@@ -781,6 +824,87 @@ try {
     if (!localCard || !localCard.final || localCard.live) {
       fail('the roster-complete Head-to-Head card did not show FINAL: ' + JSON.stringify(rosterState.cards));
     } else pass('the roster-complete Head-to-Head card shows FINAL, never LIVE');
+  }
+
+  /* ---- 6.7c THE POST-THURSDAY BOARD -------------------------------------
+     THE REPORTED BUG, from the other side. Between the Thursday night game and
+     the Sunday slate a matchup is neither pregame nor final: its starters are
+     locked, and a roster whose only finished player scored nothing still sits
+     at a real 0.0. The scoreboard alone cannot tell that apart from a week
+     that has not begun, so the card used to fall back to both sides' pregame
+     forecasts under a PROJECTED SHARE bar — a preview of a week already being
+     played. The lock state, not the score, has to decide. */
+  {
+    const data = syntheticLeague();
+    const starter = (id, status, slotId) => ({
+      lineupSlotId: slotId == null ? 0 : slotId,
+      playerPoolEntry:{ player:{ id:'tnf-' + id, fullName:'TNF Starter ' + id, proGameStatus:status } },
+    });
+    const weekTwo = data.schedule.filter((game) => game.matchupPeriodId === 2);
+    const game = weekTwo.find((entry) => entry.home.teamId === 1 || entry.away.teamId === 1);
+    if (!game) throw new Error('synthetic Week 2 needs a matchup for team 1');
+
+    weekTwo.forEach((entry) => {
+      entry.winner = 'UNDECIDED';
+      for (const side of ['home','away']) {
+        entry[side].totalPoints = 0;
+        entry[side].totalPointsLive = 0;
+        entry[side].totalProjectedPoints = side === 'home' ? '127.8' : '109.4';
+      }
+    });
+    /* One Thursday starter is done and scored nothing; everyone else is still
+       to play. Nothing anywhere on this card is a point on the board. */
+    game.home.rosterForCurrentScoringPeriod = {
+      entries:[starter('done', 'FINAL'), starter('waiting', 'SCHEDULED')],
+    };
+    game.away.rosterForCurrentScoringPeriod = { entries:[starter('away-waiting', 'SCHEDULED')] };
+
+    await page.evaluate((payload) => window.LeagueData.setEspnData(payload), data);
+    await page.click('#tabBar .tab-btn[data-tab="matchups"]');
+    await page.waitForTimeout(300);
+
+    const board = await page.evaluate(() => {
+      const games = window.LeagueData.getWeekMatchups(2) || [];
+      const local = games.find((entry) => String(entry.homeTeam.id) === '1' || String(entry.awayTeam.id) === '1');
+      const name = local ? String(local.awayTeam.name || '').toUpperCase() : '';
+      const card = Array.from(document.querySelectorAll('#matchupList .card'))
+        .find((node) => name && node.textContent.toUpperCase().indexOf(name) !== -1);
+      if (!card) return null;
+      return {
+        underway: !!(local && window.scheduleMatchupUnderway(local.raw)),
+        live: !!card.querySelector('.pill-live'),
+        final: !!card.querySelector('.pill-final'),
+        actual: Array.from(card.querySelectorAll('[data-score-actual]')).map((el) => el.dataset.scoreActual),
+        bar: (card.querySelector('.mx-dominance-mid')?.textContent || '').trim(),
+        deltas: Array.from(card.querySelectorAll('.mx-live-delta')).map((el) => (el.textContent || '').trim()),
+        text: card.textContent.replace(/\s+/g, ' ').trim(),
+      };
+    });
+
+    if (!board) fail('the post-Thursday board rendered no card for team 1');
+    else {
+      if (!board.underway) fail('a locked Thursday starter did not put the matchup in its live window');
+      else pass('a locked Thursday starter puts the matchup in its live window');
+
+      if (!board.live || board.final) fail('the post-Thursday card did not read LIVE: ' + JSON.stringify(board));
+      else pass('the post-Thursday card reads LIVE, not pregame');
+
+      if (JSON.stringify(board.actual) !== JSON.stringify(['0.0','0.0'])) {
+        fail('the post-Thursday card did not show both sides at a real 0.0: ' + JSON.stringify(board.actual));
+      } else pass('a scoreless live side reads its actual 0.0');
+
+      if (/Projected|vs PROJ/i.test(board.text)) {
+        fail('the post-Thursday card printed a projection: ' + board.text);
+      } else pass('the post-Thursday card prints no projection anywhere');
+
+      if (board.bar !== 'LIVE POINT SHARE') {
+        fail('the post-Thursday share bar read "' + board.bar + '" instead of LIVE POINT SHARE');
+      } else pass('the post-Thursday share bar reads LIVE POINT SHARE');
+
+      if (JSON.stringify(board.deltas) !== JSON.stringify(['LEVEL','LEVEL'])) {
+        fail('a 0.0-0.0 live card should read LEVEL on both sides: ' + JSON.stringify(board.deltas));
+      } else pass('a 0.0-0.0 live card reads LEVEL rather than a projection deficit');
+    }
   }
 
   /* ---- 6.8 LIVE PROJECTION RECALCULATION --------------------------------
