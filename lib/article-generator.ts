@@ -365,10 +365,32 @@ export function assertOutcomeLanguage(draft: ArticleDraft, tracked: TrackedPlaye
  * for what compliant framing reads like.
  * ------------------------------------------------------------------ */
 
+/**
+ * What the Friday article calls itself.
+ *
+ * "Friday Night Preview" was wrong twice over. The Friday run happens the
+ * MORNING AFTER Thursday night, so by the time it publishes the TNF game has
+ * been played and the article is a breakdown of it, not a preview of it. And
+ * the NFL plays no Friday night games at all, so the name promised a slate
+ * that does not exist.
+ *
+ * The label therefore follows the board rather than the calendar. Points on it
+ * mean Thursday night has been played and the headline says so; an empty board
+ * means nothing has kicked off yet and it really is a preview. The
+ * `friday_tnf_preview` article_type is untouched: it is a stored enum with a
+ * CHECK constraint on it in `supabase/blog_articles.sql`, three read routes
+ * mapping it, and every published row keyed by it. Renaming a headline is not
+ * a reason to migrate a column.
+ */
+const TNF_BREAKDOWN_LABEL = 'TNF Breakdown';
+const TNF_PREVIEW_LABEL = 'Thursday Night Preview';
+
 const TITLE_BY_TYPE: Record<ArticleType, string> = {
   monday_sweat: 'Monday Sweat',
   tuesday_verdict: 'Tuesday Verdict',
-  friday_tnf_preview: 'Friday Night Preview',
+  /* The default. `composePreview` picks between this and TNF_PREVIEW_LABEL on
+     whether anything has actually been played. */
+  friday_tnf_preview: TNF_BREAKDOWN_LABEL,
 };
 
 const pts = (value: number): string => (Number.isInteger(value) ? String(value) : value.toFixed(2));
@@ -1399,7 +1421,6 @@ export function impactSummary(
  */
 function composePreview(
   request: ComposeRequest,
-  heading: string,
   slate: TrackedPlayer[],
 ): ArticleDraft {
   const now = request.now;
@@ -1408,12 +1429,21 @@ function composePreview(
   const settled = matchups.length > 0 && matchups.every((m) => m.complete);
   const matchupWord = (count: number): string => (count === 1 ? 'Matchup' : 'Matchups');
 
+  /* The slate is checked as well as the matchups, so a week whose rows did not
+     pair into a head to head is still named correctly: a starter carrying
+     points has played whether or not his matchup resolved. */
+  const played = live.length > 0 || slate.some((row) => hasPlayed(row, now));
+  const heading = `${played ? TNF_BREAKDOWN_LABEL : TNF_PREVIEW_LABEL}: Week ${request.week}`;
+
+  /* "On The Board" against "On The Clock" is the whole distinction, and the
+     label above has already said which one applies, so the played headline
+     does not also need the word "Already". */
   const title = !matchups.length
     ? `${heading}, Lineups Are Locked`
     : settled
       ? `${heading}, The Board Is In`
       : live.length
-        ? `${heading}, ${live.length} ${matchupWord(live.length)} Already On The Board`
+        ? `${heading}, ${live.length} ${matchupWord(live.length)} On The Board`
         : `${heading}, ${matchups.length} ${matchupWord(matchups.length)} On The Clock`;
 
   const excerpt = !matchups.length
@@ -1483,7 +1513,6 @@ function composePreview(
 
 export const defaultComposer: Composer = (request) => {
   const preview = request.article_type === 'friday_tnf_preview';
-  const heading = `${TITLE_BY_TYPE[request.article_type]}: Week ${request.week}`;
   const rows = request.tracked_players;
 
   /* The whole evaluated board when the pipeline handed it over, the featured
@@ -1491,8 +1520,10 @@ export const defaultComposer: Composer = (request) => {
      about matchups, and eight featured rows scattered across six of them
      cannot tell one. */
   const slate = request.all_players && request.all_players.length ? request.all_players : rows;
-  if (preview) return composePreview(request, heading, slate);
+  /* The preview names itself off the board, so it builds its own heading. */
+  if (preview) return composePreview(request, slate);
 
+  const heading = `${TITLE_BY_TYPE[request.article_type]}: Week ${request.week}`;
   const board = boardRows(rows);
   /* The headline counts the results that TURNED something, which is what
      "Results That Turned" claims. That is the board minus any blowout bullet

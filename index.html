@@ -36375,10 +36375,18 @@ function lbMarkdown(source){
   return html.join('');
 }
 
+/* The chip above a card's headline. `friday_tnf_preview` is the stored enum
+   and never changes, but the Friday run publishes the morning AFTER Thursday
+   night, so the article it writes is a breakdown of a game that has been
+   played. The generator names the headline the same way (see
+   TNF_BREAKDOWN_LABEL in lib/article-generator.ts); a chip reading "Friday
+   Preview" over a headline reading "TNF Breakdown" is the card contradicting
+   itself. The chip cannot be board-aware the way the headline is, so it takes
+   the name that is right on every run the cron actually makes. */
 const LB_TYPE_LABEL = {
   monday_sweat: 'Monday Sweat',
   tuesday_verdict: 'Tuesday Verdict',
-  friday_tnf_preview: 'Friday Preview',
+  friday_tnf_preview: 'TNF Breakdown',
 };
 
 /* The one-line verdict a chip's sheet leads with. It restates the outcome
