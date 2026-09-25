@@ -27319,16 +27319,31 @@ function matchupAccents(away, home){
   return { away:a, home:h };
 }
 
-/* The contribution bar that replaced the plain divider. Scored games split on
-   real points; a board that has not kicked off splits on projections when the
-   feed carries both, and otherwise sits evenly and says so. */
-function matchupDominanceBar(awayScore, homeScore, awayProj, homeProj, accents, scored){
+/* The contribution bar that replaced the plain divider. It splits on the two
+   PROJECTIONS whenever the feed carries both, in every state.
+
+   It used to split on real points the moment a game went live, which pinned
+   the bar to 0% / 100% for most of a Sunday: the early window decides the
+   whole width while half of both rosters have not kicked off, so a 123.0-
+   versus-147.3 matchup reads as a wire-to-wire rout. Projected share answers
+   the question the bar is actually asking — how the week is expected to
+   divide — and it converges on the real split anyway, because a settled
+   matchup projects exactly what it scored.
+
+   With a projection missing on either side there is nothing to split, so the
+   bar falls back to real points, and with neither it sits evenly and says so. */
+function matchupDominanceBar(awayScore, homeScore, awayProj, homeProj, accents, status){
+  const scored = status !== 'pre';
   let a = Number(awayScore) || 0, h = Number(homeScore) || 0;
   let label = 'POINT SHARE';
-  if(!scored){
-    const ap = projectedPoints(awayProj), hp = projectedPoints(homeProj);
-    if(ap != null && hp != null){ a = ap; h = hp; label = 'PROJECTED SHARE'; }
-    else { a = 0; h = 0; }
+  const ap = projectedPoints(awayProj), hp = projectedPoints(homeProj);
+  if(ap != null && hp != null){
+    a = ap; h = hp;
+    /* A settled matchup projects exactly what it scored, so the split is the
+       real one and calling it a projection would be the only lie on the card. */
+    label = status === 'final' ? 'POINT SHARE' : 'PROJECTED SHARE';
+  } else if(!scored){
+    a = 0; h = 0;
   }
   const total = a + h;
   const awayPct = total > 0 ? (a / total) * 100 : 50;
@@ -27422,7 +27437,7 @@ function matchupCard(g, motwKey, week){
         ${marginBadge}
       </div>
       ${matchupSide(g.awayTeam, as, awayLeads, st, awayProj, boxWeek)}
-      ${matchupDominanceBar(as, hs, awayProj, homeProj, accents, scored)}
+      ${matchupDominanceBar(as, hs, awayProj, homeProj, accents, st)}
       ${matchupSide(g.homeTeam, hs, homeLeads, st, homeProj, boxWeek)}
       ${finalizeNotice}
       <div class="mx-cue"><span>View Box Score</span><span class="mx-cue-chev" aria-hidden="true">›</span></div>

@@ -654,6 +654,27 @@ try {
     if(unreadable) fail('projection sub-value does not name its projection (' + scenario + '): ' + JSON.stringify(unreadable));
     else pass('projection sub-values name their projection (' + scenario + ')');
 
+    /* ---- The point-share bar ----
+       The bar under the two sides splits on the PROJECTIONS in every state,
+       never on the live score. Splitting on real points pinned it to 0/100
+       through the early window — one roster mid-slate, the other yet to kick
+       off — and read as a rout that had not happened. With 109.4 away and
+       127.8 home the split is 46 / 54 whatever the scoreboard says, and the
+       legend has to name the basis so the reader knows which it is. */
+    const bar = await page.evaluate(()=> Array.from(document.querySelectorAll('#matchupList .card .mx-dominance')).map(el=>{
+      const legend = Array.from(el.querySelectorAll('.mx-dominance-legend > span')).map(s=> (s.textContent||'').trim());
+      return { away: legend[0], label: legend[1], home: legend[2] };
+    }));
+
+    if(!bar.length){ fail('no point-share bar rendered (' + scenario + ')'); }
+    else {
+      const wantBar = { away:'46%', label:'PROJECTED SHARE', home:'54%' };
+      const badBar = bar.find(b=> b.away !== wantBar.away || b.home !== wantBar.home || b.label !== wantBar.label);
+      if(badBar) fail('point-share bar should split on projections ' + JSON.stringify(wantBar) +
+        ' (' + scenario + '), got ' + JSON.stringify(badBar));
+      else pass('point-share bar splits 46 / 54 on the projections, labelled PROJECTED SHARE (' + scenario + ')');
+    }
+
     /* ---- Matchup of the Week ----
        The marquee card carries no projection at all: its two scores are real,
        and the combined total in its copy is the sum of those two. A projected
