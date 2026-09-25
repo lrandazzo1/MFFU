@@ -1524,7 +1524,25 @@ export const defaultComposer: Composer = (request) => {
   if (preview) return composePreview(request, slate);
 
   const heading = `${TITLE_BY_TYPE[request.article_type]}: Week ${request.week}`;
-  const board = boardRows(rows);
+
+  /* A starter whose game has not kicked off cannot have tacked anything on.
+     The flags come from the margins around his kickoff, so a recap composed
+     while the week is still open can flag a man who has not played: a Thursday
+     night clock flagged four of Harbor Watch's starters GARBAGE_TIME_BLOWOUT
+     because the matchup was already 25 clear, and the board printed "padded
+     the score with 0.00 pts" for a player who was not going to be on a field
+     until Sunday.
+
+     Filtered only when a clock came with the request. Without one, `hasPlayed`
+     falls back to "carries points", which would drop a genuine DUD_COST_WIN:
+     the man who put up nothing and cost his team a game it led is exactly the
+     story that flag exists for, and he is indistinguishable by points alone
+     from a man who has not started. So a caller that supplies no clock keeps
+     the behaviour it always had. */
+  const onTheField = Number.isFinite(Number(request.now))
+    ? rows.filter((row) => hasPlayed(row, request.now))
+    : rows;
+  const board = boardRows(onTheField);
   /* The headline counts the results that TURNED something, which is what
      "Results That Turned" claims. That is the board minus any blowout bullet
      it printed to fill a spare slot: a blowout is a thing that happened, not
