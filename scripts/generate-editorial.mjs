@@ -106,6 +106,7 @@
      --sleeper-base <url>         Sleeper API origin. Default
                                   https://api.sleeper.app/v1.
      --scoreboard-base <url>      Public NFL scoreboard URL. Default ESPN's.
+     --summary-base <url>         Public per-game box score URL. Default ESPN's.
      --angle <name>               Force the day's angle: thursday, friday,
                                   sunday, monday, tuesday or midweek. Default:
                                   resolved from the Eastern weekday.
@@ -775,8 +776,17 @@ function normalizeSlate(payload, { nowMs = Date.now(), season = null, week = nul
     }
   }
 
+  /* One index, built once: the board grouping, the opponent lookup and the
+     per-row schedule check all resolve a team through this. */
+  const gameByTeam = new Map();
+  for (const game of games) {
+    for (const abbr of [game.home.abbr, game.away.abbr]) {
+      for (const key of teamKeys(abbr)) if (!gameByTeam.has(key)) gameByTeam.set(key, game);
+    }
+  }
+
   return {
-    season, week, nowMs, games,
+    season, week, nowMs, games, gameByTeam,
     completed: games.filter((game) => game.completed),
     inProgress: games.filter((game) => game.started && !game.completed),
     upcoming: games.filter((game) => !game.started),
@@ -799,11 +809,477 @@ async function nflSlate(state, options) {
 
 const gamesIn = (games, windows) => games.filter((game) => windows.includes(game.window));
 
-/* ---- The day's angle --------------------------------------------------- */
+/* ---- NFL structure, for the divisional storyline ------------------------ */
+
+/* Static league structure, not a data source: divisions change on the order of
+   once a decade and a divisional matchup is one of the few genuine storylines
+   available from a schedule alone. Keyed by the primary abbreviation; the
+   relocations resolve through teamKeys(). */
+const NFL_DIVISIONS = {
+  BUF: 'AFC East', MIA: 'AFC East', NE: 'AFC East', NYJ: 'AFC East',
+  BAL: 'AFC North', CIN: 'AFC North', CLE: 'AFC North', PIT: 'AFC North',
+  HOU: 'AFC South', IND: 'AFC South', JAX: 'AFC South', TEN: 'AFC South',
+  DEN: 'AFC West', KC: 'AFC West', LV: 'AFC West', LAC: 'AFC West',
+  DAL: 'NFC East', NYG: 'NFC East', PHI: 'NFC East', WAS: 'NFC East',
+  CHI: 'NFC North', DET: 'NFC North', GB: 'NFC North', MIN: 'NFC North',
+  ATL: 'NFC South', CAR: 'NFC South', NO: 'NFC South', TB: 'NFC South',
+  ARI: 'NFC West', LAR: 'NFC West', SF: 'NFC West', SEA: 'NFC West',
+};
+
+function divisionOf(abbr) {
+  for (const key of teamKeys(abbr)) {
+    if (NFL_DIVISIONS[key]) return NFL_DIVISIONS[key];
+  }
+  return '';
+}
+
+function gameIsDivisional(game) {
+  if (!game) return false;
+  const home = divisionOf(game.home.abbr);
+  return !!home && home === divisionOf(game.away.abbr);
+}
+
+function opponentOf(game, abbr) {
+  if (!game || !abbr) return '';
+  const mine = teamKeys(abbr);
+  return teamKeys(game.home.abbr).some((key) => mine.includes(key)) ? game.away.abbr : game.home.abbr;
+}
+
+function gameFor(slate, abbr) {
+  if (!slate || !slate.gameByTeam || !abbr) return null;
+  for (const key of teamKeys(abbr)) {
+    const game = slate.gameByTeam.get(key);
+    if (game) return game;
+  }
+  return null;
+}
+
+/* ---- Box scores: what a player who has already played actually did ------
+
+   A recap that names a player and then says nothing about his game is the
+   worst of both worlds: it is neither a preview nor a report. ESPN's public
+   summary endpoint carries the full per-player box score for one game, so a
+   player whose game is final gets his real production printed instead of a
+   sentence about a claim he is no longer available for.
+
+   There is deliberately no fantasy point total anywhere in this. Fantasy
+   points are a function of a league's scoring settings, and this generator has
+   no league and therefore no scoring settings; computing one would mean picking
+   a scoring system on the reader's behalf and printing a number neither public
+   source published. The box score line is the honest form of the same fact.
+------------------------------------------------------------------------- */
+
+const DEFAULT_SUMMARY_BASE = 'https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary';
+
+/* One request per completed game holding a board player. Capped because a
+   Sunday board can touch eight different games and this is a once-a-day job
+   reading a courtesy endpoint, not a scraper. */
+const MAX_BOX_SCORE_READS = 8;
+
+function summaryUrl(base, eventId) {
+  const url = new URL(String(base || DEFAULT_SUMMARY_BASE));
+  url.searchParams.set('event', String(eventId));
+  return url.toString();
+}
+
+const plural = (n, one, many) => (Number(n) === 1 ? one : many);
+
+/**
+ * One stat group for one athlete, as a phrase rather than a row of columns.
+ *
+ * ESPN ships each group as parallel `labels` and `stats` arrays, which is a
+ * table. Printing it as a table is the database dump this copy is trying not to
+ * be, so the four groups that decide a fantasy week are turned into English and
+ * anything else is skipped rather than half-rendered.
+ */
+function statPhrase(groupName, labels, stats) {
+  const at = (label) => {
+    const index = labels.indexOf(label);
+    return index >= 0 ? cleanText(stats[index]) : '';
+  };
+  const num = (label) => {
+    const value = Number(at(label));
+    return Number.isFinite(value) ? value : null;
+  };
+  const group = cleanText(groupName).toLowerCase();
+  const bits = [];
+
+  if (group === 'rushing') {
+    const carries = num('CAR');
+    const yards = num('YDS');
+    if (yards != null && carries != null) bits.push(yards + ' yards on ' + carries + ' ' + plural(carries, 'carry', 'carries'));
+    else if (yards != null) bits.push(yards + ' rushing yards');
+    const td = num('TD');
+    if (td) bits.push(td + ' rushing ' + plural(td, 'touchdown', 'touchdowns'));
+  } else if (group === 'receiving') {
+    const catches = num('REC');
+    const yards = num('YDS');
+    if (catches != null && yards != null) bits.push(catches + ' ' + plural(catches, 'catch', 'catches') + ' for ' + yards + ' yards');
+    else if (yards != null) bits.push(yards + ' receiving yards');
+    const td = num('TD');
+    if (td) bits.push(td + ' receiving ' + plural(td, 'touchdown', 'touchdowns'));
+  } else if (group === 'passing') {
+    const line = at('C/ATT');
+    const yards = num('YDS');
+    if (yards != null) bits.push(yards + ' passing yards' + (line ? ' on ' + line : ''));
+    const td = num('TD');
+    if (td) bits.push(td + ' passing ' + plural(td, 'touchdown', 'touchdowns'));
+    const ints = num('INT');
+    if (ints) bits.push(ints + ' ' + plural(ints, 'interception', 'interceptions'));
+  } else if (group === 'kicking') {
+    const fg = at('FG');
+    const xp = at('XP');
+    if (fg) bits.push(fg + ' on field goals');
+    if (xp) bits.push(xp + ' on extra points');
+  } else {
+    return '';
+  }
+  return bits.join(' and ');
+}
+
+/* normName keyed, because the only join available between Sleeper's player
+   record and ESPN's box score is the display name. A miss is reported as a
+   missing stat line rather than papered over with a zero: "did not play" and
+   "we could not find him" are different facts and a zero asserts the first. */
+function normalizeBoxScore(payload) {
+  const doc = (payload && typeof payload === 'object') ? payload : {};
+  const box = (doc.boxscore && typeof doc.boxscore === 'object') ? doc.boxscore : {};
+  const teamBlocks = Array.isArray(box.players) ? box.players : [];
+  const byPlayer = new Map();
+  for (const teamBlock of teamBlocks) {
+    const groups = (teamBlock && Array.isArray(teamBlock.statistics)) ? teamBlock.statistics : [];
+    for (const group of groups) {
+      const labels = (group && Array.isArray(group.labels))
+        ? group.labels.map((label) => cleanText(label).toUpperCase())
+        : [];
+      const athletes = (group && Array.isArray(group.athletes)) ? group.athletes : [];
+      for (const entry of athletes) {
+        const athlete = (entry && entry.athlete) || {};
+        const name = cleanText(athlete.displayName || athlete.fullName);
+        if (!name) continue;
+        const phrase = statPhrase(group.name, labels, Array.isArray(entry.stats) ? entry.stats : []);
+        if (!phrase) continue;
+        const key = normName(name);
+        if (!byPlayer.has(key)) byPlayer.set(key, []);
+        byPlayer.get(key).push(phrase);
+      }
+    }
+  }
+  return byPlayer;
+}
+
+/**
+ * Box scores for the completed games that hold a board player, and no others.
+ *
+ * Never throws. A missing box score costs the recap one stat line, which the
+ * copy states plainly; it must not cost the whole article, because the result
+ * of the game is still worth reporting and still verified.
+ */
+async function gameBoxScores(slate, board, options) {
+  const byEvent = new Map();
+  if (!slate || !slate.completed.length) return byEvent;
+  const wanted = new Set();
+  for (const row of board) {
+    for (const key of teamKeys(row.team)) wanted.add(key);
+  }
+  const relevant = slate.completed.filter((game) => game.id &&
+    teamKeys(game.home.abbr).concat(teamKeys(game.away.abbr)).some((key) => wanted.has(key)));
+  if (relevant.length > MAX_BOX_SCORE_READS) {
+    console.warn('[generate-editorial] ' + relevant.length + ' completed week ' + slate.week + ' games hold a board ' +
+      'player, above the ' + MAX_BOX_SCORE_READS + ' box scores this run will read. The remainder are recapped by ' +
+      'their result alone.');
+  }
+  const base = options.summaryBase || DEFAULT_SUMMARY_BASE;
+  for (const game of relevant.slice(0, MAX_BOX_SCORE_READS)) {
+    try {
+      byEvent.set(game.id, normalizeBoxScore(await fetchJson(summaryUrl(base, game.id), {
+        timeoutMs: 15000, label: 'ESPN box score for ' + game.away.abbr + ' at ' + game.home.abbr,
+      })));
+    } catch (err) {
+      console.warn('[generate-editorial] the public box score for ' + game.away.abbr + ' at ' + game.home.abbr +
+        ' (event ' + game.id + ') was not usable, so that game is recapped by its result alone: ' + err.message, err);
+    }
+  }
+  return byEvent;
+}
+
+function playerStatLine(row, game, boxScores) {
+  if (!game || !boxScores) return '';
+  const box = boxScores.get(game.id);
+  if (!box) return '';
+  const phrases = box.get(normName(row.name));
+  return (phrases && phrases.length) ? phrases.join(', ') : '';
+}
+
+/* ---- Varied copy -------------------------------------------------------
+
+   The board used to be printed one way: a numbered heading, the add count, the
+   depth chart position, the years of experience, the next kickoff. Five rows of
+   it read like a mail merge, because that is what it was, and a reader skims
+   straight past an identical paragraph repeated eight times.
+
+   What replaces it has two halves.
+
+   FIRST, the board is GROUPED BY GAME rather than ranked one player per
+   heading. Two players in the same game belong in the same paragraph, the
+   kickoff or the final score is stated once in the group's header instead of
+   once per player, and the ordering follows the schedule, which is the order a
+   reader actually experiences the week in.
+
+   SECOND, each player's sentence is chosen from a POOL OF FRAMES rather than
+   filled into one template. A frame declares which facts it needs, so only
+   frames that are true of this player are eligible: the contingency line cannot
+   be written about a listed starter, and the rookie line cannot be written
+   about a sixth year veteran. Among the eligible frames one is picked by a hash
+   of the player id, and a frame already used in this article is skipped, so no
+   two players in one article get the same sentence shape until the pool is
+   exhausted.
+
+   Both halves are deterministic. The hash is over the player id and the game
+   id, so the same board on the same slate writes the same article: there is no
+   Math.random() and no clock reading anywhere in this section. Nothing here
+   invents a number either. Every fact a frame can reach is one Sleeper or the
+   scoreboard published: the add count, the depth chart order, the years of
+   experience, the injury designation, the opponent, whether the game is
+   divisional, and after the game the box score line.
+
+   There are no projections in any frame because neither public source
+   publishes one. "High ceiling" in this column means a spike in platform-wide
+   demand against a named opponent, which is a real signal, rather than a number
+   this script made up.
+------------------------------------------------------------------------- */
+
+/* FNV-1a over the seed. A stable spread across the frame pool, and cheap. */
+function frameHash(seed) {
+  let hash = 2166136261;
+  const text = String(seed);
+  for (let i = 0; i < text.length; i++) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+/**
+ * One frame from the eligible pool, preferring one this article has not used.
+ *
+ * When every eligible frame has been used the used-set is cleared FOR THOSE
+ * FRAMES ONLY and the pick runs again. A long board therefore cycles the pool
+ * instead of locking onto the last frame standing, which is the failure mode
+ * that would quietly reintroduce the repetition this exists to remove.
+ */
+function pickFrame(frames, seed, used) {
+  if (!frames.length) return null;
+  const start = frameHash(seed) % frames.length;
+  for (let i = 0; i < frames.length; i++) {
+    const frame = frames[(start + i) % frames.length];
+    if (!used.has(frame.id)) return frame;
+  }
+  for (const frame of frames) used.delete(frame.id);
+  return frames[start];
+}
+
+function rowFacts(row, ctx) {
+  const leaderAdds = Number(ctx.leaderAdds) || row.adds;
+  const order = Number.isFinite(Number(row.depthChartOrder)) ? Number(row.depthChartOrder) : null;
+  return {
+    status: !!row.injuryStatus,
+    starter: order === 1,
+    contingent: order === 2,
+    buried: order != null && order >= 3,
+    knownOrder: order != null,
+    rookie: row.yearsExp === 0,
+    secondYear: row.yearsExp === 1,
+    runaway: leaderAdds > 0 && row.adds >= leaderAdds * 0.6,
+    quiet: leaderAdds > 0 && row.adds <= leaderAdds * 0.25,
+    divisional: gameIsDivisional(ctx.game),
+    hasGame: !!ctx.game,
+    hasStats: !!ctx.statLine,
+    /* A game that has kicked off but not finished has no box score to read, as
+       opposed to a finished game in which the player recorded nothing. Saying
+       "he does not appear in the box score" about a game still in its second
+       quarter is a different claim, and a false one. */
+    inProgress: !!ctx.game && ctx.game.started && !ctx.game.completed,
+    complete: !!ctx.game && ctx.game.completed,
+  };
+}
+
+const adds = (row) => countOf(row.adds);
+const ordinal = (n) => (n === 1 ? 'first' : n === 2 ? 'second' : n === 3 ? 'third' : n + 'th');
+
+/* Frames for a player whose game has NOT been played. Every one of these is a
+   forward-looking sentence, which is the only kind a preview is allowed. */
+const PREVIEW_FRAMES = [
+  {
+    id: 'runaway',
+    when: (f) => f.runaway,
+    text: (row, c) => '**' + row.name + '** is the name the whole platform is already on: ' + adds(row) +
+      ' adds in a day stops being a tip and starts being an auction, and ' + c.opponent +
+      ' is the game everyone paid for.',
+  },
+  {
+    id: 'starter-now',
+    when: (f) => f.starter && f.hasGame,
+    text: (row, c) => 'Sleeper lists **' + row.name + '** first on the ' + row.team + ' depth chart at ' +
+      row.position + ', which is the entire case, and ' + adds(row) + ' managers have already acted on it.',
+  },
+  {
+    id: 'starter-quiet',
+    when: (f) => f.starter && f.quiet,
+    text: (row, c) => 'Quieter, and a listed starter anyway: **' + row.name + '** is first at ' + row.position +
+      ' for ' + row.team + ' on ' + adds(row) + ' adds, which is the part of this board nobody is bidding against.',
+  },
+  {
+    id: 'contingent-bet',
+    when: (f) => f.contingent && f.hasGame,
+    text: (row, c) => '**' + row.name + '** is still listed second for ' + row.team + ', so ' + adds(row) +
+      ' adds are a bet on that changing against ' + c.opponent + ' rather than a reaction to it having changed.',
+  },
+  {
+    id: 'contingent-early',
+    when: (f) => f.contingent,
+    text: (row, c) => 'Nobody is claiming **' + row.name + '** for the role he has today. He is the ' + row.team +
+      ' contingency at ' + row.position + ', and ' + adds(row) + ' managers would rather own that before the news than after.',
+  },
+  {
+    id: 'buried',
+    when: (f) => f.buried,
+    text: (row, c) => '**' + row.name + '** is ' + ordinal(row.depthChartOrder) + ' at ' + row.position + ' for ' +
+      row.team + '. At ' + adds(row) + ' adds the wire is pricing an injury that has not happened yet.',
+  },
+  {
+    id: 'status',
+    when: (f) => f.status && f.hasGame,
+    text: (row, c) => '**' + row.name + '** goes into ' + c.opponent + ' carrying a ' + row.injuryStatus.toLowerCase() +
+      ' designation, which makes claiming him and starting him two different decisions this week.',
+  },
+  {
+    id: 'divisional',
+    when: (f) => f.divisional,
+    text: (row, c) => '**' + row.name + '** draws ' + c.opponent + ', a divisional game, and a defence that has ' +
+      'seen this offence twice a year for as long as either roster has been together.',
+  },
+  {
+    id: 'rookie',
+    when: (f) => f.rookie && f.hasGame,
+    text: (row, c) => 'First NFL season for **' + row.name + '**, and ' + c.opponent + ' is the assignment that ' +
+      'settles whether ' + adds(row) + ' adds were early or just loud.',
+  },
+  {
+    id: 'second-year',
+    when: (f) => f.secondYear && f.hasGame,
+    text: (row, c) => 'Second season for **' + row.name + '**, first week the wire has cared: ' + adds(row) +
+      ' adds, with ' + c.opponent + ' next.',
+  },
+  {
+    id: 'quiet-value',
+    when: (f) => f.quiet,
+    text: (row, c) => 'Further down, **' + row.name + '** is the quiet one at ' + adds(row) + ' adds against ' +
+      countOf(c.leaderAdds) + ' at the top of this board. Same information, a fraction of the price.',
+  },
+  {
+    id: 'bye',
+    when: (f) => !f.hasGame,
+    text: (row, c) => '**' + row.name + '**, ' + row.position + (row.team ? ' for ' + row.team : '') +
+      ', has no game on this week\'s schedule. At ' + adds(row) + ' adds he is a stash, not a start.',
+  },
+];
+
+/* The frame that is always eligible, so a player can never be grouped into a
+   paragraph and then left unnamed in it. */
+const PLAIN_PREVIEW_FRAME = {
+  id: 'plain-preview',
+  when: () => true,
+  text: (row, c) => '**' + row.name + '**, ' + row.position + (row.team ? ', ' + row.team : '') + ': ' +
+    adds(row) + ' adds' + (c.opponent ? ' with ' + c.opponent + ' to come' : '') + '.',
+};
+
+const rookieWord = (row) => (row.yearsExp === 0 ? 'a rookie' : 'in his second season');
+
+/* Frames for a player whose game IS in the book. Past tense throughout, and
+   the ones that print production require a box score line to exist. */
+const RECAP_FRAMES = [
+  {
+    id: 'stat-lead',
+    when: (f) => f.hasStats,
+    text: (row, c) => '**' + row.name + '** finished with ' + c.statLine + '.',
+  },
+  {
+    id: 'stat-margin',
+    when: (f, c) => f.hasStats && c.margin != null,
+    text: (row, c) => c.statLine.charAt(0).toUpperCase() + c.statLine.slice(1) + ' for **' + row.name +
+      '** in a game decided by ' + c.margin + '.',
+  },
+  {
+    id: 'stat-claimed',
+    when: (f) => f.hasStats,
+    text: (row, c) => 'The ' + adds(row) + ' managers who claimed **' + row.name + '** this week got ' +
+      c.statLine + ' out of it.',
+  },
+  {
+    id: 'stat-starter',
+    when: (f) => f.hasStats && f.starter,
+    text: (row, c) => 'Listed first for ' + row.team + ' and playing like it: **' + row.name + '** put up ' +
+      c.statLine + '.',
+  },
+  {
+    id: 'stat-rookie',
+    when: (f) => f.hasStats && (f.rookie || f.secondYear),
+    text: (row, c) => '**' + row.name + '**, ' + rookieWord(row) + ', came out of it with ' + c.statLine + '.',
+  },
+  {
+    id: 'live',
+    when: (f) => f.inProgress,
+    text: (row, c) => '**' + row.name + '** is playing as this is filed. There is no final line to give him yet, ' +
+      'which is also why he is not in the preview above.',
+  },
+  {
+    id: 'no-stat',
+    when: (f) => f.complete && !f.hasStats,
+    text: (row, c) => '**' + row.name + '** does not appear in the passing, rushing, receiving or kicking columns ' +
+      'of this box score, so there is nothing to report for him beyond the result.',
+  },
+  {
+    id: 'unreported',
+    when: (f) => !f.hasStats && !f.complete && !f.inProgress,
+    text: (row, c) => '**' + row.name + '** has no line available from the public box score for this game.',
+  },
+];
+
+
+function boardSentence(row, ctx) {
+  const facts = rowFacts(row, ctx);
+  const pool = ctx.statePlayed ? RECAP_FRAMES : PREVIEW_FRAMES;
+  const eligible = pool.filter((frame) => {
+    try { return frame.when(facts, ctx); } catch (err) {
+      console.warn('[generate-editorial] copy frame "' + frame.id + '" could not decide whether it applies to ' +
+        row.name + '; skipping it rather than writing a sentence on a fact it never checked.', err);
+      return false;
+    }
+  });
+  const candidates = eligible.length ? eligible : [ctx.statePlayed ? RECAP_FRAMES[RECAP_FRAMES.length - 1] : PLAIN_PREVIEW_FRAME];
+  const frame = pickFrame(candidates, row.playerId + '|' + (ctx.game ? ctx.game.id : 'no-game'), ctx.used);
+  ctx.used.add(frame.id);
+  try {
+    return frame.text(row, { ...ctx, facts });
+  } catch (err) {
+    console.error('[generate-editorial] copy frame "' + frame.id + '" threw while writing about ' + row.name +
+      '; falling back to the plain line so the player is still named in the paragraph he was grouped into.', err);
+    return PLAIN_PREVIEW_FRAME.text(row, { ...ctx, facts });
+  }
+}
+
+/* ---- Slate lists, stated once ------------------------------------------ */
 
 function upcomingGameLines(games) {
   return games.map((game) => '- **' + game.away.abbr + '** at **' + game.home.abbr + '**, ' +
-    (kickoffLabel(game.kickoffMs) || 'kickoff time not published on the scoreboard') + '.');
+    (kickoffLabel(game.kickoffMs) || 'kickoff time not published on the scoreboard') +
+    (gameIsDivisional(game) ? ', divisional' : '') + '.');
+}
+
+function gameMargin(game) {
+  if (!game || game.home.score == null || game.away.score == null) return null;
+  return Math.abs(game.home.score - game.away.score);
 }
 
 function finalGameLines(games) {
@@ -835,158 +1311,252 @@ function leaderLines(games, limit = 4) {
   return lines;
 }
 
-/* Where a board row's NFL team stands on the week's schedule. Real scheduling
-   fact, no projection: it is the sentence that tells a reader whether the name
-   above it can still do anything for them. */
-function rowSlateNote(row, slate) {
-  if (!slate || !row.team) return '';
-  const next = slate.upcoming.find((game) => teamIn(new Set(teamKeys(game.home.abbr).concat(teamKeys(game.away.abbr))), row.team));
-  if (next) {
-    const opponent = teamIn(new Set(teamKeys(next.home.abbr)), row.team) ? next.away.abbr : next.home.abbr;
-    return row.team + ' still has ' + opponent + ' to play, ' + (kickoffLabel(next.kickoffMs) || 'later this week') + '.';
+/* ---- The board, grouped by game ---------------------------------------- */
+
+/* The group header carries the kickoff or the final score once, so no player's
+   sentence has to repeat it. That single change removes the "X still has Y to
+   play" clause that used to appear under every row. */
+function gameHeader(game) {
+  if (!game) return '**No game on the schedule this week**';
+  const divisional = gameIsDivisional(game) ? ', divisional' : '';
+  if (game.completed && game.home.score != null && game.away.score != null) {
+    const { home, away } = game;
+    const winner = home.score >= away.score ? home : away;
+    const loser = winner === home ? away : home;
+    return '**' + winner.abbr + ' ' + winner.score + ', ' + loser.abbr + ' ' + loser.score + '**, final' + divisional + '.';
   }
-  const done = slate.games.find((game) => game.started &&
-    teamIn(new Set(teamKeys(game.home.abbr).concat(teamKeys(game.away.abbr))), row.team));
-  if (done) return row.team + ' has already played this week.';
-  return row.team + ' has no game on the week ' + slate.week + ' schedule.';
+  if (game.started) {
+    return '**' + game.away.abbr + ' at ' + game.home.abbr + '**, already underway' + divisional + '.';
+  }
+  return '**' + game.away.abbr + ' at ' + game.home.abbr + '**, ' +
+    (kickoffLabel(game.kickoffMs) || 'kickoff time not published') + divisional + '.';
 }
 
-/* The add board, printed. Shared by every angle so the column reads the same
-   on all five days; only the heading above it and the slate note under each
-   row change with the day. */
-function boardSection(featured, slate, { heading, lede }) {
-  const parts = [heading, lede];
-  featured.forEach((row, index) => {
-    const where = row.team ? ', ' + row.team : '';
-    parts.push('### ' + (index + 1) + '. **' + row.name + '**, ' + row.position + where);
-    const note = rowSlateNote(row, slate);
-    parts.push(note ? rowSentences(row, index) + ' ' + note : rowSentences(row, index));
-  });
+function groupRowsByGame(rows, slate) {
+  const groups = new Map();
+  const idle = [];
+  for (const row of rows) {
+    const game = gameFor(slate, row.team);
+    if (!game) { idle.push(row); continue; }
+    if (!groups.has(game.id)) groups.set(game.id, { game, rows: [] });
+    groups.get(game.id).rows.push(row);
+  }
+  const ordered = Array.from(groups.values()).sort((a, b) =>
+    ((a.game.kickoffMs || 0) - (b.game.kickoffMs || 0)) || String(a.game.id).localeCompare(String(b.game.id)));
+  return { groups: ordered, idle };
+}
+
+/**
+ * One board, as paragraphs grouped by game instead of one heading per player.
+ *
+ * `ctx.used` is shared across every call in one article, so a frame spent on the
+ * Thursday recap is not spent again on the weekend board.
+ */
+function boardBlock(rows, ctx, { heading, lede, groupHeaders = true }) {
+  const { slate } = ctx;
+  const parts = [];
+  if (heading) parts.push(heading);
+  if (lede) parts.push(lede);
+  if (!rows.length) return parts;
+
+  const leaderAdds = Math.max(...rows.map((row) => row.adds));
+  const { groups, idle } = groupRowsByGame(rows, slate);
+
+  for (const group of groups) {
+    /* Suppressed when the caller has just printed this game's score directly
+       above, which is the Thursday recap: a header there would restate the
+       final a second time in three lines. */
+    if (groupHeaders) parts.push(gameHeader(group.game));
+    const sentences = group.rows.map((row) => boardSentence(row, {
+      slate,
+      used: ctx.used,
+      game: group.game,
+      leaderAdds,
+      opponent: opponentOf(group.game, row.team),
+      margin: gameMargin(group.game),
+      statLine: playerStatLine(row, group.game, ctx.boxScores),
+      statePlayed: group.game.started,
+    }));
+    parts.push(sentences.join(' '));
+  }
+
+  if (idle.length) {
+    parts.push('**Not on this week\'s schedule**');
+    parts.push(idle.map((row) => boardSentence(row, {
+      slate, used: ctx.used, game: null, leaderAdds, opponent: '', margin: null, statLine: '', statePlayed: false,
+    })).join(' '));
+  }
   return parts;
 }
 
-function designationLines(featured) {
-  return featured
-    .filter((row) => row.injuryStatus)
-    .map((row) => '- **' + row.name + '**, ' + row.position + (row.team ? ' (' + row.team + ')' : '') +
-      ': Sleeper carries a ' + row.injuryStatus.toLowerCase() + ' designation on this roster spot.');
+/* One sentence naming every designated player, rather than one bullet per
+   player repeating the same clause. */
+function statusSentence(rows) {
+  const flagged = rows.filter((row) => row.injuryStatus);
+  if (!flagged.length) return '';
+  const named = flagged.map((row) => '**' + row.name + '** (' + row.injuryStatus.toLowerCase() +
+    (row.team ? ', ' + row.team : '') + ')');
+  const list = named.length === 1 ? named[0] : named.slice(0, -1).join(', ') + ' and ' + named[named.length - 1];
+  return 'Sleeper carries ' + (flagged.length === 1 ? 'a designation' : 'designations') + ' on ' + list +
+    '. A designation is not a ruling, which is why it is worth the check rather than the assumption.';
 }
 
 const addCountLede = (state) =>
-  'Sleeper publishes how many leagues across its entire platform added each player, and these are those ' +
-  'counts as they stand for week ' + state.week + ' of the ' + state.season + ' season. Read them as demand, not ' +
-  'as value: a name at the top of this list is being chased in every league at once, which is exactly when a ' +
-  'claim costs more than the player is worth.';
+  'These are Sleeper\'s platform-wide add counts for week ' + state.week + ' of the ' + state.season + ' season: how ' +
+  'many leagues across the whole platform claimed each player in the last ' + TRENDING_LOOKBACK_HOURS + ' hours. ' +
+  'Read them as demand rather than as value. Grouped by game below, in the order the week is played.';
 
 const SOURCE_LINE = '*Sources: Sleeper public API for add counts over the last ' + TRENDING_LOOKBACK_HOURS +
-  ' hours, and the public NFL scoreboard for kickoff times, game states and final scores.*';
+  ' hours, and the public NFL scoreboard for kickoff times, game states, final scores and box scores.*';
 
 const noLeagueViewLine =
-  'This column has no view of your league. It reads two public sources and nothing else, so what it can tell ' +
-  'you is which NFL games are still to be played and which players the rest of the platform is chasing. Which ' +
-  'of your own starters that leaves on the board is the one part you have to look up yourself.';
+  'This column has no view of your league. It reads two public sources, so it can tell you which NFL games are ' +
+  'still to be played and which players the rest of the platform is chasing. Which of your own starters that ' +
+  'leaves on the board is the one part you have to look up yourself.';
+
+/* The recap of board players whose games are already in the book. This is what
+   a preview day does with a player it has just excluded from the preview: he
+   is reported, not silently dropped. */
+function playedBlock(rows, ctx, { heading, lede, groupHeaders = true }) {
+  if (!rows.length) return [];
+  return boardBlock(rows, ctx, { heading, lede, groupHeaders });
+}
 
 function thursdayBody(ctx) {
-  const { state, slate, featured } = ctx;
+  const { state, slate, featured, playedRows } = ctx;
   const opener = gamesIn(slate.upcoming, ['thursday-night']);
   const parts = ['## Thursday night, before kickoff'];
   if (opener.length) {
-    parts.push('Week ' + state.week + ' opens here, and nothing below has been played yet.');
+    parts.push('Week ' + state.week + ' opens here, and nothing below it has been played.');
     parts.push(...upcomingGameLines(opener));
   } else {
-    parts.push('The week ' + state.week + ' schedule carries no Thursday night game still to come. Everything ' +
-      'named below is drawn from the ' + slate.upcoming.length + ' games that have not kicked off.');
+    parts.push('The week ' + state.week + ' schedule has no Thursday night game still to come, so everything below ' +
+      'is drawn from the ' + slate.upcoming.length + ' games that have not kicked off.');
   }
-  parts.push(...boardSection(featured, slate, {
-    heading: '## The board going into the slate',
-    lede: addCountLede(state) + ' Every name here plays a game that has not started, so this is a preview and ' +
-      'not a recap of something you can already look up.',
+
+  parts.push(...boardBlock(featured, ctx, {
+    heading: '## What the wire is buying, game by game',
+    lede: addCountLede(state),
   }));
-  const designations = designationLines(featured);
-  parts.push('## Designations to check before your lineup locks');
-  if (designations.length) {
-    parts.push('Sleeper carries an active designation on these roster spots. A designation is not a ruling, so ' +
-      'the check is the point.');
-    parts.push(...designations);
-  } else {
-    parts.push('Sleeper carries no injury designation on any player on the board above. That is a clean board, ' +
-      'not a guarantee: designations move through the end of the week.');
+
+  const status = statusSentence(featured);
+  if (status) {
+    parts.push('## Before your lineup locks');
+    parts.push(status);
   }
-  parts.push('## Still to come this week');
+
+  parts.push(...playedBlock(playedRows, ctx, {
+    heading: '## Already played, so not previewed above',
+    lede: 'These names are on the platform\'s add board but their NFL game is in the book. What they did, rather ' +
+      'than what they might:',
+  }));
+
   parts.push('The scoreboard has ' + slate.upcoming.length + ' week ' + state.week + ' game' +
-    (slate.upcoming.length === 1 ? '' : 's') + ' still unplayed' +
-    (slate.completed.length ? ' and ' + slate.completed.length + ' already final' : '') +
-    '. Nothing in this preview is drawn from a game that has kicked off.');
+    (slate.upcoming.length === 1 ? '' : 's') + ' still unplayed. Nothing in the preview above is drawn from a game ' +
+    'that has kicked off.');
   parts.push(SOURCE_LINE);
   return parts.join('\n\n');
 }
 
 function fridayBody(ctx) {
-  const { state, slate, featured } = ctx;
+  const { state, slate, featured, playedRows } = ctx;
   const thursdayFinals = gamesIn(slate.completed, ['thursday-night']);
-  const parts = ['## Thursday night, final'];
+  const thursdayTeams = new Set();
+  for (const game of thursdayFinals) {
+    for (const abbr of [game.home.abbr, game.away.abbr]) {
+      for (const key of teamKeys(abbr)) thursdayTeams.add(key);
+    }
+  }
+  const thursdayRows = playedRows.filter((row) => teamIn(thursdayTeams, row.team));
+  const earlierRows = playedRows.filter((row) => !teamIn(thursdayTeams, row.team));
+
+  const parts = ['## Thursday Night Recap'];
   if (thursdayFinals.length) {
     parts.push(...finalGameLines(thursdayFinals));
     const leaders = leaderLines(thursdayFinals);
     if (leaders.length) {
-      parts.push('Where the production was, as the scoreboard reported it:');
+      parts.push('The scoreboard\'s own statistical leaders out of it:');
       parts.push(...leaders);
     }
   } else {
-    parts.push('No week ' + state.week + ' Thursday night game is final on the scoreboard, so there is nothing ' +
-      'to recap from it. The weekend preview below stands on its own.');
+    parts.push('No week ' + state.week + ' Thursday night game is final on the scoreboard, so there is nothing to ' +
+      'recap from it. The weekend preview below stands on its own.');
   }
+
+  /* Requirement: a player who played Thursday appears HERE, with what he did,
+     and nowhere in the weekend preview. The exclusion happened upstream in
+     buildSleeperArticle; this is the other half of it. */
+  parts.push(...playedBlock(thursdayRows, ctx, {
+    heading: '',
+    lede: 'Board players who were in that game, and are therefore out of the weekend preview below:',
+    groupHeaders: false,
+  }));
+
   parts.push('## The weekend ahead');
   if (slate.upcoming.length) {
-    parts.push('These games have not kicked off. They are the only ones this column previews.');
+    parts.push('Every game that has not kicked off. These are the only ones previewed here.');
     parts.push(...upcomingGameLines(slate.upcoming));
   } else {
-    parts.push('The scoreboard has no week ' + state.week + ' game left unplayed, so there is no weekend left ' +
-      'to preview.');
+    parts.push('The scoreboard has no week ' + state.week + ' game left unplayed, so there is no weekend left to preview.');
   }
-  parts.push(...boardSection(featured, slate, {
-    heading: '## The board between the two',
-    lede: addCountLede(state) + ' The twenty four hours these counts cover are the ones that contain Thursday ' +
-      'night, which is why a Friday board rarely looks like a Wednesday one.',
+
+  parts.push(...boardBlock(featured, ctx, {
+    heading: '## The weekend board',
+    lede: addCountLede(state) + ' The twenty four hours these counts cover contain Thursday night, which is why a ' +
+      'Friday board rarely looks like a Wednesday one.',
   }));
-  const designations = designationLines(featured);
-  if (designations.length) {
+
+  const status = statusSentence(featured);
+  if (status) {
     parts.push('## Designations carried into the weekend');
-    parts.push(...designations);
+    parts.push(status);
   }
+
+  parts.push(...playedBlock(earlierRows, ctx, {
+    heading: '## Other board players already in the book',
+    lede: 'Their games are finished too, so they are reported rather than previewed:',
+  }));
+
   parts.push(SOURCE_LINE);
   return parts.join('\n\n');
 }
 
 function sundayBody(ctx) {
-  const { state, slate, featured } = ctx;
+  const { state, slate, featured, playedRows } = ctx;
   const parts = ['## Sunday, before the next kickoff'];
   if (slate.upcoming.length) {
-    parts.push('Final lineup decisions only apply to games that have not started. These are those games.');
+    parts.push('A lineup decision only exists for a game that has not started. These are those games.');
     parts.push(...upcomingGameLines(slate.upcoming));
   } else {
-    parts.push('Every week ' + state.week + ' game on the scoreboard has kicked off, so there is no lineup ' +
-      'decision left to make.');
+    parts.push('Every week ' + state.week + ' game on the scoreboard has kicked off, so there is no lineup decision ' +
+      'left to make.');
   }
-  const designations = designationLines(featured);
+
+  const status = statusSentence(featured);
   parts.push('## Late status to check');
-  if (designations.length) {
-    parts.push('These are the designations Sleeper carries on the board below, and Sunday is when they resolve.');
-    parts.push(...designations);
-  } else {
-    parts.push('Sleeper carries no designation on any player on the board below. Check your own starters against ' +
-      'the inactives list regardless: this column sees the platform, not your lineup.');
-  }
-  parts.push(...boardSection(featured, slate, {
-    heading: '## The board with games still to come',
-    lede: addCountLede(state) + ' Every name below plays a game that has not kicked off. Names whose games are ' +
-      'already running were removed rather than previewed.',
+  parts.push(status || 'Sleeper carries no designation on any player on the board below. Check your own starters ' +
+    'against the inactives list regardless: this column sees the platform, not your lineup.');
+
+  parts.push(...boardBlock(featured, ctx, {
+    heading: '## Still to play, and still claimable',
+    lede: addCountLede(state) + ' Every name here has a game that has not kicked off; the ones whose games are ' +
+      'running were taken out rather than written about.',
   }));
+
+  const lockedComplete = playedRows.some((row) => {
+    const game = gameFor(slate, row.team);
+    return game && game.completed;
+  });
+  parts.push(...playedBlock(playedRows, ctx, {
+    heading: '## Locked, and out of the preview',
+    lede: 'These board players are past their kickoff, so they are reported here rather than previewed above' +
+      (lockedComplete ? ', with what the box score gave them where their game is already final' : '') + ':',
+  }));
+
   if (slate.completed.length || slate.inProgress.length) {
-    parts.push('## Already underway, and not previewed here');
     parts.push('The scoreboard has ' + (slate.completed.length + slate.inProgress.length) + ' week ' + state.week +
-      ' game' + (slate.completed.length + slate.inProgress.length === 1 ? '' : 's') + ' running or final. Those ' +
-      'lineups are locked and nothing above is drawn from them.');
+      ' game' + (slate.completed.length + slate.inProgress.length === 1 ? '' : 's') + ' running or final. Nothing in ' +
+      'the preview above is drawn from them.');
   }
   parts.push(SOURCE_LINE);
   return parts.join('\n\n');
@@ -1004,16 +1574,14 @@ function mondayBody(ctx) {
     parts.push((sundayFinals.length ? 'Every Sunday game in the book' : 'Every week ' + state.week +
       ' game in the book') + ', with each margin named.');
     parts.push(...finalGameLines(finals));
-    const blowouts = finals.filter((game) => game.home.score != null && game.away.score != null &&
-      Math.abs(game.home.score - game.away.score) >= BLOWOUT_MARGIN);
+    const blowouts = finals.filter((game) => (gameMargin(game) || 0) >= BLOWOUT_MARGIN);
     if (blowouts.length) {
       parts.push('That is ' + blowouts.length + ' game' + (blowouts.length === 1 ? '' : 's') + ' decided by ' +
-        BLOWOUT_MARGIN + ' points or more. A blowout is where a bench emptied early, which is the part that shows ' +
-        'up in a fantasy box score long after the result stopped being in doubt.');
+        BLOWOUT_MARGIN + ' points or more. A blowout is where a bench empties early, which is the part that shows up ' +
+        'in a box score long after the result stopped being in doubt.');
     }
   } else {
-    parts.push('The scoreboard carries no completed week ' + state.week + ' game yet, so there is nothing final ' +
-      'to summarise.');
+    parts.push('The scoreboard carries no completed week ' + state.week + ' game yet, so there is nothing final to summarise.');
   }
 
   const leaders = leaderLines(finals, 6);
@@ -1027,22 +1595,21 @@ function mondayBody(ctx) {
   if (remaining.length) {
     parts.push('This is everything the week has left.');
     parts.push(...upcomingGameLines(remaining));
-    const live = ctx.stillToPlay;
-    if (live.length) {
-      parts.push('Of the players the platform is chasing, these are the ones whose game has not been played, ' +
-        'which makes them the only names on this board that can still move anything tonight:');
-      parts.push(...live.map((row) => '- **' + row.name + '**, ' + row.position +
-        (row.team ? ' (' + row.team + ')' : '') + '. ' + rowSlateNote(row, slate)));
+    if (ctx.stillToPlay.length) {
+      parts.push('Of the players the platform is chasing, these are the only ones whose game has not been played, ' +
+        'which makes them the only names here that can still move anything tonight: ' +
+        ctx.stillToPlay.map((row) => '**' + row.name + '** (' + row.position +
+          (row.team ? ', ' + row.team : '') + ')').join(', ') + '.');
     }
     parts.push(noLeagueViewLine);
   } else {
     parts.push('The scoreboard has no week ' + state.week + ' game left to play. Everything is final.');
   }
 
-  parts.push(...boardSection(featured, slate, {
+  parts.push(...boardBlock(featured, ctx, {
     heading: '## The board going into the claim window',
-    lede: addCountLede(state) + ' A Monday board is read differently from a Thursday one: most of these adds are ' +
-      'a reaction to a result that is already final, which is why the names near the top are the expensive ones.',
+    lede: addCountLede(state) + ' On a Monday most of this is a reaction to a result that is already final, which ' +
+      'is why the names at the top are the expensive ones.',
   }));
   parts.push(SOURCE_LINE);
   return parts.join('\n\n');
@@ -1056,17 +1623,12 @@ function tuesdayBody(ctx) {
     parts.push('All ' + finals.length + ' completed game' + (finals.length === 1 ? '' : 's') + ', with each margin named.');
     parts.push(...finalGameLines(finals));
   } else {
-    parts.push('The scoreboard carries no completed week ' + state.week + ' game, so there is no final result ' +
-      'to report.');
+    parts.push('The scoreboard carries no completed week ' + state.week + ' game, so there is no final result to report.');
   }
 
   const scored = finals
     .filter((game) => game.home.score != null && game.away.score != null)
-    .map((game) => ({
-      game,
-      total: game.home.score + game.away.score,
-      margin: Math.abs(game.home.score - game.away.score),
-    }));
+    .map((game) => ({ game, total: game.home.score + game.away.score, margin: gameMargin(game) }));
 
   if (scored.length) {
     const byTotal = scored.slice().sort((a, b) => b.total - a.total || a.game.id.localeCompare(b.game.id));
@@ -1087,14 +1649,14 @@ function tuesdayBody(ctx) {
     parts.push(...leaders);
   }
 
-  parts.push(...boardSection(featured, slate, {
+  parts.push(...boardBlock(featured, ctx, {
     heading: '## Early waiver targets',
-    lede: addCountLede(state) + ' The week is over, so nothing on this board is a bet on a game still to be ' +
-      'played: it is the platform reacting to results that are already public, ahead of the midweek claim deadline.',
+    lede: addCountLede(state) + ' The week is closed, so none of this is a bet on a game still to be played: it is ' +
+      'the platform reacting to results that are already public, ahead of the midweek claim deadline.',
   }));
-  parts.push('The gap between the first name and the last one is the useful number here. Both ends of this list ' +
-    'are trending, but the top of it is a bidding war and the bottom is a quiet add, and in a league where ' +
-    'everyone reads the same public counts the quiet add is usually where the margin is.');
+  parts.push('The gap between the first name and the last is the useful number. Both ends are trending, but the top ' +
+    'is a bidding war and the bottom is a quiet add, and where everyone reads the same public counts the quiet add ' +
+    'is usually where the margin is.');
   parts.push(SOURCE_LINE);
   return parts.join('\n\n');
 }
@@ -1265,6 +1827,10 @@ function buildSleeperArticle(state, board, options) {
   let slate = options.slate || null;
   let featured = board.slice(0, MAX_FEATURED_ROWS);
   let stillToPlay = [];
+  /* Board players whose NFL game has kicked off. A preview must not name them
+     in its preview, and must not silently lose them either: they are reported
+     in their own section with what they actually did. */
+  let playedRows = [];
 
   if (cadence.needsSlate && !slate) {
     /* nflSlate() already said why; this is the consequence, said once, where a
@@ -1280,10 +1846,12 @@ function buildSleeperArticle(state, board, options) {
     if (cadence.filtersPlayedTeams) {
       const split = splitBoardBySlate(board, slate);
       const previewable = split.playable.concat(split.idle);
+      playedRows = split.played;
       if (split.played.length) {
         console.log('[generate-editorial] ' + split.played.length + ' trending player(s) were left off the ' +
           cadence.angle + ' preview board because their NFL game has already kicked off: ' +
-          split.played.map((row) => row.name + ' (' + row.team + ')').join(', ') + '.');
+          split.played.map((row) => row.name + ' (' + row.team + ')').join(', ') +
+          '. They are recapped with their box score line instead.');
       }
       if (previewable.length < MIN_BOARD_ROWS) {
         console.warn('[generate-editorial] the week ' + state.week + ' slate has moved far enough that only ' +
@@ -1292,6 +1860,7 @@ function buildSleeperArticle(state, board, options) {
           'whose games are already running, so this run falls back to the midweek board instead.');
         cadence = { ...ANGLES.midweek, clock: cadence.clock, forced: cadence.forced };
         slate = null;
+        playedRows = [];
       } else {
         featured = previewable.slice(0, MAX_FEATURED_ROWS);
       }
@@ -1313,7 +1882,12 @@ function buildSleeperArticle(state, board, options) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(publishDate)) throw new Error('[generate-editorial] publish date must be YYYY-MM-DD.');
 
   const title = cadence.title(state);
-  const ctx = { state, slate, board, featured, stillToPlay, cadence };
+  /* `used` is shared across every boardBlock call in this article, which is what
+     stops the same sentence shape appearing twice in one piece. */
+  const ctx = {
+    state, slate, board, featured, stillToPlay, playedRows, cadence,
+    boxScores: options.boxScores || null, used: new Set(),
+  };
 
   let body;
   let excerpt;
@@ -1344,7 +1918,7 @@ function buildSleeperArticle(state, board, options) {
     excerpt,
     author: 'FSN Desk',
     week: state.week,
-    entities: featured.slice(0, MAX_ENTITIES).map((row) => ({
+    entities: featured.concat(playedRows).slice(0, MAX_ENTITIES).map((row) => ({
       name: row.name,
       position: row.position,
       sleeperPlayerId: row.playerId,
@@ -1388,6 +1962,7 @@ async function sleeperSource(options) {
     (cadence.forced ? ' (forced with --angle)' : '') + '.');
 
   let slate = null;
+  let boxScores = null;
   if (cadence.needsSlate) {
     try {
       slate = await nflSlate(state, options);
@@ -1399,9 +1974,18 @@ async function sleeperSource(options) {
         ' week ' + state.week + ', so played and unplayed games cannot be separated: ' + err.message, err);
       slate = null;
     }
+    if (slate) {
+      /* gameBoxScores never throws: a missing box score costs one stat line,
+         which the copy states, and must not cost the article. */
+      boxScores = await gameBoxScores(slate, board, options);
+      if (boxScores.size) {
+        console.log('[generate-editorial] read ' + boxScores.size + ' box score(s) for completed games holding a ' +
+          'board player, so those players are reported rather than previewed.');
+      }
+    }
   }
 
-  return buildSleeperArticle(state, board, { ...options, cadence, slate });
+  return buildSleeperArticle(state, board, { ...options, cadence, slate, boxScores });
 }
 
 /* ---------------------------------------------------------------------------
@@ -1508,7 +2092,7 @@ const MODES = ['auto', 'sleeper', 'rss'];
 function parseArgs(argv) {
   const args = {
     mode: 'auto', sleeperBase: DEFAULT_SLEEPER_BASE, refreshPlayers: false, playersCache: DEFAULT_PLAYERS_CACHE,
-    scoreboardBase: DEFAULT_SCOREBOARD_BASE, now: 0, angle: '',
+    scoreboardBase: DEFAULT_SCOREBOARD_BASE, summaryBase: DEFAULT_SUMMARY_BASE, now: 0, angle: '',
     noSupabase: false, feeds: [], item: 0, category: '', players: [], publishDate: '', week: 0,
     localState: '', out: DEFAULT_OUT_DIR, selfTest: false,
   };
@@ -1525,6 +2109,7 @@ function parseArgs(argv) {
     }
     else if (arg === '--sleeper-base') args.sleeperBase = next();
     else if (arg === '--scoreboard-base') args.scoreboardBase = next();
+    else if (arg === '--summary-base') args.summaryBase = next();
     else if (arg === '--angle') {
       args.angle = cleanText(next()).toLowerCase();
       if (!ANGLE_NAMES.includes(args.angle)) {
@@ -1941,6 +2526,66 @@ const FIXTURE_DAYS = {
   tue: { now: '2026-09-29T13:00:00Z', states: { 401: 'post', 402: 'post', 403: 'post', 404: 'post', 405: 'post', 406: 'post', 407: 'post' } },
 };
 
+/* ESPN's summary shape: boxscore.players[].statistics[], each group carrying
+   parallel `labels` and `stats` arrays per athlete. */
+const FIXTURE_BOX = {
+  401: [
+    { name: 'passing', labels: ['C/ATT', 'YDS', 'TD', 'INT'], athletes: [['Jalen Hurts', ['22/31', '291', '2', '0']]] },
+    { name: 'rushing', labels: ['CAR', 'YDS', 'AVG', 'TD'], athletes: [['Tank Bigsby', ['17', '96', '5.6', '1']]] },
+  ],
+  402: [
+    { name: 'passing', labels: ['C/ATT', 'YDS', 'TD', 'INT'], athletes: [['Trevor Lawrence', ['25/34', '318', '3', '1']]] },
+    { name: 'rushing', labels: ['CAR', 'YDS', 'AVG', 'TD'], athletes: [['Tank Bigsby', ['17', '96', '5.6', '1']]] },
+  ],
+  403: [{ name: 'receiving', labels: ['REC', 'YDS', 'AVG', 'TD'], athletes: [['Jalen McMillan', ['5', '64', '12.8', '1']]] }],
+  406: [
+    { name: 'rushing', labels: ['CAR', 'YDS', 'AVG', 'TD'], athletes: [['Ray Davis', ['9', '38', '4.2', '0']]] },
+    { name: 'receiving', labels: ['REC', 'YDS', 'AVG', 'TD'], athletes: [['Jaylen Wright', ['3', '21', '7.0', '0']]] },
+  ],
+  407: [{ name: 'rushing', labels: ['CAR', 'YDS', 'AVG', 'TD'], athletes: [['Emari Demercado', ['11', '54', '4.9', '1']]] }],
+  /* A completed game whose box score names nobody on the board, so the
+     "recorded nothing" path is exercised rather than only the happy one. */
+  405: [{ name: 'passing', labels: ['C/ATT', 'YDS', 'TD', 'INT'], athletes: [['Somebody Else', ['19/30', '204', '1', '1']]] }],
+};
+
+function fixtureSummary(eventId) {
+  const groups = FIXTURE_BOX[eventId] || [];
+  return {
+    boxscore: {
+      players: [{
+        team: { abbreviation: 'FIX' },
+        statistics: groups.map((group) => ({
+          name: group.name,
+          labels: group.labels,
+          athletes: group.athletes.map(([name, stats]) => ({ athlete: { displayName: name }, stats })),
+        })),
+      }],
+    },
+  };
+}
+
+/* The same board, with its top player moved onto PHI, the Thursday night away
+   team. Without this the Friday filter was never actually exercised: no board
+   player was in the Thursday game, so "the TNF player is excluded" passed
+   without ever having a TNF player to exclude. */
+function fixturePlayersOnTnf() {
+  return { ...fixturePlayers(), 7001: { full_name: 'Tank Bigsby', position: 'RB', team: 'PHI', injury_status: '', years_exp: 2, depth_chart_order: 1 } };
+}
+
+/* Body sections by heading, so an assertion can say "not in the preview" rather
+   than the much weaker "not in the document". The two are different claims and
+   only the first is what the slate filter promises. */
+function bodySections(markdown) {
+  const map = new Map();
+  const chunks = String(markdown).split(/\n## /);
+  for (let i = 1; i < chunks.length; i++) {
+    const breakAt = chunks[i].indexOf('\n');
+    const heading = (breakAt < 0 ? chunks[i] : chunks[i].slice(0, breakAt)).trim();
+    map.set(heading, breakAt < 0 ? '' : chunks[i].slice(breakAt));
+  }
+  return map;
+}
+
 /* A final score line as finalGameLines prints it: "**JAX 41**, HOU 13". Used to
    assert that a preview carries no result. Matching on the word "final" instead
    catches the source attribution line, which every day carries. */
@@ -1969,6 +2614,12 @@ async function runSelfTest() {
     if (url.startsWith('/v1/cacheonly/players/nfl/trending/add')) return json(fixtureTrending());
     if (url === '/v1/players/nfl' || url === '/v1/thin/players/nfl') return json(fixturePlayers());
     if (url === '/v1/thin/state/nfl') return json(fixtureState());
+    if (url === '/v1/tnfboard/state/nfl') return json(fixtureState());
+    if (url.startsWith('/v1/tnfboard/players/nfl/trending/add')) return json(fixtureTrending());
+    if (url === '/v1/tnfboard/players/nfl') return json(fixturePlayersOnTnf());
+    if (url.startsWith('/espn/summary')) {
+      return json(fixtureSummary(new URL('http://fixture' + url).searchParams.get('event')));
+    }
     const espn = /^\/espn\/([a-zA-Z]+)(?:\?|$)/.exec(url);
     if (espn) {
       const day = FIXTURE_DAYS[espn[1]];
@@ -1998,7 +2649,8 @@ async function runSelfTest() {
   const check = (value, message) => { if (!value) failures.push(message); };
   const base = (opts) => ({
     mode: 'rss', sleeperBase: origin + '/v1', refreshPlayers: true, playersCache,
-    scoreboardBase: origin + '/espn/wed', now: Date.parse(FIXTURE_DAYS.wed.now), angle: '',
+    scoreboardBase: origin + '/espn/wed', summaryBase: origin + '/espn/summary',
+    now: Date.parse(FIXTURE_DAYS.wed.now), angle: '',
     noSupabase: true, feeds: [origin + '/feed.xml'], item: 0, category: '', players: [],
     publishDate: '', week: 0, localState: '', out: tmp, env: {}, allowReservedHost: true, ...opts,
   });
@@ -2058,7 +2710,7 @@ async function runSelfTest() {
     const fri = await dayRun('fri');
     check(/^title: Friday Morning Recap & Weekend Preview: Week 4$/m.test(fri), 'Friday did not file the recap and weekend preview headline');
     check(/^publishDate: 2026-09-25$/m.test(fri), 'Friday was not stamped with its own Eastern date');
-    check(/Thursday night, final/.test(fri), 'the Friday article did not recap Thursday night');
+    check(/^## Thursday Night Recap$/m.test(fri), 'the Friday article has no Thursday Night Recap section');
     check(/\*\*PHI 27\*\*, NYG 17/.test(fri), 'the Friday recap did not print the Thursday final from the scoreboard');
     check(fri.includes('Jalen Hurts') && fri.includes('291 YDS, 2 TD'), 'the Friday recap dropped the scoreboard\'s own statistical leader');
     check(fri.includes('**JAX** at **HOU**') && fri.includes('**BUF** at **MIA**'), 'the Friday article did not preview the weekend still to come');
@@ -2077,12 +2729,26 @@ async function runSelfTest() {
        a preview and the three whose games are still to come must remain. */
     const sunLive = await dayRun('sunLive');
     check(/^title: Sunday Gameday Preview: Week 4 Final Lineup Decisions$/m.test(sunLive), 'a part-way-through Sunday did not still file the Sunday preview');
-    check(!sunLive.includes('Tank Bigsby'), 'a player whose NFL game had already kicked off was previewed anyway (JAX)');
-    check(!sunLive.includes('Jalen McMillan'), 'a player whose NFL game had already kicked off was previewed anyway (TB)');
-    check(sunLive.includes('Jaylen Wright') && sunLive.includes('Ray Davis') && sunLive.includes('Emari Demercado'),
+    const sunLiveParts = bodySections(sunLive);
+    const sunPreview = sunLiveParts.get('Still to play, and still claimable') || '';
+    const sunLocked = sunLiveParts.get('Locked, and out of the preview') || '';
+    check(!!sunPreview && !!sunLocked, 'the Sunday article is missing its preview or its locked section');
+    check(!sunPreview.includes('Tank Bigsby'), 'a player whose NFL game had already kicked off was previewed anyway (JAX)');
+    check(!sunPreview.includes('Jalen McMillan'), 'a player whose NFL game had already kicked off was previewed anyway (TB)');
+    check(sunPreview.includes('Jaylen Wright') && sunPreview.includes('Ray Davis') && sunPreview.includes('Emari Demercado'),
       'the Sunday preview dropped players whose games had not kicked off');
-    check(!/^ {4}- name: Tank Bigsby$/m.test(sunLive) && !/sleeperPlayerId: "7001"/.test(sunLive),
-      'an already-playing player was still tagged as a tracked entity on a preview');
+    check(sunLocked.includes('Tank Bigsby') && sunLocked.includes('Jalen McMillan'),
+      'a player taken out of the preview was dropped from the article instead of being reported');
+    check(/is playing as this is filed/.test(sunLocked),
+      'a player whose game was still running was not reported as still playing');
+    /* Neither the "recorded nothing" claim nor any production, because a game
+       in progress has no box score to have read. The source attribution line
+       lives in this section too, so the check is on the claims, not the word. */
+    check(!/does not appear in the passing/.test(sunLocked),
+      'a player whose game was still running was described as missing from a box score that does not exist yet');
+    check(!/ yards on | catches for /.test(sunLocked),
+      'production was printed for a player whose game was still in progress');
+    check(!SCORE_LINE.test(sunPreview), 'a score reached the Sunday preview section');
     check(/\*\*BUF\*\* at \*\*MIA\*\*, Monday 8:15 PM ET/.test(sunLive), 'the Sunday preview did not carry the unplayed games in Eastern time');
     check(!SCORE_LINE.test(sunLive), 'the Sunday preview printed a score for a game that was still in progress');
 
@@ -2098,11 +2764,21 @@ async function runSelfTest() {
     check(/## Monday night: what is still on the board/.test(mon), 'the Monday article does not say what is still at stake');
     check(/\*\*BUF\*\* at \*\*MIA\*\*, Monday 8:15 PM ET/.test(mon) && /\*\*ARI\*\* at \*\*LV\*\*/.test(mon),
       'the Monday article did not name the games that can still move a week');
-    check(/only names on this board that can still move anything tonight/.test(mon),
+    const monStakes = bodySections(mon).get('Monday night: what is still on the board') || '';
+    check(/only names here that can still move anything tonight/.test(monStakes),
       'the Monday article did not identify the players still to play');
-    check(/- \*\*Jaylen Wright\*\*, RB \(MIA\)\. MIA still has BUF to play, Monday 8:15 PM ET\./.test(mon),
-      'the Monday still-to-play callout did not join a board row to its remaining game');
-    check(!mon.includes('Tank Bigsby**, RB (JAX). JAX still has'), 'a player who had already played was listed as still to play');
+    check(/\*\*Jaylen Wright\*\* \(RB, MIA\)/.test(monStakes) && /\*\*Ray Davis\*\* \(RB, BUF\)/.test(monStakes),
+      'the Monday still-to-play callout did not name the board players in the remaining games');
+    check(!monStakes.includes('Tank Bigsby'), 'a player who had already played was listed as still to play tonight');
+    /* Monday mixes both states in one board: past tense for the games in the
+       book, future tense for the ones that are not. */
+    const monBoard = bodySections(mon).get('The board going into the claim window') || '';
+    check(monBoard.includes('Tank Bigsby') && monBoard.includes('96 yards on 17 carries'),
+      'the Monday board did not report what an already-played board player actually did');
+    check(monBoard.includes('Emari Demercado') && !/Emari Demercado[^.]*\d+ yards on \d+ carries/.test(monBoard),
+      'the Monday board reported production for a player whose game had not been played');
+    check(/\*\*Jaylen Wright\*\* goes into BUF carrying a questionable designation/.test(monBoard),
+      'the Monday board did not preview a board player whose game is still to come');
 
     const tue = await dayRun('tue');
     check(/^title: Tuesday Morning Final Recap: Week 4 Winners & Losers$/m.test(tue), 'Tuesday did not file the final recap headline');
@@ -2116,8 +2792,57 @@ async function runSelfTest() {
     check(/## Early waiver targets/.test(tue), 'the Tuesday recap carries no early waiver targets');
     check(!/still has .* to play/.test(tue), 'the Tuesday recap previewed a game after the week had closed');
 
+    /* ---- Requirement 1 and 3, on the day they actually matter ----
+
+       The Friday fixtures above put no board player in the Thursday night game,
+       so "the TNF player is excluded" passed without there ever being one to
+       exclude. This base moves the board's top player onto PHI, the Thursday
+       away team, and asserts both halves of the promise: he is absent from the
+       weekend preview, and present in the Thursday Night Recap with the real
+       production the public box score gave him. */
+    const tnfFri = await dayRun('fri', { sleeperBase: origin + '/v1/tnfboard', angle: 'friday' });
+    const tnfParts = bodySections(tnfFri);
+    const tnfRecap = tnfParts.get('Thursday Night Recap') || '';
+    const weekendAhead = tnfParts.get('The weekend ahead') || '';
+    const weekendBoard = tnfParts.get('The weekend board') || '';
+    check(!!tnfRecap && !!weekendBoard, 'the Friday article is missing its recap or its weekend board');
+    check(!weekendBoard.includes('Tank Bigsby'),
+      'a player who played on Thursday night was listed on the Friday weekend preview board');
+    check(!weekendAhead.includes('PHI') && !weekendAhead.includes('NYG'),
+      'the Friday weekend preview listed the Thursday night game as still to come');
+    check(tnfRecap.includes('Tank Bigsby'),
+      'a player who played on Thursday night is absent from the Thursday Night Recap');
+    check(tnfRecap.includes('96 yards on 17 carries') && tnfRecap.includes('1 rushing touchdown'),
+      'the Thursday Night Recap did not carry the box score production for a board player who played');
+    check(!SCORE_LINE.test(weekendBoard) && !/ yards on | catches for /.test(weekendBoard),
+      'production from a completed game leaked into the Friday weekend preview board');
+    /* And he is still a tracked entity, because he is named in the copy. An
+       entity the reader can click must land on a real mention. */
+    check(/sleeperPlayerId: "7001"/.test(tnfFri), 'the recapped player was dropped from the tracked player tray');
+
+    /* ---- The copy does not read like a loop ----
+
+       One sentence shape per player, never the same shape twice in one article
+       until the eligible pool is spent. Asserted structurally: no two paragraphs
+       in a board section may share their first four words. */
+    for (const [day, content] of Object.entries({ thu, fri, sun, sunLive, mon, tue, tnfFri })) {
+      const openers = new Map();
+      for (const line of content.split('\n')) {
+        const text = line.trim();
+        if (!text.startsWith('**') || text.endsWith('.') === false) continue;
+        /* Board sentences only: a game header has no verb and ends in a label. */
+        if (/^\*\*[A-Z]{2,4}( \d+)?(,| at )/.test(text)) continue;
+        const opener = text.split(/\s+/).slice(0, 4).join(' ');
+        openers.set(opener, (openers.get(opener) || 0) + 1);
+      }
+      const worst = Array.from(openers.entries()).sort((a, b) => b[1] - a[1])[0];
+      check(!worst || worst[1] === 1,
+        'the ' + day + ' article repeats a sentence opening (' + (worst ? '"' + worst[0] + '" x' + worst[1] : '') +
+        '), which is the mail-merge shape this copy exists to avoid');
+    }
+
     /* Every day, the invariants that do not move with the angle. */
-    for (const [day, content] of Object.entries({ wed, thu, fri, sun, sunLive, mon, tue })) {
+    for (const [day, content] of Object.entries({ wed, thu, fri, sun, sunLive, mon, tue, tnfFri })) {
       check(!BANNED_CHARS.test(content), 'the ' + day + ' article contains banned punctuation');
       check(!/league_id|blog_articles|supabase/i.test(content), 'the ' + day + ' article leaked a database reference into public copy');
       check(!content.includes('Puka Nacua'), 'the ' + day + ' article left a consensus-owned roster anchor on a claim board');
@@ -2139,6 +2864,56 @@ async function runSelfTest() {
     const noSlate = await dayRun('mon', { scoreboardBase: origin + '/espn/blocked' });
     check(/^title: Week 4 trending adds/m.test(noSlate), 'an unreadable scoreboard did not fall back to the evergreen board');
     check(noSlate.length > 0, 'an unreadable scoreboard suppressed the article entirely');
+
+    /* ---- Box scores, divisions, and the frame pool ---- */
+
+    /* ESPN ships each stat group as parallel labels/stats arrays. Printing that
+       as columns is the database dump this copy replaced, so the four groups
+       that decide a fantasy week are turned into English. */
+    check(statPhrase('rushing', ['CAR', 'YDS', 'AVG', 'TD'], ['17', '96', '5.6', '1']) ===
+      '96 yards on 17 carries and 1 rushing touchdown', 'the rushing stat line was not turned into a phrase');
+    check(statPhrase('rushing', ['CAR', 'YDS', 'AVG', 'TD'], ['1', '3', '3.0', '0']) === '3 yards on 1 carry',
+      'a single carry was pluralised, and a scoreless line invented a touchdown');
+    check(statPhrase('receiving', ['REC', 'YDS', 'AVG', 'TD'], ['5', '64', '12.8', '1']) ===
+      '5 catches for 64 yards and 1 receiving touchdown', 'the receiving stat line was not turned into a phrase');
+    check(statPhrase('passing', ['C/ATT', 'YDS', 'TD', 'INT'], ['22/31', '291', '2', '0']) ===
+      '291 passing yards on 22/31 and 2 passing touchdowns', 'the passing stat line was not turned into a phrase');
+    check(statPhrase('defensive', ['TOT', 'SOLO'], ['7', '5']) === '',
+      'a stat group with no fantasy reading was half rendered instead of skipped');
+
+    const box = normalizeBoxScore(fixtureSummary('401'));
+    check(box.get(normName('Tank Bigsby'))[0] === '96 yards on 17 carries and 1 rushing touchdown',
+      'the box score did not index a player by the only key the two sources share, his name');
+    check(!box.has(normName('Nobody At All')), 'the box score invented an entry for a player it never saw');
+    check(normalizeBoxScore({}).size === 0, 'an empty summary document did not produce an empty box score');
+
+    check(gameIsDivisional({ home: { abbr: 'MIA' }, away: { abbr: 'BUF' } }), 'an AFC East game was not called divisional');
+    check(!gameIsDivisional({ home: { abbr: 'MIA' }, away: { abbr: 'DAL' } }), 'a cross conference game was called divisional');
+    /* Washington is WAS on Sleeper and WSH on the scoreboard, and the division
+       table is keyed on one of them. */
+    check(gameIsDivisional({ home: { abbr: 'WSH' }, away: { abbr: 'DAL' } }),
+      'the division lookup did not bridge the WAS and WSH abbreviations');
+    check(opponentOf({ home: { abbr: 'MIA' }, away: { abbr: 'BUF' } }, 'BUF') === 'MIA',
+      'the opponent lookup returned a team its own player plays for');
+
+    /* The pool cycles rather than locking onto the last frame standing, which is
+       the failure mode that would quietly reintroduce the repetition. */
+    const framePool = [{ id: 'a' }, { id: 'b' }, { id: 'c' }];
+    const seen = new Set();
+    const drawn = [];
+    for (let i = 0; i < 3; i++) {
+      const frame = pickFrame(framePool, 'seed-' + i, seen);
+      seen.add(frame.id);
+      drawn.push(frame.id);
+    }
+    check(new Set(drawn).size === 3, 'the frame pool handed out the same frame twice before it was exhausted');
+    const afterExhaustion = pickFrame(framePool, 'seed-again', seen);
+    check(!!afterExhaustion && seen.size < 3, 'an exhausted frame pool did not reset so the copy could keep cycling');
+    check(pickFrame([], 'seed', new Set()) === null, 'an empty frame pool did not report that it had nothing to give');
+    /* Deterministic: the same seed and an unused pool always draw the same frame,
+       which is what makes a re-run of the same board reproduce the same article. */
+    check(pickFrame(framePool, 'fixed', new Set()).id === pickFrame(framePool, 'fixed', new Set()).id,
+      'the frame pick is not deterministic, so the same board would write a different article on a re-run');
 
     /* ---- The clock itself ---- */
 
