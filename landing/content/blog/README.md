@@ -111,21 +111,83 @@ provider-cookie, or fantasy-stat input, in either mode.
 ```bash
 npm run generate:editorial                      # Sleeper first, feeds as fallback
 node scripts/generate-editorial.mjs --mode sleeper
+node scripts/generate-editorial.mjs --angle monday                  # force a day's angle
+node scripts/generate-editorial.mjs --now 2026-09-28T13:00:00Z      # rehearse a day
 node scripts/generate-editorial.mjs --mode rss --feed <rss-url> --player "CeeDee Lamb|WR"
 npm run build:blog
 npm run check:editorial
 ```
 
+### The day decides the story
+
+An NFL fantasy week is not one story, it is five, and which one is true depends
+on the hour the generator runs. The angle is resolved from the **Eastern**
+weekday, not UTC, because the NFL's day boundaries are Eastern and the
+interesting runs sit right on top of one: a Monday night kickoff is already
+Tuesday in UTC, so a generator reading `getUTCDay()` would file the Tuesday
+final recap while the Monday night game was in the second quarter, and stamp it
+with tomorrow's date.
+
+| Eastern day | Headline | What the body carries |
+|---|---|---|
+| Thursday | `Thursday Night Kickoff Preview: Week N Slate` | the Thursday night game, the board going into an unplayed slate, open designations |
+| Friday | `Friday Morning Recap & Weekend Preview: Week N` | the Thursday final with its scoring leaders, then every game still to come |
+| Sunday | `Sunday Gameday Preview: Week N Final Lineup Decisions` | the games that have not kicked off, late designations, and what is already locked |
+| Monday | `Monday Night Preview: What's at Stake & Sunday Recap` | Sunday finals with margins and blowouts flagged, the scoring leaders, and the Monday games plus the board players still to play in them |
+| Tuesday | `Tuesday Morning Final Recap: Week N Winners & Losers` | every final, the widest margins, the highest combined scores, and early waiver targets |
+| Wed / Sat | `Week N trending adds: where the waiver money is going` | the evergreen platform-wide add board |
+
+`--angle <name>` forces one of `thursday`, `friday`, `sunday`, `monday`,
+`tuesday`, `midweek`; `--now <date>` moves the clock for both the weekday and
+the played/unplayed split. Between them a day's output can be rehearsed and
+asserted on any other day, which is how `npm run check:editorial` covers all
+six angles.
+
+### Played games are never previewed
+
+The public NFL scoreboard carries a per-game state (`pre`, `in`, `post`), and
+every preview in the generator is built from the `pre` games only. A player
+whose NFL team has kicked off is **removed** from a preview board rather than
+written about: "start him" is not advice once the game is running, it is a
+result the reader can already look up. A game counts as started when the
+scoreboard says it is running or complete, **or** when its kickoff is in the
+past, because a cached scoreboard document still reports `pre` for a game that
+kicked off ten minutes ago and that is exactly the window a stale preview lands
+in.
+
+A player with no game on the week's schedule at all (a bye, or no NFL team on
+the player record) is a different fact and stays on the board: a bye-week stash
+is a legitimate claim. The copy under the row says which case it is.
+
+Two situations fall back to the evergreen board rather than failing the run:
+
+* the scoreboard read failed or returned no games, so there is no verified split
+  between played and unplayed; and
+* a preview day whose slate has moved on far enough that fewer than three board
+  rows still have a game to come.
+
+The evergreen board is the right fallback for both because it makes no claim
+about any individual game, so it stays true on a Sunday evening with the whole
+slate in the book. Both fallbacks log loudly with the reason.
+
 ### `sleeper` mode (the default)
 
-Sleeper's free, public, read-only API. No account, no key, no auth header.
-Three reads:
+Sleeper's free, public, read-only API for the week and the add counts, plus
+ESPN's public NFL scoreboard for the week's schedule and results. No account, no
+key, no auth header on either. Four reads:
 
 | Endpoint | What it supplies |
 |---|---|
 | `GET /v1/state/nfl` | the live season, week and season type |
 | `GET /v1/players/nfl/trending/add?lookback_hours=24&limit=10` | platform-wide add counts, as `[{ player_id, count }]` |
 | `GET /v1/players/nfl` | names, positions, teams, injury designations |
+| `GET site.api.espn.com/.../nfl/scoreboard?dates=<season>&week=<week>` | each game's kickoff, state (`pre`/`in`/`post`), final score and statistical leaders |
+
+The scoreboard is the same host and document `lib/notifications/schedule-feed.js`
+already reads for the push dispatcher, so this adds no new upstream to the
+project, and it is the only public source in reach that carries per-game state.
+It is read only on a day whose angle needs it, so a Wednesday or Saturday run
+costs three requests rather than four. `--scoreboard-base` overrides it.
 
 The week comes from `state/nfl` and from nowhere else: it is never inferred
 from the calendar, and a week outside 1 through 18 or a season type that is not
@@ -135,15 +197,24 @@ read at most once a day, so it is slimmed to the fields the article prints and
 cached under `scripts/data/.cache/` for 24 hours (gitignored; `--refresh-players`
 ignores it).
 
-Every number in the generated article is a field Sleeper returned. There is no
-model call, no projection and no derived statistic. A trending id with no entry
-in the player index is dropped rather than printed as an unnamed row, and a
-board that resolves to fewer than three usable players refuses to publish
-rather than shipping a stub.
+Every number in the generated article is a field Sleeper or the scoreboard
+returned. There is no model call, no projection and no derived statistic on any
+day: neither public source publishes a fantasy projection, so no angle carries
+one, and the recap days print the scoreboard's own `displayValue` for a stat
+line rather than reformatting it. A trending id with no entry in the player
+index is dropped rather than printed as an unnamed row, and a board that
+resolves to fewer than three usable players refuses to publish rather than
+shipping a stub.
 
-The generated board carries the `Waiver Wire` category, so it is filtered
-through `scripts/data/waiver-anchors.json`, the same consensus-owned starter
-list `scripts/build-blog.mjs` fails the build over. Sleeper counts adds across
+The generator also has no view of any league, on any day. It can say which NFL
+games are still to be played and which players the platform is claiming; it
+cannot say what a reader's own matchup needs, and the Monday copy says so in
+those words rather than implying a scoreboard it does not have.
+
+The board is filtered through `scripts/data/waiver-anchors.json` on **every**
+day, not only under the `Waiver Wire` category, because it is framed as a claim
+list under all six angles. That is the same consensus-owned starter list
+`scripts/build-blog.mjs` fails the build over. Sleeper counts adds across
 every league on the platform, so a locked-in starter surfaces on ordinary
 drop/add churn; those names are left off the board here, before the build ever
 sees the file.
@@ -183,9 +254,13 @@ there reports "no verified source" and writes nothing. The live read happens on
 a GitHub runner, in the **Public editorial generator** workflow
 (`.github/workflows/generate-editorial.yml`).
 
-It runs itself every Tuesday at 13:00 UTC (09:00 ET on EDT), between the Monday
-night final and the midweek claim deadline, which is when a 24 hour add count
-says the most. A successful run commits the source file and the compiled payload
+It runs itself five times a week, once inside each window the cadence above is
+about: Thursday 20:47, Friday 13:47, Sunday 14:47 and Monday 14:47 UTC, plus the
+original Tuesday 13:00 UTC between the Monday night final and the midweek claim
+deadline. The four added runs sit on minute 47 rather than minute 0 because
+GitHub queues scheduled workflows and the top of the hour is the most contended
+minute of the hour. A `workflow_dispatch` can force any angle with the `angle`
+input. A successful run commits the source file and the compiled payload
 together and pushes to the default branch, so the article is live without anyone
 touching it. It also prints the generated Markdown into the run summary and
 uploads it as an artifact.

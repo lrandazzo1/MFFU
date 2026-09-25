@@ -34,13 +34,34 @@
 
 name: Public editorial generator
 
+# The generator resolves the day's angle from the Eastern weekday, so the
+# schedule is what decides which of the five stories actually gets written. Each
+# cron below is placed inside the window its angle is about, in UTC, which is
+# ET+4 while the season is on EDT:
+#
+#   Thu 20:47 UTC = 16:47 ET   four hours before the Thursday night kickoff.
+#   Fri 13:47 UTC = 09:47 ET   the Thursday game is final, the weekend is not.
+#   Sun 14:47 UTC = 10:47 ET   before the 13:00 ET window locks.
+#   Mon 14:47 UTC = 10:47 ET   Sunday night is final, Monday night is not.
+#   Tue 13:00 UTC = 09:00 ET   the week is closed, before the claim deadline.
+#
+# The four added days sit on minute 47 rather than minute 0: GitHub queues
+# scheduled workflows and the top of the hour is the most contended minute of
+# the hour, so a run placed there is the one most likely to arrive late, and
+# these are time sensitive. Tuesday keeps minute 0, which it has always had; it
+# is three hours after the league recap run in generate-articles.yml (Tuesday
+# 08:00 UTC), so the two never contend for the same runner minute.
+#
+# A run on any other day, or a run whose angle cannot be supported by the live
+# slate, writes the evergreen platform-wide add board instead. That is the
+# generator's documented fallback, not a failure, so a mistimed or manual
+# dispatch still publishes something true.
 on:
-  # Tuesday 13:00 UTC, which is 09:00 ET while the season is on EDT. Tuesday
-  # because the waiver board is read between the Monday night final and the
-  # midweek claim deadline, which is when a 24 hour add count says the most.
-  # It is three hours before the league recap run in generate-articles.yml
-  # (Tuesday 08:00 UTC), so the two never contend for the same runner minute.
   schedule:
+    - cron: '47 20 * * 4'
+    - cron: '47 13 * * 5'
+    - cron: '47 14 * * 0'
+    - cron: '47 14 * * 1'
     - cron: '0 13 * * 2'
   workflow_dispatch:
     inputs:
@@ -58,6 +79,14 @@ on:
         description: Commit and push the generated article and the compiled payload.
         type: boolean
         default: true
+      angle:
+        description: >-
+          Force the day's angle instead of resolving it from the Eastern
+          weekday. Use this to rehearse a day's output on any other day.
+        type: choice
+        options: ['', thursday, friday, sunday, monday, tuesday, midweek]
+        default: ''
+        required: false
 
 # contents: write so a successful run can push the article it generated. The
 # commit step is the only thing that needs it, and it runs after the blog build
@@ -96,18 +125,23 @@ jobs:
           INPUT_MODE: ${{ inputs.mode }}
           INPUT_SUPABASE: ${{ github.event_name == 'schedule' || inputs.publish_supabase }}
           INPUT_COMMIT: ${{ github.event_name == 'schedule' || inputs.commit }}
+          # Empty on every scheduled run, which is what lets the generator
+          # resolve the angle from the Eastern weekday itself.
+          INPUT_ANGLE: ${{ inputs.angle }}
         run: |
           set -euo pipefail
           {
             echo "mode=${INPUT_MODE:-sleeper}"
             echo "publish_supabase=${INPUT_SUPABASE}"
             echo "commit=${INPUT_COMMIT}"
+            echo "angle=${INPUT_ANGLE:-}"
           } >> "$GITHUB_OUTPUT"
 
       - name: Generate from the live source
         env:
           MODE: ${{ steps.settings.outputs.mode }}
           PUBLISH_SUPABASE: ${{ steps.settings.outputs.publish_supabase }}
+          ANGLE: ${{ steps.settings.outputs.angle }}
           # The generator reads these two names directly. They are always
           # passed; whether it uses them is decided by the flag below, so the
           # secret plumbing has one shape regardless of how the run started.
@@ -118,6 +152,9 @@ jobs:
           args=(--mode "${MODE}")
           if [ "${PUBLISH_SUPABASE}" != "true" ]; then
             args+=(--no-supabase)
+          fi
+          if [ -n "${ANGLE:-}" ]; then
+            args+=(--angle "${ANGLE}")
           fi
           node scripts/generate-editorial.mjs "${args[@]}"
 
