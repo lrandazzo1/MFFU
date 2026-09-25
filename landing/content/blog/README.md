@@ -157,7 +157,63 @@ in.
 
 A player with no game on the week's schedule at all (a bye, or no NFL team on
 the player record) is a different fact and stays on the board: a bye-week stash
-is a legitimate claim. The copy under the row says which case it is.
+is a legitimate claim. The copy says which case it is.
+
+**Removed from the preview is not removed from the article.** A player whose
+game is already in the book gets his own section, with what he actually did:
+
+* on **Friday** that section is the `Thursday Night Recap`, which is the only
+  place a Thursday night player appears. He is never in `The weekend board`.
+* on **Sunday** it is `Locked, and out of the preview`.
+* on **Monday** and **Tuesday** the board is not filtered at all, so both
+  states sit in one list: a past-tense sentence for a player whose game is
+  final, a forward-looking one for a player whose game is still to come.
+
+A game that has kicked off but not finished is a third state with its own
+sentence. There is no box score to read yet, so the copy says the player is
+still playing rather than claiming he "does not appear in the box score", which
+would be a different assertion and a false one.
+
+There are **no fantasy points** in a recap. Fantasy points are a function of a
+league's scoring settings; this generator has no league and therefore no scoring
+settings, so printing one would mean picking a scoring system on the reader's
+behalf and publishing a number neither public source published. The box score
+line (`96 yards on 17 carries and 1 rushing touchdown`) is the honest form of
+the same fact.
+
+### The copy is grouped and varied, not templated
+
+The board used to print one numbered heading per player followed by the same
+four clauses: the add count, the depth chart position, the years of experience,
+the next kickoff. Eight rows of that is a mail merge, and a reader skims past an
+identical paragraph repeated eight times.
+
+Two things replace it:
+
+1. **Grouped by game.** Players in the same game share a paragraph, the kickoff
+   or the final score is stated once in the group's header instead of once per
+   player, and the groups follow the schedule, which is the order a reader
+   experiences the week in.
+2. **A pool of frames, not a template.** Each frame declares which facts it
+   needs, so only frames that are *true of this player* are eligible: the
+   contingency line cannot be written about a listed starter, the rookie line
+   cannot be written about a veteran, and a production line cannot be written
+   without a box score. Among the eligible frames one is chosen by a hash of the
+   player id, and a frame already spent in this article is skipped, so no two
+   players get the same sentence shape until the pool is exhausted.
+
+The storylines a frame can lead on are all real facts from the two sources: an
+open injury designation, a listed starter, a contingency behind one, a rookie, a
+divisional matchup, a runaway add count, a quiet one, and after the game the box
+score line. **Revenge games are not among them**, and neither are projections:
+Sleeper's slim player index carries no former team, and neither source publishes
+a projection, so both would have to be invented. "Ceiling" in this column means
+a spike in platform-wide demand against a named opponent.
+
+The selection is deterministic. The hash is over the player id and the game id,
+so the same board on the same slate writes the same article; there is no
+`Math.random()` and no clock reading in the copy layer. `npm run check:editorial`
+asserts that, and also asserts that no article repeats a sentence opening.
 
 Two situations fall back to the evergreen board rather than failing the run:
 
