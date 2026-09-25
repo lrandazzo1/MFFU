@@ -36,21 +36,30 @@ jobs:
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
       APP_BUNDLE_ID: app.fantasysportsnetwork
       # Marketing version (CFBundleShortVersionString) shown to reviewers on
-      # App Store Connect. Capacitor's project template ships 1.0, which App
-      # Store Connect closes for new submissions once a build is accepted
-      # against it (ITMS-90186 / ITMS-90062). Bump the patch here whenever the
-      # previous version's submission slot is closed, so every subsequent
-      # upload advertises a fresh CFBundleShortVersionString.
-      APP_MARKETING_VERSION: '1.0.2'
+      # App Store Connect. A version is CLOSED for new build submissions once a
+      # build has been approved against it, and every upload after that is
+      # rejected with ITMS-90186 (invalid pre-release train) plus ITMS-90062
+      # (CFBundleShortVersionString must be higher than the approved version).
+      # Build 186 was rejected that way against 1.0.2, so the train moves on.
+      #
+      # This value is NOT self-maintaining, and it has now gone stale twice. The
+      # preflight step below asks App Store Connect for the highest version that
+      # is already closed and fails the run BEFORE the 40 minute archive if this
+      # one is not strictly greater, naming the value to set. If that guard
+      # fires, bump this line rather than working around it.
+      APP_MARKETING_VERSION: '1.0.3'
       # Build number floor (CFBundleVersion). Every uploaded build for a given
       # marketing version must have a strictly greater CFBundleVersion than the
       # previous one, or App Store Connect rejects it. github.run_number
       # normally provides that, but if a run is re-triggered or the counter has
-      # not yet caught up with the last uploaded build (181), fall back to this
+      # not yet caught up with the last uploaded build (186), fall back to this
       # floor so a fresh upload is never below it. Raise this to the last
-      # accepted build whenever it drifts behind, or the fallback stops being
+      # DELIVERED build whenever it drifts behind, or the fallback stops being
       # a floor at all and a re-triggered run can re-offer a taken number.
-      APP_BUILD_NUMBER_FLOOR: '181'
+      # 186 rather than the last *accepted* build (181): 186 was delivered to
+      # App Store Connect before it was rejected on version grounds, so that
+      # number is spent even though the build never shipped.
+      APP_BUILD_NUMBER_FLOOR: '186'
 
     steps:
       - uses: actions/checkout@v5
@@ -267,6 +276,12 @@ jobs:
           APPSTORE_CONNECT_PRIVATE_KEY: ${{ secrets.APPSTORE_CONNECT_PRIVATE_KEY }}
           APPSTORE_KEY_PATH: ${{ runner.temp }}/private_keys/AuthKey_${{ secrets.APPSTORE_CONNECT_KEY_ID }}.p8
           REQUIRE_SIGNING: ${{ inputs.require_signing }}
+          # The two values this run intends to stamp into the plist. With them
+          # the preflight also checks the version train against App Store
+          # Connect, so ITMS-90186 / ITMS-90062 surface here in two minutes
+          # instead of by email twenty minutes after a green run.
+          APP_MARKETING_VERSION: ${{ steps.ios_version.outputs.marketing }}
+          APP_BUILD_NUMBER: ${{ steps.ios_version.outputs.build }}
         run: node scripts/appstore-preflight.mjs
 
       - name: Archive app with Xcode-managed signing
