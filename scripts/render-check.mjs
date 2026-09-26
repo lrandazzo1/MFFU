@@ -297,6 +297,8 @@ try {
   const tabs = await page.$$eval('#tabBar .tab-btn', (els) => els.map((e) => e.getAttribute('data-tab')));
   if (tabs.length !== 5) fail('expected 5 tabs, found ' + tabs.length);
   else pass('found all 5 tabs: ' + tabs.join(', '));
+  if (tabs.join(',') !== 'home,studio,matchups,news,analytics')
+    fail('bottom tab order does not match Hub, Studio, Matchups, News, Stats');
   if (tabs.includes('setup')) fail('Setup is still in the bottom nav; it belongs behind the header gear');
   else pass('Setup is out of the bottom nav');
 
@@ -317,12 +319,12 @@ try {
   /* ---- 3b. The header gear is the one route to Setup --------------------- */
   const gears = await page.$$eval('.screen .gear-btn', (els) =>
     els.map((e) => e.closest('.screen').getAttribute('data-screen')));
-  const gearScreens = ['home', 'matchups', 'news', 'analytics', 'recordbook', 'setup'];
+  const gearScreens = ['home', 'studio', 'matchups', 'news', 'analytics', 'recordbook'];
   const missingGear = gearScreens.filter((s) => !gears.includes(s));
   if (missingGear.length) fail('screens with no header gear: ' + missingGear.join(', '));
   else pass('every screen carries a header Setup gear');
 
-  await page.click('.screen[data-active="true"] .gear-btn');
+  await page.click('.screen[data-screen="analytics"] .gear-btn');
   await page.waitForTimeout(450);
   if ((await page.getAttribute('.screen[data-screen="setup"]', 'data-active')) === 'true') {
     pass('the header gear routes to Setup');
@@ -440,7 +442,9 @@ try {
      Back tracking the position), confirm each tab tour renders its mini
      bottom-nav map, then finish and confirm both that it closed and that
      completion persisted to the localStorage flag the boot check reads. */
-  await page.click('.screen[data-active="true"] .gear-btn');
+  if ((await page.getAttribute('.screen[data-screen="setup"]', 'data-active')) !== 'true') {
+    await page.click('.screen[data-active="true"] .gear-btn');
+  }
   await page.waitForTimeout(300);
 
   if (!(await page.$('#ftuReopenBtn'))) {
@@ -459,7 +463,7 @@ try {
 
     // The five core tabs each get a tour slide with a highlighted bottom-nav map.
     const tourAudit = await page.evaluate(() => {
-      const wanted = ['home', 'matchups', 'news', 'analytics', 'recordbook'];
+      const wanted = ['home', 'studio', 'matchups', 'news', 'analytics'];
       return wanted.map((key) => {
         const slide = document.querySelector('.ftu-tour[data-tour-tab="' + key + '"]');
         if (!slide) return { key, ok: false, why: 'missing slide' };
@@ -473,7 +477,7 @@ try {
     if (brokenTour) fail('a tab-tour slide is malformed: ' + JSON.stringify(brokenTour));
     else pass('all 5 tab tours render a 5-cell nav map with the right tab lit');
 
-    // Welcome → Desk → Matchups → News → Season Stats → Record Book → CTA.
+    // Welcome → Hub → Matchups → News → Stats → Studio → CTA.
     const dotCount = await page.evaluate(
       () => document.querySelectorAll('#ftuDots .ftu-dot').length
     );
@@ -516,6 +520,7 @@ try {
   }
 
   /* Score bindings must update on hydration, without tab switching. */
+  await page.click('#setupClose');
   await page.click('#tabBar .tab-btn[data-tab="home"]');
   for (const scenario of ['projected', 'missing', 'live', 'live-espn', 'negative', 'final-zero']) {
     const data = syntheticLeague();

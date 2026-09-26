@@ -22,6 +22,10 @@
   ],
   "rewrites": [
     {
+      "source": "/api/generate-podcast",
+      "destination": "/api/admin/send-launch-email?action=podcast"
+    },
+    {
       "source": "/api/league-sync",
       "destination": "/api/league"
     },
