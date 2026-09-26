@@ -3859,7 +3859,7 @@ body.fsn-dd-lock{ overflow:hidden; }
 .studio-hosts{ display:flex; align-items:center; gap:10px; margin:16px 0; }
 .studio-avatar{ display:grid; place-items:center; width:48px; height:48px; border-radius:50%;
   border:2px solid var(--cyan); background:#203242; font-family:'Anton',sans-serif; color:var(--off); font-size:15px; }
-.studio-avatar.sully{ border-color:var(--gold); background:#3a3020; }
+.studio-avatar.stu{ border-color:var(--gold); background:#3a3020; }
 .studio-wave{ height:48px; display:flex; align-items:center; justify-content:center; gap:4px; margin:10px 0; }
 .studio-wave i{ width:4px; height:var(--bar-height); min-height:5px; border-radius:5px; background:var(--cyan); opacity:.8; }
 .studio-hero[data-playing="true"] .studio-wave i{ animation:studioPulse .7s ease-in-out infinite alternate; animation-delay:var(--bar-delay); }
@@ -3872,9 +3872,9 @@ body.fsn-dd-lock{ overflow:hidden; }
 .studio-tabs button{ flex:1; border:1px solid var(--line); border-radius:10px; padding:11px 4px; color:var(--dim); font-size:11px; }
 .studio-tabs button[aria-selected="true"]{ color:var(--cyan); border-color:var(--cyan); background:rgba(0,224,255,.08); }
 .studio-line{ margin:10px 0; padding:12px; border-left:3px solid var(--cyan); background:#121a26; border-radius:0 9px 9px 0; color:var(--off); font-size:13px; }
-.studio-line[data-host="SULLY"]{ border-color:var(--gold); }
+.studio-line[data-host="STU"],.studio-line[data-host="SULLY"]{ border-color:var(--gold); }
 .studio-line strong{ display:block; color:var(--cyan); font:700 10px 'JetBrains Mono',monospace; margin-bottom:5px; }
-.studio-line[data-host="SULLY"] strong{ color:var(--gold); }
+.studio-line[data-host="STU"] strong,.studio-line[data-host="SULLY"] strong{ color:var(--gold); }
 .studio-archive button{ display:block; width:100%; padding:14px; margin-top:8px; text-align:left; border:1px solid var(--line); border-radius:10px; color:var(--off); background:#111925; }
 .studio-reel{ width:100%; min-height:180px; padding:22px; text-align:left; background:linear-gradient(145deg,#172636,#111925); border:1px solid var(--line); border-radius:15px; }
 @media (prefers-reduced-motion:reduce){ .studio-hero[data-playing="true"] .studio-wave i{ animation:none; } }
@@ -4646,10 +4646,10 @@ body.fsn-dd-lock{ overflow:hidden; }
       </header>
       <div class="studio-shell">
         <div class="studio-hero" id="studioHero" data-playing="false">
-          <div class="kicker text-[var(--cyan)]">On Air · Mark &amp; Sully</div>
+          <div class="kicker text-[var(--cyan)]">On Air · Dan &amp; Stu</div>
           <h2 class="font-display text-[25px] mt-2" id="studioTitle">THE WEEKLY RECAP</h2>
           <p class="text-[12px] text-[var(--dim)] mt-2" id="studioSubtitle">Connect a league to get started.</p>
-          <div class="studio-hosts" aria-label="Hosts Mark and Sully"><div class="studio-avatar">MARK</div><div class="studio-avatar sully">SULLY</div></div>
+          <div class="studio-hosts" aria-label="Hosts Dan and Stu"><div class="studio-avatar">DAN</div><div class="studio-avatar stu">STU</div></div>
           <div class="studio-wave" aria-hidden="true" id="studioWave"></div>
           <div class="studio-controls">
             <button type="button" class="studio-play" id="studioPlay" aria-label="Play episode" disabled>▶</button>
@@ -5467,14 +5467,14 @@ body.fsn-dd-lock{ overflow:hidden; }
             <div class="ftu-shot-bar"><span class="ftu-shot-dot"></span><span class="ftu-shot-title">Studio · Weekly Recap</span></div>
             <div class="ftu-shot-body">
               <div class="ftu-hl">
-                <div class="ftu-m-kicker">Mark &amp; Sully · On Air</div>
+                <div class="ftu-m-kicker">Dan &amp; Stu · On Air</div>
                 <div class="ftu-m-row"><span class="ftu-m-rankn">▶</span><span class="ftu-m-team">Week 7: The Title Race</span><span class="ftu-m-stat">3:24</span></div>
               </div>
               <div class="ftu-m-card"><div class="ftu-m-kicker">Read Along</div><div class="ftu-m-team">Headlines from your league's News Desk</div></div>
             </div>
           </div>
           <h2 class="ftu-headline">Studio</h2>
-          <p class="ftu-body"><strong>Your weekly audio desk.</strong> Generate a recap voiced by Mark and Sully, then follow its script and story cards. The all-time Record Book is available from Stats.</p>
+          <p class="ftu-body"><strong>Your weekly audio desk.</strong> Generate a recap voiced by Dan and Stu, then follow its script and story cards. The all-time Record Book is available from Stats.</p>
         </div>
 
         <!-- SLIDE 7 — THE CTA -->
@@ -37466,7 +37466,7 @@ function studioSetEpisode(episode){
   $('studioPlay').disabled = !studioObjectUrl;
   $('studioSeek').disabled = !studioObjectUrl;
   $('studioTitle').textContent = episode ? episode.title : 'THE WEEKLY RECAP';
-  $('studioSubtitle').textContent = episode ? `Week ${episode.week} · ${episode.year} · Mark & Sully` :
+  $('studioSubtitle').textContent = episode ? `Week ${episode.week} · ${episode.year} · Dan & Stu` :
     (LeagueData.hasLive() ? 'Select a week and generate an episode.' : 'Connect a league to get started.');
   studioAudio.load();
   studioPaintFeed();
@@ -37480,8 +37480,10 @@ function studioPaintFeed(){
     return;
   }
   if(ui.studioTab === 'script'){
-    feed.innerHTML = studioCurrent.lines.map(line=>
-      `<div class="studio-line" data-host="${line.host}"><strong>${line.host}</strong>${esc(line.text)}</div>`).join('');
+    feed.innerHTML = studioCurrent.lines.map(line=>{
+      const host = line.host === 'STU' || line.host === 'SULLY' ? 'STU' : 'DAN';
+      return `<div class="studio-line" data-host="${host}"><strong>${host}</strong>${esc(line.text)}</div>`;
+    }).join('');
   }else{
     const reel = studioCurrent.stories[studioReelIndex] || studioCurrent.stories[0];
     feed.innerHTML = `<button type="button" class="studio-reel" id="studioNextReel" aria-label="Next story card">
@@ -37540,11 +37542,14 @@ function studioDraft(week, year){
     .map(a=> String(a.headline).replace(/<[^>]*>/g,'').trim().slice(0, 150));
   if(!stories.length) return null;
   const title = `Week ${week}: ${stories[0].replace(/^STATE OF THE LEAGUE:\s*/i,'').slice(0, 52)}`;
+  // Dan leads with the verified board; Stu supplies the color without adding
+  // scores, outcomes or manager decisions that the News Desk did not report.
+  const roast = /bench|blunder|collapse|choke|fraud|wasted/i.test(stories[1] || '');
   const lines = [
-    { host:'MARK', text:`Welcome to the FSN Desk. This is the week ${week} recap. Here's the lead: ${stories[0]}.` },
-    { host:'SULLY', text:stories[1] ? `And the next headline matters: ${stories[1]}. That's the story everyone in this league is watching.` : `That headline sets the table. Week ${week} has given this league plenty to discuss.` },
-    { host:'MARK', text:stories[2] ? `One more from the desk: ${stories[2]}.` : `Check the News Desk for the full matchup and standings breakdown.` },
-    { host:'SULLY', text:`That's the week ${week} briefing from Mark and Sully. We'll see you on the next slate.` },
+    { host:'DAN', text:`Week ${week} on the FSN Desk. The lead from the league board: ${stories[0]}. That's the result driving this week's conversation.` },
+    { host:'STU', text:stories[1] ? `Now this one deserves a replay: ${stories[1]}. ${roast ? 'Somebody is going to hear about that decision in the group chat all week.' : 'The group chat can debate it; the board has already filed the headline.'}` : `That is a loud opening headline. Every manager in this league knows the next slate has an answer coming.` },
+    { host:'DAN', text:stories[2] ? `One more result on the board: ${stories[2]}. The full numbers and matchup context are in the News Desk.` : `For the complete scores, standings and matchup context, go to the News Desk.` },
+    { host:'STU', text:`That's the week ${week} briefing. Dan brought the receipts, I brought the heat. We'll see you on the next slate.` },
   ];
   return { id:`${studioScope}:${week}`, scope:studioScope, year, week, title, lines, stories, createdAt:Date.now() };
 }
@@ -37562,7 +37567,7 @@ async function studioGenerate(){
   }
   studioBusy = true;
   $('studioGenerate').disabled = true;
-  $('studioStatus').textContent = 'Generating Mark and Sully’s audio…';
+  $('studioStatus').textContent = 'Generating Dan and Stu’s audio…';
   try{
     const response = await fetch(FSNApi.resolve('/api/generate-podcast'), {
       method:'POST', headers:{ 'Content-Type':'application/json', ...headers },
