@@ -48,6 +48,37 @@ export function podcastVoiceIds() {
   };
 }
 
+// ElevenLabs returns a complete MP3 for every speaker turn. Keeping the ID3
+// and Xing/Info duration header from the first turn makes a browser report
+// that turn's length (often 0:09) for the entire concatenated episode.
+export function stitchPodcastMp3(segments: Buffer[]): Buffer {
+  const audio = segments.map((segment) => {
+    let offset = 0;
+    while (segment.toString('ascii', offset, offset + 3) === 'ID3' && offset + 10 <= segment.length) {
+      const size = ((segment[offset + 6] & 0x7f) << 21) | ((segment[offset + 7] & 0x7f) << 14) |
+        ((segment[offset + 8] & 0x7f) << 7) | (segment[offset + 9] & 0x7f);
+      offset += 10 + size + (segment[offset + 5] & 0x10 ? 10 : 0);
+    }
+    // The requested mp3_44100_128 format is MPEG-1 Layer III, 44.1 kHz,
+    // 128 kbps. Find its first frame after any encoder padding.
+    while (offset + 4 <= segment.length) {
+      const header = segment.readUInt32BE(offset);
+      if (((header & 0xfffe0c00) >>> 0) === 0xfffa0000 && ((header >>> 12) & 15) === 9) break;
+      offset++;
+    }
+    if (offset + 4 > segment.length) throw new Error('ElevenLabs returned an unsupported MP3 segment');
+    const firstFrameLength = Math.floor(144000 * 128 / 44100) + ((segment[offset + 2] >>> 1) & 1);
+    const firstFrame = segment.subarray(offset, offset + firstFrameLength);
+    if (firstFrame.includes(Buffer.from('Xing')) || firstFrame.includes(Buffer.from('Info')) ||
+        firstFrame.includes(Buffer.from('VBRI'))) offset += firstFrameLength;
+    let end = segment.length;
+    if (segment.toString('ascii', end - 128, end - 125) === 'TAG') end -= 128;
+    if (end <= offset) throw new Error('ElevenLabs returned an empty MP3 segment');
+    return segment.subarray(offset, end);
+  });
+  return Buffer.concat(audio);
+}
+
 async function authorizedLeague(leagueId: string, token: string): Promise<boolean> {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -104,17 +135,21 @@ export default async function handler(req: Request, res: Response) {
       return res.status(429).json({ error: 'An episode was just generated. Try again in a few minutes.' });
     }
     cooldowns.set(cooldownKey, now + 5 * 60 * 1000);
-    // Each segment is a complete MP3 stream. MPEG frames can be concatenated
-    // into one playable file while preserving the alternating host voices.
-    const parts: Buffer[] = [];
+    // Keep each speaker turn intact until its standalone duration metadata is
+    // removed; only then join the frames into one seekable episode.
+    const segments: Buffer[] = [];
     const voices = podcastVoiceIds();
     for (const line of lines as Line[]) {
       const voiceId = voices[podcastHost(line.host)!];
       const stream = await generateHostAudio(line.text, voiceId);
-      for await (const chunk of stream) parts.push(Buffer.from(chunk));
+      const chunks: Buffer[] = [];
+      for await (const chunk of stream) chunks.push(Buffer.from(chunk));
+      segments.push(Buffer.concat(chunks));
     }
+    const audio = stitchPodcastMp3(segments);
     res.setHeader('Content-Type', 'audio/mpeg');
-    return res.status(200).end(Buffer.concat(parts));
+    res.setHeader('Content-Length', String(audio.length));
+    return res.status(200).end(audio);
   } catch (err) {
     if (TOKEN_RE.test(token) && /^\d{1,20}$/.test(leagueId)) cooldowns.delete(leagueId + ':' + token);
     console.error('[Podcast] ElevenLabs generation or league validation failed', err);
