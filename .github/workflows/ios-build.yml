@@ -47,7 +47,7 @@ jobs:
       # is already closed and fails the run BEFORE the 40 minute archive if this
       # one is not strictly greater, naming the value to set. If that guard
       # fires, bump this line rather than working around it.
-      APP_MARKETING_VERSION: '1.0.3'
+      APP_MARKETING_VERSION: '1.0.4'
       # Build number floor (CFBundleVersion). Every uploaded build for a given
       # marketing version must have a strictly greater CFBundleVersion than the
       # previous one, or App Store Connect rejects it. github.run_number
