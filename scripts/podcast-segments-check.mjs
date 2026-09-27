@@ -44,6 +44,47 @@ function check(label, fn) {
   catch (err) { fail(label + '\n        ' + String((err && err.message) || err).split('\n')[0]); }
 }
 
+/* ---- STANDING IN FOR THE TWO MODULES THE INTERACTIVE ENDPOINT BUILDS ITSELF ----
+
+   The cron takes injectable deps, so section 5 hands it a database double
+   directly. lib/generate-podcast.ts does not: it constructs its Supabase client
+   and its ElevenLabs client at call time, inside the handler. The only way to
+   exercise that handler — and section 8 has to, because it is the path the
+   Studio button takes — is to occupy those two module slots in the require
+   cache before the endpoint is loaded.
+
+   `endpointStub` is filled in later, once makeDb() and the fake MP3 frame
+   exist. Nothing else in this check calls createClient or reaches ElevenLabs,
+   so the substitution is contained to the handler under test.
+
+   Order matters: this must run BEFORE the require below, or the real modules
+   are already cached and the stubs are ignored. */
+const endpointStub = { db: null, audio: null, synthCalls: 0, texts: [] };
+{
+  const { Module } = require('module');
+  const stubs = [
+    ['@supabase/supabase-js', { createClient: () => endpointStub.db }],
+    ['elevenlabs', {
+      ElevenLabsClient: class {
+        async generate({ text }) {
+          endpointStub.synthCalls += 1;
+          endpointStub.texts.push(text);
+          const audio = endpointStub.audio;
+          return (async function* () { yield audio; })();
+        }
+      },
+    }],
+  ];
+  for (const [name, exports] of stubs) {
+    const filename = require.resolve(name);
+    const mod = new Module(filename, null);
+    mod.filename = filename;
+    mod.loaded = true;
+    mod.exports = exports;
+    require.cache[filename] = mod;
+  }
+}
+
 const fsnIndex = require(join(root, 'lib/dist/fsn-index.js'));
 const script = require(join(root, 'lib/dist/podcast-script.js'));
 const cron = require(join(root, 'lib/dist/generate-weekly-podcast.js'));
@@ -414,6 +455,10 @@ check('no source of nondeterminism in the script or index modules', () => {
 /** An in-memory Supabase double covering exactly the calls the run makes. */
 function makeDb(options = {}) {
   const leagues = options.leagues || ['100001', '100002', '100003'];
+  /* Only the interactive endpoint reads it: it authorizes a POST by comparing
+     the caller's x-league-token against this column with timingSafeEqual, so
+     the lengths must match as well as the bytes. */
+  const shareToken = options.shareToken || null;
   const episodes = new Map(options.episodes || []);
   const runs = [];
   const uploads = new Map();
@@ -432,9 +477,27 @@ function makeDb(options = {}) {
       insert(v) { action = 'insert'; value = v; return q.run(); },
       update(v) { action = 'update'; value = v; return q; },
       then(resolve, reject) { return q.run().then(resolve, reject); },
+      /* `.not('share_token', 'is', null)` on the authorization read. The double
+         never stores a null token, so there is nothing to filter. */
+      not() { return q; },
+      /* maybeSingle()/single() unwrap the row the way PostgREST does. A select
+         answers with an array; an update answers with the row it changed. */
+      async maybeSingle() {
+        const r = await q.run();
+        if (r.error) return r;
+        return { data: Array.isArray(r.data) ? (r.data[0] || null) : (r.data || null), error: null };
+      },
+      async single() {
+        const r = await q.maybeSingle();
+        if (!r.error && !r.data) return { data: null, error: { code: 'PGRST116', message: 'no rows' } };
+        return r;
+      },
       async run() {
         if (table === 'leagues') {
-          return { data: leagues.map((league_id) => ({ league_id })), error: null };
+          const rows = leagues
+            .filter((league_id) => !filters.league_id || league_id === filters.league_id)
+            .map((league_id) => ({ league_id, share_token: shareToken }));
+          return { data: rows, error: null };
         }
         if (table === 'podcast_episode_runs') {
           runs.push(value);
@@ -468,7 +531,8 @@ function makeDb(options = {}) {
           return { data: null, error: null };
         }
         const rows = [...episodes.values()].filter(
-          (r) => String(r.season) === filters.season && String(r.week) === filters.week,
+          (r) => String(r.season) === filters.season && String(r.week) === filters.week &&
+            (!filters.league_id || String(r.league_id) === filters.league_id),
         );
         return { data: rows, error: null };
       },
@@ -755,6 +819,180 @@ await (async () => {
     assert.equal(oldDb._episodes.size, 0);
   });
 })();
+
+/* ==========================================================================
+   8. The Studio button and the Tuesday cron produce the same script
+   ==========================================================================
+
+   The button used to POST its own `lines`: four turns of News Desk narration
+   assembled in the browser. The cron POSTs nothing and lets the server author
+   the ~60 second news recap. Two paths, two formats, one of them shallower than
+   the other — which is exactly what a listener noticed.
+
+   The fix is one generator called from both places, so these assertions are
+   about identity rather than similarity: the episode the handler stores for a
+   POST with no `lines` must be byte-for-byte the script
+   buildNewsPodcastScript() produces for that league-week. */
+
+/** A minimal Vercel-shaped response recorder. */
+function recorder() {
+  const out = { code: 0, body: null, headers: {}, ended: false };
+  const res = {
+    status(code) { out.code = code; return res; },
+    json(data) { out.body = data; },
+    setHeader(k, v) { out.headers[k] = v; },
+    end() { out.ended = true; },
+  };
+  return { res, out };
+}
+
+const ENDPOINT_TOKEN = 'a'.repeat(40);
+
+async function postEpisode(body, { db, leagueId = '100001' } = {}) {
+  endpointStub.db = db;
+  endpointStub.audio = fakeMp3;
+  endpointStub.synthCalls = 0;
+  endpointStub.texts = [];
+  const { res, out } = recorder();
+  await withEnv({
+    SUPABASE_URL: 'https://stub.supabase.test',
+    SUPABASE_SERVICE_ROLE_KEY: 'service-role-stub',
+    ELEVENLABS_API_KEY: 'k',
+  }, () => podcast.default({
+    method: 'POST',
+    headers: { 'x-league-token': ENDPOINT_TOKEN },
+    body: { leagueId, season: 2026, week: 2, ...body },
+  }, res));
+  return out;
+}
+
+await (async () => {
+  /* ---- a POST with no lines: the server authors the news script ----
+     The expectation is built from the same payload read the handler performs,
+     through the same exported pair the cron uses. Anything less — rebuilding
+     from the raw fixture, say — would compare the handler against a different
+     league_id and a different seed, and pass or fail for the wrong reason. */
+  const serverDb = makeDb({ leagues: ['100001'], shareToken: ENDPOINT_TOKEN });
+  const authored = news.buildNewsPodcastScript(
+    await news.readNewsPayload(serverDb, '100001', 2026, 2),
+  );
+  const served = await postEpisode({ visuals: [{ kind: 'headline' }] }, { db: serverDb });
+  check('a POST without `lines` is accepted and stores an episode', () => {
+    assert.equal(served.code, 200, JSON.stringify(served.body));
+    assert.equal(served.body.status, 'ready');
+    assert.ok(served.body.audioUrl, 'no audio URL was returned');
+  });
+  check('the button path stores the SAME script the cron builds, turn for turn', () => {
+    assert.deepEqual(served.body.episode.lines, authored.lines,
+      'the interactive endpoint and lib/podcast-news-script.ts disagree — the manual ' +
+        'episode is a different script from the scheduled one, which is the whole defect');
+    assert.equal(served.body.episode.title, authored.title);
+    assert.deepEqual(served.body.episode.stories, authored.stories);
+  });
+  check('the authored script sits in the ~60 second budget the format promises', () => {
+    assert.ok(authored.words >= news.WORD_MIN - news.WORD_GRACE &&
+      authored.words <= news.WORD_MAX + news.WORD_GRACE,
+      authored.words + ' words is outside ' + news.WORD_MIN + '-' + news.WORD_MAX +
+        ' plus the ' + news.WORD_GRACE + '-word grace');
+    assert.ok(authored.estimatedSeconds >= 45 && authored.estimatedSeconds <= 75,
+      'the script estimates ' + authored.estimatedSeconds + 's, not ~60s');
+  });
+  check('one ElevenLabs call per turn, and every turn was spoken', () => {
+    assert.equal(endpointStub.synthCalls, authored.lines.length);
+    assert.deepEqual(endpointStub.texts, authored.lines.map((l) => l.text));
+  });
+  check('the browser’s visuals still travel, because only a browser can make them', () => {
+    assert.deepEqual(served.body.episode.visuals, [{ kind: 'headline' }]);
+  });
+
+  /* ---- a POST with lines: older clients in the wild still work ---- */
+  const legacyDb = makeDb({ leagues: ['100001'], shareToken: ENDPOINT_TOKEN });
+  const legacyLines = [
+    { host: 'DAN', text: 'A client-authored opening turn for the legacy path.' },
+    { host: 'STU', text: 'And the client-authored answer that closes it out.' },
+  ];
+  const legacy = await postEpisode(
+    { title: 'Legacy Week 2', stories: [{ id: 's1' }], lines: legacyLines },
+    { db: legacyDb },
+  );
+  check('a POST that still sends `lines` is honoured, for clients already shipped', () => {
+    assert.equal(legacy.code, 200, JSON.stringify(legacy.body));
+    assert.deepEqual(legacy.body.episode.lines, legacyLines);
+    assert.equal(legacy.body.episode.title, 'Legacy Week 2');
+    assert.equal(endpointStub.synthCalls, 2);
+  });
+
+  /* ---- no payload for the week: 422, and NO claim left behind ---- */
+  const emptyDb = makeDb({ leagues: ['100001'], shareToken: ENDPOINT_TOKEN });
+  /* Make the news read come back empty the way an unpublished week does. */
+  const realFrom = emptyDb.from;
+  emptyDb.from = (table) => {
+    const q = realFrom(table);
+    if (table !== 'blog_articles') return q;
+    const run = q.run;
+    q.run = async () => ({ data: [], error: null });
+    void run;
+    return q;
+  };
+  const missing = await postEpisode({}, { db: emptyDb });
+  check('a week with no published article answers 422 with a reason a reader can act on', () => {
+    assert.equal(missing.code, 422, JSON.stringify(missing.body));
+    assert.match(String(missing.body.error), /No news payload for week 2/);
+    assert.match(String(missing.body.error), /has not published/);
+  });
+  check('a 422 leaves no `generating` claim to poison the week', () => {
+    /* The claim is the cross-instance mutex and nothing clears it on an early
+       return: the inner catch only fires on a throw. A claim written before the
+       payload read would sit as `generating` until the ten-minute staleness
+       sweep flipped it to `failed`, and a failed row locks that league-week for
+       good. So the script must be built BEFORE the insert. */
+    assert.equal(emptyDb._episodes.size, 0,
+      'a claim row survived a 422; lib/generate-podcast.ts must author the script before it claims');
+    assert.equal(endpointStub.synthCalls, 0, 'ElevenLabs was called for a week with no payload');
+    assert.equal(emptyDb._uploads.size, 0);
+  });
+
+  /* ---- an unauthorized token never reaches the payload or the provider ---- */
+  const deniedDb = makeDb({ leagues: ['100001'], shareToken: 'b'.repeat(40) });
+  const denied = await postEpisode({}, { db: deniedDb });
+  check('a mismatched league token is refused before any script or spend', () => {
+    assert.equal(denied.code, 403, JSON.stringify(denied.body));
+    assert.equal(endpointStub.synthCalls, 0);
+    assert.equal(deniedDb._episodes.size, 0);
+  });
+})();
+
+/* ==========================================================================
+   9. The client sends no script of its own
+   ========================================================================== */
+
+check('studioGenerate() posts no `lines`, so the server authors the script', () => {
+  const fn = clientSource.slice(clientSource.indexOf('async function studioGenerate()'));
+  const body = fn.slice(0, fn.indexOf('const result = await response.json()'));
+  const statements = body.replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.match(statements, /body:JSON\.stringify\(\{ leagueId:selectedLeagueId\(\), season:year, week,/,
+    'the generate POST body moved; re-check what it sends');
+  assert.ok(!/lines:\s*draft\.lines/.test(statements),
+    'the Studio button is posting its own lines again, so manual generation would go back to ' +
+      'producing a different, shallower script than the Tuesday cron');
+  assert.ok(!/title:\s*draft\.title/.test(statements),
+    'the button is posting its own title; the server names the episode now');
+  assert.match(statements, /visuals:draft\.visuals/,
+    'the Story Reel visuals stopped travelling; only a browser can snapshot those cards');
+});
+
+check('an empty News Desk no longer blocks generation', () => {
+  /* The old guard aborted on a null draft. The server narrates from
+     blog_articles, which has nothing to do with whether headlines are on
+     screen, so a null draft now degrades to an episode with no Story Reel. */
+  const fn = clientSource.slice(clientSource.indexOf('async function studioGenerate()'));
+  const body = fn.slice(0, fn.indexOf('const result = await response.json()'));
+  const statements = body.replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.ok(!/has no stories for this week yet/.test(statements),
+    'studioGenerate() still aborts when the News Desk is empty');
+  assert.match(statements, /const draft = studioDraft\(week, year\) \|\|/,
+    'the null-draft fallback is gone');
+});
 
 /* ==========================================================================
    The route wiring

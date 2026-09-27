@@ -55,7 +55,8 @@
  * over the cap are not lost: the next run finds no episode for them.
  */
 import { type WeeklyPodcastScript } from './podcast-script';
-import { type NewsPayload } from './podcast-news-script';
+import { readNewsPayload, type NewsPayload } from './podcast-news-script';
+export { readNewsPayload };
 export type PodcastRunStatus = 'created' | 'skipped' | 'failed';
 export type PodcastFailureReason = 'ESPN_AUTH' | 'NO_MATCHUP_DATA' | 'EMPTY_SCRIPT' | 'TTS' | 'STORAGE' | 'TIMEOUT' | 'OTHER';
 export interface PodcastLeagueResult {
@@ -164,20 +165,6 @@ export declare function podcastDatabase(): any;
  * billed twice for one episode.
  */
 export declare function leaguesAlreadyRecorded(db: any, season: number, week: number): Promise<Set<string>>;
-/**
- * The week's news payload, straight out of `blog_articles`.
- *
- * This is the whole point of the 'news' format: no live box-score fetch. The
- * Tuesday article cron already read ESPN for this league-week, ran the outcome
- * math, and stored the evaluated starters in `tracked_players` alongside the
- * headline and the impact line. Reading that row is one Supabase select in
- * place of one external API call, and it cannot disagree with the article the
- * league is also reading, because it IS the article's data.
- *
- * Returns null when no row exists — a league whose article has not published
- * yet has no payload, which is an ordinary skip rather than a failure.
- */
-export declare function readNewsPayload(db: any, leagueId: string, season: number, week: number): Promise<NewsPayload | null>;
 export declare function classifyPodcastFailure(err: any): PodcastFailureReason;
 export interface LeagueEpisodeOutcome {
     script: WeeklyPodcastScript;

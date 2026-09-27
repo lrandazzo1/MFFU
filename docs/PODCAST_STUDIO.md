@@ -50,13 +50,44 @@ Two pipelines now write episodes, and they do not overlap:
 | | Interactive | Scheduled |
 |---|---|---|
 | Trigger | A reader taps GENERATE in Studio | Tuesday 10:00 UTC, every active league |
-| Script | `studioDraft()` in index.html, from News Desk headlines | `lib/podcast-script.ts`, four segments |
+| Script | `lib/podcast-news-script.ts`, authored server-side | `lib/podcast-news-script.ts`, authored server-side |
 | Auth | Per-league `x-league-token` | `CRON_SECRET` |
 | Public path | `POST /api/generate-podcast` | `POST /api/cron/generate-weekly-podcast` |
 
 Both land in the same `podcast_episodes` row for a league week, and the primary
-key is the mutex, so whichever arrives first wins and the other observes it. The
-interactive path is unchanged.
+key is the mutex, so whichever arrives first wins and the other observes it.
+
+## Both triggers now produce the same script
+
+The button used to author its own script: `studioDraft()` assembled four turns
+of narration in the browser from whatever News Desk headlines were on screen and
+POSTed them as `lines`. The Tuesday run built the ~60 second news recap from
+`blog_articles`. Same table, same player, two different shows — and the manual
+one was the shallower of the two.
+
+`lines` is now **optional** on `POST /api/generate-podcast`:
+
+- **Omitted** — the route reads the league week's `blog_articles` payload with
+  `readNewsPayload()` and builds the script with `buildNewsPodcastScript()`.
+  That is literally the generator the cron calls, so the two paths cannot drift:
+  `scripts/podcast-segments-check.mjs` asserts the stored episode is turn-for-turn
+  identical to what the generator produces for that payload.
+- **Present** — honoured as before. App builds already in the wild post their
+  own `lines`, and an episode they generate must not fail.
+
+Two consequences worth knowing:
+
+- **The script is built before the `generating` claim is inserted.** A league
+  whose weekly article has not published has nothing to narrate and the route
+  answers 422. If that answer came from inside the claim it would strand a
+  `generating` row — the inner `catch` only fires on a throw — and the
+  ten-minute staleness sweep would flip it to `failed`, locking the league week
+  for good. Nothing is claimed until there is a script to record.
+- **An empty News Desk no longer blocks generation.** `studioDraft()` is still
+  consulted, but only for the Story Reel visuals (snapshots of rendered cards,
+  which only a browser can produce) and the local archive id. A null draft
+  degrades to an episode whose Story Reel falls back to headline cards, instead
+  of refusing to generate.
 
 ## The four segments
 

@@ -86,6 +86,51 @@ export interface NewsPodcastScript {
   performances: number;
 }
 
+/**
+ * The week's news payload, straight out of `blog_articles`.
+ *
+ * This is the whole point of the 'news' format: no live box-score fetch. The
+ * Tuesday article cron already read ESPN for this league-week, ran the outcome
+ * math, and stored the evaluated starters in `tracked_players` alongside the
+ * headline and the impact line. Reading that row is one Supabase select in
+ * place of one external API call, and it cannot disagree with the article the
+ * league is also reading, because it IS the article's data.
+ *
+ * Returns null when no row exists — a league whose article has not published
+ * yet has no payload, which is an ordinary skip rather than a failure.
+ */
+export async function readNewsPayload(
+  db: any,
+  leagueId: string,
+  season: number,
+  week: number,
+): Promise<NewsPayload | null> {
+  const result = await db
+    .from('blog_articles')
+    .select('league_id,season,week,headline,title,match_impact_summary,tracked_players')
+    .eq('league_id', leagueId)
+    .eq('season', season)
+    .eq('week', week)
+    .limit(1);
+  if (result.error) throw result.error;
+  const row = (result.data || [])[0];
+  if (!row) return null;
+  const tracked = Array.isArray(row.tracked_players) ? row.tracked_players : [];
+  if (!tracked.length) {
+    console.warn('[Podcast] the blog_articles row for league ' + leagueId + ' week ' + week +
+      ' carries no tracked_players, so there is nothing to narrate.');
+    return null;
+  }
+  return {
+    league_id: String(row.league_id),
+    season: Number(row.season),
+    week: Number(row.week),
+    headline: row.headline || row.title || null,
+    match_impact_summary: row.match_impact_summary || null,
+    tracked_players: tracked,
+  };
+}
+
 /* ------------------------------------------------------------------ *
  * The budget
  * ------------------------------------------------------------------ */
