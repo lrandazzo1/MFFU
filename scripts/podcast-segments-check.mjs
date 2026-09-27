@@ -52,6 +52,58 @@ const generator = require(join(root, 'lib/dist/article-generator.js'));
 const podcast = require(join(root, 'lib/dist/generate-podcast.js'));
 
 /* ==========================================================================
+   0. The schema the shared read depends on
+   ========================================================================== */
+
+const sqlRaw = readFileSync(join(root, 'supabase', 'podcast_episodes.sql'), 'utf8');
+/* Statements only. The file's comments discuss the policy shapes it avoids, and
+   matching those would read the prose instead of the SQL. */
+const sql = sqlRaw.split('\n').filter((line) => !/^\s*--/.test(line)).join('\n');
+
+check('podcast_episodes.sql declares an explicit SELECT policy', () => {
+  assert.match(sql, /create policy\s+podcast_episodes_share_token_select[\s\S]*?for\s+select/i);
+});
+
+check('anon/authenticated hold the SELECT table privilege the policy needs', () => {
+  /* A matching policy without the table grant still answers permission denied. */
+  assert.match(sql, /grant\s+select\s+on\s+public\.podcast_episodes\s+to\s+anon,\s*authenticated/i);
+});
+
+check('the policy is keyed on the per-league share token, not the league id', () => {
+  /* The numeric ESPN league id is in every league URL, so a policy keyed on it
+     alone would expose every league's episodes to anyone who can guess one. */
+  assert.match(sql, /x-league-token/i);
+  assert.ok(!/using\s*\(\s*true\s*\)/i.test(sql), 'a blanket `using (true)` read policy is present');
+});
+
+check('the token check is not callable as a PostgREST RPC oracle', () => {
+  /* The EXECUTE grant that lets the policy evaluate ALSO publishes the function
+     at /rest/v1/rpc/<name> when it lives in `public` — an endpoint that answers
+     "is this the token for this league?" for any guess. Supabase's security
+     advisor flagged precisely that on the first version of this file. A schema
+     PostgREST does not expose keeps the policy working without the endpoint. */
+  assert.match(sql, /create or replace function\s+mffu_private\.league_share_token_matches/i,
+    'the token check must live in mffu_private');
+  assert.ok(
+    !/create or replace function\s+public\.mffu_league_share_token_matches/i.test(sql),
+    'the token check is created in the exposed `public` schema',
+  );
+  assert.match(sql, /drop function if exists public\.mffu_league_share_token_matches/i,
+    'the exposed copy from the first version is not dropped, so an existing database keeps the oracle');
+});
+
+check('the usage ledger is service-role only', () => {
+  const runs = readFileSync(join(root, 'supabase', 'podcast_episode_runs.sql'), 'utf8')
+    .split('\n').filter((line) => !/^\s*--/.test(line)).join('\n');
+  assert.match(runs, /alter table public\.podcast_episode_runs enable row level security/i);
+  /* Operator telemetry: error messages, provider call counts, spend. No league
+     member has a reason to read another league's failures. */
+  assert.ok(!/create policy/i.test(runs), 'the ledger grants a read policy it should not have');
+  assert.ok(!/grant\s+select\s+on\s+public\.podcast_episode_runs/i.test(runs),
+    'the ledger grants SELECT to a client role');
+});
+
+/* ==========================================================================
    1. The FSN Index port has not drifted from the client
    ========================================================================== */
 

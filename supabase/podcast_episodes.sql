@@ -44,11 +44,30 @@ on conflict (id) do update set public = true;
 -- visible only to a caller presenting the share token stored for that
 -- league_id, which is exactly the grant /api/generate-podcast already makes.
 
--- SECURITY DEFINER because public.leagues has RLS enabled with no anon
--- policies of its own: a policy expression that read it directly would match
+-- ---- WHY A PRIVATE SCHEMA AND NOT public ----
+--
+-- SECURITY DEFINER is required: public.leagues has RLS enabled with no anon
+-- policies of its own, so a policy expression reading it directly would match
 -- zero rows for every anon caller and silently deny every read. The function
 -- returns only a boolean and never exposes the token it compares against.
-create or replace function public.mffu_league_share_token_matches(
+--
+-- But the EXECUTE grant that lets the policy evaluate ALSO publishes the
+-- function as a PostgREST RPC endpoint when it lives in `public`. In the first
+-- version of this file it did, and Supabase's own security advisor flagged it:
+-- anyone could POST to /rest/v1/rpc/mffu_league_share_token_matches with a
+-- league id and a guessed token and get back true or false. That is a share
+-- token oracle — it turns a secret into something a caller can test against,
+-- which is the opposite of what this policy exists to do.
+--
+-- PostgREST exposes only its configured schemas, so moving the function to one
+-- it does not expose keeps the policy working and removes the endpoint. Nothing
+-- but the policy ever calls it.
+
+create schema if not exists mffu_private;
+revoke all on schema mffu_private from public;
+grant usage on schema mffu_private to anon, authenticated;
+
+create or replace function mffu_private.league_share_token_matches(
   p_league_id text,
   p_token text
 ) returns boolean
@@ -68,8 +87,8 @@ as $$
   );
 $$;
 
-revoke all on function public.mffu_league_share_token_matches(text, text) from public;
-grant execute on function public.mffu_league_share_token_matches(text, text) to anon, authenticated;
+revoke all on function mffu_private.league_share_token_matches(text, text) from public;
+grant execute on function mffu_private.league_share_token_matches(text, text) to anon, authenticated;
 
 -- PostgREST needs the table privilege as well as the policy; without the grant
 -- a matching policy still answers permission denied.
@@ -81,11 +100,15 @@ create policy podcast_episodes_share_token_select
   for select
   to anon, authenticated
   using (
-    public.mffu_league_share_token_matches(
+    mffu_private.league_share_token_matches(
       podcast_episodes.league_id,
       nullif(current_setting('request.headers', true)::json ->> 'x-league-token', '')
     )
   );
+
+-- Removes the exposed copy shipped by the first version of this file. Safe on a
+-- database that never had it.
+drop function if exists public.mffu_league_share_token_matches(text, text);
 
 -- Outside PostgREST there are no request headers, so current_setting returns
 -- null, the token is null, the function is false and the policy denies. The
