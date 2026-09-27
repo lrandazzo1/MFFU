@@ -13,10 +13,80 @@ create table if not exists public.podcast_episodes (
   check (status <> 'ready' or (episode is not null and audio_url is not null))
 );
 alter table public.podcast_episodes enable row level security;
--- No anon or authenticated policies. The API verifies the league share token.
+-- Writes stay service-role only: the API verifies the league share token before
+-- it claims or updates a row. Reads have an explicit, token-scoped SELECT policy
+-- at the end of this file.
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values ('podcast-episodes', 'podcast-episodes', true, 25000000, array['audio/mpeg'])
 on conflict (id) do update set public = true;
 -- Public reads only. Uploads use the server-side service-role key, with upsert
 -- disabled and a deterministic path for each league/season/week.
+
+-- ------------------------------------------------------------
+-- EXPLICIT SELECT POLICY FOR SHARED / INVITE-LINK READS
+--
+-- The table above ships with RLS on and no anon or authenticated policies,
+-- which is correct for the write path: only /api/generate-podcast, holding the
+-- service-role key, may claim a league-week or mark it ready.
+--
+-- Reads are the half that has a second caller. An invite-link reader and a
+-- league-mate on a second device both present the per-league share token
+-- (x-league-token) and nothing else, and both must be able to see the episode
+-- their league already generated. This policy states that permission
+-- explicitly instead of leaving it implicit in the service-role key, so a read
+-- is authorised by the same secret the API checks.
+--
+-- What it deliberately is NOT: a blanket anon SELECT. The numeric ESPN league
+-- id appears in every league URL, so `using (true)` — or any policy keyed on
+-- league_id alone — would let anyone who can guess a league id read that
+-- league's episodes and scripts. The token, not the id, is the key. Rows are
+-- visible only to a caller presenting the share token stored for that
+-- league_id, which is exactly the grant /api/generate-podcast already makes.
+
+-- SECURITY DEFINER because public.leagues has RLS enabled with no anon
+-- policies of its own: a policy expression that read it directly would match
+-- zero rows for every anon caller and silently deny every read. The function
+-- returns only a boolean and never exposes the token it compares against.
+create or replace function public.mffu_league_share_token_matches(
+  p_league_id text,
+  p_token text
+) returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.leagues l
+    where l.league_id = p_league_id
+      and l.share_token is not null
+      and p_token is not null
+      and length(p_token) between 32 and 128
+      and l.share_token = p_token
+  );
+$$;
+
+revoke all on function public.mffu_league_share_token_matches(text, text) from public;
+grant execute on function public.mffu_league_share_token_matches(text, text) to anon, authenticated;
+
+-- PostgREST needs the table privilege as well as the policy; without the grant
+-- a matching policy still answers permission denied.
+grant select on public.podcast_episodes to anon, authenticated;
+
+drop policy if exists podcast_episodes_share_token_select on public.podcast_episodes;
+create policy podcast_episodes_share_token_select
+  on public.podcast_episodes
+  for select
+  to anon, authenticated
+  using (
+    public.mffu_league_share_token_matches(
+      podcast_episodes.league_id,
+      nullif(current_setting('request.headers', true)::json ->> 'x-league-token', '')
+    )
+  );
+
+-- Outside PostgREST there are no request headers, so current_setting returns
+-- null, the token is null, the function is false and the policy denies. The
+-- service-role key continues to bypass RLS entirely for the write path.

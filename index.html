@@ -4673,7 +4673,7 @@ body.fsn-dd-lock{ overflow:hidden; }
           <audio id="studioAudio" preload="metadata"></audio>
         </div>
         <button type="button" class="btn-primary mt-4 w-full" id="studioGenerate">GENERATE WEEKLY RECAP</button>
-        <p id="studioArchiveLock" class="text-[11px] text-[var(--dim)] mt-2" role="note" hidden>Audio recaps are locked for archived seasons.</p>
+        <p id="studioArchiveLock" class="text-[11px] text-[var(--dim)] mt-2" role="note" hidden>Historical weeks and past seasons cannot generate new podcasts.</p>
         <p id="studioStatus" class="text-[11px] text-[var(--dim)] mt-2" role="status" aria-live="polite"></p>
         <div class="studio-tabs" role="tablist" aria-label="Episode content">
           <button type="button" data-studio-tab="script" role="tab" aria-selected="true">Script Read-Along</button>
@@ -37499,6 +37499,13 @@ let studioIgnoreClick = false;
 let studioRemoteKey = '';
 let studioPollTimer = null;
 let studioRemoteStatus = 'missing';
+/* How many times the lookup for one league-week has been deferred for want of
+   league context, and the league-week whose fetch is in flight. Both are keyed
+   so a week or league change starts fresh instead of inheriting the previous
+   view's state, and the count is what keeps a reader sitting on Studio with no
+   league from collecting a console warning every fifteen seconds. */
+let studioRemoteDeferred = { key:'', attempts:0 };
+let studioRemotePending = '';
 
 function studioViewedSeason(){
   return Number(($('seasonYear').value || '').trim()) || Number(uiActiveSeasonYear()) || 2026;
@@ -37506,6 +37513,25 @@ function studioViewedSeason(){
 function studioIsArchivedSeason(){
   return studioViewedSeason() < Number(uiActiveSeasonYear());
 }
+
+/* Why this view cannot MINT a new episode — '' when it can.
+
+     'season'  an archived season. lib/generate-podcast.ts refuses these before
+               auth, the Supabase claim and any ElevenLabs call
+               (HISTORICAL_SEASON_ERROR), so offering the button would only
+               trade a disabled control for a 400.
+     'week'    a completed week of the live season. The board is already in the
+               books; recaps are minted for the week the league is playing.
+
+   Reading an episode is deliberately NOT gated on this. A past week of the live
+   season still has to play the episode its league generated at the time — only
+   generating a new one is locked. */
+function studioGenerationLock(){
+  if(studioIsArchivedSeason()) return 'season';
+  if(effectiveWeek() < currentLeagueWeek()) return 'week';
+  return '';
+}
+const STUDIO_LOCK_MESSAGE = 'Historical weeks and past seasons cannot generate new podcasts.';
 
 function studioStopReel(){
   clearTimeout(studioReelTimer);
@@ -37646,68 +37672,207 @@ async function studioLoadArchive(scope){
 }
 function renderStudio(){
   const scope = `${selectedLeagueId()}:${Number($('seasonYear').value) || uiActiveSeasonYear()}`;
-  const archived = studioIsArchivedSeason();
+  const lock = studioGenerationLock();
+  const archived = lock === 'season';
   if(studioScope !== scope){
     studioScope = scope;
     studioEpisodes.length = 0;
     studioSetEpisode(null);
     studioPaintArchive();
-    if(LeagueData.hasLive()) studioLoadArchive(scope);
+    /* A real league id, not LeagueData.hasLive(): the device archive is keyed by
+       scope, and a reader whose league came from the shared archive rather than
+       a live ESPN fetch has episodes saved under that same scope. */
+    if(/^\d{1,20}$/.test(selectedLeagueId()) || LeagueData.hasLive()) studioLoadArchive(scope);
   }
   const key = `${scope}:${effectiveWeek()}`;
-  if(!archived && LeagueData.hasLive() && ui.screen === 'studio' && studioRemoteKey !== key){
-    studioRemoteKey = key;
-    studioRemoteStatus = 'missing';
-    if(studioCurrent && studioCurrent.week !== effectiveWeek())
-      studioSetEpisode(studioEpisodes.find(row=>row.week === effectiveWeek()) || null);
+  /* The shared-episode lookup needs exactly two things: this league's numeric id
+     and its share token. It used to ALSO require LeagueData.hasLive(), which is
+     precisely what a reader who arrived on an invite link does not have — their
+     only source is the shared archive behind /api/league. Studio therefore
+     skipped the lookup outright and left them on "NO EPISODE YET" over an
+     episode their league had already generated. studioCheckShared() owns the
+     "context is still arriving" case now, and retries instead of giving up.
+
+     The second clause is the return trip: the poll chain stops itself when the
+     reader leaves Studio (studioSchedulePoll refuses to arm off-screen), so a
+     week that was still 'missing' then needs a fresh lookup on the way back —
+     the key alone has not changed. */
+  if(!archived && ui.screen === 'studio' &&
+      (studioRemoteKey !== key ||
+       (!studioPollTimer && !studioRemotePending && studioRemoteStatus === 'missing'))){
+    if(studioRemoteKey !== key){
+      studioRemoteKey = key;
+      studioRemoteDeferred = { key:'', attempts:0 };
+      studioRemoteStatus = 'missing';
+      if(studioCurrent && studioCurrent.week !== effectiveWeek())
+        studioSetEpisode(studioEpisodes.find(row=>row.week === effectiveWeek()) || null);
+    }
     studioCheckShared(key);
+  }
+  if(archived){
+    /* An archived season has nothing to poll for: the endpoint answers a GET
+       for it with HISTORICAL_SEASON_ERROR. A locked WEEK of the live season is
+       different — its episode is real and the poll above keeps running.
+
+       Clearing the remote state matters as much as clearing the timer. It is
+       what the live season last resolved to, and nothing in this branch can
+       refresh it: a reader who left a ready episode and switched to an archived
+       season would otherwise have the GENERATE button HIDDEN behind a stale
+       'ready' (the hero is showing that season's empty player, so there is no
+       play button standing in for it), and would keep whichever status line the
+       live week had left behind. Blanking the key also means the return trip to
+       the live season is a fresh lookup rather than an unchanged key. */
+    clearTimeout(studioPollTimer);
+    studioPollTimer = null;
+    studioRemoteKey = '';
+    studioRemoteDeferred = { key:'', attempts:0 };
+    studioRemoteStatus = 'missing';
+    $('studioStatus').textContent = 'Viewing archived season data.';
   }
   $('studioGenerate').textContent = studioRemoteStatus === 'ready' ? 'EPISODE READY' :
     studioRemoteStatus === 'generating' ? 'GENERATING FOR YOUR LEAGUE…' :
     studioRemoteStatus === 'failed' ? 'EPISODE UNAVAILABLE' : 'GENERATE WEEKLY RECAP';
-  $('studioGenerate').disabled = archived || studioBusy || !LeagueData.hasLive() || studioRemoteStatus !== 'missing';
-  $('studioGenerate').hidden = archived || studioRemoteStatus === 'ready';
-  $('studioArchiveLock').hidden = !archived;
-  if(archived){
-    clearTimeout(studioPollTimer);
-    $('studioStatus').textContent = 'Viewing archived season data.';
-  }
+  /* Disabled, not hidden. A control that vanishes reads as a broken screen; a
+     disabled one beside #studioArchiveLock says what the rule is. Only the
+     'ready' state still hides it, because the hero's play button replaces it. */
+  $('studioGenerate').disabled = !!lock || studioBusy || !LeagueData.hasLive() ||
+    studioRemoteStatus !== 'missing';
+  $('studioGenerate').hidden = studioRemoteStatus === 'ready';
+  $('studioArchiveLock').hidden = !lock;
   if(!studioCurrent && !studioBusy) studioPaintFeed();
+}
+
+/* One owner for the poll timer, so a path that DECLINES to reschedule leaves it
+   null rather than holding a fired id. renderStudio() reads it to decide whether
+   a return to Studio needs a fresh lookup, and a stale id made that read a
+   permanent "a poll is already pending" lie. */
+function studioSchedulePoll(key, delay){
+  clearTimeout(studioPollTimer);
+  studioPollTimer = ui.screen === 'studio' && studioRemoteKey === key
+    ? setTimeout(()=> studioCheckShared(key), delay)
+    : null;
 }
 async function studioCheckShared(key){
   clearTimeout(studioPollTimer);
+  studioPollTimer = null;
+  /* Two callers can arrive at the same key in one tick — renderStudio()'s gate
+     and the renderStudio() that studioGenerate()'s finally block runs — so the
+     in-flight key stops a duplicate GET rather than relying on ordering. */
+  if(studioRemotePending === key) return;
+  const scope = key.slice(0, key.lastIndexOf(':'));
   const [leagueId, season, week] = key.split(':');
   const headers = leagueShareHeaders(leagueId);
-  if(!headers['x-league-token']) return;
+
+  /* ---- LEAGUE CONTEXT STILL ARRIVING ----
+     Neither of these is a failure and neither is permanent:
+
+       - the id is LeagueData.leagueId()'s 'league' placeholder, because boot
+         paints Studio before applyDeepLink() has written the invited league id
+         into #leagueIdInput;
+       - the id is real but this browser holds no token yet, because the invite
+         link's cloud hydrate (adoptCloudRecord -> rememberShareTokenFromRecord)
+         is still in flight, and on a second device that hydrate IS the only
+         thing that will ever produce the token.
+
+     The old code returned here with no status, no retry and studioRemoteKey
+     already latched, so the lookup never ran again: the reader sat on
+     "NO EPISODE YET" until they navigated away and back. Retry once after a
+     second — long enough for the hydrate that is usually already resolving —
+     then say plainly which half is missing and keep a slow poll going. */
+  if(!/^\d{1,20}$/.test(leagueId) || !headers['x-league-token']){
+    if(studioRemoteKey !== key) return;
+    const missing = !/^\d{1,20}$/.test(leagueId)
+      ? 'no league id is on screen yet'
+      : 'this browser holds no share token for league ' + leagueId + ' yet';
+    if(studioRemoteDeferred.key !== key) studioRemoteDeferred = { key, attempts:0 };
+    studioRemoteDeferred.attempts += 1;
+    if(studioRemoteDeferred.attempts === 1){
+      console.warn('[Podcast] Shared episode lookup for ' + key + ' deferred — ' + missing +
+        '. Retrying in 1s while the league context finishes loading.');
+      studioSchedulePoll(key, 1000);
+      return;
+    }
+    /* Said once per league-week, not once per poll: a reader who opens Studio
+       with no league connected would otherwise collect a warning every fifteen
+       seconds for as long as they stayed on the screen. */
+    if(studioRemoteDeferred.attempts === 2){
+      console.warn('[Podcast] Shared episode lookup for ' + key + ' still cannot run — ' + missing +
+        '. Polling every 15s while Studio is open.');
+    }
+    $('studioStatus').textContent = /^\d{1,20}$/.test(leagueId)
+      ? 'Waiting for this league\u2019s access to sync. Save or join the league in Setup if this does not clear.'
+      : 'Connect or join a league in Setup to load its shared episode.';
+    studioSchedulePoll(key, 15000);
+    return;
+  }
+
+  studioRemotePending = key;
   try{
     const params = new URLSearchParams({ leagueId, season, week });
     const response = await fetch(FSNApi.resolve('/api/generate-podcast') + '?' + params, { headers });
-    const data = await response.json();
+    let data = {};
+    try{
+      data = (await response.json()) || {};
+    }catch(parseErr){
+      console.error('[Podcast] The shared episode endpoint answered HTTP ' + response.status +
+        ' for ' + key + ' with a body that is not JSON.', parseErr);
+    }
     if(studioRemoteKey !== key) return;
-    if(!response.ok && response.status !== 202 && response.status !== 409)
-      throw new Error(data.error || 'Could not check league episode');
-    studioRemoteStatus = data.status;
+    if(!response.ok && response.status !== 202 && response.status !== 409){
+      /* The endpoint's own sentence is the only thing that tells the reader
+         WHICH half is wrong: a rejected token (403 "Save or join this league
+         with a valid invite…") reads nothing like a service outage (502). The
+         old code threw here and the catch below replaced every one of those
+         with "Could not check the shared episode. Reopen Studio to retry." —
+         advice that fixes none of them. */
+      const detail = String(data.error || '').trim();
+      console.error('[Podcast] Shared episode lookup for ' + key + ' was refused with HTTP ' +
+        response.status + '.', new Error(detail || 'HTTP ' + response.status));
+      $('studioStatus').textContent = detail ||
+        ('Could not check the shared episode (HTTP ' + response.status + '). Reopen Studio to retry.');
+      studioSchedulePoll(key, 30000);
+      renderStudio();
+      return;
+    }
+    studioRemoteStatus = data.status || 'missing';
     if(data.status === 'ready' && data.episode){
-      const ep = { ...data.episode, audioUrl:data.audioUrl, scope:studioScope,
-        id:`${studioScope}:${week}` };
+      const ep = { ...data.episode, audioUrl:data.audioUrl, scope,
+        id:`${scope}:${week}` };
       const i = studioEpisodes.findIndex(row=>row.id === ep.id);
       if(i >= 0) studioEpisodes.splice(i, 1);
       studioEpisodes.unshift(ep);
-      if(!studioCurrent || studioCurrent.id !== ep.id || studioCurrent.audioUrl !== ep.audioUrl)
+      /* Adopt whatever cloud sync just resolved, including the case the old
+         condition missed: a device-archive row with the SAME id and the same
+         (absent) audioUrl already loaded into the player. That row carries the
+         headlines but no cloud audio, so an invited reader on a second device
+         saw the script beside a dead play button. Checking the element's own
+         src is what makes "the player is actually on this audio" the test. */
+      if(!studioCurrent || studioCurrent.id !== ep.id ||
+         studioCurrent.audioUrl !== ep.audioUrl ||
+         !Array.isArray(studioCurrent.lines) || !studioCurrent.lines.length ||
+         !studioAudio.src)
         studioSetEpisode(ep);
       studioPaintArchive();
       $('studioStatus').textContent = 'Shared episode ready for everyone in this league.';
     }else if(data.status === 'generating'){
       $('studioStatus').textContent = 'A league member is generating this episode. It will appear here shortly.';
-      if(ui.screen === 'studio') studioPollTimer = setTimeout(()=> studioCheckShared(key), 4000);
-    }else if(data.status === 'missing' && ui.screen === 'studio'){
-      studioPollTimer = setTimeout(()=> studioCheckShared(key), 15000);
-    }else if(data.status === 'failed') $('studioStatus').textContent = data.error;
+      studioSchedulePoll(key, 4000);
+    }else if(data.status === 'missing'){
+      studioSchedulePoll(key, 15000);
+    }else if(data.status === 'failed'){
+      $('studioStatus').textContent = data.error ||
+        'Episode generation needs administrator review.';
+    }
     renderStudio();
   }catch(err){
-    console.warn('[Podcast] Shared episode lookup failed', err);
-    if(studioRemoteKey === key) $('studioStatus').textContent = 'Could not check the shared episode. Reopen Studio to retry.';
-    if(studioRemoteKey === key && ui.screen === 'studio') studioPollTimer = setTimeout(()=> studioCheckShared(key), 15000);
+    /* Only a genuine transport failure reaches here now — DNS, offline, an
+       aborted request. Every HTTP answer is handled above with its own words. */
+    console.error('[Podcast] Shared episode lookup for ' + key + ' could not reach the network.', err);
+    if(studioRemoteKey !== key) return;
+    $('studioStatus').textContent = 'Could not reach the shared episode service. Retrying\u2026';
+    studioSchedulePoll(key, 15000);
+  }finally{
+    if(studioRemotePending === key) studioRemotePending = '';
   }
 }
 function studioTime(seconds){
@@ -37790,8 +37955,12 @@ async function studioGenerate(){
   const scope = studioScope;
   const week = effectiveWeek();
   const year = Number($('seasonYear').value) || uiActiveSeasonYear();
-  if(year < Number(uiActiveSeasonYear())){
-    $('studioStatus').textContent = 'Audio recaps are locked for archived seasons.';
+  /* The same rule the button state renders, enforced on the action itself: the
+     button can be re-enabled by a render that lands between a tap and this
+     call, and for an archived season the endpoint would refuse the POST anyway
+     (HISTORICAL_SEASON_ERROR) after the reader had already watched a spinner. */
+  if(studioGenerationLock()){
+    $('studioStatus').textContent = STUDIO_LOCK_MESSAGE;
     renderStudio();
     return;
   }
