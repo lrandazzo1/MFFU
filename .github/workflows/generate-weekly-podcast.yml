@@ -50,14 +50,30 @@ on:
         description: Week override. Leave blank to use PODCAST_TARGET_WEEK.
         type: string
         required: false
-      dry_run:
-        description: Resolve the leagues and report what would be generated, without generating.
-        type: boolean
-        default: false
-      script_only:
-        description: Build and store the four segments with no audio (spends nothing at ElevenLabs).
-        type: boolean
-        default: false
+      # ---- ONE `choice`, NOT TWO BOOLEANS, AND IT DEFAULTS TO DRY ----
+      #
+      # A manual dispatch used to take `dry_run` and `script_only` as
+      # `type: boolean` with `default: false`. Dispatching that through the REST
+      # API with JSON *strings* ("true"/"false") rather than JSON booleans makes
+      # GitHub discard the values and fall back to the declared defaults — so a
+      # run asked for as a dry run arrived as DRY_RUN=0 and generated real
+      # audio, billed ElevenLabs and wrote a real episode. That happened once.
+      #
+      # Two changes so it cannot happen again. `choice` values are strings, so
+      # they survive an API dispatch intact. And the default is the SAFE mode:
+      # a dropped, empty or unrecognised value now means "write nothing", while
+      # spending money requires naming `live` explicitly. The Tuesday schedule
+      # is forced to `live` in the env block below, so the fail-safe default
+      # costs the real run nothing.
+      mode:
+        description: What this manual run should do.
+        type: choice
+        default: dry_run
+        required: true
+        options:
+          - dry_run      # resolve leagues and idempotency, write nothing, spend nothing
+          - script_only  # store the four segments, no audio, no ElevenLabs spend
+          - live         # synthesize audio and spend at ElevenLabs
 
 permissions:
   contents: read
@@ -79,14 +95,28 @@ jobs:
           BASE_URL: ${{ vars.ARTICLE_CRON_BASE_URL || 'https://app.fantasysportsnetwork.app' }}
           SEASON: ${{ inputs.season }}
           WEEK: ${{ inputs.week }}
-          DRY_RUN: ${{ inputs.dry_run && '1' || '0' }}
-          SCRIPT_ONLY: ${{ inputs.script_only && '1' || '0' }}
+          # The schedule carries no inputs, so it names its own mode. Any manual
+          # run uses what was chosen, and the shell below treats anything it
+          # does not recognise as a dry run.
+          MODE: ${{ github.event_name == 'schedule' && 'live' || inputs.mode }}
         run: |
           set -euo pipefail
           if [ -z "${CRON_SECRET:-}" ]; then
             echo "::error title=CRON_SECRET missing::Set the CRON_SECRET repository secret to the value used in the Vercel project."
             exit 1
           fi
+
+          # Fail safe: the wildcard is DRY. An empty or unexpected MODE writes
+          # nothing and spends nothing rather than defaulting to a billable run.
+          case "${MODE:-}" in
+            live)        DRY_RUN=0; SCRIPT_ONLY=0 ;;
+            script_only) DRY_RUN=0; SCRIPT_ONLY=1 ;;
+            dry_run)     DRY_RUN=1; SCRIPT_ONLY=0 ;;
+            *)
+              echo "::warning title=Unrecognised mode::MODE='${MODE:-}' is not one of live, script_only, dry_run. Running as a dry run."
+              DRY_RUN=1; SCRIPT_ONLY=0 ;;
+          esac
+          echo "mode=${MODE:-} -> dry_run=${DRY_RUN} script_only=${SCRIPT_ONLY}"
 
           url="${BASE_URL%/}/api/cron/generate-weekly-podcast?dry_run=${DRY_RUN}&script_only=${SCRIPT_ONLY}"
           [ -n "${SEASON:-}" ] && url="${url}&season=${SEASON}"
@@ -116,6 +146,15 @@ jobs:
 
           if [ "$status" != "200" ]; then
             echo "::error title=Podcast run failed::The endpoint returned HTTP $status."
+            exit 1
+          fi
+
+          # The route's own view of what it did. If this disagrees with the mode
+          # that was asked for, the flag did not survive the trip and the run
+          # may have spent money it was not meant to — say so loudly.
+          reported_dry=$(jq -r '.dry_run // false' response.json)
+          if [ "$DRY_RUN" = "1" ] && [ "$reported_dry" != "true" ]; then
+            echo "::error title=Dry run was not honoured::A dry run was requested but the endpoint reported dry_run=$reported_dry. Treat this run as live and check podcast_episode_runs for spend."
             exit 1
           fi
 
