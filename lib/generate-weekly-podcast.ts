@@ -108,6 +108,8 @@ export interface PodcastRunSummary {
   run_id: string;
   target_week: string;
   leagues: number;
+  /** The single league this run was narrowed to, or null for the full sweep. */
+  league: string | null;
   created: number;
   skipped: number;
   failed: number;
@@ -147,6 +149,24 @@ export interface PodcastRunInput {
   script_only?: boolean;
   run_id?: string;
   budget_ms?: number;
+  /**
+   * Narrow the run to ONE league id, instead of every active league.
+   *
+   * Absent — the default, and what the Tuesday schedule uses — every active
+   * league is swept exactly as before. This changes nothing for that run.
+   *
+   * Present, it is a spend bound rather than a convenience. Re-generating one
+   * league's episode through the unfiltered sweep also generates one for every
+   * other active league that happens to have no row for that week yet, at one
+   * ElevenLabs call per dialogue turn each, and publishes episodes to leagues
+   * whose members never asked for one. A regeneration is a single-league
+   * operation, so it gets a single-league switch.
+   *
+   * A league that is not active for the season is reported as such; it is not
+   * silently an empty run, because "nothing happened" and "you named a league
+   * this season does not have" need different answers.
+   */
+  league?: string | null;
 }
 
 export interface PodcastRunDependencies {
@@ -154,6 +174,12 @@ export interface PodcastRunDependencies {
   req?: any;
   /** Which script to build. Defaults to 'news'. */
   format?: PodcastScriptFormat;
+  /** The season's active leagues. Defaults to `activeLeagueIds(db, season)`.
+   *  Swapped in tests, and honoured rather than ignored so a caller that hands
+   *  over a league list gets that list — scripts/generate-podcast.mjs passed one
+   *  and it was silently dropped, which meant `--league` on a live CLI run swept
+   *  every league and billed for all of them. */
+  listLeagues?: (db: any, season: number) => Promise<string[]>;
   /** Swapped in tests so the local payload can be supplied without a database. */
   readNewsPayload?: (leagueId: string, season: number, week: number) => Promise<NewsPayload | null>;
   /** Swapped in tests. Production reads ESPN through `api/espn`. */
@@ -569,7 +595,25 @@ export async function runWeeklyPodcastCron(
   const scriptOnly = !!input.script_only;
   const format: PodcastScriptFormat = input.format === 'segments' ? 'segments' : 'news';
 
-  const leagueIds = await activeLeagueIds(db, season);
+  const requestedLeague = String(input.league == null ? '' : input.league).trim();
+  if (requestedLeague && !/^\d{1,20}$/.test(requestedLeague)) {
+    throw fail('league must be a numeric ESPN league id', 400);
+  }
+
+  const allLeagueIds = await (dependencies.listLeagues
+    ? dependencies.listLeagues(db, season)
+    : activeLeagueIds(db, season));
+  if (requestedLeague && !allLeagueIds.includes(requestedLeague)) {
+    throw fail(
+      'League ' + requestedLeague + ' is not an active league for ' + season +
+        ', so there is nothing to generate for it.',
+      404,
+    );
+  }
+  /* The filter is applied to the league list itself, so every count in the
+     summary — leagues, skipped, not_attempted — describes the scoped run and
+     not the league table. */
+  const leagueIds = requestedLeague ? [requestedLeague] : allLeagueIds;
   const already = await leaguesAlreadyRecorded(db, season, week);
   const pending = leagueIds.filter((id) => !already.has(id));
 
@@ -579,6 +623,7 @@ export async function runWeeklyPodcastCron(
     run_id: runId,
     target_week: boundary.value,
     leagues: leagueIds.length,
+    league: requestedLeague || null,
     created: 0,
     skipped: leagueIds.length - pending.length,
     failed: 0,
@@ -812,6 +857,9 @@ export default async function handler(req: any, res: any): Promise<void> {
         week,
         dry_run: flag(req, 'dry_run'),
         script_only: flag(req, 'script_only'),
+        /* Optional. Omitted, the run sweeps every active league exactly as the
+           Tuesday schedule does; named, it touches that league and no other. */
+        league: queryParam(req, 'league').trim() || null,
         /* The shared cron function slot is configured for 60s in vercel.json
            and is killed at it. Leave a margin so the summary survives. */
         budget_ms: 50000,

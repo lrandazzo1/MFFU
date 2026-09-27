@@ -281,19 +281,24 @@ async function runLive() {
     console.log('[generate-podcast] LIVE — this will call ElevenLabs and write to Supabase.');
   }
 
+  /* --league is a spend bound, not a convenience: the unfiltered sweep bills one
+     ElevenLabs call per dialogue turn for every active league that has no row
+     for this week. It travels as a run INPUT — the run validates it against the
+     active leagues and reports it in the summary. It used to be passed as a
+     `listLeagues` dependency the run did not read, so it was silently ignored
+     and a live `--league` run swept everything. */
   const league = value('league');
   const summary = await cron.runWeeklyPodcastCron(
     {
       season,
       week,
+      league: league || null,
       dry_run: dryRun,
       script_only: scriptOnly,
       format: value('format') === 'segments' ? 'segments' : 'news',
       run_id: `cli-${season}-w${week}-${new Date().toISOString().slice(0, 10)}`,
     },
-    league
-      ? { listLeagues: async () => [String(league)] }
-      : {},
+    {},
   );
 
   console.log('\n[generate-podcast] ' + JSON.stringify(summary, null, 2));

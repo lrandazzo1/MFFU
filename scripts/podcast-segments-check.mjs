@@ -821,6 +821,93 @@ await (async () => {
 })();
 
 /* ==========================================================================
+   7b. A run can be scoped to one league
+   ==========================================================================
+
+   The sweep is right for a schedule and wrong for a re-generation: it also
+   builds, publishes and bills for every OTHER active league that happens to
+   have no row for that week. `league` bounds that. */
+
+await (async () => {
+  synthCalls = 0;
+  const scopedDb = makeDb({ leagues: ['100001', '100002', '100003'] });
+  let scoped;
+  await withEnv({ PODCAST_TARGET_WEEK: '2', ELEVENLABS_API_KEY: 'k' }, async () => {
+    scoped = await cron.runWeeklyPodcastCron({ season: 2026, league: '100002' }, deps(scopedDb));
+  });
+  check('league=<id> generates for that league and no other', () => {
+    assert.equal(scoped.league, '100002');
+    assert.equal(scoped.leagues, 1, 'the summary counts leagues outside the scope');
+    assert.equal(scoped.created, 1, JSON.stringify(scoped.results));
+    const ids = [...scopedDb._episodes.values()].map((r) => String(r.league_id));
+    assert.deepEqual(ids, ['100002'], 'a league outside the scope got an episode: ' + ids.join(','));
+    assert.deepEqual([...scopedDb._uploads.keys()], ['100002/2026/2.mp3']);
+  });
+
+  check('an unscoped run still sweeps every active league', () => {
+    /* The default must not change: the Tuesday schedule depends on it. */
+    assert.equal(scoped.league, '100002');
+  });
+  synthCalls = 0;
+  const sweepDb = makeDb({ leagues: ['100001', '100002', '100003'] });
+  let sweep;
+  await withEnv({ PODCAST_TARGET_WEEK: '2', PODCAST_CRON_MAX_LEAGUES: '5', ELEVENLABS_API_KEY: 'k' }, async () => {
+    sweep = await cron.runWeeklyPodcastCron({ season: 2026 }, deps(sweepDb));
+  });
+  check('a run with no league named reports a null scope and sweeps all three', () => {
+    assert.equal(sweep.league, null);
+    assert.equal(sweep.leagues, 3);
+    assert.equal(sweep.created, 3, JSON.stringify(sweep.results));
+  });
+
+  /* A league that is not active is refused, not run as an empty sweep. */
+  synthCalls = 0;
+  const strangerDb = makeDb({ leagues: ['100001'] });
+  let refused = null;
+  await withEnv({ PODCAST_TARGET_WEEK: '2', ELEVENLABS_API_KEY: 'k' }, async () => {
+    try {
+      await cron.runWeeklyPodcastCron({ season: 2026, league: '999999' }, deps(strangerDb));
+    } catch (err) { refused = err; }
+  });
+  check('a league that is not active for the season is refused with 404', () => {
+    assert.ok(refused, 'an unknown league was not refused');
+    assert.equal(Number(refused.status), 404);
+    assert.match(String(refused.message), /not an active league/);
+    assert.equal(synthCalls, 0);
+    assert.equal(strangerDb._episodes.size, 0);
+  });
+
+  synthCalls = 0;
+  let malformed = null;
+  await withEnv({ PODCAST_TARGET_WEEK: '2', ELEVENLABS_API_KEY: 'k' }, async () => {
+    try {
+      await cron.runWeeklyPodcastCron({ season: 2026, league: 'all' }, deps(makeDb()));
+    } catch (err) { malformed = err; }
+  });
+  check('a non-numeric league is refused before the league sweep', () => {
+    assert.ok(malformed, 'league=all was accepted');
+    assert.equal(Number(malformed.status), 400);
+    assert.equal(synthCalls, 0);
+  });
+
+  /* The dependency the CLI hands over must actually be read. It used to be
+     ignored, so `--league` on a live CLI run swept every league and billed for
+     all of them. */
+  let asked = 0;
+  const depDb = makeDb({ leagues: ['100001', '100002'] });
+  let depRun;
+  await withEnv({ PODCAST_TARGET_WEEK: '2', ELEVENLABS_API_KEY: 'k' }, async () => {
+    depRun = await cron.runWeeklyPodcastCron({ season: 2026, dry_run: true }, deps(depDb, {
+      listLeagues: async () => { asked += 1; return ['100009']; },
+    }));
+  });
+  check('a listLeagues dependency is honoured rather than silently dropped', () => {
+    assert.equal(asked, 1, 'listLeagues was never called');
+    assert.equal(depRun.leagues, 1, 'the run used the league table instead of the supplied list');
+  });
+})();
+
+/* ==========================================================================
    8. The Studio button and the Tuesday cron produce the same script
    ==========================================================================
 
