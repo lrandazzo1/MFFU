@@ -210,8 +210,11 @@ export function segmentIndexMovers(input: BuildScriptInput): PodcastSegment {
         'STU',
         'And the other direction, Dan: ' +
           fallers +
+          /* A faller's delta, because the sentence is about falling. Quoting
+             the lead mover here put "you do not move 5 spots on one bad Sunday"
+             immediately after naming a 5-spot CLIMB. */
           '. Remember what the index is measuring — all-play record, scoring, consistency and schedule. You do not move ' +
-          spots(lead.rankDelta) +
+          spots(down.length ? down[0].rankDelta : lead.rankDelta) +
           ' on one bad Sunday unless the rest of it was already thin.',
       ),
     ],
@@ -286,8 +289,16 @@ export function segmentBigPerformers(input: BuildScriptInput): PodcastSegment {
         'Segment two, big performers. Top of the board: ' +
           performerPhrase(lead) +
           '.' +
+          /* Raw numbers for the supporting names. performerPhrase() appends a
+             projection clause, and three of those in one breath reads as
+             "beating his projection by 5, beating his projection by 5, beating
+             his projection by 5" whenever the deltas happen to match. The lead
+             keeps its clause, where the comparison is the story. */
           (support.length
-            ? ' Behind him, ' + support.map((row) => performerPhrase(row)).join(', and ') + '.'
+            ? ' Behind him, ' +
+              support
+                .map((row) => row.player_name + ' put up ' + say(row.player_points) + ' for ' + row.owner_team)
+                .join(', and ') + '.'
             : ''),
       ),
       line(

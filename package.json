@@ -23,6 +23,7 @@
     "check:storyreel": "node scripts/story-reel-check.mjs",
     "check:podcast-lock": "node scripts/podcast-lock-check.mjs",
     "build:podcast": "tsc -p tsconfig.podcast.json",
+    "generate:podcast": "node scripts/generate-podcast.mjs",
     "check:podcast-segments": "npm run build:podcast && node scripts/podcast-segments-check.mjs",
     "check:studio": "node scripts/studio-episode-check.mjs",
     "check:localdesk": "node scripts/local-desk-check.mjs",
