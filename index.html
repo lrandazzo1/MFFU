@@ -37790,7 +37790,7 @@ async function studioGenerate(){
     const response = await fetch(FSNApi.resolve('/api/generate-podcast'), {
       method:'POST', headers:{ 'Content-Type':'application/json', ...headers },
       body:JSON.stringify({ leagueId:selectedLeagueId(), season:year, week,
-        title:draft.title, stories:draft.stories, lines:draft.lines }),
+        title:draft.title, stories:draft.stories, visuals:draft.visuals, lines:draft.lines }),
     });
     const result = await response.json();
     if(studioScope !== scope) return;

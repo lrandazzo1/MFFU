@@ -128,7 +128,7 @@ export default async function handler(req: Request, res: Response) {
       (req.method === 'POST' && (!Array.isArray(lines) || lines.length < 2 || lines.length > 6 ||
         !lines.every(line => line && podcastHost(line.host) &&
           typeof line.text === 'string' && line.text.length >= 5 && line.text.length <= 450) ||
-        JSON.stringify(payload).length > 12000))) {
+        JSON.stringify(payload).length > 24000))) {
     return res.status(400).json({ error: 'Invalid episode request or missing league access' });
   }
   try {
@@ -193,7 +193,8 @@ export default async function handler(req: Request, res: Response) {
       if (uploaded.error) throw uploaded.error;
       const audioUrl = client.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
       const episode = { title: String(payload.title || `Week ${week} Recap`).slice(0, 180),
-        lines, stories: Array.isArray(payload.stories) ? payload.stories.slice(0, 10) : [], markers,
+        lines, stories: Array.isArray(payload.stories) ? payload.stories.slice(0, 10) : [],
+        visuals: Array.isArray(payload.visuals) ? payload.visuals.slice(0, 10) : [], markers,
         week, year: season, leagueId: id, createdAt: Date.now() };
       const saved = await client.from('podcast_episodes').update({
         status: 'ready', episode, audio_url: audioUrl, updated_at: new Date().toISOString(),
