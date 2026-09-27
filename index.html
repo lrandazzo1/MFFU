@@ -37839,7 +37839,12 @@ document.querySelectorAll('[data-studio-tab]').forEach(btn=> btn.addEventListene
 $('studioFeed').addEventListener('click', e=>{
   const nav = e.target.closest('[data-studio-nav]');
   if(studioIgnoreClick){ studioIgnoreClick = false; return; }
-  if(nav) studioMoveReel(nav.dataset.studioNav === 'prev' ? -1 : 1);
+  if(nav){ studioMoveReel(nav.dataset.studioNav === 'prev' ? -1 : 1); return; }
+  const card = e.target.closest('.studio-reel');
+  if(card && !e.target.closest('button, a')){
+    const box = card.getBoundingClientRect();
+    studioMoveReel(e.clientX < box.left + box.width / 2 ? -1 : 1);
+  }
 });
 $('studioFeed').addEventListener('pointerdown', e=>{
   if(e.target.closest('.studio-reel')){
