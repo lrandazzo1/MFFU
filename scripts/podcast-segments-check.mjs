@@ -743,6 +743,34 @@ check('the Tuesday schedule exists and fires at 10:00 UTC on a Tuesday', () => {
   assert.match(workflow, /CRON_SECRET/, 'the workflow does not present CRON_SECRET');
 });
 
+check('a manual dispatch defaults to a dry run, and only the schedule is live', () => {
+  /* A `type: boolean` input dispatched through the REST API with a JSON string
+     is discarded by GitHub, which falls back to the declared default. With
+     `default: false` on dry_run that turned a requested dry run into a real
+     billable one — it happened once, for league 1915228840: 8 ElevenLabs calls
+     and a 2.1 MB MP3. `choice` values are strings and survive the trip, and the
+     default is now the safe mode. */
+  const workflowRaw = readFileSync(join(root, '.github/workflows/generate-weekly-podcast.yml'), 'utf8');
+  /* Statements only. The comment above the input explains the boolean trap by
+     name, and matching that would flag the explanation as the defect. */
+  const workflow = workflowRaw.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+  assert.match(workflow, /mode:\s*\n\s*description:[^\n]*\n\s*type:\s*choice/,
+    'the manual dispatch no longer takes a single `mode` choice input');
+  assert.match(workflow, /type:\s*choice[\s\S]{0,120}default:\s*dry_run/,
+    'the manual dispatch does not default to dry_run');
+  assert.ok(
+    !/type:\s*boolean/.test(workflow),
+    'a boolean input is back; API dispatches drop those and fall back to the default',
+  );
+  assert.match(workflow, /github\.event_name == 'schedule' && 'live'/,
+    'the schedule does not force live mode, so the Tuesday run would be a dry run');
+  /* The wildcard branch must be the dry one. */
+  assert.match(workflow, /\*\)\s*\n[\s\S]{0,240}?DRY_RUN=1/,
+    'an unrecognised mode does not fall back to a dry run');
+  assert.match(workflowRaw, /Dry run was not honoured/,
+    'the workflow does not verify the route actually honoured the dry run');
+});
+
 console.log(
   failures
     ? '\n[podcast-segments-check] FAILED: ' + failures + ' assertion(s)'
