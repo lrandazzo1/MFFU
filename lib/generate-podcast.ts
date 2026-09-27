@@ -6,8 +6,8 @@ type Line = { host: 'DAN' | 'STU' | 'MARK' | 'SULLY'; text: string };
 type Request = { method?: string; headers: Record<string, string | undefined>; body?: unknown };
 type Response = { status(code: number): Response; json(data: unknown): void; setHeader(key: string, value: string): void; end(data?: Buffer): void };
 
-const cooldowns = new Map<string, number>();
 const TOKEN_RE = /^[A-Za-z0-9_-]{32,128}$/;
+const BUCKET = 'podcast-episodes';
 const DEFAULT_DAN_VOICE_ID = 'T9EcMlwa9Tz1Qri0md9E';
 const DEFAULT_STU_VOICE_ID = 'gzpdkRXvSsVFesfPP5i7';
 const ALLOWED_ORIGINS = new Set([
@@ -79,13 +79,16 @@ export function stitchPodcastMp3(segments: Buffer[]): Buffer {
   return Buffer.concat(audio);
 }
 
-async function authorizedLeague(leagueId: string, token: string): Promise<boolean> {
-  const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) throw new Error('League authorization is not configured');
-  const client = createClient(url, key, { auth: { persistSession: false } });
+function podcastDb() {
+  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY)
+    throw new Error('Podcast storage is not configured');
+  return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY,
+    { auth: { persistSession: false } });
+}
+
+async function authorizedLeague(client: ReturnType<typeof podcastDb>, leagueId: string, token: string, season: number): Promise<boolean> {
   const { data, error } = await client.from('leagues').select('share_token')
-    .eq('league_id', leagueId).not('share_token', 'is', null).limit(50);
+    .eq('league_id', leagueId).eq('season_year', season).not('share_token', 'is', null).limit(1);
   if (error) throw error;
   return (data || []).some(row => {
     const expected = String(row.share_token || '');
@@ -100,13 +103,10 @@ export default async function handler(req: Request, res: Response) {
   const origin = String(req.headers.origin || '');
   if (ALLOWED_ORIGINS.has(origin)) res.setHeader('Access-Control-Allow-Origin', origin);
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, x-league-token');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   if (req.method === 'OPTIONS') return res.status(204).end();
-  if (req.method !== 'POST') return res.status(405).json({ error: 'POST required' });
+  if (req.method !== 'POST' && req.method !== 'GET') return res.status(405).json({ error: 'GET or POST required' });
   if (origin && !ALLOWED_ORIGINS.has(origin)) return res.status(403).json({ error: 'Origin not allowed' });
-  if (!process.env.ELEVENLABS_API_KEY) {
-    return res.status(503).json({ error: 'Podcast audio is not configured yet' });
-  }
 
   let body: unknown;
   try { body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body; }
@@ -115,44 +115,102 @@ export default async function handler(req: Request, res: Response) {
     return res.status(400).json({ error: 'Invalid JSON body' });
   }
   const payload = body && typeof body === 'object' ? body as Record<string, unknown> : {};
+  const query = (req as Request & { query?: Record<string, string> }).query || {};
   const leagueId = String(payload.leagueId || '');
   const token = String(req.headers['x-league-token'] || '');
-  const lines = payload.lines;
-  if (!/^\d{1,20}$/.test(leagueId) || !TOKEN_RE.test(token) ||
-      !Array.isArray(lines) || lines.length < 2 || lines.length > 6 ||
-      !lines.every((line: Line) => line && podcastHost(line.host) &&
-        typeof line.text === 'string' && line.text.length >= 5 && line.text.length <= 450) ||
-      JSON.stringify(payload).length > 4000) {
+  const id = req.method === 'GET' ? String(query.leagueId || '') : leagueId;
+  const season = Number(req.method === 'GET' ? query.season : payload.season);
+  const week = Number(req.method === 'GET' ? query.week : payload.week);
+  const lines = payload.lines as Line[];
+  if (!/^\d{1,20}$/.test(id) || !TOKEN_RE.test(token) ||
+      !Number.isInteger(season) || season < 1990 || season > 2100 ||
+      !Number.isInteger(week) || week < 1 || week > 18 ||
+      (req.method === 'POST' && (!Array.isArray(lines) || lines.length < 2 || lines.length > 6 ||
+        !lines.every(line => line && podcastHost(line.host) &&
+          typeof line.text === 'string' && line.text.length >= 5 && line.text.length <= 450) ||
+        JSON.stringify(payload).length > 12000))) {
     return res.status(400).json({ error: 'Invalid episode request or missing league access' });
   }
   try {
-    if (!await authorizedLeague(leagueId, token)) {
+    const client = podcastDb();
+    if (!await authorizedLeague(client, id, token, season)) {
       return res.status(403).json({ error: 'Save or join this league with a valid invite before generating audio' });
     }
-    const cooldownKey = leagueId + ':' + token;
-    const now = Date.now();
-    if ((cooldowns.get(cooldownKey) || 0) > now) {
-      return res.status(429).json({ error: 'An episode was just generated. Try again in a few minutes.' });
+    const selector = () => client.from('podcast_episodes').select('status,episode,audio_url,created_at')
+      .eq('league_id', id).eq('season', season).eq('week', week).maybeSingle();
+    const reply = async (row: { status: string; episode: unknown; audio_url: string | null; created_at?: string } | null) => {
+      if (!row) return res.status(200).json({ status: 'missing' });
+      if (row.status === 'ready') return res.status(200).json({ status: 'ready', episode: row.episode, audioUrl: row.audio_url });
+      if (row.status === 'generating') {
+        // Vercel invocations cannot run for ten minutes. A crashed invocation
+        // must stop polling, but must never silently start a second TTS bill.
+        if (row.created_at && Date.now() - Date.parse(row.created_at) > 10 * 60 * 1000) {
+          const stale = await client.from('podcast_episodes').update({ status:'failed',
+            updated_at:new Date().toISOString() }).eq('league_id', id).eq('season', season)
+            .eq('week', week).eq('status', 'generating');
+          if (stale.error) throw stale.error;
+          return res.status(409).json({ status:'failed', error:'Episode generation needs administrator review.' });
+        }
+        res.setHeader('Retry-After', '4');
+        return res.status(202).json({ status: 'generating' });
+      }
+      return res.status(409).json({ status: 'failed', error: 'Episode generation needs administrator review.' });
+    };
+    const existing = await selector();
+    if (existing.error) throw existing.error;
+    if (existing.data || req.method === 'GET') return reply(existing.data);
+    if (!process.env.ELEVENLABS_API_KEY) return res.status(503).json({ error: 'Podcast audio is not configured yet' });
+
+    // The database primary key is the cross-instance mutex. An insert loser
+    // observes the winner's generating/ready status and never calls ElevenLabs.
+    const claim = await client.from('podcast_episodes').insert({
+      league_id: id, season, week, status: 'generating',
+    });
+    if (claim.error) {
+      if (claim.error.code !== '23505') throw claim.error;
+      const winner = await selector();
+      if (winner.error) throw winner.error;
+      return reply(winner.data);
     }
-    cooldowns.set(cooldownKey, now + 5 * 60 * 1000);
-    // Keep each speaker turn intact until its standalone duration metadata is
-    // removed; only then join the frames into one seekable episode.
-    const segments: Buffer[] = [];
-    const voices = podcastVoiceIds();
-    for (const line of lines as Line[]) {
-      const voiceId = voices[podcastHost(line.host)!];
-      const stream = await generateHostAudio(line.text, voiceId);
-      const chunks: Buffer[] = [];
-      for await (const chunk of stream) chunks.push(Buffer.from(chunk));
-      segments.push(Buffer.concat(chunks));
+    try {
+      const segments: Buffer[] = [];
+      const markers: number[] = [];
+      const voices = podcastVoiceIds();
+      for (const line of lines) {
+        const voiceId = voices[podcastHost(line.host)!];
+        const stream = await generateHostAudio(line.text, voiceId);
+        const chunks: Buffer[] = [];
+        for await (const chunk of stream) chunks.push(Buffer.from(chunk));
+        segments.push(Buffer.concat(chunks));
+        // 128 kbps output: each byte represents 1/16000 second. Markers are
+        // turn boundaries, so slides follow the spoken dialogue where possible.
+        markers.push(stitchPodcastMp3(segments).length / 16000);
+      }
+      const audio = stitchPodcastMp3(segments);
+      const path = `${id}/${season}/${week}.mp3`;
+      const uploaded = await client.storage.from(BUCKET).upload(path, audio,
+        { contentType: 'audio/mpeg', upsert: false });
+      if (uploaded.error) throw uploaded.error;
+      const audioUrl = client.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+      const episode = { title: String(payload.title || `Week ${week} Recap`).slice(0, 180),
+        lines, stories: Array.isArray(payload.stories) ? payload.stories.slice(0, 10) : [], markers,
+        week, year: season, leagueId: id, createdAt: Date.now() };
+      const saved = await client.from('podcast_episodes').update({
+        status: 'ready', episode, audio_url: audioUrl, updated_at: new Date().toISOString(),
+      }).eq('league_id', id).eq('season', season).eq('week', week).eq('status', 'generating').select('status').single();
+      if (saved.error) throw saved.error;
+      return res.status(200).json({ status: 'ready', episode, audioUrl });
+    } catch (err) {
+      // A failed claim stays in the table. Retrying automatically after an
+      // ambiguous provider/storage failure could bill for a second episode.
+      const failed = await client.from('podcast_episodes').update({ status: 'failed',
+        updated_at: new Date().toISOString() }).eq('league_id', id).eq('season', season)
+        .eq('week', week).eq('status', 'generating');
+      if (failed.error) console.error('[Podcast] Could not record failed claim', failed.error);
+      throw err;
     }
-    const audio = stitchPodcastMp3(segments);
-    res.setHeader('Content-Type', 'audio/mpeg');
-    res.setHeader('Content-Length', String(audio.length));
-    return res.status(200).end(audio);
   } catch (err) {
-    if (TOKEN_RE.test(token) && /^\d{1,20}$/.test(leagueId)) cooldowns.delete(leagueId + ':' + token);
-    console.error('[Podcast] ElevenLabs generation or league validation failed', err);
-    return res.status(502).json({ error: 'Episode generation failed. Please try again.' });
+    console.error('[Podcast] Episode lookup or generation failed', err);
+    return res.status(502).json({ error: 'Episode service failed. Please check status or contact support.' });
   }
 }

@@ -3971,6 +3971,12 @@ body.fsn-dd-lock{ overflow:hidden; }
 .sv-seg > i{ display:block; height:100%; width:0; border-radius:2px; background:var(--off); }
 .sv-seg[data-state="done"] > i{ width:100%; }
 .sv-seg[data-state="active"] > i{ animation:svFill var(--sv-dur,7000ms) linear forwards; }
+#storyViewer[data-held="true"] .sv-seg[data-state="active"] > i{ animation-play-state:paused; }
+.studio-reel .sv-progress{ padding:0 0 13px; }
+#studioGenerate[hidden]{ display:none !important; }
+.studio-reel[data-held="true"] .sv-seg[data-state="active"] > i{ animation-play-state:paused; }
+.studio-reel-nav{ display:flex; gap:10px; margin-top:16px; }
+.studio-reel-nav button{ flex:1; padding:12px; border:1px solid var(--line-2); border-radius:10px; color:var(--cyan); font-size:11px; font-weight:700; }
 @keyframes svFill{ from{ width:0; } to{ width:100%; } }
 .sv-head{
   flex:none; display:flex; align-items:center; gap:10px;
@@ -4003,8 +4009,8 @@ body.fsn-dd-lock{ overflow:hidden; }
   background:transparent; border:0; padding:0;
   -webkit-tap-highlight-color:transparent;
 }
-.sv-tap[data-story-nav="prev"]{ left:0; width:30%; }
-.sv-tap[data-story-nav="next"]{ right:0; width:30%; }
+.sv-tap[data-story-nav="prev"]{ left:0; width:50%; }
+.sv-tap[data-story-nav="next"]{ right:0; width:50%; }
 .sv-hint{
   flex:none; text-align:center; position:relative; z-index:6;
   font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:#3b4657;
@@ -26326,6 +26332,11 @@ const STORY_TONES = {
 let storyReel = [];
 let storyViewerIndex = 0;
 let storyViewerTimer = null;
+let storyViewerRemaining = 0;
+let storyViewerStarted = 0;
+let storyViewerHeld = false;
+let storyViewerPressAt = 0;
+let storyViewerIgnoreClick = false;
 const STORY_VIEWER_MS = 7000;
 
 function storyPrefersReducedMotion(){
@@ -27233,6 +27244,20 @@ function renderStoryProgress(duration){
 function clearStoryTimer(){
   if(storyViewerTimer){ clearTimeout(storyViewerTimer); storyViewerTimer = null; }
 }
+function pauseStoryViewer(){
+  if(storyViewerHeld || $('storyViewer').dataset.open !== 'true') return;
+  storyViewerHeld = true;
+  storyViewerRemaining = Math.max(0, storyViewerRemaining - (performance.now() - storyViewerStarted));
+  clearStoryTimer();
+  $('storyViewer').dataset.held = 'true';
+}
+function resumeStoryViewer(){
+  if(!storyViewerHeld) return;
+  storyViewerHeld = false;
+  $('storyViewer').dataset.held = 'false';
+  storyViewerStarted = performance.now();
+  storyViewerTimer = setTimeout(()=> showStory(storyViewerIndex + 1), storyViewerRemaining);
+}
 
 function showStory(index){
   const stage = $('storyViewerStage');
@@ -27245,7 +27270,7 @@ function showStory(index){
   const tone = STORY_TONES[story.key] || STORY_TONES.mover;
   /* A promo card carries more to read than a stat panel, so a type may ask for
      longer on glass. Everything else keeps the reel's cadence. */
-  const dwell = Number(story.dwell) > 0 ? Number(story.dwell) : STORY_VIEWER_MS;
+  const dwell = Math.max(5000, Math.min(10000, Number(story.dwell) || STORY_VIEWER_MS));
   if(label) label.textContent = 'FSN · ' + (story.ringLabel || tone.label) + ' · ' + (index + 1) + ' of ' + storyReel.length;
   try{
     stage.innerHTML = storyPanelHtml(story);
@@ -27257,6 +27282,10 @@ function showStory(index){
   renderStoryProgress(dwell);
   animateStoryPanel(stage);
   clearStoryTimer();
+  storyViewerRemaining = dwell;
+  storyViewerStarted = performance.now();
+  storyViewerHeld = false;
+  $('storyViewer').dataset.held = 'false';
   storyViewerTimer = setTimeout(()=> showStory(storyViewerIndex + 1), dwell);
 }
 
@@ -27272,7 +27301,9 @@ function openStoryViewer(index){
 function closeStoryViewer(){
   const modal = $('storyViewer');
   clearStoryTimer();
+  storyViewerHeld = false;
   if(!modal) return;
+  modal.dataset.held = 'false';
   modal.dataset.open = 'false';
   const stage = $('storyViewerStage');
   if(stage) stage.innerHTML = '';
@@ -27287,6 +27318,17 @@ document.addEventListener('click', (e)=>{
 });
 
 $('storyViewerClose').addEventListener('click', closeStoryViewer);
+$('storyViewer').addEventListener('pointerdown', e=>{
+  if(e.target.closest('[data-story-nav]')){
+    storyViewerPressAt = performance.now();
+    pauseStoryViewer();
+  }
+});
+$('storyViewer').addEventListener('pointerup', e=>{
+  storyViewerIgnoreClick = !!e.target.closest('[data-story-nav]') && storyViewerHeld && performance.now() - storyViewerPressAt > 250;
+  resumeStoryViewer();
+});
+$('storyViewer').addEventListener('pointercancel', resumeStoryViewer);
 $('storyViewer').addEventListener('click', (e)=>{
   /* The CTA is checked before the tap zones: a promo card exists to be opened,
      and a button the "next story" strip swallows is a dead one. The viewer
@@ -27304,6 +27346,7 @@ $('storyViewer').addEventListener('click', (e)=>{
   }
   const nav = e.target.closest('[data-story-nav]');
   if(!nav) return;
+  if(storyViewerIgnoreClick){ storyViewerIgnoreClick = false; return; }
   if(nav.getAttribute('data-story-nav') === 'prev'){
     if(storyViewerIndex <= 0){ showStory(0); return; }
     showStory(storyViewerIndex - 1);
@@ -37445,6 +37488,59 @@ let studioCurrent = null;
 let studioObjectUrl = '';
 let studioReelIndex = 0;
 let studioBusy = false;
+let studioReelTimer = null;
+let studioReelRemaining = 7000;
+let studioReelStarted = 0;
+let studioReelHeld = false;
+let studioHeldAudio = false;
+let studioPressAt = 0;
+let studioIgnoreClick = false;
+let studioRemoteKey = '';
+let studioPollTimer = null;
+let studioRemoteStatus = 'missing';
+
+function studioStopReel(){
+  clearTimeout(studioReelTimer);
+  studioReelTimer = null;
+}
+function studioReelDuration(){
+  return Math.max(5000, Math.min(10000, Number(studioCurrent && studioCurrent.dwell) || 7000));
+}
+function studioScheduleReel(remaining = studioReelDuration()){
+  studioStopReel();
+  studioReelRemaining = remaining;
+  studioReelStarted = performance.now();
+  if(ui.screen === 'studio' && ui.studioTab === 'reels' && studioCurrent &&
+      studioAudio.paused && !studioReelHeld && !document.hidden){
+    studioReelTimer = setTimeout(()=> studioMoveReel(1), remaining);
+  }
+}
+function studioMoveReel(delta){
+  if(!studioCurrent || !studioCurrent.stories.length) return;
+  studioReelIndex = (studioReelIndex + delta + studioCurrent.stories.length) % studioCurrent.stories.length;
+  if(!studioAudio.paused && studioCurrent.markers){
+    const start = studioReelIndex ? Number(studioCurrent.markers[studioReelIndex - 1]) : 0;
+    if(Number.isFinite(start)) studioAudio.currentTime = start;
+  }
+  studioPaintFeed();
+}
+function studioHoldReel(held){
+  if(held === studioReelHeld) return;
+  studioReelHeld = held;
+  const card = $('studioFeed').querySelector('.studio-reel');
+  if(card) card.dataset.held = String(held);
+  if(held){
+    studioHeldAudio = !studioAudio.paused;
+    if(studioHeldAudio) studioAudio.pause();
+    studioReelRemaining = Math.max(0, studioReelRemaining - (performance.now() - studioReelStarted));
+    studioStopReel();
+  }else{
+    if(studioHeldAudio){
+      studioHeldAudio = false;
+      studioAudio.play().catch(err=> console.error('[Podcast] Could not resume held audio', err));
+    }else studioScheduleReel(studioReelRemaining);
+  }
+}
 
 function studioOpenDb(){
   return new Promise((resolve, reject)=>{
@@ -37467,15 +37563,16 @@ async function studioStore(mode, value){
 }
 function studioSetEpisode(episode){
   studioAudio.pause();
+  studioStopReel();
   if(studioObjectUrl) URL.revokeObjectURL(studioObjectUrl);
   studioCurrent = episode;
   studioReelIndex = 0;
   studioObjectUrl = episode && episode.audio ? URL.createObjectURL(episode.audio) : '';
-  studioAudio.src = studioObjectUrl;
+  studioAudio.src = studioObjectUrl || (episode && episode.audioUrl) || '';
   $('studioSeek').value = '0';
   $('studioTime').textContent = '0:00 / 0:00';
-  $('studioPlay').disabled = !studioObjectUrl;
-  $('studioSeek').disabled = !studioObjectUrl;
+  $('studioPlay').disabled = !studioAudio.src;
+  $('studioSeek').disabled = !studioAudio.src;
   $('studioTitle').textContent = episode ? episode.title : 'THE WEEKLY RECAP';
   $('studioSubtitle').textContent = episode ? `Week ${episode.week} · ${episode.year} · Dan & Stu` :
     (LeagueData.hasLive() ? 'Select a week and generate an episode.' : 'Connect a league to get started.');
@@ -37487,15 +37584,18 @@ function studioPaintFeed(){
     btn.setAttribute('aria-selected', String(btn.dataset.studioTab === ui.studioTab)));
   const feed = $('studioFeed');
   if(!studioCurrent){
+    studioStopReel();
     feed.innerHTML = emptyState('NO EPISODE YET', 'Generated episodes and their scripts appear here after you connect a league.', 'setup');
     return;
   }
   if(ui.studioTab === 'script'){
+    studioStopReel();
     feed.innerHTML = studioCurrent.lines.map(line=>{
       const host = line.host === 'STU' || line.host === 'SULLY' ? 'STU' : 'DAN';
       return `<div class="studio-line" data-host="${host}"><strong>${host}</strong>${esc(line.text)}</div>`;
     }).join('');
   }else{
+    const count = studioCurrent.stories.length || 1;
     const visual = studioCurrent.visuals && studioCurrent.visuals[studioReelIndex];
     const headline = studioCurrent.stories[studioReelIndex] || studioCurrent.stories[0];
     // Older device archives contain only headlines. Present them in the same
@@ -37503,17 +37603,21 @@ function studioPaintFeed(){
     const card = visual || { key:'editorial', kicker:'From the News Desk · Week ' + studioCurrent.week,
       headline:String(headline || ''), badge:'FSN Desk' };
     feed.innerHTML = `<div class="studio-reel">
+      <div class="sv-progress" aria-label="Story ${studioReelIndex+1} of ${count}">${Array.from({length:count}, (_,i)=>
+        `<span class="sv-seg" data-state="${i < studioReelIndex ? 'done' : i === studioReelIndex ? 'active' : 'idle'}"><i></i></span>`).join('')}</div>
       <span class="kicker text-[var(--cyan)]">STORY ${studioReelIndex+1} / ${studioCurrent.stories.length}</span>
       ${storyPanelHtml({ ...card, cta:null })}
-      <button type="button" class="studio-reel-next" id="studioNextReel" aria-label="Next story card">NEXT STORY →</button>
+      <div class="studio-reel-nav"><button type="button" data-studio-nav="prev" aria-label="Previous story">← PREVIOUS</button>
+      <button type="button" data-studio-nav="next" aria-label="Next story">NEXT STORY →</button></div>
     </div>`;
     animateStoryPanel(feed);
+    studioScheduleReel();
   }
 }
 function studioPaintArchive(){
   $('studioArchive').innerHTML = studioEpisodes.length ? studioEpisodes.map((ep, index)=>
     `<button type="button" data-studio-episode="${index}"><strong>${esc(ep.title)}</strong>
-      <span class="block text-[10px] text-[var(--dim)] mt-1">Week ${ep.week} · ${ep.year} · saved on this device</span></button>`).join('') :
+      <span class="block text-[10px] text-[var(--dim)] mt-1">Week ${ep.week} · ${ep.year}${ep.audioUrl ? ' · shared with league' : ' · saved on this device'}</span></button>`).join('') :
     '<p class="text-[12px] text-[var(--dim)]">No saved episodes for this league yet.</p>';
 }
 async function studioLoadArchive(scope){
@@ -37541,8 +37645,56 @@ function renderStudio(){
     studioPaintArchive();
     if(LeagueData.hasLive()) studioLoadArchive(scope);
   }
-  $('studioGenerate').disabled = studioBusy || !LeagueData.hasLive();
+  const key = `${scope}:${effectiveWeek()}`;
+  if(LeagueData.hasLive() && ui.screen === 'studio' && studioRemoteKey !== key){
+    studioRemoteKey = key;
+    studioRemoteStatus = 'missing';
+    if(studioCurrent && studioCurrent.week !== effectiveWeek())
+      studioSetEpisode(studioEpisodes.find(row=>row.week === effectiveWeek()) || null);
+    studioCheckShared(key);
+  }
+  $('studioGenerate').textContent = studioRemoteStatus === 'ready' ? 'EPISODE READY' :
+    studioRemoteStatus === 'generating' ? 'GENERATING FOR YOUR LEAGUE…' :
+    studioRemoteStatus === 'failed' ? 'EPISODE UNAVAILABLE' : 'GENERATE WEEKLY RECAP';
+  $('studioGenerate').disabled = studioBusy || !LeagueData.hasLive() || studioRemoteStatus !== 'missing';
+  $('studioGenerate').hidden = studioRemoteStatus === 'ready';
   if(!studioCurrent && !studioBusy) studioPaintFeed();
+}
+async function studioCheckShared(key){
+  clearTimeout(studioPollTimer);
+  const [leagueId, season, week] = key.split(':');
+  const headers = leagueShareHeaders(leagueId);
+  if(!headers['x-league-token']) return;
+  try{
+    const params = new URLSearchParams({ leagueId, season, week });
+    const response = await fetch(FSNApi.resolve('/api/generate-podcast') + '?' + params, { headers });
+    const data = await response.json();
+    if(studioRemoteKey !== key) return;
+    if(!response.ok && response.status !== 202 && response.status !== 409)
+      throw new Error(data.error || 'Could not check league episode');
+    studioRemoteStatus = data.status;
+    if(data.status === 'ready' && data.episode){
+      const ep = { ...data.episode, audioUrl:data.audioUrl, scope:studioScope,
+        id:`${studioScope}:${week}` };
+      const i = studioEpisodes.findIndex(row=>row.id === ep.id);
+      if(i >= 0) studioEpisodes.splice(i, 1);
+      studioEpisodes.unshift(ep);
+      if(!studioCurrent || studioCurrent.id !== ep.id || studioCurrent.audioUrl !== ep.audioUrl)
+        studioSetEpisode(ep);
+      studioPaintArchive();
+      $('studioStatus').textContent = 'Shared episode ready for everyone in this league.';
+    }else if(data.status === 'generating'){
+      $('studioStatus').textContent = 'A league member is generating this episode. It will appear here shortly.';
+      if(ui.screen === 'studio') studioPollTimer = setTimeout(()=> studioCheckShared(key), 4000);
+    }else if(data.status === 'missing' && ui.screen === 'studio'){
+      studioPollTimer = setTimeout(()=> studioCheckShared(key), 15000);
+    }else if(data.status === 'failed') $('studioStatus').textContent = data.error;
+    renderStudio();
+  }catch(err){
+    console.warn('[Podcast] Shared episode lookup failed', err);
+    if(studioRemoteKey === key) $('studioStatus').textContent = 'Could not check the shared episode. Reopen Studio to retry.';
+    if(studioRemoteKey === key && ui.screen === 'studio') studioPollTimer = setTimeout(()=> studioCheckShared(key), 15000);
+  }
 }
 function studioTime(seconds){
   if(!Number.isFinite(seconds) || seconds < 0) return '0:00';
@@ -37555,6 +37707,23 @@ function studioSyncPlayback(){
   $('studioPlay').setAttribute('aria-label', studioAudio.paused ? 'Play episode' : 'Pause episode');
   $('studioSeek').value = duration ? String(Math.round(100 * studioAudio.currentTime / duration)) : '0';
   $('studioTime').textContent = studioTime(studioAudio.currentTime) + ' / ' + studioTime(duration);
+  if(ui.screen === 'studio' && ui.studioTab === 'reels' && studioCurrent && !studioAudio.paused &&
+      Array.isArray(studioCurrent.markers) && studioCurrent.markers.length){
+    const count = studioCurrent.stories.length;
+    const index = Math.min(count - 1, studioCurrent.markers
+      .slice(0, count - 1).filter(mark=> studioAudio.currentTime >= Number(mark)).length);
+    if(index !== studioReelIndex){ studioReelIndex = index; studioPaintFeed(); }
+    const start = index ? Number(studioCurrent.markers[index - 1]) : 0;
+    const end = Number(studioCurrent.markers[index]) || duration;
+    const fill = $('studioFeed').querySelector('.sv-seg[data-state="active"] > i');
+    if(fill){
+      fill.style.animation = 'none';
+      fill.style.width = Math.max(0, Math.min(100, (studioAudio.currentTime - start) / Math.max(0.1, end - start) * 100)) + '%';
+    }
+  }
+  if(!studioAudio.paused) studioStopReel();
+  else if(ui.screen === 'studio' && ui.studioTab === 'reels' && !studioReelTimer && !studioReelHeld)
+    studioScheduleReel();
 }
 function studioVisuals(week, articles){
   let panels = [];
@@ -37620,27 +37789,25 @@ async function studioGenerate(){
   try{
     const response = await fetch(FSNApi.resolve('/api/generate-podcast'), {
       method:'POST', headers:{ 'Content-Type':'application/json', ...headers },
-      body:JSON.stringify({ leagueId:selectedLeagueId(), lines:draft.lines }),
+      body:JSON.stringify({ leagueId:selectedLeagueId(), season:year, week,
+        title:draft.title, stories:draft.stories, lines:draft.lines }),
     });
-    if(!response.ok){
-      const detail = await response.json().catch(err=>{
-        console.warn('[Podcast] Could not read the server error response', err);
-        return {};
-      });
-      throw new Error(detail.error || `Audio service returned ${response.status}`);
-    }
-    const audio = await response.blob();
-    if(!audio.size) throw new Error('Audio service returned an empty episode');
+    const result = await response.json();
     if(studioScope !== scope) return;
-    const episode = { ...draft, audio };
-    const oldIndex = studioEpisodes.findIndex(row=> row.id === episode.id);
-    if(oldIndex !== -1) studioEpisodes.splice(oldIndex, 1);
-    studioEpisodes.unshift(episode);
-    studioSetEpisode(episode);
-    studioPaintArchive();
-    try{ await studioStore('readwrite', episode); }
-    catch(err){ console.warn('[Podcast] Could not save the episode on this device', err); }
-    $('studioStatus').textContent = 'Episode ready. Tap play to listen.';
+    if(result.status === 'generating'){
+      studioRemoteStatus = 'generating';
+      studioCheckShared(`${scope}:${week}`);
+    }else if(result.status === 'ready' && result.episode){
+      studioRemoteStatus = 'ready';
+      const episode = { ...result.episode, audioUrl:result.audioUrl, scope, id:draft.id,
+        visuals:draft.visuals };
+      const oldIndex = studioEpisodes.findIndex(row=> row.id === episode.id);
+      if(oldIndex !== -1) studioEpisodes.splice(oldIndex, 1);
+      studioEpisodes.unshift(episode);
+      studioSetEpisode(episode);
+      studioPaintArchive();
+      $('studioStatus').textContent = 'Shared episode ready. Tap play to listen.';
+    }else throw new Error(result.error || `Audio service returned ${response.status}`);
   }catch(err){
     console.error('[Podcast] Episode generation failed', err);
     $('studioStatus').textContent = err.message || 'Audio generation failed.';
@@ -37670,10 +37837,25 @@ document.querySelectorAll('[data-studio-tab]').forEach(btn=> btn.addEventListene
   studioPaintFeed();
 }));
 $('studioFeed').addEventListener('click', e=>{
-  if(e.target.closest('#studioNextReel') && studioCurrent){
-    studioReelIndex = (studioReelIndex + 1) % studioCurrent.stories.length;
-    studioPaintFeed();
+  const nav = e.target.closest('[data-studio-nav]');
+  if(studioIgnoreClick){ studioIgnoreClick = false; return; }
+  if(nav) studioMoveReel(nav.dataset.studioNav === 'prev' ? -1 : 1);
+});
+$('studioFeed').addEventListener('pointerdown', e=>{
+  if(e.target.closest('.studio-reel')){
+    studioPressAt = performance.now();
+    studioHoldReel(true);
   }
+});
+$('studioFeed').addEventListener('pointerup', e=>{
+  studioIgnoreClick = !!e.target.closest('[data-studio-nav]') && studioReelHeld && performance.now() - studioPressAt > 250;
+  studioHoldReel(false);
+});
+$('studioFeed').addEventListener('pointercancel', ()=> studioHoldReel(false));
+document.addEventListener('visibilitychange', ()=>{
+  if(document.hidden) studioStopReel();
+  else if(ui.screen === 'studio' && ui.studioTab === 'reels') studioScheduleReel();
+  if(!document.hidden && studioRemoteKey && ui.screen === 'studio') studioCheckShared(studioRemoteKey);
 });
 $('studioArchive').addEventListener('click', e=>{
   const btn = e.target.closest('[data-studio-episode]');
