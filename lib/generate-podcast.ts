@@ -8,6 +8,21 @@ type Response = { status(code: number): Response; json(data: unknown): void; set
 
 const TOKEN_RE = /^[A-Za-z0-9_-]{32,128}$/;
 const BUCKET = 'podcast-episodes';
+/**
+ * Dialogue turns one episode may carry.
+ *
+ * Was 6, which fit the original single-block recap. The four-segment script in
+ * `lib/podcast-script.ts` is a cold open, two turns per segment and a sign-off
+ * — ten turns — so a cap of 6 rejected every scheduled episode with the generic
+ * "Invalid episode request" and no way to tell which of that condition's nine
+ * clauses had failed.
+ *
+ * It is still a hard ceiling, not a formality: every turn is one ElevenLabs
+ * call, so this is the per-request spend bound. 16 leaves room for a fifth
+ * segment without leaving room for a runaway payload, and the 24000-character
+ * body limit below still applies on top of it.
+ */
+export const MAX_EPISODE_LINES = 16;
 // Audio is a live-season feature. Update this anchor at the start of each NFL
 // season; keeping it explicit prevents an archive view from ever reaching the
 // database claim or an external voice provider.
@@ -135,7 +150,7 @@ export default async function handler(req: Request, res: Response) {
   if (!/^\d{1,20}$/.test(id) || !TOKEN_RE.test(token) ||
       !Number.isInteger(season) || season < 1990 || season > 2100 ||
       !Number.isInteger(week) || week < 1 || week > 18 ||
-      (req.method === 'POST' && (!Array.isArray(lines) || lines.length < 2 || lines.length > 6 ||
+      (req.method === 'POST' && (!Array.isArray(lines) || lines.length < 2 || lines.length > MAX_EPISODE_LINES ||
         !lines.every(line => line && podcastHost(line.host) &&
           typeof line.text === 'string' && line.text.length >= 5 && line.text.length <= 450) ||
         JSON.stringify(payload).length > 24000))) {

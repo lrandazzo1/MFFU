@@ -1,0 +1,56 @@
+{
+  // Emits the scheduled-podcast modules into `lib/dist`, the same way
+  // `tsconfig.articles.json` emits the article pipeline. Run it with
+  // `npm run build:podcast`; the output is committed.
+  //
+  // ---- WHY THESE MODULES ARE COMPILED AND NOT LEFT AS SOURCE ----
+  //
+  // `lib/generate-weekly-podcast.ts` reaches the ESPN read boundary with
+  // `require('../../api/espn')`, and that string is resolved by Node at
+  // runtime, relative to the EMITTED file. Two levels up from `lib/dist/` is
+  // the repo root, so it resolves to `api/espn` — which is why the article
+  // pipeline emits to exactly this directory and why its own copy of that
+  // require carries a long comment about the footgun. Leaving these modules as
+  // TypeScript for Vercel to bundle from an `api/*.ts` entry point would put
+  // them at some other depth in some other layout, and the failure mode is
+  // MODULE_NOT_FOUND on every league of every scheduled run. So the cron route
+  // is the existing CommonJS `api/cron/generate-articles.js`, and it requires
+  // `lib/dist` like its sibling.
+  //
+  // ---- WHY A SEPARATE CONFIG ----
+  //
+  // `tsconfig.articles.json` deliberately ships no `@types/node` and describes
+  // the few host globals it needs by hand in `lib/article-env.d.ts`. That shim
+  // declares `Buffer` as `from(string, encoding)` only, which cannot type the
+  // MP3 stitching here (`concat`, `subarray`, `readUInt32BE`, `alloc`), and it
+  // has nothing for `node:crypto` or for the types the `elevenlabs` package
+  // carries. Rather than widen a shim that four working modules depend on, this
+  // config uses real `@types/node` — a devDependency, never shipped, and it
+  // changes no emitted JavaScript, only what the checker knows.
+  //
+  // The two configs overlap on `article-math`/`article-generator`/`article-cron`,
+  // which this graph imports. Emit settings are identical on purpose, so both
+  // produce byte-identical output for those files and it does not matter which
+  // ran last. `scripts/podcast-segments-check.mjs` asserts that.
+  "compilerOptions": {
+    "target": "ES2021",
+    "lib": ["ES2021"],
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "outDir": "lib/dist",
+    "rootDir": "lib",
+    "declaration": true,
+    "strict": true,
+    "noImplicitAny": false,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "types": ["node"]
+  },
+  "files": [
+    "lib/fsn-index.ts",
+    "lib/podcast-script.ts",
+    "lib/generate-podcast.ts",
+    "lib/generate-weekly-podcast.ts"
+  ]
+}

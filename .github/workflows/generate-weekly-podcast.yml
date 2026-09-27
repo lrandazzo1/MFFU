@@ -1,0 +1,140 @@
+# The Tuesday weekly podcast.
+#
+# One run a week, a POST to /api/cron/generate-weekly-podcast, which builds the
+# four-segment Dan & Stu script for every active league that does not already
+# have this week's episode, synthesizes it, uploads the MP3 to Supabase Storage
+# and writes the `podcast_episodes` row every league member reads. The route is
+# idempotent, so a retry or a double fire costs nothing and nobody's episode
+# changes under them.
+#
+# ---- WHY GITHUB ACTIONS AND NOT vercel.json crons ----
+#
+# The same three reasons the league blog articles run here, from
+# docs/blog-articles.md:
+#   - Vercel cron jobs are always issued as GET; this schedule POSTs.
+#   - Day-of-week schedules and more than a couple of cron jobs need a paid
+#     Vercel plan.
+#   - The project's two Hobby cron slots are already spent on the transaction
+#     wire and the notification dispatch, and a third entry fails the deploy.
+# The equivalent vercel.json block is written out in docs/PODCAST_STUDIO.md if
+# you would rather run it there once the project is on a paid plan.
+#
+# ---- THE WEEK 2 TESTING BOUNDARY ----
+#
+# The route refuses any week other than PODCAST_TARGET_WEEK (default 2) before
+# it reaches ESPN, Supabase or ElevenLabs, and answers 409. While that boundary
+# is in force this schedule is expected to succeed only on the week it is
+# pinned to; a 409 is reported as a skip, not a failure, so the weekly run does
+# not page anyone during testing.
+#
+# Required repository secret:
+#   CRON_SECRET  — must equal the CRON_SECRET set in the Vercel project.
+# Optional repository variable:
+#   ARTICLE_CRON_BASE_URL — defaults to the production app domain.
+
+name: Weekly podcast
+
+on:
+  schedule:
+    # Tuesdays at 10:00 UTC (06:00 ET during the NFL season), after the Monday
+    # night final has settled and after the Tuesday blog article at 08:00 — the
+    # episode narrates a week ESPN has finished reporting.
+    - cron: '0 10 * * 2'
+  workflow_dispatch:
+    inputs:
+      season:
+        description: Season override. Leave blank for the current season.
+        type: string
+        required: false
+      week:
+        description: Week override. Leave blank to use PODCAST_TARGET_WEEK.
+        type: string
+        required: false
+      dry_run:
+        description: Resolve the leagues and report what would be generated, without generating.
+        type: boolean
+        default: false
+      script_only:
+        description: Build and store the four segments with no audio (spends nothing at ElevenLabs).
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# A manual run must never race the scheduled one into the same league week.
+# Two invocations would both pass the idempotency sweep and both claim.
+concurrency:
+  group: generate-weekly-podcast
+  cancel-in-progress: false
+
+jobs:
+  record:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Generate and publish
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          BASE_URL: ${{ vars.ARTICLE_CRON_BASE_URL || 'https://app.fantasysportsnetwork.app' }}
+          SEASON: ${{ inputs.season }}
+          WEEK: ${{ inputs.week }}
+          DRY_RUN: ${{ inputs.dry_run && '1' || '0' }}
+          SCRIPT_ONLY: ${{ inputs.script_only && '1' || '0' }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CRON_SECRET:-}" ]; then
+            echo "::error title=CRON_SECRET missing::Set the CRON_SECRET repository secret to the value used in the Vercel project."
+            exit 1
+          fi
+
+          url="${BASE_URL%/}/api/cron/generate-weekly-podcast?dry_run=${DRY_RUN}&script_only=${SCRIPT_ONLY}"
+          [ -n "${SEASON:-}" ] && url="${url}&season=${SEASON}"
+          [ -n "${WEEK:-}" ] && url="${url}&week=${WEEK}"
+
+          # The secret travels as a header, never in the URL, so it stays out of
+          # access logs and out of this job's own echoed command line.
+          # --max-time is generous: synthesis is several provider round trips per
+          # league, and the route caps itself at a 50s budget per invocation.
+          status=$(curl -sS -X POST "$url" \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            -H 'Content-Type: application/json' \
+            --max-time 600 \
+            -o response.json -w '%{http_code}')
+
+          echo "HTTP $status"
+          jq '.' response.json || cat response.json
+
+          # 409 is the week boundary refusing a week it is not pinned to. That is
+          # the testing lock working, not a broken run.
+          if [ "$status" = "409" ]; then
+            reason=$(jq -r '.message // "week locked"' response.json)
+            echo "::notice title=Week locked::$reason"
+            echo "### Skipped: $reason" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          if [ "$status" != "200" ]; then
+            echo "::error title=Podcast run failed::The endpoint returned HTTP $status."
+            exit 1
+          fi
+
+          created=$(jq -r '.created // 0' response.json)
+          skipped=$(jq -r '.skipped // 0' response.json)
+          failed=$(jq -r '.failed // 0' response.json)
+          deferred=$(jq -r '.not_attempted // 0' response.json)
+          week=$(jq -r '.week // "?"' response.json)
+          echo "created=$created skipped=$skipped failed=$failed deferred=$deferred"
+          echo "### Week $week: $created created, $skipped skipped, $failed failed, $deferred deferred" >> "$GITHUB_STEP_SUMMARY"
+
+          # Leagues over the per-run cap are not lost — the next run finds no
+          # episode for them — but a run that defers every week means the cap is
+          # too low for the league count.
+          if [ "$deferred" != "0" ]; then
+            echo "::warning title=Leagues deferred::$deferred league(s) were over PODCAST_CRON_MAX_LEAGUES and will be picked up next run."
+          fi
+
+          if [ "$failed" != "0" ]; then
+            echo "::error title=Some leagues failed::$failed league(s) produced no episode. See podcast_episode_runs."
+            exit 1
+          fi

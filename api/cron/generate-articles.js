@@ -113,6 +113,23 @@ async function resolveScope(supabase, req, now) {
 }
 
 async function handler(req, res) {
+  /* ---- SHARED FUNCTION SLOT ----
+     Vercel turns every file under `api/` into its own Serverless Function and
+     this plan allows twelve; `api/` holds exactly twelve. So the scheduled
+     podcast run does not get its own file — `vercel.json` rewrites the public
+     path `/api/cron/generate-weekly-podcast` into this route with
+     `action=podcast-cron`, the same way four other endpoints already share a
+     slot. A thirteenth file would not fail the build, it would fail the DEPLOY
+     with exceeded_serverless_functions_per_deployment and take production down.
+
+     Dispatched first, before this route's own auth and day parsing: the podcast
+     handler authenticates with the same CRON_SECRET but takes no `day`, and
+     `normalizeDay('')` would reject the request before it ever arrived. */
+  if (queryParam(req, 'action') === 'podcast-cron') {
+    const generateWeeklyPodcast = require('../../lib/dist/generate-weekly-podcast');
+    return (generateWeeklyPodcast.default || generateWeeklyPodcast)(req, res);
+  }
+
   res.setHeader('Cache-Control', 'no-store');
 
   if (req.method !== 'GET' && req.method !== 'POST') {

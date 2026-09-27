@@ -1,0 +1,174 @@
+/**
+ * SCHEDULED WEEKLY PODCAST — the Tuesday run.
+ *
+ * Public path: `POST /api/cron/generate-weekly-podcast`
+ *
+ * ---- WHY THIS IS A lib/ MODULE AND NOT api/cron/generate-weekly-podcast.ts ----
+ *
+ * Vercel turns every file under `api/` into its own Serverless Function and the
+ * plan this project deploys on allows twelve. There are already exactly twelve.
+ * A thirteenth file does NOT fail the build — it fails the DEPLOY, at
+ * patchBuild, with `exceeded_serverless_functions_per_deployment`, taking
+ * production down rather than just the new route. That has happened to this repo
+ * once already; see the header of `scripts/vercel-functions-check.mjs`.
+ *
+ * So the handler lives here and `vercel.json` rewrites the requested public
+ * path into the existing cron function slot, exactly as
+ * `/api/generate-podcast`, `/api/notifications-register`,
+ * `/api/transaction-wire-dispatch`, `/api/auth/yahoo/callback` and
+ * `/api/blog/articles/publish` already do. The URL the scheduler calls is the
+ * one that was asked for.
+ *
+ * ---- WHAT ONE RUN DOES ----
+ *
+ *   1. Refuses any caller without `CRON_SECRET`.
+ *   2. Refuses any week other than `PODCAST_TARGET_WEEK` (default 2) before
+ *      spending anything. See the testing boundary below.
+ *   3. Sweeps `public.leagues` for the season's active leagues.
+ *   4. Skips every league that already holds a `podcast_episodes` row for the
+ *      week, so a retry or a double fire costs nothing and no member ever has
+ *      an episode change under them.
+ *   5. For each remaining league, up to the per-run cap: one ESPN read, the
+ *      four-segment script, ElevenLabs synthesis, an MP3 into Supabase
+ *      Storage, and a `podcast_episodes` row.
+ *   6. Writes one `podcast_episode_runs` ledger row per league attempt,
+ *      whether it succeeded or not.
+ *
+ * One league's failure never stops the others — the same contract
+ * `lib/article-cron.ts` holds.
+ *
+ * ---- THE TESTING BOUNDARY ----
+ *
+ * `PODCAST_TARGET_WEEK` defaults to 2 and the run refuses anything else. The
+ * check is the FIRST thing that happens after auth, before the league sweep,
+ * before any ESPN read and long before ElevenLabs, so a misfire on the wrong
+ * week cannot spend a cent. Widen it by setting the variable in the Vercel
+ * project; `PODCAST_TARGET_WEEK=any` lifts the lock entirely.
+ *
+ * ---- THE SPEND CEILING ----
+ *
+ * `docs/PODCAST_STUDIO.md` warns not to automate paid audio without a ledger,
+ * and this is the route that automates it. Two guards, both deliberate:
+ * `PODCAST_CRON_MAX_LEAGUES` bounds how many leagues one invocation can
+ * synthesize for, and every attempt lands in `podcast_episode_runs` with its
+ * turn count and byte size so the bill is attributable after the fact. Leagues
+ * over the cap are not lost: the next run finds no episode for them.
+ */
+import { type WeeklyPodcastScript } from './podcast-script';
+export type PodcastRunStatus = 'created' | 'skipped' | 'failed';
+export type PodcastFailureReason = 'ESPN_AUTH' | 'NO_MATCHUP_DATA' | 'EMPTY_SCRIPT' | 'TTS' | 'STORAGE' | 'TIMEOUT' | 'OTHER';
+export interface PodcastLeagueResult {
+    league_id: string;
+    status: PodcastRunStatus;
+    week: number;
+    season: number;
+    /** Segments that carried real material, 0–4. Null when nothing was built. */
+    populated_segments: number | null;
+    /** Synthesized dialogue turns. Null when no audio was made. */
+    turns: number | null;
+    audio_bytes: number | null;
+    error_message: string | null;
+    failure_reason?: PodcastFailureReason | null;
+}
+export interface PodcastRunSummary {
+    season: number;
+    week: number;
+    run_id: string;
+    target_week: string;
+    leagues: number;
+    created: number;
+    skipped: number;
+    failed: number;
+    /** Leagues the cap or the time budget kept this run from reaching. The next
+     *  run finds no episode for them and picks them up. */
+    not_attempted: number;
+    failed_by_reason: Partial<Record<PodcastFailureReason, number>>;
+    max_leagues: number;
+    dry_run: boolean;
+    audio: boolean;
+    results: PodcastLeagueResult[];
+}
+export interface PodcastRunInput {
+    season?: number | null;
+    week?: number | null;
+    /** Resolve the leagues and the idempotency check, then stop. Nothing is
+     *  fetched, synthesized, uploaded or written. */
+    dry_run?: boolean;
+    /** Build and store the script with no audio. Costs nothing at ElevenLabs and
+     *  still gives every member the four segments to read. */
+    script_only?: boolean;
+    run_id?: string;
+    budget_ms?: number;
+}
+export interface PodcastRunDependencies {
+    db?: any;
+    req?: any;
+    /** Swapped in tests. Production reads ESPN through `api/espn`. */
+    fetchBoxScores?: (input: {
+        league_id: string;
+        season: number;
+        week: number;
+        req?: any;
+    }) => Promise<any>;
+    fetchKickoffs?: (input: {
+        season: number;
+        week: number;
+    }) => Promise<any>;
+    /** Swapped in tests so no ElevenLabs credit is spent. */
+    synthesize?: (text: string, voiceId: string) => Promise<Buffer>;
+    now?: () => number;
+}
+export declare const DEFAULT_TARGET_WEEK = 2;
+export declare const DEFAULT_MAX_LEAGUES = 5;
+/** A league whose week produced fewer than this many real segments is not
+ *  worth synthesizing: an episode of four "nothing to report" rooms costs the
+ *  same as a real one. */
+export declare const MIN_POPULATED_SEGMENTS = 1;
+/**
+ * The week this environment is allowed to generate, or `'any'`.
+ *
+ * Returns the raw configured string alongside the number so the summary can
+ * report what the boundary actually was rather than what the default is.
+ */
+export declare function targetWeekSetting(): {
+    value: string;
+    week: number | null;
+};
+export declare function maxLeaguesPerRun(): number;
+export declare function podcastDatabase(): any;
+/**
+ * The leagues that already hold an episode for this week.
+ *
+ * One query for the whole run. A row in ANY status counts: a `generating` claim
+ * belongs to an invocation that may still be running and a `failed` one needs a
+ * human, and starting a second synthesis over either is how a league gets
+ * billed twice for one episode.
+ */
+export declare function leaguesAlreadyRecorded(db: any, season: number, week: number): Promise<Set<string>>;
+export declare function classifyPodcastFailure(err: any): PodcastFailureReason;
+export interface LeagueEpisodeOutcome {
+    script: WeeklyPodcastScript;
+    audio: Buffer | null;
+    turns: number;
+    markers: number[];
+}
+/**
+ * Build one league's episode: the script, and the stitched audio when audio is
+ * asked for.
+ *
+ * Throws on anything that should stop THIS league. The caller catches, logs the
+ * reason and moves to the next one.
+ */
+export declare function buildLeagueEpisode(input: {
+    league_id: string;
+    season: number;
+    week: number;
+}, options: {
+    script_only?: boolean;
+} & PodcastRunDependencies): Promise<LeagueEpisodeOutcome>;
+export declare function runWeeklyPodcastCron(input: PodcastRunInput, dependencies?: PodcastRunDependencies): Promise<PodcastRunSummary>;
+/**
+ * `POST /api/cron/generate-weekly-podcast` (GET accepted, so a Vercel cron —
+ * which can only issue GET — works unchanged).
+ */
+export default function handler(req: any, res: any): Promise<void>;
