@@ -901,6 +901,38 @@ await (async () => {
       listLeagues: async () => { asked += 1; return ['100009']; },
     }));
   });
+  /* ---- THE SHAPE PRODUCTION ACTUALLY USES ----
+     The HTTP handler calls runWeeklyPodcastCron with `{ req }` and NOTHING
+     else, so the run builds its own client and `dependencies.db` stays
+     undefined. Every other case here hands over a db, which hid a real bug: the
+     per-league build was given `...dependencies` alone, so the news path's
+     payload read got an undefined db and died on `db.from`. A live run found it,
+     not this file. So drive the no-db shape, letting the stubbed
+     @supabase/supabase-js module stand in for the real client. */
+  synthCalls = 0;
+  const ownClientDb = makeDb({ leagues: ['100001'] });
+  endpointStub.db = ownClientDb;
+  endpointStub.audio = fakeMp3;
+  let ownClientRun;
+  await withEnv({
+    PODCAST_TARGET_WEEK: '2',
+    ELEVENLABS_API_KEY: 'k',
+    SUPABASE_URL: 'https://stub.supabase.test',
+    SUPABASE_SERVICE_ROLE_KEY: 'service-role-stub',
+  }, async () => {
+    const noDb = deps(ownClientDb);
+    delete noDb.db;
+    ownClientRun = await cron.runWeeklyPodcastCron({ season: 2026, week: 2 }, noDb);
+  });
+  check('a run given no db resolves its own and still reaches the payload read', () => {
+    assert.equal(ownClientRun.failed, 0,
+      'the no-db shape failed: ' + JSON.stringify(ownClientRun.results));
+    assert.equal(ownClientRun.created, 1);
+    const row = [...ownClientDb._episodes.values()][0];
+    assert.equal(row.status, 'ready');
+    assert.ok(Array.isArray(row.episode.lines) && row.episode.lines.length >= 2);
+  });
+
   check('a listLeagues dependency is honoured rather than silently dropped', () => {
     assert.equal(asked, 1, 'listLeagues was never called');
     assert.equal(depRun.leagues, 1, 'the run used the league table instead of the supplied list');
