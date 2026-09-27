@@ -37526,7 +37526,35 @@ function studioIsArchivedSeason(){
    Reading an episode is deliberately NOT gated on this. A past week of the live
    season still has to play the episode its league generated at the time — only
    generating a new one is locked. */
+/* ============================================================
+   TEMPORARY TESTING EXCEPTION — REMOVE WHEN TESTING ENDS
+
+   One league, one week, current season only. It exists so the four-segment
+   pipeline can be exercised against a week that has already closed, and it is
+   deliberately three constants and one predicate so deleting it is a single
+   contiguous edit: drop this block, drop the first line of
+   studioGenerationLock(), drop the studioHydrateTestArchive() call in
+   renderStudio(), and the guardrail is back to global.
+
+   Scoped to the LIVE season on purpose. An archived season is refused by
+   lib/generate-podcast.ts before auth, the Supabase claim and any ElevenLabs
+   call (HISTORICAL_SEASON_ERROR), so unlocking week 2 of 2019 would trade a
+   disabled button for a 400. Every other league and every other week keeps the
+   existing lock and the existing message.
+============================================================ */
+const STUDIO_TEST_LEAGUE_ID = '57155288';
+const STUDIO_TEST_WEEK = 2;
+const STUDIO_TEST_NOTE = 'Testing exception: league ' + STUDIO_TEST_LEAGUE_ID +
+  ' may generate week ' + STUDIO_TEST_WEEK + '. Every other league and week stays locked.';
+
+function studioTestExceptionActive(){
+  return String(selectedLeagueId()) === STUDIO_TEST_LEAGUE_ID &&
+    effectiveWeek() === STUDIO_TEST_WEEK &&
+    !studioIsArchivedSeason();
+}
+
 function studioGenerationLock(){
+  if(studioTestExceptionActive()) return '';
   if(studioIsArchivedSeason()) return 'season';
   if(effectiveWeek() < currentLeagueWeek()) return 'week';
   return '';
@@ -37670,6 +37698,71 @@ async function studioLoadArchive(scope){
     $('studioStatus').textContent = 'Device archive is unavailable. New audio will play during this session.';
   }
 }
+/* One shared-episode read for a NAMED week, with none of studioCheckShared()'s
+   state machine: it touches no poll timer, no studioRemoteKey and no status
+   line, so pulling an old week into the archive cannot disturb the lookup for
+   the week on screen. Returns the episode or null; never throws for an HTTP
+   answer, because a league with no episode for that week is the ordinary case. */
+async function studioReadSharedWeek(leagueId, season, week){
+  const id = String(leagueId || '');
+  const headers = leagueShareHeaders(id);
+  if(!/^\d{1,20}$/.test(id) || !headers['x-league-token']) return null;
+  const params = new URLSearchParams({ leagueId:id, season:String(season), week:String(week) });
+  const response = await fetch(FSNApi.resolve('/api/generate-podcast') + '?' + params, { headers });
+  let data = {};
+  try{
+    data = (await response.json()) || {};
+  }catch(parseErr){
+    console.error('[Podcast] The archive read for league ' + id + ' week ' + week +
+      ' answered HTTP ' + response.status + ' with a body that is not JSON.', parseErr);
+    return null;
+  }
+  if(!response.ok && response.status !== 202 && response.status !== 409){
+    console.warn('[Podcast] The archive read for league ' + id + ' week ' + week +
+      ' was refused with HTTP ' + response.status + ': ' + String(data.error || '').trim());
+    return null;
+  }
+  return data.status === 'ready' && data.episode
+    ? { ...data.episode, audioUrl:data.audioUrl }
+    : null;
+}
+
+/* ---- TEMPORARY, PAIRED WITH THE TESTING EXCEPTION ABOVE ----
+   Episode Archives is built from this device's IndexedDB rows plus the ONE
+   shared episode for the week on screen, which is why an episode that exists in
+   podcast_episodes for a DIFFERENT week never appears as a card. For the test
+   league this pulls the exception week's row in as well, so its card is present
+   and clickable whatever week the scrubber sits on, and clicking it hands the
+   stored episode to studioSetEpisode() — the same path the current week uses,
+   so the audio url, the title and the Script Read-Along all load from it.
+
+   Scoped to the one league rather than generalised: listing every week for
+   every league needs a list endpoint on /api/generate-podcast, and this adds
+   none. Runs once per scope; a failure is logged and not retried, because the
+   archive is a convenience and the current week's lookup is unaffected. */
+let studioTestArchiveScope = '';
+async function studioHydrateTestArchive(scope){
+  const [leagueId, season] = String(scope || '').split(':');
+  if(leagueId !== STUDIO_TEST_LEAGUE_ID) return;
+  if(studioTestArchiveScope === scope) return;
+  studioTestArchiveScope = scope;
+  try{
+    const episode = await studioReadSharedWeek(leagueId, season, STUDIO_TEST_WEEK);
+    if(!episode || studioScope !== scope) return;
+    const id = `${scope}:${STUDIO_TEST_WEEK}`;
+    const row = { ...episode, scope, id };
+    const at = studioEpisodes.findIndex(x=> x && x.id === id);
+    if(at >= 0) studioEpisodes.splice(at, 1);
+    studioEpisodes.unshift(row);
+    studioPaintArchive();
+    console.info('[Podcast] Testing exception: league ' + leagueId + ' week ' +
+      STUDIO_TEST_WEEK + ' is in Episode Archives.');
+  }catch(err){
+    console.error('[Podcast] The testing-exception archive read failed for league ' +
+      leagueId + ' week ' + STUDIO_TEST_WEEK + '; its card will not appear.', err);
+  }
+}
+
 function renderStudio(){
   const scope = `${selectedLeagueId()}:${Number($('seasonYear').value) || uiActiveSeasonYear()}`;
   const lock = studioGenerationLock();
@@ -37683,6 +37776,8 @@ function renderStudio(){
        scope, and a reader whose league came from the shared archive rather than
        a live ESPN fetch has episodes saved under that same scope. */
     if(/^\d{1,20}$/.test(selectedLeagueId()) || LeagueData.hasLive()) studioLoadArchive(scope);
+    studioTestArchiveScope = '';
+    studioHydrateTestArchive(scope);
   }
   const key = `${scope}:${effectiveWeek()}`;
   /* The shared-episode lookup needs exactly two things: this league's numeric id
@@ -37738,7 +37833,12 @@ function renderStudio(){
   $('studioGenerate').disabled = !!lock || studioBusy || !LeagueData.hasLive() ||
     studioRemoteStatus !== 'missing';
   $('studioGenerate').hidden = studioRemoteStatus === 'ready';
-  $('studioArchiveLock').hidden = !lock;
+  /* The note carries the lock message when locked, and the testing exception's
+     own sentence when a closed week is open for one league — so an unlocked
+     past week never looks like the guardrail silently failing. */
+  const testing = studioTestExceptionActive();
+  $('studioArchiveLock').textContent = testing ? STUDIO_TEST_NOTE : STUDIO_LOCK_MESSAGE;
+  $('studioArchiveLock').hidden = !lock && !testing;
   if(!studioCurrent && !studioBusy) studioPaintFeed();
 }
 

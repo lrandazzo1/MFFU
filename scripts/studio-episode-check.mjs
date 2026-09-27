@@ -280,6 +280,16 @@ const openStudio = () => page.evaluate(() => {
   if (tab) tab.click();
 });
 
+/* The jump-to-current control is only rendered while viewing a PAST week, so
+   its absence means the scrubber is already on the live week — a no-op, not a
+   failure. Returns whether it had to move. */
+const jumpToCurrentWeek = () => page.evaluate(() => {
+  const btn = document.querySelector('[data-week-current]');
+  if (!btn) return false;
+  btn.click();
+  return true;
+});
+
 const stepWeek = (delta) => page.evaluate((d) => {
   const btn = document.querySelector('.screen[data-active="true"] [data-week-nav="' + d + '"]') ||
     document.querySelector('[data-week-nav="' + d + '"]:not([disabled])');
@@ -440,6 +450,128 @@ try {
   const logged = consoleErrors.filter((t) => /\[Podcast\].*HTTP 403/.test(t));
   if (logged.length) pass('the refusal is logged loudly as [Podcast] … HTTP 403');
   else fail('the HTTP 403 refusal was swallowed without a tagged console.error');
+
+  /* ======================================================================
+     6. THE TEMPORARY TESTING EXCEPTION — league 57155288, week 2 only
+     ====================================================================== */
+
+  const TEST_LEAGUE = '57155288';
+  const TEST_AUDIO = 'https://example.test/podcast-episodes/' + TEST_LEAGUE + '/2026/2.mp3';
+
+  /* Re-seed as the exception league. The payload keeps week 5 as the live week,
+     so weeks 1-4 are closed history and week 2 is a genuinely locked week for
+     every league but this one. */
+  const asLeague = async (id) => {
+    const payload = syntheticLeague();
+    payload.id = Number(id);
+    await page.evaluate((args) => {
+      document.getElementById('leagueIdInput').value = String(args.id);
+      try { window.localStorage.setItem('fsn.league.token.v1:' + args.id, args.token); } catch (err) { /* private mode */ }
+      window.LeagueData.setEspnData(args.payload);
+      window.__fsnRender();
+    }, { id: String(id), token: SHARE_TOKEN, payload });
+    await page.waitForTimeout(600);
+    /* A league switch does not move the scrubber, and week 1 has its back
+       button disabled — so start each league from the live week. */
+    await jumpToCurrentWeek();
+    await page.waitForTimeout(500);
+  };
+
+  /* An episode exists for the exception week, so its archive card can be
+     clicked. Answer week 2 ready and every other week missing. */
+  await page.unroute('**/api/generate-podcast*');
+  await page.route('**/api/generate-podcast*', async (route) => {
+    const url = new URL(route.request().url());
+    const week = url.searchParams.get('week');
+    requests.push({ url: route.request().url(), method: route.request().method(),
+      token: route.request().headers()['x-league-token'] || '' });
+    const body = week === '2'
+      ? { status: 'ready', audioUrl: TEST_AUDIO,
+          episode: { title: 'WEEK 2 RECAP', week: 2, year: 2026, leagueId: TEST_LEAGUE,
+            lines: [{ host: 'DAN', text: 'Segment one, the FSN Index movers for week two.' },
+              { host: 'STU', text: 'And the teams that slid, Dan, which is the louder half.' }],
+            stories: ['a', 'b', 'c', 'd'], visuals: [], markers: [7.5], createdAt: Date.now() } }
+      : { status: 'missing' };
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+  });
+
+  await asLeague(TEST_LEAGUE);
+  await openStudio();
+  await page.waitForTimeout(800);
+
+  /* Walk back from the live week to week 2. */
+  for (let i = 0; i < 3; i += 1) { await stepWeek(-1); await page.waitForTimeout(350); }
+  await page.waitForTimeout(900);
+  view = await studio();
+
+  if (view.week === '2') pass('exception: stepped the test league to week 2');
+  else fail('exception: expected week 2, the scrubber says "' + view.week + '"');
+
+  if (!view.buttonDisabled || view.buttonHidden)
+    pass('exception: GENERATE is available for league ' + TEST_LEAGUE + ' on week 2');
+  else fail('exception: GENERATE is still disabled for league ' + TEST_LEAGUE + ' on week 2');
+
+  if (!view.noteHidden && /Testing exception/.test(view.noteText))
+    pass('exception: the note explains why a closed week is open: "' + view.noteText + '"');
+  else fail('exception: the testing note is ' + (view.noteHidden ? 'hidden' : '"' + view.noteText + '"'));
+
+  if (view.noteText !== LOCK_MESSAGE)
+    pass('exception: the global lock message is not shown while the exception is active');
+  else fail('exception: the note still shows the global lock message');
+
+  /* ---- the archive card for the exception week ---- */
+  const archive = await page.evaluate(() => {
+    const cards = [...document.querySelectorAll('#studioArchive [data-studio-episode]')];
+    return cards.map((c) => (c.innerText || '').replace(/\s+/g, ' ').trim());
+  });
+  if (archive.some((t) => /Week 2/.test(t)))
+    pass('exception: the week 2 episode appears in Episode Archives (' + archive.length + ' card(s))');
+  else fail('exception: no week 2 card in Episode Archives; found: ' + JSON.stringify(archive));
+
+  /* Move away from week 2, then click the card: it must load that week's audio,
+     title and script into the player regardless of the week on screen. */
+  await stepWeek(1);
+  await page.waitForTimeout(700);
+  await page.evaluate(() => {
+    const card = [...document.querySelectorAll('#studioArchive [data-studio-episode]')]
+      .find((c) => /Week 2/.test(c.innerText || ''));
+    if (!card) throw new Error('no week 2 archive card to click');
+    card.click();
+  });
+  await page.waitForTimeout(700);
+  view = await studio();
+
+  if (view.audioSrc === TEST_AUDIO) pass('exception: clicking the card loaded the week 2 audio url');
+  else fail('exception: player src is "' + view.audioSrc + '", expected ' + TEST_AUDIO);
+  if (view.title === 'WEEK 2 RECAP') pass('exception: clicking the card loaded the week 2 title');
+  else fail('exception: hero title is "' + view.title + '"');
+  if (/FSN Index movers for week two/.test(view.feed) && /louder half/.test(view.feed))
+    pass('exception: clicking the card loaded the week 2 Script Read-Along');
+  else fail('exception: the week 2 script did not reach the read-along feed');
+  if (!view.playDisabled) pass('exception: the play button is enabled for the archived week 2 episode');
+  else fail('exception: the play button stayed disabled for the archived episode');
+
+  /* ---- the guardrail still holds everywhere else ---- */
+  /* The scrubber only has -1 / +1 controls; there is no data-week-nav="-2". */
+  await stepWeek(-1); await page.waitForTimeout(350);
+  await stepWeek(-1);
+  await page.waitForTimeout(800);
+  view = await studio();
+  if (view.week === '1' && view.buttonDisabled && view.noteText === LOCK_MESSAGE)
+    pass('exception is week-scoped: week 1 of the same league is still locked');
+  else fail('exception leaked to week ' + view.week + ' of the test league (disabled=' +
+    view.buttonDisabled + ', note="' + view.noteText + '")');
+
+  await asLeague('778899');
+  await openStudio();
+  await page.waitForTimeout(500);
+  for (let i = 0; i < 3; i += 1) { await stepWeek(-1); await page.waitForTimeout(300); }
+  await page.waitForTimeout(800);
+  view = await studio();
+  if (view.week === '2' && view.buttonDisabled && view.noteText === LOCK_MESSAGE)
+    pass('exception is league-scoped: week 2 of another league is still locked');
+  else fail('exception leaked to league 778899 week ' + view.week + ' (disabled=' +
+    view.buttonDisabled + ', note="' + view.noteText + '")');
 
   /* ---- nothing threw, and nothing degraded into a snag ------------------- */
   const snag = await page.evaluate(() =>
