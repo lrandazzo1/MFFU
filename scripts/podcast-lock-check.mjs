@@ -90,4 +90,10 @@ const get = response();
 await exports.default({ method:'GET', headers:{ 'x-league-token':token },
   query:{ leagueId:'123', season:'2026', week:'3' } }, get);
 assert.equal(get.body.status, 'ready');
+const historical = response();
+await exports.default({ method:'POST', headers:{ 'x-league-token':token },
+  body:{ ...body, season:2025 } }, historical);
+assert.equal(historical.code, 400);
+assert.equal(historical.body.error, 'Audio recaps are only available for the current season.');
+assert.equal(calls, 2, 'historical requests never reach ElevenLabs');
 console.log('[podcast-lock-check] concurrent claim, cached POST and GET clean');
