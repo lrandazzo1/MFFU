@@ -21,6 +21,7 @@
     "check:matchup-previews": "node scripts/matchup-preview-guard-check.mjs",
     "check:render": "node scripts/render-check.mjs",
     "check:storyreel": "node scripts/story-reel-check.mjs",
+    "check:podcast-lock": "node scripts/podcast-lock-check.mjs",
     "check:localdesk": "node scripts/local-desk-check.mjs",
     "check:switch": "node scripts/switch-curtain-check.mjs",
     "check:ticker": "node scripts/ticker-scope-check.mjs",
