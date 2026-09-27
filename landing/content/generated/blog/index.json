@@ -1,7 +1,43 @@
 {
-  "generatedAt": "2026-09-25T16:16:42.898Z",
-  "count": 7,
+  "generatedAt": "2026-09-27T18:39:42.848Z",
+  "count": 8,
   "posts": [
+    {
+      "title": "Week 3 trending adds: where the waiver money is going",
+      "slug": "2026-09-27-week-3-trending-adds-where-the-waiver-money-is-going",
+      "publishDate": "2026-09-27",
+      "category": "Waiver Wire",
+      "excerpt": "Sleeper's platform-wide add counts for week 3. Terrance Ferguson, Malik Washington and Xavier Hutchinson are the most claimed players of the last 24 hours, and the gap between the top of the board and the bottom is the part worth acting on.",
+      "author": "FSN Desk",
+      "entityCount": 5,
+      "tracked_players": [
+        {
+          "name": "Terrance Ferguson",
+          "position": "TE",
+          "sleeperPlayerId": "12487"
+        },
+        {
+          "name": "Malik Washington",
+          "position": "WR",
+          "sleeperPlayerId": "11610"
+        },
+        {
+          "name": "Xavier Hutchinson",
+          "position": "WR",
+          "sleeperPlayerId": "10218"
+        },
+        {
+          "name": "Emmett Johnson",
+          "position": "RB",
+          "sleeperPlayerId": "13337"
+        },
+        {
+          "name": "Isaiah Williams",
+          "position": "WR",
+          "sleeperPlayerId": "11608"
+        }
+      ]
+    },
     {
       "title": "Friday Morning Recap & Weekend Preview: Week 3",
       "slug": "2026-09-25-friday-morning-recap-weekend-preview-week-3",
