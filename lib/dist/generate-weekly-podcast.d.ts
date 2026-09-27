@@ -78,6 +78,8 @@ export interface PodcastRunSummary {
     run_id: string;
     target_week: string;
     leagues: number;
+    /** The single league this run was narrowed to, or null for the full sweep. */
+    league: string | null;
     created: number;
     skipped: number;
     failed: number;
@@ -115,12 +117,36 @@ export interface PodcastRunInput {
     script_only?: boolean;
     run_id?: string;
     budget_ms?: number;
+    /**
+     * Narrow the run to ONE league id, instead of every active league.
+     *
+     * Absent — the default, and what the Tuesday schedule uses — every active
+     * league is swept exactly as before. This changes nothing for that run.
+     *
+     * Present, it is a spend bound rather than a convenience. Re-generating one
+     * league's episode through the unfiltered sweep also generates one for every
+     * other active league that happens to have no row for that week yet, at one
+     * ElevenLabs call per dialogue turn each, and publishes episodes to leagues
+     * whose members never asked for one. A regeneration is a single-league
+     * operation, so it gets a single-league switch.
+     *
+     * A league that is not active for the season is reported as such; it is not
+     * silently an empty run, because "nothing happened" and "you named a league
+     * this season does not have" need different answers.
+     */
+    league?: string | null;
 }
 export interface PodcastRunDependencies {
     db?: any;
     req?: any;
     /** Which script to build. Defaults to 'news'. */
     format?: PodcastScriptFormat;
+    /** The season's active leagues. Defaults to `activeLeagueIds(db, season)`.
+     *  Swapped in tests, and honoured rather than ignored so a caller that hands
+     *  over a league list gets that list — scripts/generate-podcast.mjs passed one
+     *  and it was silently dropped, which meant `--league` on a live CLI run swept
+     *  every league and billed for all of them. */
+    listLeagues?: (db: any, season: number) => Promise<string[]>;
     /** Swapped in tests so the local payload can be supplied without a database. */
     readNewsPayload?: (leagueId: string, season: number, week: number) => Promise<NewsPayload | null>;
     /** Swapped in tests. Production reads ESPN through `api/espn`. */

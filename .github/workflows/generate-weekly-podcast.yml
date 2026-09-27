@@ -50,6 +50,18 @@ on:
         description: Week override. Leave blank to use PODCAST_TARGET_WEEK.
         type: string
         required: false
+      # ---- SCOPE A MANUAL RUN TO ONE LEAGUE ----
+      #
+      # Blank is the sweep the Tuesday schedule runs: every active league that
+      # has no episode for the week. That is right on a schedule and wrong for a
+      # re-run, because it also generates — and publishes, and bills one
+      # ElevenLabs call per dialogue turn for — every other league that happens
+      # to be missing that week. Name a league id to touch that league only. An
+      # id that is not active for the season is refused rather than run empty.
+      league:
+        description: League id to generate for. Leave blank to sweep every active league.
+        type: string
+        required: false
       # ---- ONE `choice`, NOT TWO BOOLEANS, AND IT DEFAULTS TO DRY ----
       #
       # A manual dispatch used to take `dry_run` and `script_only` as
@@ -95,6 +107,7 @@ jobs:
           BASE_URL: ${{ vars.ARTICLE_CRON_BASE_URL || 'https://app.fantasysportsnetwork.app' }}
           SEASON: ${{ inputs.season }}
           WEEK: ${{ inputs.week }}
+          LEAGUE: ${{ inputs.league }}
           # The schedule carries no inputs, so it names its own mode. Any manual
           # run uses what was chosen, and the shell below treats anything it
           # does not recognise as a dry run.
@@ -121,6 +134,7 @@ jobs:
           url="${BASE_URL%/}/api/cron/generate-weekly-podcast?dry_run=${DRY_RUN}&script_only=${SCRIPT_ONLY}"
           [ -n "${SEASON:-}" ] && url="${url}&season=${SEASON}"
           [ -n "${WEEK:-}" ] && url="${url}&week=${WEEK}"
+          [ -n "${LEAGUE:-}" ] && url="${url}&league=${LEAGUE}"
 
           # The secret travels as a header, never in the URL, so it stays out of
           # access logs and out of this job's own echoed command line.
@@ -164,6 +178,18 @@ jobs:
           deferred=$(jq -r '.not_attempted // 0' response.json)
           week=$(jq -r '.week // "?"' response.json)
           echo "created=$created skipped=$skipped failed=$failed deferred=$deferred"
+
+          # A scoped run that reports a different league than the one asked for
+          # would mean the filter did not survive the trip — the same class of
+          # failure as the dropped dry_run flag above, and this one publishes
+          # episodes to leagues that did not ask for them.
+          if [ -n "${LEAGUE:-}" ]; then
+            reported_league=$(jq -r '.league // ""' response.json)
+            if [ "$reported_league" != "$LEAGUE" ]; then
+              echo "::error title=League scope was not honoured::Asked for league ${LEAGUE} but the endpoint reported '${reported_league}'. Treat this run as a full sweep and check podcast_episode_runs."
+              exit 1
+            fi
+          fi
           echo "### Week $week: $created created, $skipped skipped, $failed failed, $deferred deferred" >> "$GITHUB_STEP_SUMMARY"
 
           # Leagues over the per-run cap are not lost — the next run finds no

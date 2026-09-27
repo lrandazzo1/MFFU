@@ -336,6 +336,44 @@ The count is an integer, so some payloads have no count that fits a 20-word
 window; the closest is used and the shortfall reported in `words` rather than
 padded with filler. `WORD_GRACE` keeps a miss of a couple of words from logging.
 
+## Regenerating one league's episode
+
+The route is idempotent: a league that already holds a row for the week — in any
+status, `failed` included — is skipped. So a regeneration is two steps, and the
+first one is destructive.
+
+```sql
+-- 1. look at what you are about to replace
+select league_id, week, status, audio_url,
+       jsonb_array_length(episode->'lines') as turns,
+       (episode->'markers'->-1)::text as runtime_seconds
+from podcast_episodes where league_id = '<id>' and season = 2026 and week = <n>;
+
+-- 2. clear the row (keep a copy first; this cannot be undone)
+delete from podcast_episodes where league_id = '<id>' and season = 2026 and week = <n>;
+```
+
+Then run the generation **scoped to that league**:
+
+```
+gh workflow run "Weekly podcast" -f mode=live -f week=<n> -f league=<id>
+node scripts/generate-podcast.mjs --week=<n> --league=<id>     # needs real keys
+POST /api/cron/generate-weekly-podcast?week=<n>&league=<id>
+```
+
+`league` is optional and absent means the full sweep, which is what the Tuesday
+schedule wants. **Do not omit it for a re-run.** The sweep also generates,
+publishes and bills for every other active league that happens to have no row
+for that week — at one ElevenLabs call per dialogue turn each — and those
+leagues' members did not ask for an episode. A league id that is not active for
+the season is refused with 404 rather than quietly running an empty sweep, and
+the workflow fails the run if the endpoint reports a different league than the
+one asked for.
+
+The storage upload on this path uses `upsert: true`, so the MP3 at
+`<league>/<season>/<week>.mp3` is replaced in place and every client polling the
+row picks up the new audio at the same URL.
+
 ## Selecting a format
 
 ```
