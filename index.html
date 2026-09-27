@@ -4673,6 +4673,7 @@ body.fsn-dd-lock{ overflow:hidden; }
           <audio id="studioAudio" preload="metadata"></audio>
         </div>
         <button type="button" class="btn-primary mt-4 w-full" id="studioGenerate">GENERATE WEEKLY RECAP</button>
+        <p id="studioArchiveLock" class="text-[11px] text-[var(--dim)] mt-2" role="note" hidden>Audio recaps are locked for archived seasons.</p>
         <p id="studioStatus" class="text-[11px] text-[var(--dim)] mt-2" role="status" aria-live="polite"></p>
         <div class="studio-tabs" role="tablist" aria-label="Episode content">
           <button type="button" data-studio-tab="script" role="tab" aria-selected="true">Script Read-Along</button>
@@ -37499,6 +37500,13 @@ let studioRemoteKey = '';
 let studioPollTimer = null;
 let studioRemoteStatus = 'missing';
 
+function studioViewedSeason(){
+  return Number(($('seasonYear').value || '').trim()) || Number(uiActiveSeasonYear()) || 2026;
+}
+function studioIsArchivedSeason(){
+  return studioViewedSeason() < Number(uiActiveSeasonYear());
+}
+
 function studioStopReel(){
   clearTimeout(studioReelTimer);
   studioReelTimer = null;
@@ -37638,6 +37646,7 @@ async function studioLoadArchive(scope){
 }
 function renderStudio(){
   const scope = `${selectedLeagueId()}:${Number($('seasonYear').value) || uiActiveSeasonYear()}`;
+  const archived = studioIsArchivedSeason();
   if(studioScope !== scope){
     studioScope = scope;
     studioEpisodes.length = 0;
@@ -37646,7 +37655,7 @@ function renderStudio(){
     if(LeagueData.hasLive()) studioLoadArchive(scope);
   }
   const key = `${scope}:${effectiveWeek()}`;
-  if(LeagueData.hasLive() && ui.screen === 'studio' && studioRemoteKey !== key){
+  if(!archived && LeagueData.hasLive() && ui.screen === 'studio' && studioRemoteKey !== key){
     studioRemoteKey = key;
     studioRemoteStatus = 'missing';
     if(studioCurrent && studioCurrent.week !== effectiveWeek())
@@ -37656,8 +37665,13 @@ function renderStudio(){
   $('studioGenerate').textContent = studioRemoteStatus === 'ready' ? 'EPISODE READY' :
     studioRemoteStatus === 'generating' ? 'GENERATING FOR YOUR LEAGUE…' :
     studioRemoteStatus === 'failed' ? 'EPISODE UNAVAILABLE' : 'GENERATE WEEKLY RECAP';
-  $('studioGenerate').disabled = studioBusy || !LeagueData.hasLive() || studioRemoteStatus !== 'missing';
-  $('studioGenerate').hidden = studioRemoteStatus === 'ready';
+  $('studioGenerate').disabled = archived || studioBusy || !LeagueData.hasLive() || studioRemoteStatus !== 'missing';
+  $('studioGenerate').hidden = archived || studioRemoteStatus === 'ready';
+  $('studioArchiveLock').hidden = !archived;
+  if(archived){
+    clearTimeout(studioPollTimer);
+    $('studioStatus').textContent = 'Viewing archived season data.';
+  }
   if(!studioCurrent && !studioBusy) studioPaintFeed();
 }
 async function studioCheckShared(key){
@@ -37776,6 +37790,11 @@ async function studioGenerate(){
   const scope = studioScope;
   const week = effectiveWeek();
   const year = Number($('seasonYear').value) || uiActiveSeasonYear();
+  if(year < Number(uiActiveSeasonYear())){
+    $('studioStatus').textContent = 'Audio recaps are locked for archived seasons.';
+    renderStudio();
+    return;
+  }
   const draft = studioDraft(week, year);
   if(!draft){ $('studioStatus').textContent = 'The News Desk has no stories for this week yet.'; return; }
   const headers = leagueShareHeaders(selectedLeagueId());

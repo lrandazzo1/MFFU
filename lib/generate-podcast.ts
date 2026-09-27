@@ -8,6 +8,11 @@ type Response = { status(code: number): Response; json(data: unknown): void; set
 
 const TOKEN_RE = /^[A-Za-z0-9_-]{32,128}$/;
 const BUCKET = 'podcast-episodes';
+// Audio is a live-season feature. Update this anchor at the start of each NFL
+// season; keeping it explicit prevents an archive view from ever reaching the
+// database claim or an external voice provider.
+export const CURRENT_SEASON = 2026;
+export const HISTORICAL_SEASON_ERROR = 'Audio recaps are only available for the current season.';
 const DEFAULT_DAN_VOICE_ID = 'T9EcMlwa9Tz1Qri0md9E';
 const DEFAULT_STU_VOICE_ID = 'gzpdkRXvSsVFesfPP5i7';
 const ALLOWED_ORIGINS = new Set([
@@ -122,6 +127,11 @@ export default async function handler(req: Request, res: Response) {
   const season = Number(req.method === 'GET' ? query.season : payload.season);
   const week = Number(req.method === 'GET' ? query.week : payload.week);
   const lines = payload.lines as Line[];
+  // Keep this before auth, Supabase reads/claims, prompt assembly, and all
+  // ElevenLabs work. A historical request is rejected even with valid access.
+  if (Number.isInteger(season) && season < CURRENT_SEASON) {
+    return res.status(400).json({ error: HISTORICAL_SEASON_ERROR });
+  }
   if (!/^\d{1,20}$/.test(id) || !TOKEN_RE.test(token) ||
       !Number.isInteger(season) || season < 1990 || season > 2100 ||
       !Number.isInteger(week) || week < 1 || week > 18 ||
