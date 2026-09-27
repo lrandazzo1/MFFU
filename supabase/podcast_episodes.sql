@@ -20,3 +20,17 @@ values ('podcast-episodes', 'podcast-episodes', true, 25000000, array['audio/mpe
 on conflict (id) do update set public = true;
 -- Public reads only. Uploads use the server-side service-role key, with upsert
 -- disabled and a deterministic path for each league/season/week.
+--
+-- Playback contract for the Studio player (see lib/generate-podcast.ts):
+--   * allowed_mime_types is audio/mpeg only, and the upload sets contentType
+--     explicitly, so the object is never served as application/octet-stream —
+--     iOS Safari refuses to decode that and the player reports 0:00 / 0:00.
+--   * the upload sets cacheControl '3600', which becomes the object's
+--     Cache-Control max-age.
+--   * a public bucket is served by Storage's own CDN edge, which already
+--     answers with `Access-Control-Allow-Origin: *` and `Accept-Ranges: bytes`
+--     and honours Range requests with a 206. That is what mobile Safari needs
+--     to stream and scrub, and it needs no per-project CORS entry: the
+--     dashboard's CORS settings cover the REST/Realtime APIs, not public
+--     Storage objects. Do not front these URLs with a proxy that drops
+--     Accept-Ranges — playback silently degrades to download-then-play.

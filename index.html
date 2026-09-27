@@ -37499,6 +37499,20 @@ let studioIgnoreClick = false;
 let studioRemoteKey = '';
 let studioPollTimer = null;
 let studioRemoteStatus = 'missing';
+/* The resolved media URL currently loaded into #studioAudio, or '' when the
+   player is empty. This is deliberately NOT read back off studioAudio.src:
+   assigning the empty string to an <audio> src resolves it against the
+   document URL, so the getter returns the page itself. The browser then
+   fetches index.html, fails to decode it as MP3, and the player is left with
+   Play enabled, a duration that never arrives (0:00 / 0:00) and a play()
+   promise that rejects with "Could not play this episode on this device." */
+let studioSrc = '';
+/* The status line is written from several places — the shared-episode poll,
+   generation, the device archive and playback. A real failure has to outlive
+   the next repaint, so it is recorded here and re-applied by renderStudio
+   instead of being replaced by the ordinary empty-state line. Loading a new
+   source clears it, because that is the point at which it stopped being true. */
+let studioStatusError = '';
 
 function studioViewedSeason(){
   return Number(($('seasonYear').value || '').trim()) || Number(uiActiveSeasonYear()) || 2026;
@@ -37569,6 +37583,37 @@ async function studioStore(mode, value){
     });
   }finally{ db.close(); }
 }
+function studioHasAudio(){
+  return !!studioSrc;
+}
+/* A failure the reader must keep seeing across repaints. */
+function studioReportStatus(message){
+  studioStatusError = String(message == null ? '' : message);
+  $('studioStatus').textContent = studioStatusError;
+}
+/* The one place #studioAudio's src is written. An empty url removes the
+   attribute outright rather than assigning '', so the element goes to
+   NETWORK_EMPTY instead of pointing at the document. load() then aborts any
+   in-flight fetch and clears the stale duration/currentTime from the previous
+   episode, which is what keeps the readout and the Play button in sync. */
+function studioApplySource(url){
+  studioSrc = String(url || '');
+  studioStatusError = '';
+  if(studioSrc) studioAudio.src = studioSrc;
+  else studioAudio.removeAttribute('src');
+  try{
+    studioAudio.load();
+  }catch(err){
+    console.error('[Podcast] Could not reset the audio element for ' + (studioSrc || 'an empty player'), err);
+  }
+}
+/* What the status line should say when the player holds no audio. Callers use
+   it instead of leaving the reader with an enabled Play button and no episode. */
+function studioNoAudioMessage(){
+  if(!LeagueData.hasLive()) return 'Connect your league in Setup to generate an episode.';
+  if(studioRemoteStatus === 'generating') return 'A league member is generating this episode. It will appear here shortly.';
+  return 'No episode generated yet for this week.';
+}
 function studioSetEpisode(episode){
   studioAudio.pause();
   studioStopReel();
@@ -37576,15 +37621,13 @@ function studioSetEpisode(episode){
   studioCurrent = episode;
   studioReelIndex = 0;
   studioObjectUrl = episode && episode.audio ? URL.createObjectURL(episode.audio) : '';
-  studioAudio.src = studioObjectUrl || (episode && episode.audioUrl) || '';
+  studioApplySource(studioObjectUrl || (episode && episode.audioUrl) || '');
   $('studioSeek').value = '0';
   $('studioTime').textContent = '0:00 / 0:00';
-  $('studioPlay').disabled = !studioAudio.src;
-  $('studioSeek').disabled = !studioAudio.src;
   $('studioTitle').textContent = episode ? episode.title : 'THE WEEKLY RECAP';
   $('studioSubtitle').textContent = episode ? `Week ${episode.week} · ${episode.year} · Dan & Stu` :
     (LeagueData.hasLive() ? 'Select a week and generate an episode.' : 'Connect a league to get started.');
-  studioAudio.load();
+  studioSyncPlayback();
   studioPaintFeed();
 }
 function studioPaintFeed(){
@@ -37641,7 +37684,7 @@ async function studioLoadArchive(scope){
     if(!studioCurrent) studioSetEpisode(studioEpisodes[0] || null);
   }catch(err){
     console.warn('[Podcast] Device archive is unavailable; episodes will last only until this page closes.', err);
-    $('studioStatus').textContent = 'Device archive is unavailable. New audio will play during this session.';
+    studioReportStatus('Device archive is unavailable. New audio will play during this session.');
   }
 }
 function renderStudio(){
@@ -37671,7 +37714,12 @@ function renderStudio(){
   if(archived){
     clearTimeout(studioPollTimer);
     $('studioStatus').textContent = 'Viewing archived season data.';
+  }else if(studioStatusError){
+    $('studioStatus').textContent = studioStatusError;
+  }else if(!studioHasAudio() && !studioBusy && studioRemoteStatus !== 'failed'){
+    $('studioStatus').textContent = studioNoAudioMessage();
   }
+  studioSyncPlayback();
   if(!studioCurrent && !studioBusy) studioPaintFeed();
 }
 async function studioCheckShared(key){
@@ -37706,7 +37754,7 @@ async function studioCheckShared(key){
     renderStudio();
   }catch(err){
     console.warn('[Podcast] Shared episode lookup failed', err);
-    if(studioRemoteKey === key) $('studioStatus').textContent = 'Could not check the shared episode. Reopen Studio to retry.';
+    if(studioRemoteKey === key) studioReportStatus('Could not check the shared episode. Reopen Studio to retry.');
     if(studioRemoteKey === key && ui.screen === 'studio') studioPollTimer = setTimeout(()=> studioCheckShared(key), 15000);
   }
 }
@@ -37714,25 +37762,50 @@ function studioTime(seconds){
   if(!Number.isFinite(seconds) || seconds < 0) return '0:00';
   return Math.floor(seconds/60) + ':' + String(Math.floor(seconds%60)).padStart(2,'0');
 }
+/* Safari on iOS answers a ranged MP3 request with duration === Infinity (and
+   briefly NaN) until it has buffered to the end, which is the other half of
+   the 0:00 / 0:00 report. The seekable range carries the real length well
+   before duration settles, so fall back to it rather than showing zero. */
+function studioDuration(){
+  if(!studioHasAudio()) return 0;
+  const raw = studioAudio.duration;
+  if(Number.isFinite(raw) && raw > 0) return raw;
+  try{
+    const ranges = studioAudio.seekable;
+    if(ranges && ranges.length){
+      const end = ranges.end(ranges.length - 1);
+      if(Number.isFinite(end) && end > 0) return end;
+    }
+  }catch(err){
+    console.warn('[Podcast] Seekable range unavailable while resolving duration', err);
+  }
+  return 0;
+}
 function studioSyncPlayback(){
-  const duration = Number.isFinite(studioAudio.duration) && studioAudio.duration > 0 ? studioAudio.duration : 0;
-  $('studioHero').dataset.playing = String(!studioAudio.paused);
+  const hasAudio = studioHasAudio();
+  const duration = studioDuration();
+  const position = hasAudio && Number.isFinite(studioAudio.currentTime) ? studioAudio.currentTime : 0;
+  $('studioHero').dataset.playing = String(hasAudio && !studioAudio.paused);
   $('studioPlay').textContent = studioAudio.paused ? '▶' : 'Ⅱ';
   $('studioPlay').setAttribute('aria-label', studioAudio.paused ? 'Play episode' : 'Pause episode');
-  $('studioSeek').value = duration ? String(Math.round(100 * studioAudio.currentTime / duration)) : '0';
-  $('studioTime').textContent = studioTime(studioAudio.currentTime) + ' / ' + studioTime(duration);
+  // Both controls stay inert until a real URL is loaded, so a week with no
+  // episode cannot fire a play() that is guaranteed to reject.
+  $('studioPlay').disabled = !hasAudio;
+  $('studioSeek').disabled = !hasAudio || !duration;
+  $('studioSeek').value = duration ? String(Math.round(100 * position / duration)) : '0';
+  $('studioTime').textContent = studioTime(position) + ' / ' + studioTime(duration);
   if(ui.screen === 'studio' && ui.studioTab === 'reels' && studioCurrent && !studioAudio.paused &&
       Array.isArray(studioCurrent.markers) && studioCurrent.markers.length){
     const count = studioCurrent.stories.length;
     const index = Math.min(count - 1, studioCurrent.markers
-      .slice(0, count - 1).filter(mark=> studioAudio.currentTime >= Number(mark)).length);
+      .slice(0, count - 1).filter(mark=> position >= Number(mark)).length);
     if(index !== studioReelIndex){ studioReelIndex = index; studioPaintFeed(); }
     const start = index ? Number(studioCurrent.markers[index - 1]) : 0;
     const end = Number(studioCurrent.markers[index]) || duration;
     const fill = $('studioFeed').querySelector('.sv-seg[data-state="active"] > i');
     if(fill){
       fill.style.animation = 'none';
-      fill.style.width = Math.max(0, Math.min(100, (studioAudio.currentTime - start) / Math.max(0.1, end - start) * 100)) + '%';
+      fill.style.width = Math.max(0, Math.min(100, (position - start) / Math.max(0.1, end - start) * 100)) + '%';
     }
   }
   if(!studioAudio.paused) studioStopReel();
@@ -37796,14 +37869,15 @@ async function studioGenerate(){
     return;
   }
   const draft = studioDraft(week, year);
-  if(!draft){ $('studioStatus').textContent = 'The News Desk has no stories for this week yet.'; return; }
+  if(!draft){ studioReportStatus('The News Desk has no stories for this week yet.'); return; }
   const headers = leagueShareHeaders(selectedLeagueId());
   if(!headers['x-league-token']){
-    $('studioStatus').textContent = 'Save or join your ESPN league in Setup to unlock audio generation.';
+    studioReportStatus('Save or join your ESPN league in Setup to unlock audio generation.');
     return;
   }
   studioBusy = true;
   $('studioGenerate').disabled = true;
+  studioStatusError = '';
   $('studioStatus').textContent = 'Generating Dan and Stu’s audio…';
   try{
     const response = await fetch(FSNApi.resolve('/api/generate-podcast'), {
@@ -37829,7 +37903,7 @@ async function studioGenerate(){
     }else throw new Error(result.error || `Audio service returned ${response.status}`);
   }catch(err){
     console.error('[Podcast] Episode generation failed', err);
-    $('studioStatus').textContent = err.message || 'Audio generation failed.';
+    studioReportStatus(err.message || 'Audio generation failed.');
   }finally{
     studioBusy = false;
     renderStudio();
@@ -37839,18 +37913,55 @@ async function studioGenerate(){
 $('studioWave').innerHTML = Array.from({length:31}, (_,i)=>
   `<i style="--bar-height:${10 + ((i*13)%37)}px;--bar-delay:${(i%7)*.09}s"></i>`).join('');
 $('studioGenerate').addEventListener('click', studioGenerate);
+/* Safari rejects the play() promise rather than throwing, and only honours it
+   inside the gesture's own handler, so the await stays in the click path and
+   every rejection is reported instead of surfacing as an unhandled rejection
+   with the button stuck on pause. */
+async function studioPlayEpisode(){
+  if(!studioHasAudio()){
+    $('studioStatus').textContent = studioNoAudioMessage();
+    studioSyncPlayback();
+    return;
+  }
+  try{
+    await studioAudio.play();
+  }catch(err){
+    console.error('[Podcast] Episode playback failed for ' +
+      ((studioCurrent && studioCurrent.id) || 'unknown episode') + ' (' + studioSrc + ')', err);
+    studioReportStatus('Unable to stream audio. Check connection or reload episode.');
+  }finally{
+    studioSyncPlayback();
+  }
+}
 $('studioPlay').addEventListener('click', ()=>{
-  if(studioAudio.paused) studioAudio.play().catch(err=>{
-    console.error('[Podcast] Episode playback failed', err);
-    $('studioStatus').textContent = 'Could not play this episode on this device.';
-  });
-  else studioAudio.pause();
+  if(studioAudio.paused) studioPlayEpisode();
+  else{
+    studioAudio.pause();
+    studioSyncPlayback();
+  }
 });
 $('studioSeek').addEventListener('input', e=>{
-  if(Number.isFinite(studioAudio.duration) && studioAudio.duration > 0)
-    studioAudio.currentTime = Number(e.target.value) * studioAudio.duration / 100;
+  const duration = studioDuration();
+  if(duration) studioAudio.currentTime = Number(e.target.value) * duration / 100;
 });
-['timeupdate','loadedmetadata','durationchange','play','pause','ended'].forEach(event=> studioAudio.addEventListener(event, studioSyncPlayback));
+/* A decode or network failure on the element never rejects play(); it only
+   fires this event, so without it the player silently keeps 0:00 / 0:00. */
+studioAudio.addEventListener('error', ()=>{
+  // Clearing the source (removeAttribute + load) fires no error, so anything
+  // arriving here is a real URL that failed to load.
+  if(!studioHasAudio()) return;
+  const err = studioAudio.error;
+  console.error('[Podcast] Audio element failed for ' +
+    ((studioCurrent && studioCurrent.id) || 'unknown episode') + ' (' + studioSrc + ')',
+    err ? { code:err.code, message:err.message } : err);
+  studioReportStatus('Unable to stream audio. Check connection or reload episode.');
+  studioSyncPlayback();
+});
+// durationchange/canplay/progress carry the late iOS duration; emptied and
+// waiting/stalled keep the controls honest while a source is swapped or buffers.
+['timeupdate','loadedmetadata','loadeddata','durationchange','canplay','progress',
+ 'seeked','waiting','stalled','play','playing','pause','ended','emptied']
+  .forEach(event=> studioAudio.addEventListener(event, studioSyncPlayback));
 document.querySelectorAll('[data-studio-tab]').forEach(btn=> btn.addEventListener('click', ()=>{
   ui.studioTab = btn.dataset.studioTab;
   studioPaintFeed();

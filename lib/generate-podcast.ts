@@ -198,8 +198,13 @@ export default async function handler(req: Request, res: Response) {
       }
       const audio = stitchPodcastMp3(segments);
       const path = `${id}/${season}/${week}.mp3`;
+      // contentType is explicit because Supabase Storage otherwise infers
+      // application/octet-stream from the Buffer, which iOS Safari refuses to
+      // decode; cacheControl is explicit because the default (max-age=3600 on
+      // some tiers, no-cache on others) decides whether a mobile client can
+      // serve the ranged re-requests it makes while scrubbing from cache.
       const uploaded = await client.storage.from(BUCKET).upload(path, audio,
-        { contentType: 'audio/mpeg', upsert: false });
+        { contentType: 'audio/mpeg', cacheControl: '3600', upsert: false });
       if (uploaded.error) throw uploaded.error;
       const audioUrl = client.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
       const episode = { title: String(payload.title || `Week ${week} Recap`).slice(0, 180),
