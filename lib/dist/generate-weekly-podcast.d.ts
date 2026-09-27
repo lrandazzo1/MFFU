@@ -55,6 +55,7 @@
  * over the cap are not lost: the next run finds no episode for them.
  */
 import { type WeeklyPodcastScript } from './podcast-script';
+import { type NewsPayload } from './podcast-news-script';
 export type PodcastRunStatus = 'created' | 'skipped' | 'failed';
 export type PodcastFailureReason = 'ESPN_AUTH' | 'NO_MATCHUP_DATA' | 'EMPTY_SCRIPT' | 'TTS' | 'STORAGE' | 'TIMEOUT' | 'OTHER';
 export interface PodcastLeagueResult {
@@ -86,11 +87,25 @@ export interface PodcastRunSummary {
     max_leagues: number;
     dry_run: boolean;
     audio: boolean;
+    format: PodcastScriptFormat;
     results: PodcastLeagueResult[];
 }
+/** Which script the run builds.
+ *
+ *   'news'     the ~60s recap from the local blog_articles payload. Makes NO
+ *              external call: the box score was read once by the article cron
+ *              hours earlier and its evaluated stat lines are already stored.
+ *   'segments' the four-segment long form. Still reads ESPN, because the FSN
+ *              Index board and the preview matchups need the raw payload.
+ *
+ * 'news' is the default. It is shorter (four provider calls, not eight), it
+ * reads a performance in context rather than reciting a total, and its
+ * scaffolding varies week to week — the three things the long form did not. */
+export type PodcastScriptFormat = 'news' | 'segments';
 export interface PodcastRunInput {
     season?: number | null;
     week?: number | null;
+    format?: PodcastScriptFormat;
     /** Resolve the leagues and the idempotency check, then stop. Nothing is
      *  fetched, synthesized, uploaded or written. */
     dry_run?: boolean;
@@ -103,6 +118,10 @@ export interface PodcastRunInput {
 export interface PodcastRunDependencies {
     db?: any;
     req?: any;
+    /** Which script to build. Defaults to 'news'. */
+    format?: PodcastScriptFormat;
+    /** Swapped in tests so the local payload can be supplied without a database. */
+    readNewsPayload?: (leagueId: string, season: number, week: number) => Promise<NewsPayload | null>;
     /** Swapped in tests. Production reads ESPN through `api/espn`. */
     fetchBoxScores?: (input: {
         league_id: string;
@@ -145,6 +164,20 @@ export declare function podcastDatabase(): any;
  * billed twice for one episode.
  */
 export declare function leaguesAlreadyRecorded(db: any, season: number, week: number): Promise<Set<string>>;
+/**
+ * The week's news payload, straight out of `blog_articles`.
+ *
+ * This is the whole point of the 'news' format: no live box-score fetch. The
+ * Tuesday article cron already read ESPN for this league-week, ran the outcome
+ * math, and stored the evaluated starters in `tracked_players` alongside the
+ * headline and the impact line. Reading that row is one Supabase select in
+ * place of one external API call, and it cannot disagree with the article the
+ * league is also reading, because it IS the article's data.
+ *
+ * Returns null when no row exists — a league whose article has not published
+ * yet has no payload, which is an ordinary skip rather than a failure.
+ */
+export declare function readNewsPayload(db: any, leagueId: string, season: number, week: number): Promise<NewsPayload | null>;
 export declare function classifyPodcastFailure(err: any): PodcastFailureReason;
 export interface LeagueEpisodeOutcome {
     script: WeeklyPodcastScript;

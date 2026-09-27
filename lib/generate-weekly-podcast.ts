@@ -66,6 +66,7 @@ import { calculatePlayerOutcomeFlags, type TrackedPlayer } from './article-math'
 import { orderPreviewMatchups, previewMatchups } from './article-generator';
 import { computeFsnIndex } from './fsn-index';
 import { buildWeeklyPodcastScript, type WeeklyPodcastScript } from './podcast-script';
+import { buildNewsPodcastScript, type NewsPayload } from './podcast-news-script';
 import { authorizedByCronSecret, cronSecretConfigured, activeLeagueIds } from './article-cron';
 
 /* ------------------------------------------------------------------ *
@@ -113,12 +114,27 @@ export interface PodcastRunSummary {
   max_leagues: number;
   dry_run: boolean;
   audio: boolean;
+  format: PodcastScriptFormat;
   results: PodcastLeagueResult[];
 }
+
+/** Which script the run builds.
+ *
+ *   'news'     the ~60s recap from the local blog_articles payload. Makes NO
+ *              external call: the box score was read once by the article cron
+ *              hours earlier and its evaluated stat lines are already stored.
+ *   'segments' the four-segment long form. Still reads ESPN, because the FSN
+ *              Index board and the preview matchups need the raw payload.
+ *
+ * 'news' is the default. It is shorter (four provider calls, not eight), it
+ * reads a performance in context rather than reciting a total, and its
+ * scaffolding varies week to week — the three things the long form did not. */
+export type PodcastScriptFormat = 'news' | 'segments';
 
 export interface PodcastRunInput {
   season?: number | null;
   week?: number | null;
+  format?: PodcastScriptFormat;
   /** Resolve the leagues and the idempotency check, then stop. Nothing is
    *  fetched, synthesized, uploaded or written. */
   dry_run?: boolean;
@@ -132,6 +148,10 @@ export interface PodcastRunInput {
 export interface PodcastRunDependencies {
   db?: any;
   req?: any;
+  /** Which script to build. Defaults to 'news'. */
+  format?: PodcastScriptFormat;
+  /** Swapped in tests so the local payload can be supplied without a database. */
+  readNewsPayload?: (leagueId: string, season: number, week: number) => Promise<NewsPayload | null>;
   /** Swapped in tests. Production reads ESPN through `api/espn`. */
   fetchBoxScores?: (input: { league_id: string; season: number; week: number; req?: any }) => Promise<any>;
   fetchKickoffs?: (input: { season: number; week: number }) => Promise<any>;
@@ -232,6 +252,51 @@ export async function leaguesAlreadyRecorded(
   return seen;
 }
 
+/**
+ * The week's news payload, straight out of `blog_articles`.
+ *
+ * This is the whole point of the 'news' format: no live box-score fetch. The
+ * Tuesday article cron already read ESPN for this league-week, ran the outcome
+ * math, and stored the evaluated starters in `tracked_players` alongside the
+ * headline and the impact line. Reading that row is one Supabase select in
+ * place of one external API call, and it cannot disagree with the article the
+ * league is also reading, because it IS the article's data.
+ *
+ * Returns null when no row exists — a league whose article has not published
+ * yet has no payload, which is an ordinary skip rather than a failure.
+ */
+export async function readNewsPayload(
+  db: any,
+  leagueId: string,
+  season: number,
+  week: number,
+): Promise<NewsPayload | null> {
+  const result = await db
+    .from('blog_articles')
+    .select('league_id,season,week,headline,title,match_impact_summary,tracked_players')
+    .eq('league_id', leagueId)
+    .eq('season', season)
+    .eq('week', week)
+    .limit(1);
+  if (result.error) throw result.error;
+  const row = (result.data || [])[0];
+  if (!row) return null;
+  const tracked = Array.isArray(row.tracked_players) ? row.tracked_players : [];
+  if (!tracked.length) {
+    console.warn('[PodcastCron] the blog_articles row for league ' + leagueId + ' week ' + week +
+      ' carries no tracked_players, so there is nothing to narrate.');
+    return null;
+  }
+  return {
+    league_id: String(row.league_id),
+    season: Number(row.season),
+    week: Number(row.week),
+    headline: row.headline || row.title || null,
+    match_impact_summary: row.match_impact_summary || null,
+    tracked_players: tracked,
+  };
+}
+
 /** The ESPN read, through the same boundary the article pipeline uses: a direct
  *  call into `api/espn`, no HTTP round trip, so the league's stored cookies and
  *  share token are applied exactly as they are for a browser read.
@@ -326,6 +391,48 @@ export async function buildLeagueEpisode(
   options: { script_only?: boolean } & PodcastRunDependencies,
 ): Promise<LeagueEpisodeOutcome> {
   const label = `${input.league_id}/${input.season}/w${input.week}`;
+  const format: PodcastScriptFormat = options.format === 'segments' ? 'segments' : 'news';
+
+  /* ---- 'news': the local payload, and NOT ONE EXTERNAL CALL ----
+     Returns before the ESPN read below. The stat lines come from the
+     blog_articles row the article cron already wrote for this league-week, so
+     the podcast cannot disagree with the article the league is reading, and a
+     Tuesday run costs no box-score request at all. */
+  if (format === 'news') {
+    const news = options.readNewsPayload
+      ? await options.readNewsPayload(input.league_id, input.season, input.week)
+      : await readNewsPayload(options.db, input.league_id, input.season, input.week);
+    if (!news) {
+      throw fail('No news payload in blog_articles for ' + label +
+        '; the article for this league-week has not published yet', 422);
+    }
+    const built = buildNewsPodcastScript(news);
+    const script: WeeklyPodcastScript = {
+      title: built.title,
+      week: built.week,
+      season: built.season,
+      lines: built.lines,
+      stories: built.stories,
+      /* The news format has movements, not the four named segments. It reports
+         one populated segment per narrated performance so the run summary's
+         populated_segments stays meaningful across both formats. */
+      segments: built.movements.map((m) => ({
+        key: m.key as any,
+        title: m.key,
+        headline: m.key + ': ' + m.words + ' words',
+        populated: m.words > 0,
+      })),
+      populatedSegments: Math.min(4, built.performances),
+    } as WeeklyPodcastScript;
+    console.info('[PodcastCron] ' + label + ' news script: ' + built.words + ' words, ' +
+      built.characters + ' chars, ~' + built.estimatedSeconds + 's, ' +
+      built.performances + ' performance(s), ' + built.lines.length + ' turns.');
+    if (script.populatedSegments < MIN_POPULATED_SEGMENTS) {
+      throw fail('The news payload for ' + label + ' narrated nothing; refusing to synthesize', 422);
+    }
+    return finishEpisode(script, label, options);
+  }
+
   const fetchBoxScores = options.fetchBoxScores || defaultFetchBoxScores;
   const payload = await fetchBoxScores({ ...input, req: options.req });
 
@@ -380,6 +487,21 @@ export async function buildLeagueEpisode(
     );
   }
 
+  return finishEpisode(script, label, options);
+}
+
+/**
+ * Synthesis and stitching, shared by both script formats.
+ *
+ * Extracted when the news format arrived: the two formats differ only in how
+ * the script is built, and a second copy of the turn loop would be a second
+ * place for the marker arithmetic to drift.
+ */
+async function finishEpisode(
+  script: WeeklyPodcastScript,
+  label: string,
+  options: { script_only?: boolean } & PodcastRunDependencies,
+): Promise<LeagueEpisodeOutcome> {
   if (options.script_only) {
     return { script, audio: null, turns: 0, markers: [] };
   }
@@ -486,6 +608,7 @@ export async function runWeeklyPodcastCron(
   const maxLeagues = maxLeaguesPerRun();
   const dryRun = !!input.dry_run;
   const scriptOnly = !!input.script_only;
+  const format: PodcastScriptFormat = input.format === 'segments' ? 'segments' : 'news';
 
   const leagueIds = await activeLeagueIds(db, season);
   const already = await leaguesAlreadyRecorded(db, season, week);
@@ -505,6 +628,7 @@ export async function runWeeklyPodcastCron(
     max_leagues: maxLeagues,
     dry_run: dryRun,
     audio: !scriptOnly,
+    format,
     results: [],
   };
 
@@ -573,7 +697,7 @@ export async function runWeeklyPodcastCron(
 
       const outcome = await buildLeagueEpisode(
         { league_id: leagueId, season, week },
-        { ...dependencies, script_only: scriptOnly },
+        { ...dependencies, script_only: scriptOnly, format },
       );
       result.populated_segments = outcome.script.populatedSegments;
       result.turns = outcome.turns;

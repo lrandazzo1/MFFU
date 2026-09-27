@@ -75,6 +75,9 @@ FSN weekly podcast generator
   --payload=<file>   OFFLINE: build the script from this ESPN league payload.
                      No network, no synthesis, no database, no spend.
   --out=<file>       Write the built episode to this JSON file.
+  --format=<f>       'news' (default) reads the local blog_articles payload and
+                     makes no external call; 'segments' is the four-segment long
+                     form and still reads ESPN.
   --dry-run          LIVE: resolve leagues and idempotency, write nothing.
   --script-only      LIVE: store the four segments, synthesize no audio.
   --preflight        Report whether a live run can proceed, then stop.
@@ -285,6 +288,7 @@ async function runLive() {
       week,
       dry_run: dryRun,
       script_only: scriptOnly,
+      format: value('format') === 'segments' ? 'segments' : 'news',
       run_id: `cli-${season}-w${week}-${new Date().toISOString().slice(0, 10)}`,
     },
     league
