@@ -62,6 +62,12 @@ const context = {
     if(name === 'elevenlabs') return { ElevenLabsClient:class {
       async generate(){ calls++; await new Promise(resolve=>setTimeout(resolve, 10)); return (async function*(){ yield mp3; })(); }
     } };
+    /* A relative import inside the handler — './podcast-news-script', which is
+       where the server-authored ~60 second script comes from. The vm context has
+       no module path of its own, so the outer require would resolve it against
+       scripts/ and throw MODULE_NOT_FOUND. Point it at the compiled output; the
+       npm script builds lib/dist before running this check. */
+    if(name.startsWith('./')) return require('../lib/dist/' + name.slice(2) + '.js');
     return require(name);
   },
 };

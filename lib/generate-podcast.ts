@@ -1,6 +1,7 @@
 import { ElevenLabsClient } from 'elevenlabs';
 import { createClient } from '@supabase/supabase-js';
 import { timingSafeEqual } from 'node:crypto';
+import { buildNewsPodcastScript, readNewsPayload } from './podcast-news-script';
 
 type Line = { host: 'DAN' | 'STU' | 'MARK' | 'SULLY'; text: string };
 type Request = { method?: string; headers: Record<string, string | undefined>; body?: unknown };
@@ -147,13 +148,24 @@ export default async function handler(req: Request, res: Response) {
   if (Number.isInteger(season) && season < CURRENT_SEASON) {
     return res.status(400).json({ error: HISTORICAL_SEASON_ERROR });
   }
+  /* ---- `lines` IS NOW OPTIONAL ON A POST ----
+     A client that sends them is authoring the script itself, which is what the
+     Studio button used to do with its own four-line News Desk narration. A
+     client that omits them is asking THIS route to build the script, and it
+     builds the same ~60 second news recap the Tuesday cron builds, from the
+     same lib/podcast-news-script.ts and the same blog_articles payload.
+     That is the only way the two paths can be identical rather than merely
+     similar: one generator, called from both places. A browser port would be a
+     third copy of the archetype matrix and its eighteen phrasings.
+     The `lines` path is kept because clients already in the wild send them. */
+  const authored = Array.isArray(lines);
   if (!/^\d{1,20}$/.test(id) || !TOKEN_RE.test(token) ||
       !Number.isInteger(season) || season < 1990 || season > 2100 ||
       !Number.isInteger(week) || week < 1 || week > 18 ||
-      (req.method === 'POST' && (!Array.isArray(lines) || lines.length < 2 || lines.length > MAX_EPISODE_LINES ||
-        !lines.every(line => line && podcastHost(line.host) &&
-          typeof line.text === 'string' && line.text.length >= 5 && line.text.length <= 450) ||
-        JSON.stringify(payload).length > 24000))) {
+      (req.method === 'POST' && (JSON.stringify(payload).length > 24000 ||
+        (authored && (lines.length < 2 || lines.length > MAX_EPISODE_LINES ||
+          !lines.every(line => line && podcastHost(line.host) &&
+            typeof line.text === 'string' && line.text.length >= 5 && line.text.length <= 450)))))) {
     return res.status(400).json({ error: 'Invalid episode request or missing league access' });
   }
   try {
@@ -186,6 +198,38 @@ export default async function handler(req: Request, res: Response) {
     if (existing.data || req.method === 'GET') return reply(existing.data);
     if (!process.env.ELEVENLABS_API_KEY) return res.status(503).json({ error: 'Podcast audio is not configured yet' });
 
+    /* ---- THE SCRIPT, BUILT BEFORE THE CLAIM ----
+       Either the client's own lines, or — when it sent none — the same ~60
+       second news recap the Tuesday cron builds, from the same generator and
+       the same blog_articles payload. No box score is fetched here either: the
+       payload is the article pipeline's stored output.
+
+       This runs BEFORE the `generating` claim is inserted, and it must stay
+       there. A league whose weekly article has not published yet has nothing to
+       narrate, and answering 422 from inside the claim would leave a
+       `generating` row nobody clears: the inner catch only fires on a throw, so
+       an early return would strand the claim until the ten-minute staleness
+       sweep flipped it to `failed` and locked the week for good. Nothing is
+       claimed until there is a script to record. */
+    let episodeLines: Line[] = lines;
+    let scriptTitle = String(payload.title || `Week ${week} Recap`).slice(0, 180);
+    let scriptStories: unknown[] = Array.isArray(payload.stories) ? payload.stories.slice(0, 10) : [];
+    if (!authored) {
+      const news = await readNewsPayload(client, id, season, week);
+      if (!news) {
+        return res.status(422).json({
+          error: 'No news payload for week ' + week + ' yet. The weekly article for this league ' +
+            'has not published, so there are no stat lines to narrate.',
+        });
+      }
+      const built = buildNewsPodcastScript(news);
+      episodeLines = built.lines as Line[];
+      scriptTitle = built.title;
+      scriptStories = built.stories;
+      console.log('[Podcast] Authored a news script for ' + id + '/' + season + '/w' + week + ': ' +
+        built.words + ' words, ~' + built.estimatedSeconds + 's, ' + built.lines.length + ' turns.');
+    }
+
     // The database primary key is the cross-instance mutex. An insert loser
     // observes the winner's generating/ready status and never calls ElevenLabs.
     const claim = await client.from('podcast_episodes').insert({
@@ -201,7 +245,7 @@ export default async function handler(req: Request, res: Response) {
       const segments: Buffer[] = [];
       const markers: number[] = [];
       const voices = podcastVoiceIds();
-      for (const line of lines) {
+      for (const line of episodeLines) {
         const voiceId = voices[podcastHost(line.host)!];
         const stream = await generateHostAudio(line.text, voiceId);
         const chunks: Buffer[] = [];
@@ -217,8 +261,8 @@ export default async function handler(req: Request, res: Response) {
         { contentType: 'audio/mpeg', upsert: false });
       if (uploaded.error) throw uploaded.error;
       const audioUrl = client.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
-      const episode = { title: String(payload.title || `Week ${week} Recap`).slice(0, 180),
-        lines, stories: Array.isArray(payload.stories) ? payload.stories.slice(0, 10) : [],
+      const episode = { title: scriptTitle,
+        lines: episodeLines, stories: scriptStories,
         visuals: Array.isArray(payload.visuals) ? payload.visuals.slice(0, 10) : [], markers,
         week, year: season, leagueId: id, createdAt: Date.now() };
       const saved = await client.from('podcast_episodes').update({

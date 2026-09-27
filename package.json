@@ -21,7 +21,7 @@
     "check:matchup-previews": "node scripts/matchup-preview-guard-check.mjs",
     "check:render": "node scripts/render-check.mjs",
     "check:storyreel": "node scripts/story-reel-check.mjs",
-    "check:podcast-lock": "node scripts/podcast-lock-check.mjs",
+    "check:podcast-lock": "npm run build:podcast && node scripts/podcast-lock-check.mjs",
     "build:podcast": "tsc -p tsconfig.podcast.json",
     "generate:podcast": "node scripts/generate-podcast.mjs",
     "check:podcast-segments": "npm run build:podcast && node scripts/podcast-segments-check.mjs",

@@ -50,6 +50,7 @@
   "files": [
     "lib/fsn-index.ts",
     "lib/podcast-script.ts",
+    "lib/podcast-news-script.ts",
     "lib/generate-podcast.ts",
     "lib/generate-weekly-podcast.ts"
   ]

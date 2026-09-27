@@ -38064,8 +38064,20 @@ async function studioGenerate(){
     renderStudio();
     return;
   }
-  const draft = studioDraft(week, year);
-  if(!draft){ $('studioStatus').textContent = 'The News Desk has no stories for this week yet.'; return; }
+  /* studioDraft() is now consulted for TWO things only: the Story Reel visuals,
+     which are snapshots of rendered News Desk cards and so cannot be made
+     server-side, and the episode's local archive id. Its own `lines`, `title`
+     and `stories` are deliberately no longer sent — the endpoint authors those,
+     so the button and the Tuesday cron produce the same script. The copy is
+     left in place rather than deleted: it is hand-written narrative content,
+     and an older client build still posts it.
+
+     A null draft used to abort the whole generation. It no longer can: the
+     server narrates from the blog_articles payload, which has nothing to do
+     with whether the News Desk has headlines on screen. No visuals simply means
+     an episode whose Story Reel falls back to headline cards. */
+  const draft = studioDraft(week, year) ||
+    { id:`${studioScope}:${week}`, scope:studioScope, year, week, visuals:[] };
   const headers = leagueShareHeaders(selectedLeagueId());
   if(!headers['x-league-token']){
     $('studioStatus').textContent = 'Save or join your ESPN league in Setup to unlock audio generation.';
@@ -38077,8 +38089,18 @@ async function studioGenerate(){
   try{
     const response = await fetch(FSNApi.resolve('/api/generate-podcast'), {
       method:'POST', headers:{ 'Content-Type':'application/json', ...headers },
+      /* ---- NO `lines`, AND THAT IS THE POINT ----
+         Omitting them asks the endpoint to author the script, so the button
+         produces the SAME ~60 second news recap the Tuesday cron produces —
+         same generator, same blog_articles payload, same archetype phrasings.
+         Sending draft.lines here is what made manual generation a different,
+         shallower, four-line episode from the scheduled one.
+
+         `visuals` still travels: the Story Reel panels are snapshots of
+         rendered News Desk cards, which only a browser can produce. The title
+         and the stories now come back from the server's script. */
       body:JSON.stringify({ leagueId:selectedLeagueId(), season:year, week,
-        title:draft.title, stories:draft.stories, visuals:draft.visuals, lines:draft.lines }),
+        visuals:draft.visuals }),
     });
     const result = await response.json();
     if(studioScope !== scope) return;
@@ -38087,6 +38109,8 @@ async function studioGenerate(){
       studioCheckShared(`${scope}:${week}`);
     }else if(result.status === 'ready' && result.episode){
       studioRemoteStatus = 'ready';
+      /* result.episode carries the server's title, lines and stories. Only the
+         visuals are spread back over it, because they never left the browser. */
       const episode = { ...result.episode, audioUrl:result.audioUrl, scope, id:draft.id,
         visuals:draft.visuals };
       const oldIndex = studioEpisodes.findIndex(row=> row.id === episode.id);

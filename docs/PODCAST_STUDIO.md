@@ -50,13 +50,44 @@ Two pipelines now write episodes, and they do not overlap:
 | | Interactive | Scheduled |
 |---|---|---|
 | Trigger | A reader taps GENERATE in Studio | Tuesday 10:00 UTC, every active league |
-| Script | `studioDraft()` in index.html, from News Desk headlines | `lib/podcast-script.ts`, four segments |
+| Script | `lib/podcast-news-script.ts`, authored server-side | `lib/podcast-news-script.ts`, authored server-side |
 | Auth | Per-league `x-league-token` | `CRON_SECRET` |
 | Public path | `POST /api/generate-podcast` | `POST /api/cron/generate-weekly-podcast` |
 
 Both land in the same `podcast_episodes` row for a league week, and the primary
-key is the mutex, so whichever arrives first wins and the other observes it. The
-interactive path is unchanged.
+key is the mutex, so whichever arrives first wins and the other observes it.
+
+## Both triggers now produce the same script
+
+The button used to author its own script: `studioDraft()` assembled four turns
+of narration in the browser from whatever News Desk headlines were on screen and
+POSTed them as `lines`. The Tuesday run built the ~60 second news recap from
+`blog_articles`. Same table, same player, two different shows — and the manual
+one was the shallower of the two.
+
+`lines` is now **optional** on `POST /api/generate-podcast`:
+
+- **Omitted** — the route reads the league week's `blog_articles` payload with
+  `readNewsPayload()` and builds the script with `buildNewsPodcastScript()`.
+  That is literally the generator the cron calls, so the two paths cannot drift:
+  `scripts/podcast-segments-check.mjs` asserts the stored episode is turn-for-turn
+  identical to what the generator produces for that payload.
+- **Present** — honoured as before. App builds already in the wild post their
+  own `lines`, and an episode they generate must not fail.
+
+Two consequences worth knowing:
+
+- **The script is built before the `generating` claim is inserted.** A league
+  whose weekly article has not published has nothing to narrate and the route
+  answers 422. If that answer came from inside the claim it would strand a
+  `generating` row — the inner `catch` only fires on a throw — and the
+  ten-minute staleness sweep would flip it to `failed`, locking the league week
+  for good. Nothing is claimed until there is a script to record.
+- **An empty News Desk no longer blocks generation.** `studioDraft()` is still
+  consulted, but only for the Story Reel visuals (snapshots of rendered cards,
+  which only a browser can produce) and the local archive id. A null draft
+  degrades to an episode whose Story Reel falls back to headline cards, instead
+  of refusing to generate.
 
 ## The four segments
 
@@ -214,3 +245,102 @@ index.html, all four segments and their honest empty states, determinism, the
 week boundary refusing before any provider call, the league cap, idempotency
 across two runs, and one ledger row per attempt. No credit is spent and nothing
 is written anywhere real.
+
+
+---
+
+# The ~60 second news-payload recap (default format)
+
+A second script format, and the one the cron builds by default. It exists
+because the four-segment long form had three problems: it made a live ESPN call
+during script generation, it recited totals instead of reading them in context,
+and its scaffolding was one fixed template per slot, so every week read the
+same.
+
+| | Four-segment long form | News recap (default) |
+|---|---|---|
+| Format value | `segments` | `news` |
+| Input | live ESPN box score | `blog_articles` row, already local |
+| External calls | ESPN + kickoff feed | **none** |
+| Turns | 8 | 4-6 |
+| Length | ~1,900 chars | ~800-950 chars, 140-160 words, ~60s |
+| Shape | 4 named segments | intro 10s, body 35s, outro 15s |
+
+## No external call
+
+`readNewsPayload()` reads one `blog_articles` row for the league, season and
+week: `tracked_players` (the eight evaluated stat lines the Tuesday article cron
+already computed), plus that row's `headline` and `match_impact_summary`. One
+Supabase select replaces one external API call, and the podcast cannot disagree
+with the article the league is also reading, because it *is* the article's data.
+
+A league whose article has not published yet has no payload, which is an
+ordinary skip rather than a failure. `scripts/podcast-segments-check.mjs` proves
+the absence of fetching directly: it runs the format with a `fetchBoxScores`
+that throws, and the episode still builds.
+
+## Where the depth comes from
+
+Not new copy — `lib/article-generator.ts` already owns an archetype matrix that
+reads a performance in context. `archetypeFor()` weighs the outcome flag against
+the deficit the player's team was carrying when he kicked off, the finishing
+margin, and whether it happened under the lights, across nine archetypes. So a
+47.5-point week is not "beat his projection by 28":
+
+> Jaxon Smith-Njigba erased a 42.5 deficit with 47.5 points to secure a 20 point
+> win for Nicholas Sheffington.
+
+The flag contract behind it still refuses to call a player decisive in a matchup
+his team lost.
+
+## Why it stops reading the same every week
+
+Each archetype carries two phrasings and `newsVariants()` seeds the first
+appearance of each from a league-week hash, then alternates strictly, so two
+performances of the same archetype never read alike. Eighteen body shapes. The
+intro and sign-off draw from their own four-entry pools on the same seed.
+
+Two things were wrong before and are worth recording, because both were
+*measured* rather than reasoned about:
+
+1. `rotateVariants()` seeds from `(playerId + week) % 2`, so the week only moves
+   the answer by its **parity** — weeks 2 and 4 produced byte-identical bodies.
+2. Replacing it with a string hash did not help, because every consumer takes
+   the seed modulo a small number and a polynomial hash makes the low bits a
+   near-linear function of the last characters: `…:2026:2` and `…:2026:4` differ
+   by 2, so bit 0 was still identical. `weekSeed()` is now FNV-1a plus a
+   murmur3 finalizer so bit 0 depends on the whole string.
+
+With real weekly data the check measures **10 distinct bodies across 10 weeks**.
+Holding the payload artificially constant it collapses to about three, which is
+the honest ceiling of two phrasings per archetype: more variety means writing
+more phrasings, which is a deliberate authoring task.
+
+## Speech shaping
+
+`sentenceFor()` is written for markdown and a reader. `speakable()` adapts it:
+bold markers stripped, `pts` said as `points`, figures cut to one decimal
+(`47.50` reads as "forty seven point five zero"), and `a 18.1` corrected to
+`an 18.1`, since the indefinite article has to agree with how the number is
+*spoken*.
+
+One artifact is inherited on purpose: some blog templates read
+`<team> were 25.9 down`, which is natural for a team name and odd for a manager's
+own name. Fixing it means editing published blog copy, so it is left alone.
+
+## Length
+
+140-160 words, chosen by measuring rather than guessing: candidate performance
+counts are tried in preference order and the first landing in the window wins.
+The count is an integer, so some payloads have no count that fits a 20-word
+window; the closest is used and the shortfall reported in `words` rather than
+padded with filler. `WORD_GRACE` keeps a miss of a couple of words from logging.
+
+## Selecting a format
+
+```
+POST /api/cron/generate-weekly-podcast          # news, the default
+node scripts/generate-podcast.mjs --format=segments --week=2 --dry-run
+```
+
+The run summary reports which format it built in its `format` field.
