@@ -37575,6 +37575,8 @@ function studioScheduleReel(remaining = studioReelDuration()){
   studioStopReel();
   studioReelRemaining = remaining;
   studioReelStarted = performance.now();
+  // Timed episodes follow the audio clock, including while playback is paused.
+  if(studioCurrent && Array.isArray(studioCurrent.story_reel_markers)) return;
   if(ui.screen === 'studio' && ui.studioTab === 'reels' && studioCurrent &&
       studioAudio.paused && !studioReelHeld && !document.hidden){
     studioReelTimer = setTimeout(()=> studioMoveReel(1), remaining);
@@ -37583,9 +37585,9 @@ function studioScheduleReel(remaining = studioReelDuration()){
 function studioReelCues(){
   if(!studioCurrent) return [];
   const cues = studioCurrent.story_reel_markers;
-  if(Array.isArray(cues) && cues.length === studioCurrent.stories.length) return cues;
+  if(Array.isArray(cues)) return cues;
   const ends = studioCurrent.markers || [];
-  return studioCurrent.stories.map((_, i)=> ({
+  return (studioCurrent.stories || []).map((_, i)=> ({
     startMs:(i ? Number(ends[i-1]) || 0 : 0) * 1000,
     endMs:(Number(ends[i]) || studioAudio.duration || 0) * 1000,
   }));
@@ -37606,12 +37608,12 @@ function studioSyncScript(){
   if(rows[index]) rows[index].scrollIntoView({block:'nearest', behavior:'smooth'});
 }
 function studioMoveReel(delta){
-  if(!studioCurrent || !studioCurrent.stories.length) return;
-  studioReelIndex = (studioReelIndex + delta + studioCurrent.stories.length) % studioCurrent.stories.length;
-  if(!studioAudio.paused){
-    const cue = studioReelCues()[studioReelIndex];
-    if(cue && Number.isFinite(Number(cue.startMs))) studioAudio.currentTime = Number(cue.startMs) / 1000;
-  }
+  const cues = studioReelCues();
+  if(!cues.length) return;
+  studioReelIndex = (studioReelIndex + delta + cues.length) % cues.length;
+  const cue = cues[studioReelIndex];
+  if(studioAudio.src && Number.isFinite(Number(cue.startMs)))
+    studioAudio.currentTime = Number(cue.startMs) / 1000;
   studioPaintFeed();
 }
 function studioHoldReel(held){
@@ -37688,17 +37690,27 @@ function studioPaintFeed(){
     studioActiveLineIndex = -1;
     studioSyncScript();
   }else{
-    const count = studioCurrent.stories.length || 1;
-    const visual = studioCurrent.visuals && studioCurrent.visuals[studioReelIndex];
-    const headline = studioCurrent.stories[studioReelIndex] || studioCurrent.stories[0];
+    const cues = studioReelCues();
+    const count = cues.length;
+    if(!count){
+      studioStopReel();
+      feed.innerHTML = emptyState('NO STORY REEL', 'This episode has no timed story segments.', 'studio');
+      return;
+    }
+    studioReelIndex = Math.max(0, Math.min(studioReelIndex, count - 1));
+    // A partial visual snapshot may include unrelated News Desk panels. Only
+    // use it when every visual has a matching audio cue at the same index.
+    const visuals = studioCurrent.visuals;
+    const visual = Array.isArray(visuals) && visuals.length === count ? visuals[studioReelIndex] : null;
+    const headline = (studioCurrent.stories || [])[studioReelIndex];
     // Older device archives contain only headlines. Present them in the same
     // News Desk card furniture; newly generated episodes snapshot live panels.
     const card = visual || { key:'editorial', kicker:'From the News Desk · Week ' + studioCurrent.week,
-      headline:String(headline || ''), badge:'FSN Desk' };
-    feed.innerHTML = `<div class="studio-reel">
+      headline:String(headline || `Story ${studioReelIndex + 1}`), badge:'FSN Desk' };
+    feed.innerHTML = `<div class="studio-reel" data-reel-index="${studioReelIndex}">
       <div class="sv-progress" aria-label="Story ${studioReelIndex+1} of ${count}">${Array.from({length:count}, (_,i)=>
         `<span class="sv-seg" data-state="${i < studioReelIndex ? 'done' : i === studioReelIndex ? 'active' : 'idle'}"><i></i></span>`).join('')}</div>
-      <span class="kicker text-[var(--cyan)]">STORY ${studioReelIndex+1} / ${studioCurrent.stories.length}</span>
+      <span class="kicker text-[var(--cyan)]">STORY ${studioReelIndex+1} / ${count}</span>
       ${storyPanelHtml({ ...card, cta:null })}
       <div class="studio-reel-nav"><button type="button" data-studio-nav="prev" aria-label="Previous story">← PREVIOUS</button>
       <button type="button" data-studio-nav="next" aria-label="Next story">NEXT STORY →</button></div>
@@ -38018,7 +38030,8 @@ function studioSyncPlayback(){
   $('studioSeek').value = duration ? String(Math.round(100 * studioAudio.currentTime / duration)) : '0';
   $('studioTime').textContent = studioTime(studioAudio.currentTime) + ' / ' + studioTime(duration);
   if(ui.screen === 'studio' && ui.studioTab === 'script') studioSyncScript();
-  if(ui.screen === 'studio' && ui.studioTab === 'reels' && studioCurrent && !studioAudio.paused){
+  if(ui.screen === 'studio' && ui.studioTab === 'reels' && studioCurrent &&
+      (!studioAudio.paused || Array.isArray(studioCurrent.story_reel_markers))){
     const cues = studioReelCues();
     if(cues.length){
       const index = studioCueIndex(cues, studioAudio.currentTime * 1000);
@@ -38176,7 +38189,7 @@ $('studioSeek').addEventListener('input', e=>{
   if(Number.isFinite(studioAudio.duration) && studioAudio.duration > 0)
     studioAudio.currentTime = Number(e.target.value) * studioAudio.duration / 100;
 });
-['timeupdate','loadedmetadata','durationchange','play','pause','ended'].forEach(event=> studioAudio.addEventListener(event, studioSyncPlayback));
+['timeupdate','seeked','loadedmetadata','durationchange','play','pause','ended'].forEach(event=> studioAudio.addEventListener(event, studioSyncPlayback));
 document.querySelectorAll('[data-studio-tab]').forEach(btn=> btn.addEventListener('click', ()=>{
   ui.studioTab = btn.dataset.studioTab;
   studioPaintFeed();

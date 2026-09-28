@@ -490,7 +490,19 @@ try {
           episode: { title: 'WEEK 2 RECAP', week: 2, year: 2026, leagueId: TEST_LEAGUE,
             lines: [{ host: 'DAN', text: 'Segment one, the FSN Index movers for week two.' },
               { host: 'STU', text: 'And the teams that slid, Dan, which is the louder half.' }],
-            stories: ['a', 'b', 'c', 'd'], visuals: [], markers: [7.5], createdAt: Date.now() } }
+             stories: ['Segment one', 'Segment two'],
+             visuals: [
+               { key: 'editorial', headline: 'Unlinked pre-roll slide' },
+               { key: 'editorial', headline: 'Unlinked panel two' },
+               { key: 'editorial', headline: 'Unlinked panel three' },
+               { key: 'editorial', headline: 'Unlinked panel four' },
+             ],
+             markers: [7.5],
+             story_reel_markers: [
+               { startMs: 0, endMs: 3500 },
+               { startMs: 3500, endMs: 7500 },
+               { startMs: 7500, endMs: 11000 },
+             ], createdAt: Date.now() } }
       : { status: 'missing' };
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
@@ -550,6 +562,50 @@ try {
   else fail('exception: the week 2 script did not reach the read-along feed');
   if (!view.playDisabled) pass('exception: the play button is enabled for the archived week 2 episode');
   else fail('exception: the play button stayed disabled for the archived episode');
+
+  /* The visual list is deliberately longer than the stories and the marker
+     list. Only the three timed segments may become cards. */
+  const reel = () => page.evaluate(() => {
+    const feed = document.getElementById('studioFeed');
+    const card = feed.querySelector('.studio-reel');
+    return {
+      index: card ? Number(card.dataset.reelIndex) : -1,
+      count: feed.querySelectorAll('.sv-seg').length,
+      active: [...feed.querySelectorAll('.sv-seg')].findIndex((seg) => seg.dataset.state === 'active'),
+      text: (card && card.innerText) || '',
+      time: document.getElementById('studioAudio').currentTime,
+    };
+  });
+  await page.evaluate(() => document.querySelector('[data-studio-tab="reels"]').click());
+  let card = await reel();
+  if (card.count === 3 && card.index === 0 && card.active === 0 &&
+      /Segment one/i.test(card.text) && !/Unlinked pre-roll slide/i.test(card.text))
+    pass('Reel starts on marker 0 with exactly one card slot per marker and no pre-roll slide');
+  else fail('Reel initial marker/card mapping: ' + JSON.stringify(card));
+
+  await page.waitForTimeout(7300);
+  card = await reel();
+  if (card.index === 0) pass('paused audio does not advance the timed card on a slideshow timer');
+  else fail('paused Reel advanced to card ' + card.index + ' without audio');
+
+  await page.evaluate(() => {
+    const audio = document.getElementById('studioAudio');
+    audio.currentTime = 3.6;
+    audio.dispatchEvent(new Event('timeupdate'));
+  });
+  card = await reel();
+  if (card.index === 1 && card.active === 1 && /Segment two/i.test(card.text))
+    pass('audio position inside marker 1 paints card 1 directly');
+  else fail('Reel did not follow marker 1: ' + JSON.stringify(card));
+
+  await page.evaluate(() => document.querySelector('[data-studio-nav="next"]').click());
+  card = await reel();
+  if (card.index === 2 && card.active === 2 && /Story 3/i.test(card.text) &&
+      Math.abs(card.time - 7.5) < 0.2)
+    pass('next navigates to marker 2 and seeks paused audio to its exact start');
+  else fail('Reel navigation did not seek to marker 2: ' + JSON.stringify(card));
+
+  await page.evaluate(() => document.querySelector('[data-studio-tab="script"]').click());
 
   /* ---- the guardrail still holds everywhere else ---- */
   /* The scrubber only has -1 / +1 controls; there is no data-week-nav="-2". */
