@@ -56,7 +56,7 @@ for (const result of [plain, withBeds]) {
   const match = measured.stderr.toString().match(/"input_i"\s*:\s*"(-?[\d.]+)"[\s\S]*?"input_tp"\s*:\s*"(-?[\d.]+)"/);
   assert.ok(match, 'No loudnorm measurement in FFmpeg output');
   assert.ok(Math.abs(Number(match[1]) + 16) < 1.5, `Integrated loudness: ${match[1]} LUFS`);
-  assert.ok(Number(match[2]) <= -0.8, `True peak: ${match[2]} dBFS`);
+  assert.ok(Number(match[2]) <= -1.0, `True peak: ${match[2]} dBFS`);
 }
 assert.ok(withBeds.audio.length > 0);
 console.log('[podcast-audio-check] crossfades, stingers, markers, loudness and decode clean');
