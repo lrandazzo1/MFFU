@@ -49,7 +49,7 @@ Two pipelines now write episodes, and they do not overlap:
 
 | | Interactive | Scheduled |
 |---|---|---|
-| Trigger | A reader taps GENERATE in Studio | Tuesday 10:00 UTC, every active league |
+| Trigger | A reader taps GENERATE in Studio, once the week has closed | Tuesday 09:00 UTC, every active league |
 | Script | `lib/podcast-news-script.ts`, authored server-side | `lib/podcast-news-script.ts`, authored server-side |
 | Auth | Per-league `x-league-token` | `CRON_SECRET` |
 | Public path | `POST /api/generate-podcast` | `POST /api/cron/generate-weekly-podcast` |
@@ -138,16 +138,107 @@ fallback and reports `mode: 'sos'`.
 
 ```
 POST /api/cron/generate-weekly-podcast
-     ?season=<year>       override; defaults to the current season
-     &week=<n>            override; defaults to PODCAST_TARGET_WEEK
-     &dry_run=1           resolve leagues and idempotency, write nothing
-     &script_only=1       store the four segments, synthesize no audio
+     ?season=<year>         override; defaults to the current season
+     &week=<n>              override; defaults to the just-completed week
+     &dry_run=1             resolve leagues and idempotency, write nothing
+     &script_only=1         store the four segments, synthesize no audio
+     &allow_open_week=1     skip the "this week has finished" check
 ```
 
 `GET` is accepted too, so a Vercel cron (which can only issue `GET`) works
 unchanged. Auth is `Authorization: Bearer $CRON_SECRET` or `x-cron-secret`,
 compared in constant time. With no secret configured the route refuses to run
 rather than defaulting open.
+
+### Tuesday morning, and only once the week has closed
+
+The run is a Tuesday-morning artefact. `0 9 * * 2` (05:00 ET in season) puts it
+well after the Monday night final and one hour after the Tuesday **article**
+run, which is not a coincidence: the default `news` format narrates the
+`blog_articles` row that article writes, so a podcast run scheduled before
+`0 8 * * 2` finds no payload and skips every league, silently, every week.
+`scripts/podcast-segments-check.mjs` asserts the two schedules stay in that
+order.
+
+The clock alone is not the guarantee, because a Monday night game can run long
+and a stat pass can land late. Before the league sweep, before any ESPN read and
+a long way before ElevenLabs, the route asks the NFL scoreboard whether the week
+it is about to recap has actually finished:
+
+- every game of the week reports `completed`, or the `post` state → generate;
+- anything still open → `409`, which the workflow reports as a **skip**, not a
+  failure. Nothing is claimed, nothing is spent, and the next run finds the same
+  leagues with no episode for the week and picks them up.
+
+A week the scoreboard reports **no games** for is not "probably finished" — it
+is `complete: false`. "I cannot see this week" and "this week is over" are
+different answers, and defaulting the unknown to complete is how a scheduled run
+narrates a week nobody played. `lib/week-complete.ts` owns that read; its
+`parseWeekCompletion()` is pure and counts both status shapes ESPN ships (on the
+event, and on the event's first competition).
+
+### Which week the run recaps
+
+The schedule sends no `?week=`. Three sources answer, in precedence order, and
+all of them end at a week whose box scores are closed:
+
+| Source | When | Week |
+|---|---|---|
+| `?week=N` | a backfill or a scoped re-run | as asked, then checked for completion |
+| `PODCAST_TARGET_WEEK=N` | the testing boundary is pinning a week | that week, then checked for completion |
+| `PODCAST_TARGET_WEEK=any` | the boundary is lifted | `resolveRecapWeek()` |
+
+`resolveRecapWeek()` takes the **just completed** week, never the one about to
+start. It reads the week the NFL scoreboard currently calls live and tries two
+candidates in order:
+
+1. **the live week** — on Tuesday morning ESPN is still reporting the week whose
+   games just played (the same behaviour the Tuesday blog article relies on), so
+   this is the normal answer;
+2. **the week behind it** — for a run that lands after ESPN has already rolled
+   over: the live week's games are all in the future, so the finished week is the
+   one before it.
+
+The run's own response records what it did: `week_source` (`live_week`,
+`previous_week`, `boundary` or `override`), `week_complete`, and
+`week_games_final` as `finished/total`.
+
+`allow_open_week=1` skips the completion check for a named week. It exists for a
+deliberate mid-week rehearsal and for the case where the scoreboard read itself
+is what is broken. Nothing on the schedule passes it.
+
+**While `PODCAST_TARGET_WEEK` pins a week, the resolver never runs.** The pinned
+week is used and checked, and every other week is refused by the boundary with a
+409 as before. Set `PODCAST_TARGET_WEEK=any` in the Vercel project for the
+Tuesday schedule to start recapping whatever week just ended.
+
+### Studio's button follows the same rule
+
+Generation is no longer a thing a reader can do in the middle of a week.
+`studioGenerationLock()` in index.html returns a fourth reason, `'midweek'`,
+whenever the week on screen has not closed, and the screen says so:
+
+| State | Studio |
+|---|---|
+| The week is still being played | The button is **disabled** and reads `🎙️ Weekly Recap Unlocks Tuesday After MNF`, with a note explaining when it unlocks |
+| The week has closed and no episode exists | The button is enabled: `GENERATE WEEKLY RECAP` |
+| An episode exists | The player carries it and the button reads `EPISODE READY` |
+
+Completion is read client-side by the global `weekBoxScoresComplete()` (block 1,
+per rule 1 — the Studio renderer in the UI block calls it). It uses
+`scheduleMatchupNarrativeFinal()`, not `scheduleGameFinal()`: ESPN routinely
+leaves `winner` on UNDECIDED for hours after the Monday night whistle while stat
+corrections settle, and a recap that waited for the official flag would still be
+locked on Tuesday morning with every starter's game long over. A week with no
+regular-season matchup loaded is **not** complete, for the same reason the server
+refuses a week the scoreboard shows no games for.
+
+**Reading is not gated on any of this.** A past week still polls for, loads and
+plays the episode its league generated at the time, and an archive card still
+opens its stored audio from Supabase Storage. Only minting a NEW episode is
+locked. `scripts/studio-episode-check.mjs` asserts both halves: the disabled
+mid-week button beside its note, and a completed week that still plays its
+episode without a single POST to the generation endpoint.
 
 ### Week 2 testing boundary
 
@@ -189,7 +280,7 @@ Beyond the interactive path's variables:
 
 ## Why the schedule lives in GitHub Actions
 
-`.github/workflows/generate-weekly-podcast.yml`, `0 10 * * 2`. Three reasons,
+`.github/workflows/generate-weekly-podcast.yml`, `0 9 * * 2`. Three reasons,
 the same ones that put the league blog articles there:
 
 - Vercel cron jobs are always issued as `GET`; this schedule `POST`s.
@@ -204,7 +295,7 @@ On a paid plan, this is the equivalent `vercel.json` block:
 ```json
 {
   "crons": [
-    { "path": "/api/cron/generate-weekly-podcast", "schedule": "0 10 * * 2" }
+    { "path": "/api/cron/generate-weekly-podcast", "schedule": "0 9 * * 2" }
   ]
 }
 ```
@@ -242,8 +333,9 @@ npm run check:podcast-lock       # the interactive endpoint's claim and season l
 `scripts/podcast-segments-check.mjs` runs the compiled modules against an
 in-memory Supabase double and a stubbed voice provider: the index port against
 index.html, all four segments and their honest empty states, determinism, the
-week boundary refusing before any provider call, the league cap, idempotency
-across two runs, and one ledger row per attempt. No credit is spent and nothing
+week boundary refusing before any provider call, the week resolver and its
+completion gate (both fed stubbed scoreboards — nothing is fetched), the league
+cap, idempotency across two runs, and one ledger row per attempt. No credit is spent and nothing
 is written anywhere real.
 
 

@@ -19,6 +19,13 @@
 # The equivalent vercel.json block is written out in docs/PODCAST_STUDIO.md if
 # you would rather run it there once the project is on a paid plan.
 #
+# ---- THE WEEK IT RECAPS ----
+#
+# The schedule sends no week. The route resolves the JUST COMPLETED week from
+# the NFL scoreboard — the live week when its games are in the books, otherwise
+# the week behind it — and refuses a week that is still being played with a 409.
+# A 409 is a skip here, the same way the week boundary's is.
+#
 # ---- THE WEEK 2 TESTING BOUNDARY ----
 #
 # The route refuses any week other than PODCAST_TARGET_WEEK (default 2) before
@@ -36,10 +43,33 @@ name: Weekly podcast
 
 on:
   schedule:
-    # Tuesdays at 10:00 UTC (06:00 ET during the NFL season), after the Monday
-    # night final has settled and after the Tuesday blog article at 08:00 — the
-    # episode narrates a week ESPN has finished reporting.
-    - cron: '0 10 * * 2'
+    # Tuesday 09:00 UTC (05:00 ET during the NFL season) — Tuesday morning, well
+    # after the Monday night final. One run a week, and the only trigger that
+    # mints an episode on its own: Studio's GENERATE button is locked from
+    # Wednesday through Monday night while the week is still being played.
+    #
+    # ---- WHY NOT EARLIER ON TUESDAY ----
+    #
+    # The default 'news' format narrates the `blog_articles` row for the league
+    # week — the eight evaluated stat lines the Tuesday ARTICLE cron computes at
+    # 08:00 UTC (.github/workflows/generate-articles.yml). No row, no payload,
+    # and `readNewsPayload()` returns null, which the run treats as an ordinary
+    # skip. A podcast run scheduled before 08:00 would therefore skip every
+    # league, every week, and cost a whole week to notice. This schedule stays
+    # AFTER the article one; scripts/podcast-segments-check.mjs asserts the
+    # ordering so neither can be moved across the other by accident.
+    #
+    # The route does not trust the clock on its own. Before the league sweep it
+    # asks the NFL scoreboard whether every game of the week it is about to
+    # recap has finished, and answers 409 (reported below as a skip, not a
+    # failure) if any has not — so a run that lands while the Monday night game
+    # is still in overtime costs nothing and the next run picks the leagues up.
+    # It also resolves WHICH week that is rather than assuming: the live week if
+    # its box scores are closed, otherwise the week ESPN has just rolled off.
+    # That resolution is only reachable with PODCAST_TARGET_WEEK=any; while the
+    # testing boundary pins a week, that pinned week is used (and still checked
+    # for completion).
+    - cron: '0 9 * * 2'
   workflow_dispatch:
     inputs:
       season:
@@ -86,6 +116,21 @@ on:
           - dry_run      # resolve leagues and idempotency, write nothing, spend nothing
           - script_only  # store the four segments, no audio, no ElevenLabs spend
           - live         # synthesize audio and spend at ElevenLabs
+      # ---- REHEARSING BEFORE THE WEEK CLOSES ----
+      #
+      # The route refuses a week whose games are still being played. That is the
+      # point of the schedule, and it also blocks a deliberate mid-week test, so
+      # this lifts the check for one manual run. A `choice`, not a boolean, for
+      # the reason spelled out above, and the default is the safe one. The
+      # schedule never sets it.
+      allow_open_week:
+        description: Generate even though the week has not finished (rehearsal only).
+        type: choice
+        default: 'no'
+        required: false
+        options:
+          - 'no'
+          - 'yes'
 
 permissions:
   contents: read
@@ -108,6 +153,7 @@ jobs:
           SEASON: ${{ inputs.season }}
           WEEK: ${{ inputs.week }}
           LEAGUE: ${{ inputs.league }}
+          ALLOW_OPEN_WEEK: ${{ github.event_name == 'schedule' && 'no' || inputs.allow_open_week }}
           # The schedule carries no inputs, so it names its own mode. Any manual
           # run uses what was chosen, and the shell below treats anything it
           # does not recognise as a dry run.
@@ -131,7 +177,10 @@ jobs:
           esac
           echo "mode=${MODE:-} -> dry_run=${DRY_RUN} script_only=${SCRIPT_ONLY}"
 
-          url="${BASE_URL%/}/api/cron/generate-weekly-podcast?dry_run=${DRY_RUN}&script_only=${SCRIPT_ONLY}"
+          # Anything but an explicit "yes" leaves the completion gate in force.
+          [ "${ALLOW_OPEN_WEEK:-no}" = "yes" ] && OPEN_WEEK=1 || OPEN_WEEK=0
+
+          url="${BASE_URL%/}/api/cron/generate-weekly-podcast?dry_run=${DRY_RUN}&script_only=${SCRIPT_ONLY}&allow_open_week=${OPEN_WEEK}"
           [ -n "${SEASON:-}" ] && url="${url}&season=${SEASON}"
           [ -n "${WEEK:-}" ] && url="${url}&week=${WEEK}"
           [ -n "${LEAGUE:-}" ] && url="${url}&league=${LEAGUE}"
@@ -149,8 +198,10 @@ jobs:
           echo "HTTP $status"
           jq '.' response.json || cat response.json
 
-          # 409 is the week boundary refusing a week it is not pinned to. That is
-          # the testing lock working, not a broken run.
+          # 409 is a refusal to generate, not a failure: either the week boundary
+          # declining a week it is not pinned to, or the completion gate saying
+          # the week's box scores are not closed yet. Both are the guardrails
+          # working, and the next run finds the same leagues with no episode.
           if [ "$status" = "409" ]; then
             reason=$(jq -r '.message // "week locked"' response.json)
             echo "::notice title=Week locked::$reason"

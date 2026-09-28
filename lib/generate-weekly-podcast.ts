@@ -22,16 +22,19 @@
  * ---- WHAT ONE RUN DOES ----
  *
  *   1. Refuses any caller without `CRON_SECRET`.
- *   2. Refuses any week other than `PODCAST_TARGET_WEEK` (default 2) before
+ *   2. Works out which week just ended and refuses to go on until that week's
+ *      box scores are closed, before spending anything. See "WHICH WEEK A
+ *      SCHEDULED RUN RECAPS" on the HTTP handler below.
+ *   3. Refuses any week other than `PODCAST_TARGET_WEEK` (default 2) before
  *      spending anything. See the testing boundary below.
- *   3. Sweeps `public.leagues` for the season's active leagues.
- *   4. Skips every league that already holds a `podcast_episodes` row for the
+ *   4. Sweeps `public.leagues` for the season's active leagues.
+ *   5. Skips every league that already holds a `podcast_episodes` row for the
  *      week, so a retry or a double fire costs nothing and no member ever has
  *      an episode change under them.
- *   5. For each remaining league, up to the per-run cap: one ESPN read, the
+ *   6. For each remaining league, up to the per-run cap: one ESPN read, the
  *      four-segment script, ElevenLabs synthesis, an MP3 into Supabase
  *      Storage, and a `podcast_episodes` row.
- *   6. Writes one `podcast_episode_runs` ledger row per league attempt,
+ *   7. Writes one `podcast_episode_runs` ledger row per league attempt,
  *      whether it succeeded or not.
  *
  * One league's failure never stops the others — the same contract
@@ -68,6 +71,7 @@ import { orderPreviewMatchups, previewMatchups } from './article-generator';
 import { computeFsnIndex } from './fsn-index';
 import { buildWeeklyPodcastScript, type WeeklyPodcastScript } from './podcast-script';
 import { buildNewsPodcastScript, readNewsPayload, type NewsPayload } from './podcast-news-script';
+import { nflWeekCompletion, type WeekCompletion } from './week-complete';
 /* Re-exported so the cron module stays the one import site for callers that
    already reach for it here. The read itself lives beside the generator that
    consumes it, because the interactive endpoint needs the same pair. */
@@ -226,6 +230,165 @@ export function targetWeekSetting(): { value: string; week: number | null } {
     return { value: String(DEFAULT_TARGET_WEEK), week: DEFAULT_TARGET_WEEK };
   }
   return { value: String(week), week };
+}
+
+/* ------------------------------------------------------------------ *
+ * Which week a scheduled run recaps
+ * ------------------------------------------------------------------ */
+
+/** Why this week, and what the scoreboard said about it. */
+export interface RecapWeekResolution {
+  season: number;
+  week: number;
+  /** The week the NFL scoreboard currently reports as the live one. */
+  live_week: number | null;
+  /** `live_week` when that week's games are already in the books, otherwise the
+   *  week before it — the one ESPN has just rolled off. */
+  source: 'live_week' | 'previous_week';
+  completion: WeekCompletion;
+}
+
+export interface RecapWeekDependencies {
+  /** The season and week the scoreboard currently reports. Defaults to one
+   *  schedule-feed pull, which is one outbound request per weekly run. */
+  fetchLiveWeek?: () => Promise<{ seasonYear: number | null; week: number | null }>;
+  /** Whether every game of a week has finished. Defaults to one scoreboard read
+   *  per candidate week. */
+  weekCompletion?: (input: { season: number; week: number }) => Promise<WeekCompletion>;
+}
+
+async function defaultFetchLiveWeek(): Promise<{ seasonYear: number | null; week: number | null }> {
+  const scheduleFeed = require('../notifications/schedule-feed');
+  const snapshot = await scheduleFeed.pull({});
+  return {
+    seasonYear: snapshot && snapshot.seasonYear == null ? null : Number(snapshot.seasonYear),
+    week: snapshot && snapshot.week == null ? null : Number(snapshot.week),
+  };
+}
+
+/**
+ * THE JUST-COMPLETED WEEK.
+ *
+ * The Tuesday schedule fires in the morning, hours after the Monday night
+ * final, and the week it must recap is the week that just ended — never the one
+ * about to start. Two candidates, in this order:
+ *
+ *   1. The week the scoreboard currently calls live. On Tuesday morning ESPN is
+ *      still reporting the week whose games just played (the same behaviour the
+ *      Tuesday blog article relies on), so this is the normal answer.
+ *   2. The week before it, for the run that lands after ESPN has already rolled
+ *      over: the live week's games are all in the future, so it cannot be
+ *      recapped and the week behind it is the finished one.
+ *
+ * Whichever is taken has to be COMPLETE — every game of it finished. A week that
+ * is still being played is not a failure and not something to generate half of:
+ * the caller turns it into a 409, which the schedule reports as a skip, and the
+ * next run finds the same leagues with no episode and picks them up.
+ */
+export async function resolveRecapWeek(
+  input: { season?: number | null },
+  deps: RecapWeekDependencies = {},
+): Promise<RecapWeekResolution> {
+  const fetchLiveWeek = deps.fetchLiveWeek || defaultFetchLiveWeek;
+  const weekCompletion = deps.weekCompletion || ((i: { season: number; week: number }) => nflWeekCompletion(i));
+
+  let live: { seasonYear: number | null; week: number | null };
+  try {
+    live = await fetchLiveWeek();
+  } catch (err) {
+    /* A guessed week would recap the wrong slate for every league in the sweep,
+       so there is nothing to fall back to. */
+    console.error(
+      '[PodcastCron] the NFL scoreboard could not be read, so the week to recap is unknown. ' +
+        'No league was touched. Pass ?week= to run anyway.',
+      err,
+    );
+    throw fail('The current NFL week could not be resolved', 503);
+  }
+
+  const season = Number.isInteger(input.season as number)
+    ? (input.season as number)
+    : Number.isInteger(live.seasonYear as number)
+      ? (live.seasonYear as number)
+      : CURRENT_SEASON;
+  const liveWeek = Number.isInteger(live.week as number) ? (live.week as number) : null;
+  if (liveWeek == null || liveWeek < 1) {
+    console.error(
+      '[PodcastCron] the NFL scoreboard returned no usable week (season ' + String(live.seasonYear) +
+        ', week ' + String(live.week) + '), so there is no slate to recap.',
+      new Error('WEEK_UNRESOLVED'),
+    );
+    throw fail('The current NFL week could not be resolved', 503);
+  }
+
+  const candidates: Array<{ week: number; source: 'live_week' | 'previous_week' }> = [
+    { week: liveWeek, source: 'live_week' },
+    { week: liveWeek - 1, source: 'previous_week' },
+  ].filter((c) => c.week >= 1) as Array<{ week: number; source: 'live_week' | 'previous_week' }>;
+
+  let last: WeekCompletion | null = null;
+  for (const candidate of candidates) {
+    let completion: WeekCompletion;
+    try {
+      completion = await weekCompletion({ season, week: candidate.week });
+    } catch (err) {
+      console.error(
+        '[PodcastCron] could not tell whether ' + season + ' week ' + candidate.week +
+          ' has finished, so nothing was generated for it.',
+        err,
+      );
+      throw fail('Week completion for ' + season + ' week ' + candidate.week + ' could not be read', 503);
+    }
+    last = completion;
+    if (completion.complete) {
+      return { season, week: candidate.week, live_week: liveWeek, source: candidate.source, completion };
+    }
+    console.warn(
+      '[PodcastCron] ' + season + ' week ' + candidate.week + ' is still open (' +
+        completion.completed + ' of ' + completion.games + ' games final); it cannot be recapped yet.',
+    );
+  }
+
+  throw fail(
+    'No completed week to recap yet: ' + season + ' week ' + liveWeek + ' has ' +
+      String(last ? last.completed : 0) + ' of ' + String(last ? last.games : 0) +
+      ' games final. The weekly recap runs once the Sunday and Monday night box scores close.',
+    409,
+  );
+}
+
+/**
+ * The gate for a week that was NAMED rather than resolved — an explicit
+ * `?week=`, or the week `PODCAST_TARGET_WEEK` pins this environment to.
+ *
+ * Same rule, one read: a week whose games are still being played is refused with
+ * a 409 before the league sweep, so a schedule that fires early skips instead of
+ * narrating a half-played slate.
+ */
+export async function assertWeekComplete(
+  input: { season: number; week: number },
+  deps: RecapWeekDependencies = {},
+): Promise<WeekCompletion> {
+  const weekCompletion = deps.weekCompletion || ((i: { season: number; week: number }) => nflWeekCompletion(i));
+  let completion: WeekCompletion;
+  try {
+    completion = await weekCompletion({ season: input.season, week: input.week });
+  } catch (err) {
+    console.error(
+      '[PodcastCron] could not tell whether ' + input.season + ' week ' + input.week +
+        ' has finished, so nothing was generated for it. Pass ?allow_open_week=1 to skip this check.',
+      err,
+    );
+    throw fail('Week completion for ' + input.season + ' week ' + input.week + ' could not be read', 503);
+  }
+  if (!completion.complete) {
+    throw fail(
+      input.season + ' week ' + input.week + ' is still being played (' + completion.completed + ' of ' +
+        completion.games + ' games final). The weekly recap runs Tuesday, after the Monday night final.',
+      409,
+    );
+  }
+  return completion;
 }
 
 export function maxLeaguesPerRun(): number {
@@ -844,6 +1007,24 @@ function intParam(req: any, name: string): number | null {
 /**
  * `POST /api/cron/generate-weekly-podcast` (GET accepted, so a Vercel cron —
  * which can only issue GET — works unchanged).
+ *
+ * ---- WHICH WEEK A SCHEDULED RUN RECAPS ----
+ *
+ * The schedule carries no `?week=`, and the answer is the week that just ended.
+ * Three sources, in precedence order, all of which end at a week whose games
+ * are finished:
+ *
+ *   `?week=N`                  an explicit backfill. Taken as asked, then
+ *                              checked for completion like any other week.
+ *   PODCAST_TARGET_WEEK=N      the testing boundary pins this environment to one
+ *                              week; that week is used and checked.
+ *   PODCAST_TARGET_WEEK=any    resolveRecapWeek() asks the NFL scoreboard: the
+ *                              live week if its games are in the books,
+ *                              otherwise the week behind it.
+ *
+ * `?allow_open_week=1` skips the completion check for a named week. It exists
+ * for a deliberate mid-week rehearsal and for the case where the scoreboard read
+ * itself is what is broken; nothing on the schedule passes it.
  */
 export default async function handler(req: any, res: any): Promise<void> {
   res.setHeader('Cache-Control', 'no-store');
@@ -873,11 +1054,59 @@ export default async function handler(req: any, res: any): Promise<void> {
     return;
   }
 
+  /* ---- THE WEEK, AND WHETHER IT IS FINISHED ----
+     Resolved here rather than inside runWeeklyPodcastCron() so the in-process
+     callers that name their own week (scripts/generate-podcast.mjs, the checks)
+     keep working exactly as they do, while the scheduled HTTP path gets the
+     just-completed week and the "box scores are closed" guarantee. Both live
+     ahead of the league sweep, the ESPN read and every ElevenLabs call. */
+  const allowOpenWeek = flag(req, 'allow_open_week');
+  const boundary = targetWeekSetting();
+  let scopeSeason = season;
+  let scopeWeek = week;
+  let weekSource: 'override' | 'boundary' | 'live_week' | 'previous_week' = 'override';
+  let completion: WeekCompletion | null = null;
+  try {
+    if (week == null && boundary.week == null) {
+      const resolved = await resolveRecapWeek({ season });
+      scopeSeason = resolved.season;
+      scopeWeek = resolved.week;
+      weekSource = resolved.source;
+      completion = resolved.completion;
+      console.info(
+        '[PodcastCron] recapping ' + resolved.season + ' week ' + resolved.week + ' (' + resolved.source +
+          '; the scoreboard reports week ' + String(resolved.live_week) + ' live, ' +
+          resolved.completion.completed + ' of ' + resolved.completion.games + ' games final).',
+      );
+    } else {
+      if (week == null) {
+        scopeWeek = boundary.week;
+        weekSource = 'boundary';
+      }
+      if (!allowOpenWeek) {
+        completion = await assertWeekComplete({
+          season: scopeSeason == null ? CURRENT_SEASON : scopeSeason,
+          week: scopeWeek as number,
+        });
+      }
+    }
+  } catch (err: any) {
+    const status = Number(err && err.status) || 500;
+    if (status === 409) {
+      console.warn('[PodcastCron] run skipped: ' + String(err.message));
+      res.status(409).json({ error: 'WEEK_NOT_COMPLETE', message: String(err.message) });
+      return;
+    }
+    console.error('[PodcastCron] the week to recap could not be resolved', err);
+    res.status(status).json({ error: 'WEEK_UNRESOLVED', message: String((err && err.message) || err) });
+    return;
+  }
+
   try {
     const summary = await runWeeklyPodcastCron(
       {
-        season,
-        week,
+        season: scopeSeason,
+        week: scopeWeek,
         dry_run: flag(req, 'dry_run'),
         script_only: flag(req, 'script_only'),
         /* Optional. Omitted, the run sweeps every active league exactly as the
@@ -889,7 +1118,15 @@ export default async function handler(req: any, res: any): Promise<void> {
       },
       { req },
     );
-    res.status(200).json({ ok: summary.failed === 0, ...summary });
+    res.status(200).json({
+      ok: summary.failed === 0,
+      /* How the week was chosen and what the scoreboard said about it, so a
+         Tuesday run is auditable from its own response. */
+      week_source: weekSource,
+      week_complete: completion ? completion.complete : null,
+      week_games_final: completion ? completion.completed + '/' + completion.games : null,
+      ...summary,
+    });
   } catch (err: any) {
     const status = Number(err && err.status) || 500;
     /* A refused week is the configured boundary doing its job, not a fault. */

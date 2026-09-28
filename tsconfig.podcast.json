@@ -52,6 +52,7 @@
     "lib/podcast-script.ts",
     "lib/podcast-news-script.ts",
     "lib/mp3-frames.ts",
+    "lib/week-complete.ts",
     "lib/build-podcast-audio.ts",
     "lib/sanitize-podcast-script.ts",
     "lib/generate-podcast.ts",

@@ -5802,6 +5802,46 @@ function weekHasLiveGame(week){
   return false;
 }
 
+/* Are this week's box scores CLOSED — every Sunday game and the Monday night
+   final settled, with nothing left that can move a fantasy score?
+
+   Shared across blocks (the Studio generation gate in block 6 reads it, and it
+   is the client's half of the same question `lib/week-complete.ts` asks the NFL
+   scoreboard for the scheduled Tuesday run), so per rule 1 it lives at global
+   scope.
+
+   Completion is read with scheduleMatchupNarrativeFinal(), not
+   scheduleGameFinal(): ESPN routinely leaves `winner` on UNDECIDED for hours
+   after the Monday night whistle while stat corrections settle, and a recap
+   that waits for the official flag would still be locked on Tuesday morning
+   with every starter's game long over. The narrative test closes a matchup once
+   no starter on either side can score again, which is exactly "the box scores
+   are in" — and it is the same test the matchup cards and the Local Read
+   already show the reader.
+
+   A week with no regular-season matchup loaded is NOT complete. "I cannot see
+   this week's slate" and "this week's slate is finished" are different answers,
+   and defaulting the unknown to complete would offer a recap of a week the
+   client has no scores for. Playoff tiers are excluded for the same reason
+   weekHasLiveGame() excludes them. */
+function weekBoxScoresComplete(week){
+  const wk = Number(week) || 0;
+  if(!wk) return false;
+  const data = (typeof LeagueData !== 'undefined' && LeagueData) ? LeagueData.espnData : null;
+  const schedule = data && Array.isArray(data.schedule) ? data.schedule : [];
+  let counted = 0;
+  for(let i=0; i<schedule.length; i++){
+    const game = schedule[i];
+    if(!game || !game.home || !game.away) continue;
+    if(Number(game.matchupPeriodId) !== wk) continue;
+    const tier = String(game.playoffTierType || 'NONE').toUpperCase();
+    if(tier && tier !== 'NONE') continue;
+    counted += 1;
+    if(!scheduleMatchupNarrativeFinal(game)) return false;
+  }
+  return counted > 0;
+}
+
 /* ============================================================
    GLOBAL SCOPE — GUARDED DEVICE STORAGE (FSNStore)
 
@@ -37524,7 +37564,11 @@ function studioIsArchivedSeason(){
                (HISTORICAL_SEASON_ERROR), so offering the button would only
                trade a disabled control for a 400.
      'week'    a completed week of the live season. The board is already in the
-               books; recaps are minted for the week the league is playing.
+               books; the episode it generated at the time still plays.
+     'midweek' the live week, still open. Its box scores are not closed, so
+               there is no finished week to recap. This is the state the screen
+               sits in from Wednesday through Monday night, and it clears on its
+               own the moment the last starter's game goes final.
 
    Reading an episode is deliberately NOT gated on this. A past week of the live
    season still has to play the episode its league generated at the time — only
@@ -37560,9 +37604,21 @@ function studioGenerationLock(){
   if(studioTestExceptionActive()) return '';
   if(studioIsArchivedSeason()) return 'season';
   if(effectiveWeek() < currentLeagueWeek()) return 'week';
+  /* The week is still being played. Nothing to recap yet, and nothing the
+     Tuesday run would narrate either: the scheduled generator reads the article
+     pipeline's evaluated stat lines, which are not written until the week's box
+     scores close. A Wednesday-through-Monday tap used to mint an episode over a
+     half-played slate. */
+  if(!weekBoxScoresComplete(effectiveWeek())) return 'midweek';
   return '';
 }
 const STUDIO_LOCK_MESSAGE = 'Historical weeks and past seasons cannot generate new podcasts.';
+/* The label the button wears while the week is open, and the sentence under it.
+   Written in sentence case because .btn-primary uppercases its own text; the
+   note below the button is not transformed and reads as prose. */
+const STUDIO_MIDWEEK_LABEL = '\u{1F399}\uFE0F Weekly Recap Unlocks Tuesday After MNF';
+const STUDIO_MIDWEEK_MESSAGE = 'This week is still being played. The weekly recap unlocks Tuesday morning, ' +
+  'once every Sunday and Monday night box score is final.';
 
 function studioStopReel(){
   clearTimeout(studioReelTimer);
@@ -37867,9 +37923,13 @@ function renderStudio(){
     studioRemoteStatus = 'missing';
     $('studioStatus').textContent = 'Viewing archived season data.';
   }
+  /* An existing episode wins every other state: the reader is told it is ready
+     and the hero's play button is the control they want. Only when there is no
+     episode does the open-week lock get to speak. */
   $('studioGenerate').textContent = studioRemoteStatus === 'ready' ? 'EPISODE READY' :
     studioRemoteStatus === 'generating' ? 'GENERATING FOR YOUR LEAGUE…' :
-    studioRemoteStatus === 'failed' ? 'EPISODE UNAVAILABLE' : 'GENERATE WEEKLY RECAP';
+    studioRemoteStatus === 'failed' ? 'EPISODE UNAVAILABLE' :
+    lock === 'midweek' ? STUDIO_MIDWEEK_LABEL : 'GENERATE WEEKLY RECAP';
   /* Disabled, not hidden. A control that vanishes reads as a broken screen; a
      disabled one beside #studioArchiveLock says what the rule is. Only the
      'ready' state still hides it, because the hero's play button replaces it. */
@@ -37880,7 +37940,8 @@ function renderStudio(){
      own sentence when a closed week is open for one league — so an unlocked
      past week never looks like the guardrail silently failing. */
   const testing = studioTestExceptionActive();
-  $('studioArchiveLock').textContent = testing ? STUDIO_TEST_NOTE : STUDIO_LOCK_MESSAGE;
+  $('studioArchiveLock').textContent = testing ? STUDIO_TEST_NOTE :
+    lock === 'midweek' ? STUDIO_MIDWEEK_MESSAGE : STUDIO_LOCK_MESSAGE;
   $('studioArchiveLock').hidden = !lock && !testing;
   if(!studioCurrent && !studioBusy) studioPaintFeed();
 }
@@ -38105,8 +38166,9 @@ async function studioGenerate(){
      button can be re-enabled by a render that lands between a tap and this
      call, and for an archived season the endpoint would refuse the POST anyway
      (HISTORICAL_SEASON_ERROR) after the reader had already watched a spinner. */
-  if(studioGenerationLock()){
-    $('studioStatus').textContent = STUDIO_LOCK_MESSAGE;
+  const lock = studioGenerationLock();
+  if(lock){
+    $('studioStatus').textContent = lock === 'midweek' ? STUDIO_MIDWEEK_MESSAGE : STUDIO_LOCK_MESSAGE;
     renderStudio();
     return;
   }
