@@ -3872,6 +3872,8 @@ body.fsn-dd-lock{ overflow:hidden; }
 .studio-tabs button[aria-selected="true"]{ color:var(--cyan); border-color:var(--cyan); background:rgba(0,224,255,.08); }
 .studio-line{ margin:10px 0; padding:12px; border-left:3px solid var(--cyan); background:#121a26; border-radius:0 9px 9px 0; color:var(--off); font-size:13px; }
 .studio-line[data-host="STU"],.studio-line[data-host="SULLY"]{ border-color:var(--gold); }
+.studio-line[data-active="true"]{ background:rgba(0,224,255,.12); outline:1px solid rgba(0,224,255,.4); }
+.studio-line[data-host="STU"][data-active="true"]{ background:rgba(255,190,65,.12); outline-color:rgba(255,190,65,.4); }
 .studio-line strong{ display:block; color:var(--cyan); font:700 10px 'JetBrains Mono',monospace; margin-bottom:5px; }
 .studio-line[data-host="STU"] strong,.studio-line[data-host="SULLY"] strong{ color:var(--gold); }
 .studio-archive button{ display:block; width:100%; padding:14px; margin-top:8px; text-align:left; border:1px solid var(--line); border-radius:10px; color:var(--off); background:#111925; }
@@ -37488,6 +37490,7 @@ let studioScope = '';
 let studioCurrent = null;
 let studioObjectUrl = '';
 let studioReelIndex = 0;
+let studioActiveLineIndex = -1;
 let studioBusy = false;
 let studioReelTimer = null;
 let studioReelRemaining = 7000;
@@ -37577,12 +37580,37 @@ function studioScheduleReel(remaining = studioReelDuration()){
     studioReelTimer = setTimeout(()=> studioMoveReel(1), remaining);
   }
 }
+function studioReelCues(){
+  if(!studioCurrent) return [];
+  const cues = studioCurrent.story_reel_markers;
+  if(Array.isArray(cues) && cues.length === studioCurrent.stories.length) return cues;
+  const ends = studioCurrent.markers || [];
+  return studioCurrent.stories.map((_, i)=> ({
+    startMs:(i ? Number(ends[i-1]) || 0 : 0) * 1000,
+    endMs:(Number(ends[i]) || studioAudio.duration || 0) * 1000,
+  }));
+}
+function studioCueIndex(cues, timeMs){
+  for(let i=cues.length-1; i>0; i--)
+    if(timeMs >= Number(cues[i].startMs)) return i;
+  return 0;
+}
+function studioSyncScript(){
+  if(!studioCurrent || !Array.isArray(studioCurrent.turn_markers) ||
+      studioCurrent.turn_markers.length !== studioCurrent.lines.length) return;
+  const index = studioCueIndex(studioCurrent.turn_markers, studioAudio.currentTime * 1000);
+  if(index === studioActiveLineIndex) return;
+  studioActiveLineIndex = index;
+  const rows = $('studioFeed').querySelectorAll('.studio-line');
+  rows.forEach((row, i)=> row.dataset.active = String(i === index));
+  if(rows[index]) rows[index].scrollIntoView({block:'nearest', behavior:'smooth'});
+}
 function studioMoveReel(delta){
   if(!studioCurrent || !studioCurrent.stories.length) return;
   studioReelIndex = (studioReelIndex + delta + studioCurrent.stories.length) % studioCurrent.stories.length;
-  if(!studioAudio.paused && studioCurrent.markers){
-    const start = studioReelIndex ? Number(studioCurrent.markers[studioReelIndex - 1]) : 0;
-    if(Number.isFinite(start)) studioAudio.currentTime = start;
+  if(!studioAudio.paused){
+    const cue = studioReelCues()[studioReelIndex];
+    if(cue && Number.isFinite(Number(cue.startMs))) studioAudio.currentTime = Number(cue.startMs) / 1000;
   }
   studioPaintFeed();
 }
@@ -37629,6 +37657,7 @@ function studioSetEpisode(episode){
   if(studioObjectUrl) URL.revokeObjectURL(studioObjectUrl);
   studioCurrent = episode;
   studioReelIndex = 0;
+  studioActiveLineIndex = -1;
   studioObjectUrl = episode && episode.audio ? URL.createObjectURL(episode.audio) : '';
   studioAudio.src = studioObjectUrl || (episode && episode.audioUrl) || '';
   $('studioSeek').value = '0';
@@ -37656,6 +37685,8 @@ function studioPaintFeed(){
       const host = line.host === 'STU' || line.host === 'SULLY' ? 'STU' : 'DAN';
       return `<div class="studio-line" data-host="${host}"><strong>${host}</strong>${esc(line.text)}</div>`;
     }).join('');
+    studioActiveLineIndex = -1;
+    studioSyncScript();
   }else{
     const count = studioCurrent.stories.length || 1;
     const visual = studioCurrent.visuals && studioCurrent.visuals[studioReelIndex];
@@ -37986,18 +38017,20 @@ function studioSyncPlayback(){
   $('studioPlay').setAttribute('aria-label', studioAudio.paused ? 'Play episode' : 'Pause episode');
   $('studioSeek').value = duration ? String(Math.round(100 * studioAudio.currentTime / duration)) : '0';
   $('studioTime').textContent = studioTime(studioAudio.currentTime) + ' / ' + studioTime(duration);
-  if(ui.screen === 'studio' && ui.studioTab === 'reels' && studioCurrent && !studioAudio.paused &&
-      Array.isArray(studioCurrent.markers) && studioCurrent.markers.length){
-    const count = studioCurrent.stories.length;
-    const index = Math.min(count - 1, studioCurrent.markers
-      .slice(0, count - 1).filter(mark=> studioAudio.currentTime >= Number(mark)).length);
-    if(index !== studioReelIndex){ studioReelIndex = index; studioPaintFeed(); }
-    const start = index ? Number(studioCurrent.markers[index - 1]) : 0;
-    const end = Number(studioCurrent.markers[index]) || duration;
-    const fill = $('studioFeed').querySelector('.sv-seg[data-state="active"] > i');
-    if(fill){
-      fill.style.animation = 'none';
-      fill.style.width = Math.max(0, Math.min(100, (studioAudio.currentTime - start) / Math.max(0.1, end - start) * 100)) + '%';
+  if(ui.screen === 'studio' && ui.studioTab === 'script') studioSyncScript();
+  if(ui.screen === 'studio' && ui.studioTab === 'reels' && studioCurrent && !studioAudio.paused){
+    const cues = studioReelCues();
+    if(cues.length){
+      const index = studioCueIndex(cues, studioAudio.currentTime * 1000);
+      if(index !== studioReelIndex){ studioReelIndex = index; studioPaintFeed(); }
+      const cue = cues[index];
+      const fill = $('studioFeed').querySelector('.sv-seg[data-state="active"] > i');
+      if(fill){
+        fill.style.animation = 'none';
+        fill.style.width = Math.max(0, Math.min(100,
+          (studioAudio.currentTime * 1000 - Number(cue.startMs)) /
+          Math.max(100, Number(cue.endMs) - Number(cue.startMs)) * 100)) + '%';
+      }
     }
   }
   if(!studioAudio.paused) studioStopReel();
