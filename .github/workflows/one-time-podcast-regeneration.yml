@@ -1,6 +1,8 @@
 name: One-time Week 2 podcast regeneration
 
 on:
+  push:
+    branches: [codex/regen-podcast-57155288-week2]
   workflow_dispatch:
     inputs:
       confirm:
@@ -17,7 +19,7 @@ concurrency:
 
 jobs:
   regenerate:
-    if: github.event.inputs.confirm == 'REGENERATE-57155288-2026-W2'
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/codex/regen-podcast-57155288-week2') || github.event.inputs.confirm == 'REGENERATE-57155288-2026-W2'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
