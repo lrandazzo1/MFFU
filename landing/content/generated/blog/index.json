@@ -1,7 +1,43 @@
 {
-  "generatedAt": "2026-09-27T18:39:42.848Z",
-  "count": 8,
+  "generatedAt": "2026-09-28T20:48:54.583Z",
+  "count": 9,
   "posts": [
+    {
+      "title": "Monday Night Preview: What's at Stake & Sunday Recap",
+      "slug": "2026-09-28-monday-night-preview-what-s-at-stake-sunday-recap",
+      "publishDate": "2026-09-28",
+      "category": "Analysis",
+      "excerpt": "Sunday is in the book and Monday night is not. The week 3 finals, the blowouts, the scoring leaders, and the players who are still on the board tonight.",
+      "author": "FSN Desk",
+      "entityCount": 5,
+      "tracked_players": [
+        {
+          "name": "Ollie Gordon",
+          "position": "RB",
+          "sleeperPlayerId": "12495"
+        },
+        {
+          "name": "Kenyon Sadiq",
+          "position": "TE",
+          "sleeperPlayerId": "13330"
+        },
+        {
+          "name": "Braelon Allen",
+          "position": "RB",
+          "sleeperPlayerId": "11576"
+        },
+        {
+          "name": "Jordan Addison",
+          "position": "WR",
+          "sleeperPlayerId": "9756"
+        },
+        {
+          "name": "Kirk Cousins",
+          "position": "QB",
+          "sleeperPlayerId": "1166"
+        }
+      ]
+    },
     {
       "title": "Week 3 trending adds: where the waiver money is going",
       "slug": "2026-09-27-week-3-trending-adds-where-the-waiver-money-is-going",
