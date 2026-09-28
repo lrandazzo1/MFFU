@@ -1,16 +1,17 @@
-/** Parse complete MPEG-1 Layer III frames from the 44.1 kHz ElevenLabs output.
+/** Parse complete MPEG-1 Layer III frames from ElevenLabs or the 48 kHz final mix.
  * Frame padding is part of each frame's byte length and must be preserved. */
-const SAMPLE_RATE = 44100;
+const SAMPLE_RATES = [44100, 48000, 32000];
 const BITRATES = [0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320];
 
 function headerAt(input: Buffer, at: number) {
   if (at + 4 > input.length || input[at] !== 0xff || (input[at + 1] & 0xfe) !== 0xfa) return null;
   const bitrateIndex = input[at + 2] >>> 4;
   const sampleIndex = (input[at + 2] >>> 2) & 3;
-  if (!BITRATES[bitrateIndex] || sampleIndex !== 0) return null;
+  if (!BITRATES[bitrateIndex] || sampleIndex === 3) return null;
+  const sampleRate = SAMPLE_RATES[sampleIndex];
   const padding = (input[at + 2] >>> 1) & 1;
-  const length = Math.floor(144000 * BITRATES[bitrateIndex] / SAMPLE_RATE) + padding;
-  return { length, mono: (input[at + 3] >>> 6) === 3, crc: !(input[at + 1] & 1) };
+  const length = Math.floor(144000 * BITRATES[bitrateIndex] / sampleRate) + padding;
+  return { length, sampleRate, bitrateKbps: BITRATES[bitrateIndex], mono: (input[at + 3] >>> 6) === 3, crc: !(input[at + 1] & 1) };
 }
 
 function id3Start(input: Buffer): number {
@@ -33,7 +34,8 @@ function metadataFrame(input: Buffer, at: number, mono: boolean, crc: boolean, l
     (at + 40 <= at + length && input.toString('ascii', at + 36, at + 40) === 'VBRI');
 }
 
-export type Mp3Frames = { audio: Buffer; frames: number; duration: number; mono: boolean };
+export type Mp3Frames = { audio: Buffer; frames: number; duration: number; mono: boolean;
+  sampleRate: number; bitrateKbps: number | null };
 
 export function readMp3Frames(input: Buffer): Mp3Frames {
   if (!input.length) throw new Error('Empty MP3 segment');
@@ -43,8 +45,9 @@ export function readMp3Frames(input: Buffer): Mp3Frames {
   // Some encoders put a short zero prefix before the first sync word.
   while (at < limit && input[at] === 0) at++;
   const first = headerAt(input, at);
-  if (!first) throw new Error('Unsupported MP3 segment: expected MPEG-1 Layer III at 44.1 kHz');
+  if (!first) throw new Error('Unsupported MP3 segment: expected MPEG-1 Layer III at 44.1 or 48 kHz');
   const mono = first.mono;
+  let bitrateKbps: number | null = first.bitrateKbps;
   const frames: Buffer[] = [];
   let firstAudio = true;
   while (at < limit) {
@@ -55,8 +58,9 @@ export function readMp3Frames(input: Buffer): Mp3Frames {
       if (input.subarray(at, limit).every(n => n === 0)) break;
       throw new Error('Invalid or truncated MP3 frame at byte ' + at);
     }
-    if (header.mono !== mono || at + header.length > limit)
+    if (header.mono !== mono || header.sampleRate !== first.sampleRate || at + header.length > limit)
       throw new Error('Inconsistent or truncated MP3 frame at byte ' + at);
+    if (header.bitrateKbps !== first.bitrateKbps) bitrateKbps = null;
     if (!(frames.length === 0 && metadataFrame(input, at, mono, header.crc, header.length))) {
       // The first audio frame of an independently encoded turn cannot refer
       // to the previous turn's bit reservoir. Reject it if it does.
@@ -72,5 +76,6 @@ export function readMp3Frames(input: Buffer): Mp3Frames {
   }
   if (!frames.length) throw new Error('MP3 segment contains no audio frames');
   return { audio: Buffer.concat(frames), frames: frames.length,
-    duration: frames.length * 1152 / SAMPLE_RATE, mono };
+    duration: frames.length * 1152 / first.sampleRate, mono,
+    sampleRate: first.sampleRate, bitrateKbps };
 }
