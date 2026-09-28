@@ -410,14 +410,55 @@ const TITLE_BY_TYPE: Record<ArticleType, string> = {
   friday_tnf_preview: TNF_BREAKDOWN_LABEL,
 };
 
-const pts = (value: number): string => (Number.isInteger(value) ? String(value) : value.toFixed(2));
+/**
+ * A figure as prose says it: one decimal at most, and no trailing ".0".
+ *
+ * "16.2" and "16" are numbers a person reads out loud. "16.18" is a
+ * spreadsheet cell, and a paragraph of them reads like a settlement statement
+ * rather than a story about a football weekend. Rounding is HALF UP on the
+ * tenth, which can move a figure by up to 0.05 against the box score: that is
+ * the trade the prose is making, and the facts block handed to a model keeps
+ * `num2` precisely because precision is the point there.
+ */
+export const fig = (value: number): string => {
+  const rounded = Math.round((Number(value) || 0) * 10) / 10;
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+};
 
-/** "an 8 point projection", not "a 8 point projection". English reads the
- *  number, so the article is chosen from how the figure is spoken: 8, 11, and
- *  18 take "an", everything else takes "a". */
+/**
+ * Whether a fantasy team name takes a plural verb.
+ *
+ * "Harbor Pilots have", "War Eagle!!! has". A fantasy team is one entity, so
+ * the singular is the default and the name itself is the only signal worth
+ * reading: a trailing "s" takes the plural, everything else takes the
+ * singular.
+ *
+ * Trailing punctuation, emoji and digits are stripped before the test,
+ * because league names end in exclamation marks, stars and draft years far
+ * more often than they end in a letter. "Team Emery!!!!" is singular,
+ * "Choosin' Texas" is not: the rule reads the last letter rather than
+ * carrying a list of exceptions no two leagues would agree on.
+ */
+export function teamIsPlural(team: string): boolean {
+  const letters = String(team == null ? '' : team).replace(/[^A-Za-z]+$/u, '');
+  return /s$/i.test(letters);
+}
+
+/** `teamVerb(team, 'has', 'have')`. The singular form comes first because it
+ *  is the default a fantasy team takes. */
+export function teamVerb(team: string, singular: string, plural: string): string {
+  return teamIsPlural(team) ? plural : singular;
+}
+
+/** The pronoun that stands in for a team later in the same sentence. */
+const teamPronoun = (team: string): string => (teamIsPlural(team) ? 'they' : 'it');
+
+/** "an 8.2 projection", not "a 8.2 projection". English reads the number, so
+ *  the article is chosen from how the figure is SPOKEN, which means from the
+ *  prose spelling rather than the stored value: 8, 11 and 18 take "an",
+ *  everything else takes "a". */
 function article(value: number): string {
-  const spoken = pts(value);
-  return /^(?:8|11|18)(?:\.|$)/.test(spoken) ? 'an' : 'a';
+  return /^(?:8|11|18)(?:\.|$)/.test(fig(value)) ? 'an' : 'a';
 }
 
 /* Bold markdown for the three things a reader scans a bullet for: who, which
@@ -457,9 +498,9 @@ export type Archetype =
   | 'STRAIGHT_COMEBACK'
   | 'GENERAL_SWING';
 
-/** Two decimals, always. The matrix quotes deficits and margins against each
- *  other constantly, and "trailed by 4 and finished 58.86 clear" reads as two
- *  different kinds of number. */
+/** Two decimals, always. Kept for the facts block `buildUserPrompt` hands to
+ *  a model, where a figure is data and rounding it is losing some. Prose uses
+ *  `fig` instead: see the note there. */
 const num2 = (value: number): string => Number(value).toFixed(2);
 
 /** The prime-time windows. A comeback completed here is the one every league
@@ -532,6 +573,9 @@ interface Phrasing {
   points: string;
   deficit: string;
   margin: string;
+  /** The team name unadorned. `team` is wrapped in bold markers, so it cannot
+   *  be read for subject-verb agreement. */
+  teamName: string;
 }
 
 type Template = (p: Phrasing) => string;
@@ -572,8 +616,8 @@ const TEMPLATES: Record<Archetype, [Template, Template]> = {
       `${p.margin} short.`,
   ],
   HEARTBREAK_LOSS: [
-    (p) => `${p.player} rallied ${p.team} with ${p.points}, but they ran out of time, falling short by just ` +
-      `${p.margin}.`,
+    (p) => `${p.player} rallied ${p.team} with ${p.points}, but the comeback ran out of time and fell ` +
+      `short by just ${p.margin}.`,
     (p) => `Despite a valiant ${p.points} effort from ${p.player}, ${p.team} ended up on the wrong side of a ` +
       `${p.margin} heartbreaker.`,
   ],
@@ -586,8 +630,8 @@ const TEMPLATES: Record<Archetype, [Template, Template]> = {
   STRAIGHT_COMEBACK: [
     (p) => `${p.player} erased a ${p.deficit} deficit with ${p.points} to secure a ${p.margin} point win ` +
       `for ${p.team}.`,
-    (p) => `${p.team} were ${p.deficit} down when ${p.player} took the field; his ${p.points} flipped the ` +
-      `matchup into a ${p.margin} win over ${p.opponent}.`,
+    (p) => `${p.team} ${teamVerb(p.teamName, 'was', 'were')} ${p.deficit} down when ${p.player} took the ` +
+      `field; his ${p.points} flipped the matchup into a ${p.margin} win over ${p.opponent}.`,
   ],
   GENERAL_SWING: [
     (p) => `${p.player} notched ${p.points} for ${p.team}, shifting the final tally to a ${p.margin} finish.`,
@@ -670,7 +714,7 @@ export function rotateVariants(board: TrackedPlayer[], week: number): Array<0 | 
  * One row, framed by its archetype.
  *
  * Every entity is emboldened: the player, both fantasy teams, the points (with
- * "pts"), and the deficit and margin as two-decimal figures. `lbMarkdown()` in
+ * "pts"), and the deficit and margin as prose figures. `lbMarkdown()` in
  * index.html renders `**x**` as <strong>, and its pattern is
  * `\*\*([^*]+)\*\*`, so a value containing an asterisk simply would not
  * embolden rather than corrupting the line.
@@ -688,10 +732,11 @@ export function sentenceFor(
   const phrasing: Phrasing = {
     player: b(row.player_name),
     team: b(row.owner_team),
+    teamName: String(row.owner_team || ''),
     opponent: b(row.opponent_team || 'their opponent'),
-    points: b(num2(Number(row.player_points) || 0) + ' pts'),
-    deficit: b(num2(deficitOf(row))),
-    margin: b(num2(marginOf(row))),
+    points: b(fig(Number(row.player_points) || 0) + ' pts'),
+    deficit: b(fig(deficitOf(row))),
+    margin: b(fig(marginOf(row))),
   };
   return TEMPLATES[archetype][variant](phrasing);
 }
@@ -818,7 +863,7 @@ function pendingRoster(side: PreviewSide, limit = 2): TrackedPlayer[] {
   }).slice(0, limit);
 }
 
-/** "**A** at **18.94** and **B** at **12.83**". A row that carried no
+/** "**A** (**18.9** proj) and **B** (**12.8** proj)". A row that carried no
  *  projection is named without one: zero is not a projection, and printing it
  *  as one states a forecast nobody made. */
 function rosterPhrase(rows: TrackedPlayer[]): string {
@@ -826,7 +871,7 @@ function rosterPhrase(rows: TrackedPlayer[]): string {
     const projection = row.projected_points == null ? null : Number(row.projected_points);
     return projection == null || !Number.isFinite(projection)
       ? b(row.player_name)
-      : `${b(row.player_name)} at ${b(num2(projection))}`;
+      : projectedName(row);
   });
   if (parts.length <= 1) return parts[0] || '';
   return parts.slice(0, -1).join(', ') + ' and ' + parts[parts.length - 1];
@@ -841,44 +886,49 @@ function mondayNightPending(matchups: PreviewMatchup[]): boolean {
 }
 
 /**
- * One matchup that tonight can still turn.
+ * One matchup, told as what tonight can still do to it.
  *
- * The deficit is stated exactly, and so is what it would take: "more than" the
- * margin when the leader has nobody left, and "more than that on top of
- * whatever the leader's remaining starters produce" when he does. A single
- * number cannot express the second case, so it is not asserted as one.
+ * Three shapes, picked by who actually has a starter left rather than by a
+ * rotation: the upset that is still live, the lead being closed out, and the
+ * one already sealed. The live-upset shape carries a second phrasing because
+ * it is the one a board can print three times in a row, which is the exact
+ * repetition this section was rewritten to lose.
+ *
+ * The deficit is what the trailing side has to make up, and it is stated as
+ * the number it is. Where the leader also has starters left, the line names
+ * what they still have to answer with rather than pretending the deficit is
+ * the whole job.
  */
-function tonightLine(m: PreviewMatchup, variant: 0 | 1, week: number, tonight: boolean): string {
+function tonightLine(m: PreviewMatchup, variant: 0 | 1, tonight: boolean): string {
   const [lead, trail] = leaderFirst(m);
-  const gap = b(num2(m.margin == null ? 0 : m.margin));
-  const when = tonight ? 'tonight' : 'in what is left';
+  const gap = b(fig(m.margin == null ? 0 : m.margin));
+  const night = tonight ? 'Monday night' : 'the games left';
   const trailLeft = pendingRoster(trail);
   const leadLeft = pendingRoster(lead);
 
-  if (trailLeft.length && !leadLeft.length) {
-    return variant === 0
-      ? `${b(trail.team)} need more than ${gap} out of ${rosterPhrase(trailLeft)} ${when}, and ` +
-        `${b(lead.team)} have nobody left to answer with.`
-      : `${b(lead.team)} are finished on ${b(num2(lead.scored) + ' pts')}. ${b(trail.team)} leave week ` +
-        `${week} needing more than ${gap} from ${rosterPhrase(trailLeft)} to stay alive.`;
+  if (trailLeft.length) {
+    const counter = leadLeft.length
+      ? ` ${b(lead.team)} ${teamVerb(lead.team, 'counters', 'counter')} with ${rosterPhrase(leadLeft)}.`
+      : '';
+    return (variant === 0
+      ? `${b(trail.team)} ${teamVerb(trail.team, 'needs', 'need')} a massive ${gap}-point night out of ` +
+        `${rosterPhrase(trailLeft)} to pull off the ${tonight ? 'Monday night ' : ''}upset over ` +
+        `${b(lead.team)}.`
+      : `${b(trail.team)} ${teamVerb(trail.team, 'trails', 'trail')} ${b(lead.team)} by ${gap} with ` +
+        `${rosterPhrase(trailLeft)} left, so the upset runs through them ${tonight ? 'tonight' : 'today'}.`
+    ) + counter;
   }
 
-  if (trailLeft.length && leadLeft.length) {
-    return variant === 0
-      ? `${b(trail.team)} are ${gap} behind with ${rosterPhrase(trailLeft)} left, and have to beat ` +
-        `whatever ${b(lead.team)} get from ${rosterPhrase(leadLeft)} by more than that.`
-      : `${b(trail.team)} leave week ${week} needing a huge ${tonight ? 'Monday night' : 'finish'} from ` +
-        `${rosterPhrase(trailLeft)} to stay alive: ${gap} down, with ${b(lead.team)} still holding ` +
-        `${rosterPhrase(leadLeft)}.`;
+  if (leadLeft.length) {
+    return `${b(lead.team)} ${teamVerb(lead.team, 'holds', 'hold')} a ${gap}-point cushion entering ` +
+      `${night}, with ${rosterPhrase(leadLeft)} looking to lock it down against a depleted ` +
+      `${b(trail.team)} lineup.`;
   }
 
-  /* Only the side in front has anyone left, so the deficit is already as small
-     as it is going to get. */
-  return variant === 0
-    ? `${b(trail.team)} are out of starters ${gap} behind, and ${b(lead.team)} still have ` +
-      `${rosterPhrase(leadLeft)} to come.`
-    : `${b(trail.team)} are done ${gap} short with nothing left to play, and ${b(lead.team)} close it ` +
-      `out with ${rosterPhrase(leadLeft)}.`;
+  /* Only reached for a matchup the clock reports FINISHED on both sides, which
+     is what lets the line say the win is sealed. */
+  return `${b(lead.team)} ${teamVerb(lead.team, 'has', 'have')} already sealed the win, leaving ` +
+    `${b(trail.team)} with no remaining starters to close the ${gap}-point gap.`;
 }
 
 /**
@@ -895,7 +945,7 @@ function storylineLines(rows: TrackedPlayer[], matchups: PreviewMatchup[], week:
 
   if (top) {
     lines.push(
-      `${b(top.player_name)} (${b(num2(Number(top.player_points) || 0) + ' pts')}) delivered the ` +
+      `${b(top.player_name)} (${b(fig(Number(top.player_points) || 0) + ' pts')}) delivered the ` +
       `performance of the week, an unstoppable ceiling game for ${b(top.owner_team)}.`,
     );
   }
@@ -916,8 +966,8 @@ function storylineLines(rows: TrackedPlayer[], matchups: PreviewMatchup[], week:
   if (surprise) {
     const points = Number(surprise.row.player_points) || 0;
     const final = Number(surprise.row.final_margin);
-    const opening = `${b(surprise.row.player_name)} (${b(num2(points) + ' pts')}) smashed his projection ` +
-      `by ${b(num2(surprise.delta))} pts`;
+    const opening = `${b(surprise.row.player_name)} (${b(fig(points) + ' pts')}) smashed his projection ` +
+      `by ${b(fig(surprise.delta))} pts`;
     /* "Take his day away and the result flips" is arithmetic, not a verdict on
        who won the matchup: it holds whenever his points outrun the final
        margin, and it is the strongest thing that can be said about a
@@ -925,11 +975,11 @@ function storylineLines(rows: TrackedPlayer[], matchups: PreviewMatchup[], week:
     lines.push(
       Number.isFinite(final) && final > 0
         ? points > final
-          ? `${opening}, and ${b(surprise.row.owner_team)} came out ${b(num2(final))} clear. Take his day ` +
+          ? `${opening}, and ${b(surprise.row.owner_team)} came out ${b(fig(final))} clear. Take his day ` +
             'away and the result flips.'
-          : `${opening} as ${b(surprise.row.owner_team)} came out ${b(num2(final))} clear.`
+          : `${opening} as ${b(surprise.row.owner_team)} came out ${b(fig(final))} clear.`
         : Number.isFinite(final) && final < 0
-          ? `${opening}, and ${b(surprise.row.owner_team)} lost by ${b(num2(Math.abs(final)))} anyway.`
+          ? `${opening}, and ${b(surprise.row.owner_team)} lost by ${b(fig(Math.abs(final)))} anyway.`
           : `${opening} for ${b(surprise.row.owner_team)}.`,
     );
   }
@@ -945,8 +995,8 @@ function storylineLines(rows: TrackedPlayer[], matchups: PreviewMatchup[], week:
     })[0];
     const [lead, trail] = leaderFirst(widest);
     lines.push(
-      `${b(trail.team)} leave week ${week} on the wrong side of the heaviest result on the board, ` +
-      `${b(num2(widest.margin as number))} down to ${b(lead.team)}.`,
+      `${b(trail.team)} ${teamVerb(trail.team, 'leaves', 'leave')} week ${week} on the wrong side of the ` +
+      `heaviest result on the board, ${b(fig(widest.margin as number))} down to ${b(lead.team)}.`,
     );
   }
 
@@ -972,13 +1022,16 @@ function quietWeekFallback(
      first by `orderPreviewMatchups`, so the closest thing to an upset leads. */
   const open = matchups.filter((m) => m.live && !m.complete && m.margin != null &&
     (m.a.pending.length > 0 || m.b.pending.length > 0));
+  /* A matchup whose board is fully in fills a spare slot behind them, and only
+     one the clock reports FINISHED can be called sealed. */
+  const sealed = matchups.filter((m) => m.complete && m.margin != null && (m.margin as number) > 0);
   const tonight = mondayNightPending(open);
 
   const closing = open.length
     ? {
       section: tonight ? 'On the line tonight' : 'Still to play',
-      lines: open.slice(0, MAX_CLOSING_LINES)
-        .map((m, index) => tonightLine(m, ((index % 2) === 0 ? 0 : 1) as 0 | 1, week, tonight)),
+      lines: open.concat(sealed).slice(0, MAX_CLOSING_LINES)
+        .map((m, index) => tonightLine(m, ((index % 2) === 0 ? 0 : 1) as 0 | 1, tonight)),
     }
     : { section: `The week ${week} storylines`, lines: storylineLines(rows, matchups, week) };
 
@@ -997,7 +1050,7 @@ function quietWeekFallback(
     };
   }
 
-  const leadPoints = num2(Number(lead.player_points) || 0);
+  const leadPoints = fig(Number(lead.player_points) || 0);
   const names = featured.slice(0, 2).map((row) => row.player_name).join(' and ');
   const title = blowout
     ? `${heading}, Dominance on Display`
@@ -1005,15 +1058,15 @@ function quietWeekFallback(
       ? `${heading}, Favorites Hold the Line`
       : `${heading}, Firepower Took Center Stage`;
   const excerpt = blowout
-    ? `No player had to flip a lead in week ${week}. ${blowout.player_name}'s ${num2(Number(blowout.player_points) || 0)} points led a slate of heavyweight wins.`
+    ? `No player had to flip a lead in week ${week}. ${blowout.player_name}'s ${fig(Number(blowout.player_points) || 0)} points led a slate of heavyweight wins.`
     : nailBiter
       ? `Week ${week} delivered pressure without a turnover. ${names} supplied the production while the favorites protected the margins they built.`
       : `No player registered a late lead change in week ${week}, but ${names} turned the tracked board into a scoring showcase.`;
   const final = Number(lead.final_margin);
   const match_impact_summary = Number.isFinite(final) && final > 0
-    ? `${lead.player_name}'s ${leadPoints} points headlined ${lead.owner_team}'s ${num2(final)} point win.`
+    ? `${lead.player_name}'s ${leadPoints} points headlined ${lead.owner_team}'s ${fig(final)}-point win.`
     : Number.isFinite(final) && final < 0
-      ? `${lead.player_name}'s ${leadPoints} points stood out even in ${lead.owner_team}'s ${num2(Math.abs(final))} point loss.`
+      ? `${lead.player_name}'s ${leadPoints} points stood out even in ${lead.owner_team}'s ${fig(Math.abs(final))}-point loss.`
       : `${lead.player_name}'s ${leadPoints} points were the loudest number on the tracked board.`;
 
   return {
@@ -1405,7 +1458,7 @@ const starterWord = (count: number): string => (count === 1 ? 'starter' : 'start
 function liveStanding(m: PreviewMatchup, variant: 0 | 1): string {
   const [lead, trail] = leaderFirst(m);
   const left = m.remaining;
-  const margin = b(num2(m.margin == null ? 0 : m.margin));
+  const margin = b(fig(m.margin == null ? 0 : m.margin));
 
   /* "Nothing left to kick off" and "nothing left to play" are not the same
      sentence. A matchup with no pending starters and no FINAL board is one
@@ -1423,15 +1476,16 @@ function liveStanding(m: PreviewMatchup, variant: 0 | 1): string {
 
   if (m.complete) {
     return variant === 0
-      ? `${b(lead.team)} came out ${b(num2(lead.scored) + ' pts')} to ${b(num2(trail.scored) + ' pts')}, ` +
-        `a ${margin} point result over ${b(trail.team)}.`
+      ? `${b(lead.team)} came out ${b(fig(lead.scored) + ' pts')} to ${b(fig(trail.scored) + ' pts')}, ` +
+        `a ${margin}-point result over ${b(trail.team)}.`
       : `Every starter is in: ${b(lead.team)} finished ${margin} clear of ${b(trail.team)}.`;
   }
 
   return variant === 0
-    ? `${b(lead.team)} take a ${margin} point lead over ${b(trail.team)} into the rest of the week, with ` +
-      `${outstanding}.`
-    : `${b(lead.team)} hold a ${margin} point cushion over ${b(trail.team)}, with ${outstanding}.`;
+    ? `${b(lead.team)} ${teamVerb(lead.team, 'takes', 'take')} a ${margin}-point lead over ` +
+      `${b(trail.team)} into the rest of the week, with ${outstanding}.`
+    : `${b(lead.team)} ${teamVerb(lead.team, 'holds', 'hold')} a ${margin}-point cushion over ` +
+      `${b(trail.team)}, with ${outstanding}.`;
 }
 
 /**
@@ -1463,7 +1517,7 @@ function topScorer(m: PreviewMatchup): TrackedPlayer | null {
 function scorerLine(row: TrackedPlayer, state: LiveState, variant: 0 | 1): string {
   const player = b(row.player_name);
   const team = b(row.owner_team);
-  const points = b(num2(Number(row.player_points) || 0) + ' pts');
+  const points = b(fig(Number(row.player_points) || 0) + ' pts');
   const running = state === 'LIVE' ? ', and his game is still running' : '';
   const projection = row.projected_points == null ? null : Number(row.projected_points);
 
@@ -1476,15 +1530,15 @@ function scorerLine(row: TrackedPlayer, state: LiveState, variant: 0 | 1): strin
   const delta = round2((Number(row.player_points) || 0) - projection);
   if (delta >= 0) {
     return variant === 0
-      ? `${player} did the damage for ${team}, banking ${points} against ${article(projection)} ` +
-        `${b(num2(projection))} point projection${running}.`
-      : `${team} got ${points} out of ${player}, ${b(num2(delta))} clear of his projection${running}.`;
+      ? `${player} did the damage for ${team}, banking ${points} on ${article(projection)} ` +
+        `${b(fig(projection))} projection${running}.`
+      : `${team} got ${points} out of ${player}, ${b(fig(delta))} clear of his projection${running}.`;
   }
   return variant === 0
-    ? `${player} still tops the matchup at ${points} for ${team}, though that is ${b(num2(-delta))} under ` +
+    ? `${player} still tops the matchup at ${points} for ${team}, though that is ${b(fig(-delta))} under ` +
       `his projection${running}.`
-    : `${points} from ${player} leads the way for ${team}, and it landed ${b(num2(-delta))} short of his ` +
-      `${b(num2(projection))} point projection${running}.`;
+    : `${points} from ${player} leads the way for ${team}, and it landed ${b(fig(-delta))} short of his ` +
+      `${b(fig(projection))} projection${running}.`;
 }
 
 /* Deliberately tense neutral. The same sentence has to read correctly in a
@@ -1492,11 +1546,13 @@ function scorerLine(row: TrackedPlayer, state: LiveState, variant: 0 | 1): strin
    preview composed on a Friday can be either. */
 function swingLine(swing: LeadSwing, variant: 0 | 1): string {
   const window = WINDOW_PHRASE[swing.window] || WINDOW_PHRASE.UNKNOWN;
+  /* "went from 10.60 down to 19.00 up" is two adverbs doing a verb's job. The
+     swing is one movement and reads as one: a deficit erased, a lead built. */
   return variant === 0
-    ? `The lead changed hands in ${window} window: ${b(swing.team)} went from ${b(num2(swing.from))} ` +
-      `down to ${b(num2(swing.to))} up.`
-    : `${b(swing.team)} were ${b(num2(swing.from))} behind when ${window} window opened, and came out ` +
-      `of it ${b(num2(swing.to))} ahead.`;
+    ? `The lead changed hands in ${window} window: ${b(swing.team)} erased a ${b(fig(swing.from))}-point ` +
+      `deficit to build a ${b(fig(swing.to))}-point lead.`
+    : `${b(swing.team)} ${teamVerb(swing.team, 'was', 'were')} ${b(fig(swing.from))} behind when ${window} ` +
+      `window opened, and came out of it ${b(fig(swing.to))} ahead.`;
 }
 
 /** The biggest projection a side still has waiting. */
@@ -1511,6 +1567,11 @@ function topPending(side: PreviewSide): TrackedPlayer | null {
   })[0];
 }
 
+/** A player and what he is projected for, as a reader would say it aloud.
+ *  "Saquon Barkley (17.4 proj)", never "Saquon Barkley at 17.37 projected". */
+const projectedName = (row: TrackedPlayer): string =>
+  `${b(row.player_name)} (${b(fig(Number(row.projected_points)))} proj)`;
+
 /** The names each side still has to come, as stakes rather than as a list. */
 function toComeLine(m: PreviewMatchup, variant: 0 | 1): string {
   const left = topPending(m.a);
@@ -1519,31 +1580,29 @@ function toComeLine(m: PreviewMatchup, variant: 0 | 1): string {
 
   if (left && right) {
     return variant === 0
-      ? `${b(m.a.team)} still have ${b(left.player_name)} at ${b(num2(Number(left.projected_points)))} ` +
-        `projected, ${b(m.b.team)} answer with ${b(right.player_name)} at ` +
-        `${b(num2(Number(right.projected_points)))}.`
-      : `The biggest names left are ${b(left.player_name)} for ${b(m.a.team)} and ` +
-        `${b(right.player_name)} for ${b(m.b.team)}, projected for ` +
-        `${b(num2(Number(left.projected_points)))} and ${b(num2(Number(right.projected_points)))}.`;
+      ? `${b(m.a.team)} still ${teamVerb(m.a.team, 'has', 'have')} ${projectedName(left)}, and ` +
+        `${b(m.b.team)} ${teamVerb(m.b.team, 'counters', 'counter')} with ${projectedName(right)}.`
+      : `The biggest names left are ${projectedName(left)} for ${b(m.a.team)} and ` +
+        `${projectedName(right)} for ${b(m.b.team)}.`;
   }
 
   const only = (left || right) as TrackedPlayer;
-  return `${b(only.owner_team)} still have ${b(only.player_name)} to come at ` +
-    `${b(num2(Number(only.projected_points)))} projected.`;
+  return `${b(only.owner_team)} still ${teamVerb(only.owner_team, 'has', 'have')} ` +
+    `${projectedName(only)} to come.`;
 }
 
 /** A matchup nobody has played yet, framed on the gap rather than the roster. */
 function projectedStanding(m: PreviewMatchup, variant: 0 | 1): string {
   if (m.projected_margin == null) {
     return variant === 0
-      ? `${b(m.a.team)} meet ${b(m.b.team)} with no projections posted, so this one gets read off the ` +
-        'lineups alone.'
+      ? `${b(m.a.team)} ${teamVerb(m.a.team, 'meets', 'meet')} ${b(m.b.team)} with no projections posted, ` +
+        'so this one gets read off the lineups alone.'
       : `No projection separates ${b(m.a.team)} and ${b(m.b.team)} yet. The lineups are the only tell.`;
   }
 
   const favourite = (m.a.projected as number) >= (m.b.projected as number) ? m.a : m.b;
   const underdog = favourite === m.a ? m.b : m.a;
-  const gap = b(num2(m.projected_margin));
+  const gap = b(fig(m.projected_margin));
 
   if (m.projected_margin <= 10) {
     return variant === 0
@@ -1554,9 +1613,9 @@ function projectedStanding(m: PreviewMatchup, variant: 0 | 1): string {
   }
   return variant === 0
     ? `The projections give ${b(favourite.team)} ${gap} on ${b(underdog.team)}, a gap ${b(underdog.team)} ` +
-      'have to find somewhere in the lineup.'
-    : `${b(favourite.team)} are ${gap} up on ${b(underdog.team)} before a snap, which is the kind of lead ` +
-      'that lasts right until it does not.';
+      `${teamVerb(underdog.team, 'has', 'have')} to find somewhere in the lineup.`
+    : `${b(favourite.team)} ${teamVerb(favourite.team, 'is', 'are')} ${gap} up on ${b(underdog.team)} ` +
+      'before a snap, which is the kind of lead that lasts right until it does not.';
 }
 
 /**
@@ -1703,15 +1762,17 @@ export function impactSummary(
           : `${lead.team} and ${trail.team} are level ${outstanding}.`;
       }
       return m.complete
-        ? `${lead.team} came out ${num2(m.margin)} clear of ${trail.team}.`
-        : `${lead.team} lead ${trail.team} by ${num2(m.margin)} ${outstanding}.`;
+        ? `${lead.team} came out ${fig(m.margin)} clear of ${trail.team}.`
+        : `${lead.team} ${teamVerb(lead.team, 'leads', 'lead')} ${trail.team} by ${fig(m.margin)} ` +
+          `${outstanding}.`;
     }
 
     const next = matchups[0];
     if (next.projected_margin == null) {
-      return `${next.a.team} meet ${next.b.team} with no projections posted.`;
+      return `${next.a.team} ${teamVerb(next.a.team, 'meets', 'meet')} ${next.b.team} with no projections ` +
+        'posted.';
     }
-    return `${next.a.team} and ${next.b.team} project within ${num2(next.projected_margin)}, the closest ` +
+    return `${next.a.team} and ${next.b.team} project within ${fig(next.projected_margin)}, the closest ` +
       'matchup on the board.';
   }
 
@@ -1749,7 +1810,7 @@ export function impactSummary(
      the exact overclaim this module exists to prevent. */
   if (!row) return '';
 
-  const scored = `${row.player_name} scored ${pts(row.player_points)} points`;
+  const scored = `${row.player_name} scored ${fig(Number(row.player_points) || 0)} points`;
   switch (row.outcome_flag) {
     case 'GAME_WINNER':
       return `${scored}, just enough for ${row.owner_team}.`;
@@ -1758,7 +1819,8 @@ export function impactSummary(
     case 'GARBAGE_TIME_BLOWOUT':
       return `${scored}, which did not affect the blowout for ${row.owner_team}.`;
     case 'DUD_COST_WIN':
-      return `${scored}, well under projection, and ${row.owner_team} lost a game they led.`;
+      return `${scored}, well under projection, and ${row.owner_team} lost a game ` +
+        `${teamPronoun(row.owner_team)} led.`;
     default:
       return '';
   }
