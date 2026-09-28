@@ -1,7 +1,10 @@
 export type PodcastStingers = {
     intro?: Buffer;
     outro?: Buffer;
+    leadInOffsetMs?: number;
 };
+export type PodcastCue = { startMs: number; endMs: number };
+export declare function storyReelMarkers(turns: PodcastCue[], storyCount: number, segmentTurnCounts?: number[]): PodcastCue[];
 /** Optional, deploy-owned tracks. No file is needed for speech-only episodes. */
 export declare function configuredPodcastStingers(): Promise<PodcastStingers>;
 /** Speech-gated bed mix. Sustained speech moves music to -12 dB over 10 ms;
@@ -14,4 +17,6 @@ export declare function duckStingers(speech: Buffer, intro?: Buffer, outro?: Buf
 export declare function buildPodcastAudio(segments: Buffer[], stingers?: PodcastStingers): Promise<{
     audio: Buffer;
     markers: number[];
+    turnMarkers: PodcastCue[];
+    leadInOffsetMs: number;
 }>;
