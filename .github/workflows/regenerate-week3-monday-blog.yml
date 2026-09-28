@@ -1,0 +1,89 @@
+# Guarded, one-time repair for the stale Week 3 Monday League Blog.
+# It deletes only active-league monday_sweat rows, then calls the normal
+# production article route. The Friday TNF recap is intentionally out of scope.
+name: Regenerate Week 3 Monday League Blog
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: Type REGENERATE_WEEK_3_MONDAY to delete and republish the active-league Monday rows.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  regenerate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Delete only the stale Monday rows and republish
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          BASE_URL: ${{ vars.ARTICLE_CRON_BASE_URL || 'https://app.fantasysportsnetwork.app' }}
+        run: |
+          set -euo pipefail
+
+          if [ "${CONFIRM}" != "REGENERATE_WEEK_3_MONDAY" ]; then
+            echo "::error title=Confirmation mismatch::No rows were deleted."
+            exit 1
+          fi
+          for required in SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY CRON_SECRET; do
+            if [ -z "${!required:-}" ]; then
+              echo "::error title=Missing secret::${required} is required. No rows were deleted."
+              exit 1
+            fi
+          done
+
+          rest="${SUPABASE_URL%/}/rest/v1"
+          leagues=$(curl -fsS "${rest}/leagues?season_year=eq.2026&select=league_id" \
+            -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}")
+          ids=$(printf '%s' "${leagues}" | jq -r '.[].league_id' | sort -u)
+
+          deleted=0
+          while IFS= read -r league_id; do
+            [ -z "${league_id}" ] && continue
+            case "${league_id}" in
+              *[!0-9]*) echo "::error title=Invalid active league id::${league_id}"; exit 1 ;;
+            esac
+            status=$(curl -sS -X DELETE \
+              "${rest}/blog_articles?league_id=eq.${league_id}&season=eq.2026&week=eq.3&article_type=eq.monday_sweat" \
+              -H "apikey: ${SUPABASE_SERVICE_ROLE_KEY}" \
+              -H "Authorization: Bearer ${SUPABASE_SERVICE_ROLE_KEY}" \
+              -H "Prefer: return=minimal" \
+              -o /dev/null -w '%{http_code}')
+            if [ "${status}" != "204" ]; then
+              echo "::error title=Delete failed::League ${league_id} returned HTTP ${status}. Stopping before the publish run."
+              exit 1
+            fi
+            deleted=$((deleted + 1))
+          done <<< "${ids}"
+
+          url="${BASE_URL%/}/api/cron/generate-articles?day=mon&season=2026&week=3&dry_run=0"
+          status=$(curl -sS -X POST "${url}" \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            -H 'Content-Type: application/json' \
+            --max-time 600 \
+            -o response.json -w '%{http_code}')
+
+          echo "HTTP ${status}"
+          jq '.' response.json || cat response.json
+          if [ "${status}" != "200" ]; then
+            echo "::error title=Article run failed::The endpoint returned HTTP ${status}."
+            exit 1
+          fi
+
+          failed=$(jq -r '.failed // 0' response.json)
+          created=$(jq -r '.created // 0' response.json)
+          skipped=$(jq -r '.skipped // 0' response.json)
+          echo "### Week 3 Monday: ${created} created, ${skipped} skipped, ${failed} failed after clearing ${deleted} active-league row scopes." >> "${GITHUB_STEP_SUMMARY}"
+          if [ "${failed}" != "0" ]; then
+            echo "::error title=Some leagues failed::${failed} league(s) did not publish."
+            exit 1
+          fi
