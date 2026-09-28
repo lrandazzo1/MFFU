@@ -334,6 +334,28 @@ export declare function leadSwing(side: PreviewSide): LeadSwing | null;
  * gap rests on.
  */
 export declare function previewBlock(m: PreviewMatchup, variant: 0 | 1, now?: number | null): string[];
+/**
+ * The matchup board, as a run of markdown sections.
+ *
+ * Shared by the preview and the recap so the two read the same way: one block
+ * per head to head, the standing first, then the number that produced it, then
+ * the lead change it came out of or what is still to come.
+ *
+ * ---- WHY THE RECAP HAS ONE AT ALL ----
+ *
+ * It used to be built from the outcome flags and nothing else, so the only
+ * performances it could name were the ones the math had marked decisive. A
+ * week whose leads never changed hands left it with nothing: the week 3 Monday
+ * run published six bullets of "put 41.40 pts on the board, the swing math
+ * found no individual turnover" and never named a margin, a leader, or a
+ * starter still to play, while the Friday breakdown of the same league was
+ * printing all three. The flags say what a performance MEANT. They were never
+ * meant to be the only thing a recap could report.
+ *
+ * Returns an empty list when nothing paired into a head to head. The caller
+ * decides what to say about that: neither article treats it as fatal.
+ */
+export declare function matchupBoardSections(matchups: PreviewMatchup[], week: number, limit: number, now?: number | null): string[];
 export declare const CATEGORY_BY_TYPE: Record<ArticleType, string>;
 export declare const DEFAULT_AUTHOR = "FSN News Desk";
 /**
