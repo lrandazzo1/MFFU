@@ -25,6 +25,7 @@
     "build:podcast": "tsc -p tsconfig.podcast.json",
     "generate:podcast": "node scripts/generate-podcast.mjs",
     "check:podcast-segments": "npm run build:podcast && node scripts/podcast-segments-check.mjs",
+    "check:mp3-frames": "npm run build:podcast && node scripts/mp3-frames-check.mjs",
     "check:studio": "node scripts/studio-episode-check.mjs",
     "check:localdesk": "node scripts/local-desk-check.mjs",
     "check:switch": "node scripts/switch-curtain-check.mjs",
@@ -56,7 +57,7 @@
     "build:articles": "tsc -p tsconfig.articles.json",
     "test:articles": "npm run build:articles && node --test lib/article-selftest.js lib/article-cron-selftest.js lib/blog-endpoint-selftest.js lib/blog-publish-selftest.js lib/blog-global-selftest.js",
     "test:editorial-timing": "npm run build:articles && node scripts/audit-editorial-timing.mjs",
-    "verify": "npm run check:functions && npm run check:scope && npm run check:blog && npm run check:matchup-previews && npm run test:wire && npm run check:wire && npm run test:triggers && npm run audit:notifications && npm run check:render && npm run check:storyreel && npm run check:podcast-lock && npm run check:podcast-segments && npm run check:studio && npm run check:localdesk && npm run check:switch && npm run check:ticker && npm run check:desktop-scroll && npm run check:desk-sync && npm run check:boot && npm run check:invite && npm run check:leaguesave && npm run check:seasonscope && npm run check:webleague && npm run check:apibase && npm run check:links && npm run check:claims && npm run check:news && npm run check:articles && npm run check:applinks && npm run check:deeplinks && npm run check:week-buckets && npm run check:draftweek && npm run check:editorial && npm run check:cleanup && npm run check:appstore && npm run test:articles && npm run test:editorial-timing && npm run check:leagueblog",
+    "verify": "npm run check:functions && npm run check:scope && npm run check:blog && npm run check:matchup-previews && npm run test:wire && npm run check:wire && npm run test:triggers && npm run audit:notifications && npm run check:render && npm run check:storyreel && npm run check:podcast-lock && npm run check:mp3-frames && npm run check:podcast-segments && npm run check:studio && npm run check:localdesk && npm run check:switch && npm run check:ticker && npm run check:desktop-scroll && npm run check:desk-sync && npm run check:boot && npm run check:invite && npm run check:leaguesave && npm run check:seasonscope && npm run check:webleague && npm run check:apibase && npm run check:links && npm run check:claims && npm run check:news && npm run check:articles && npm run check:applinks && npm run check:deeplinks && npm run check:week-buckets && npm run check:draftweek && npm run check:editorial && npm run check:cleanup && npm run check:appstore && npm run test:articles && npm run test:editorial-timing && npm run check:leagueblog",
     "audit:notifications": "node scripts/audit-notifications.mjs",
     "assets:source": "node scripts/build-brand-assets.mjs",
     "check:release": "npm run build:ios && node scripts/release-cleanup-check.mjs && node scripts/release-browser-check.mjs"

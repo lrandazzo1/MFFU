@@ -51,6 +51,8 @@
     "lib/fsn-index.ts",
     "lib/podcast-script.ts",
     "lib/podcast-news-script.ts",
+    "lib/mp3-frames.ts",
+    "lib/build-podcast-audio.ts",
     "lib/generate-podcast.ts",
     "lib/generate-weekly-podcast.ts"
   ]
