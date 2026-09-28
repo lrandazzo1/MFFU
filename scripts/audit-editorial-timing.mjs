@@ -554,20 +554,36 @@ for (const r of results) {
   check(cell, 'NO_ZERO_CREDIT', !ZERO_CREDIT.test(draft.content_markdown),
     draft.content_markdown.split('\n').find((l) => ZERO_CREDIT.test(l)));
 
-  /* Every bullet names a Thursday player, because nobody else has played. */
-  const bullets = draft.content_markdown.split('\n').filter((l) => l.trim().startsWith('- '));
+  /* Every bullet that CREDITS a performance names a Thursday player, because
+     nobody else has played. The lookahead that closes the article is exempt by
+     construction: naming a starter who is STILL TO PLAY, against the
+     projection he has still to play it against, is the opposite of crediting
+     him with something he has not done. It is scanned below for the claim
+     that would be wrong there, which is a points total. */
+  const [credited, lookahead = ''] =
+    draft.content_markdown.split(/^## (?:On the line tonight|Still to play)$/m);
+  const bullets = credited.split('\n').filter((l) => l.trim().startsWith('- '));
   check(cell, 'ONLY_PLAYED_ON_BOARD',
     bullets.every((l) => /Thursday/.test(l)),
     bullets.find((l) => !/Thursday/.test(l)));
 
+  /* A starter who has not kicked off is named with a projection, never with a
+     score. "Copper Monday at 12.00" is what he is due; "Copper Monday 0.00
+     pts" is a claim about a game that has not happened. */
+  const aheadLines = lookahead.split('\n').filter((l) => l.trim().startsWith('- '));
+  check(cell, 'LOOKAHEAD_PROJECTS_ONLY',
+    aheadLines.every((l) => !/\*\*0\.00 pts\*\*/.test(l)),
+    aheadLines.find((l) => /\*\*0\.00 pts\*\*/.test(l)));
+
   /* And a board with nothing left on it is prose, never a bare heading.
 
-     The prose it is, changed twice since this cell was written. The no-swing
+     The prose it is, changed three times since this cell was written. The no-swing
      fallback retired the "Nothing in week 3 turned a matchup" apology for a
-     performance-led section, and the recap matchup board now leads with where
-     every head to head actually stands. What the cell is really pinning is
-     that a recap the flags left empty still says something, so it pins both
-     of the sections that say it. */
+     performance-led section, the recap matchup board now leads with where
+     every head to head actually stands, and that performance-led section has
+     become a lookahead when starters are still to play. What the cell is
+     really pinning is that a recap the flags left empty still says something,
+     so it pins the board and whichever section closes it. */
   const empty = defaultComposer({
     system_prompt: '', user_prompt: '', league_id: '123456', season: 2026, week: 3,
     day: 'tue', article_type: 'tuesday_verdict',
@@ -577,8 +593,14 @@ for (const r of results) {
   universal('RECAP_EMPTY_BOARD/normal', empty, []);
   check('RECAP_EMPTY_BOARD/normal', 'EMPTY_BOARD_PROSE',
     /## Where the week stands/.test(empty.content_markdown) &&
-      /## The performances that set the tone/.test(empty.content_markdown) &&
+      /## (?:On the line tonight|Still to play|The week 3 storylines)/.test(empty.content_markdown) &&
       !/Nothing in week 3 turned a matchup/.test(empty.content_markdown),
+    empty.content_markdown);
+
+  /* The suffix that made this section three copies of one sentence. It was
+     printed under every name a quiet week had, and it is not coming back. */
+  check('RECAP_EMPTY_BOARD/normal', 'NO_CANNED_SWING_SUFFIX',
+    !/swing math found no individual turnover/.test(empty.content_markdown),
     empty.content_markdown);
 
   /* The point of the board: a recap with no flag on it still names a margin,

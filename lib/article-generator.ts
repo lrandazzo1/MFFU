@@ -778,41 +778,187 @@ function topPerformers(rows: TrackedPlayer[], limit = 3): TrackedPlayer[] {
     .slice(0, limit);
 }
 
-function fallbackPerformerLine(row: TrackedPlayer): string {
-  const player = b(row.player_name);
-  const team = b(row.owner_team);
-  const opponent = b(row.opponent_team || 'their opponent');
-  const points = b(num2(Number(row.player_points) || 0) + ' pts');
-  const final = Number(row.final_margin);
-  const margin = b(num2(Math.abs(final)));
+/* ------------------------------------------------------------------ *
+ * What closes a recap the flags left empty
+ *
+ * A week in which no single performance turned a matchup is not a week in
+ * which nothing happened, and the section that closed it used to read as
+ * though it were. Every bullet was the same sentence under a different name:
+ * a player, a number, and a suffix apologising for the absence of a swing.
+ * "The swing math found no individual turnover, but that score still set the
+ * week's volume", three times in a row, is a section about the math's own
+ * silence rather than about the week.
+ *
+ * It now closes on what is actually in front of the reader:
+ *
+ *   ON THE LINE TONIGHT   starters are still to play, so the section is the
+ *                         lookahead. Who is behind, by how much, who they
+ *                         have left, and what they have to find.
+ *   THE STORYLINES        the board is in, so it is the few things worth
+ *                         remembering: the ceiling game, the projection
+ *                         nobody saw coming, and where it left the teams.
+ *
+ * Same contract as every other sentence in this module. Nothing here credits
+ * a player with winning a matchup: this branch runs precisely when the math
+ * awarded no GAME_WINNER to credit anyone with, and the strongest claim
+ * available is arithmetic anybody can check, which is what the projection
+ * line makes.
+ * ------------------------------------------------------------------ */
 
-  if (Number.isFinite(final) && final > 0) {
-    if (final >= 20) {
-      return `${player} exploded for ${points} as ${team} buried ${opponent} by ${margin}. ` +
-        'There was no late rescue required, just a scoreline that never let up.';
-    }
-    if (final <= 5) {
-      return `${player} supplied ${points} for ${team}, who held ${opponent} off by ${margin}. ` +
-        'The favourite never surrendered the edge.';
-    }
-    return `${player} posted ${points} as ${team} finished ${margin} clear of ${opponent}. ` +
-      'The board stayed orderly, but the number still carried weight.';
-  }
+/** At most this many lines close the article. The matchup board above has
+ *  already walked the whole slate; this is the shortlist. */
+const MAX_CLOSING_LINES = 4;
 
-  if (Number.isFinite(final) && final < 0) {
-    if (Math.abs(final) <= 5) {
-      return `${player} put up ${points} for ${team}, but ${opponent} escaped by ${margin}. ` +
-        'A tight result held without a late lead change.';
-    }
-    return `${player} delivered ${points} for ${team}, but ${opponent} still won by ${margin}. ` +
-      'The stat line was loud even if the result was not.';
-  }
-
-  return `${player} put ${points} on the board for ${team}. ` +
-    'The swing math found no individual turnover, but that score still set the week\'s volume.';
+/** The starters a side still has waiting, biggest projection first. */
+function pendingRoster(side: PreviewSide, limit = 2): TrackedPlayer[] {
+  return side.pending.slice().sort((x, y) => {
+    const delta = (Number(y.projected_points) || 0) - (Number(x.projected_points) || 0);
+    if (delta !== 0) return delta;
+    return x.player_id < y.player_id ? -1 : x.player_id > y.player_id ? 1 : 0;
+  }).slice(0, limit);
 }
 
-function quietWeekFallback(rows: TrackedPlayer[], heading: string, week: number): QuietWeekFallback {
+/** "**A** at **18.94** and **B** at **12.83**". A row that carried no
+ *  projection is named without one: zero is not a projection, and printing it
+ *  as one states a forecast nobody made. */
+function rosterPhrase(rows: TrackedPlayer[]): string {
+  const parts = rows.map((row) => {
+    const projection = row.projected_points == null ? null : Number(row.projected_points);
+    return projection == null || !Number.isFinite(projection)
+      ? b(row.player_name)
+      : `${b(row.player_name)} at ${b(num2(projection))}`;
+  });
+  if (parts.length <= 1) return parts[0] || '';
+  return parts.slice(0, -1).join(', ') + ' and ' + parts[parts.length - 1];
+}
+
+/** Whether what is left to play is the Monday night game. The copy says
+ *  "tonight" only when it is: a Tuesday recap with a starter outstanding is
+ *  not looking at tonight, and a sentence that says otherwise is wrong by the
+ *  time anyone reads it. */
+function mondayNightPending(matchups: PreviewMatchup[]): boolean {
+  return matchups.some((m) => m.a.pending.concat(m.b.pending).some((row) => row.slot === 'MNF'));
+}
+
+/**
+ * One matchup that tonight can still turn.
+ *
+ * The deficit is stated exactly, and so is what it would take: "more than" the
+ * margin when the leader has nobody left, and "more than that on top of
+ * whatever the leader's remaining starters produce" when he does. A single
+ * number cannot express the second case, so it is not asserted as one.
+ */
+function tonightLine(m: PreviewMatchup, variant: 0 | 1, week: number, tonight: boolean): string {
+  const [lead, trail] = leaderFirst(m);
+  const gap = b(num2(m.margin == null ? 0 : m.margin));
+  const when = tonight ? 'tonight' : 'in what is left';
+  const trailLeft = pendingRoster(trail);
+  const leadLeft = pendingRoster(lead);
+
+  if (trailLeft.length && !leadLeft.length) {
+    return variant === 0
+      ? `${b(trail.team)} need more than ${gap} out of ${rosterPhrase(trailLeft)} ${when}, and ` +
+        `${b(lead.team)} have nobody left to answer with.`
+      : `${b(lead.team)} are finished on ${b(num2(lead.scored) + ' pts')}. ${b(trail.team)} leave week ` +
+        `${week} needing more than ${gap} from ${rosterPhrase(trailLeft)} to stay alive.`;
+  }
+
+  if (trailLeft.length && leadLeft.length) {
+    return variant === 0
+      ? `${b(trail.team)} are ${gap} behind with ${rosterPhrase(trailLeft)} left, and have to beat ` +
+        `whatever ${b(lead.team)} get from ${rosterPhrase(leadLeft)} by more than that.`
+      : `${b(trail.team)} leave week ${week} needing a huge ${tonight ? 'Monday night' : 'finish'} from ` +
+        `${rosterPhrase(trailLeft)} to stay alive: ${gap} down, with ${b(lead.team)} still holding ` +
+        `${rosterPhrase(leadLeft)}.`;
+  }
+
+  /* Only the side in front has anyone left, so the deficit is already as small
+     as it is going to get. */
+  return variant === 0
+    ? `${b(trail.team)} are out of starters ${gap} behind, and ${b(lead.team)} still have ` +
+      `${rosterPhrase(leadLeft)} to come.`
+    : `${b(trail.team)} are done ${gap} short with nothing left to play, and ${b(lead.team)} close it ` +
+      `out with ${rosterPhrase(leadLeft)}.`;
+}
+
+/**
+ * The few things worth remembering from a week that is fully scored.
+ *
+ * Three different questions, so three different names as a rule: who scored
+ * most, who most outran what he was supposed to do, and which team took the
+ * heaviest result. None of them is the "here is a number, and the swing math
+ * found nothing" sentence they replaced.
+ */
+function storylineLines(rows: TrackedPlayer[], matchups: PreviewMatchup[], week: number): string[] {
+  const lines: string[] = [];
+  const top = topPerformers(rows, 1)[0];
+
+  if (top) {
+    lines.push(
+      `${b(top.player_name)} (${b(num2(Number(top.player_points) || 0) + ' pts')}) delivered the ` +
+      `performance of the week, an unstoppable ceiling game for ${b(top.owner_team)}.`,
+    );
+  }
+
+  /* The biggest gap between what a starter was projected for and what he
+     actually did. A different question from "who scored most", and usually a
+     different name. */
+  const surprise = rows
+    .filter((row) => row !== top && row.projected_points != null &&
+      Number.isFinite(Number(row.projected_points)))
+    .map((row) => ({ row, delta: round2((Number(row.player_points) || 0) - Number(row.projected_points)) }))
+    .filter((entry) => entry.delta > 0)
+    .sort((x, y) => {
+      if (y.delta !== x.delta) return y.delta - x.delta;
+      return x.row.player_id < y.row.player_id ? -1 : x.row.player_id > y.row.player_id ? 1 : 0;
+    })[0];
+
+  if (surprise) {
+    const points = Number(surprise.row.player_points) || 0;
+    const final = Number(surprise.row.final_margin);
+    const opening = `${b(surprise.row.player_name)} (${b(num2(points) + ' pts')}) smashed his projection ` +
+      `by ${b(num2(surprise.delta))} pts`;
+    /* "Take his day away and the result flips" is arithmetic, not a verdict on
+       who won the matchup: it holds whenever his points outrun the final
+       margin, and it is the strongest thing that can be said about a
+       performance the math declined to flag. */
+    lines.push(
+      Number.isFinite(final) && final > 0
+        ? points > final
+          ? `${opening}, and ${b(surprise.row.owner_team)} came out ${b(num2(final))} clear. Take his day ` +
+            'away and the result flips.'
+          : `${opening} as ${b(surprise.row.owner_team)} came out ${b(num2(final))} clear.`
+        : Number.isFinite(final) && final < 0
+          ? `${opening}, and ${b(surprise.row.owner_team)} lost by ${b(num2(Math.abs(final)))} anyway.`
+          : `${opening} for ${b(surprise.row.owner_team)}.`,
+    );
+  }
+
+  /* Where it left the teams. The widest result on the board, named from the
+     side that has to carry it. */
+  const settled = matchups.filter((m) => m.margin != null && (m.margin as number) > 0);
+  if (settled.length) {
+    const widest = settled.slice().sort((x, y) => {
+      const delta = (y.margin as number) - (x.margin as number);
+      if (delta !== 0) return delta;
+      return x.matchup_id < y.matchup_id ? -1 : x.matchup_id > y.matchup_id ? 1 : 0;
+    })[0];
+    const [lead, trail] = leaderFirst(widest);
+    lines.push(
+      `${b(trail.team)} leave week ${week} on the wrong side of the heaviest result on the board, ` +
+      `${b(num2(widest.margin as number))} down to ${b(lead.team)}.`,
+    );
+  }
+
+  return lines;
+}
+
+function quietWeekFallback(
+  rows: TrackedPlayer[],
+  heading: string,
+  week: number,
+  matchups: PreviewMatchup[] = [],
+): QuietWeekFallback {
   const featured = topPerformers(rows);
   const lead = featured[0];
   const blowout = featured.find((row) => Number(row.final_margin) >= 20);
@@ -821,13 +967,33 @@ function quietWeekFallback(rows: TrackedPlayer[], heading: string, week: number)
     return Number.isFinite(margin) && margin !== 0 && Math.abs(margin) <= 5;
   });
 
+  /* Matchups tonight can still turn: somebody is ahead, somebody is behind,
+     and at least one of them has a starter left. Already ordered tightest
+     first by `orderPreviewMatchups`, so the closest thing to an upset leads. */
+  const open = matchups.filter((m) => m.live && !m.complete && m.margin != null &&
+    (m.a.pending.length > 0 || m.b.pending.length > 0));
+  const tonight = mondayNightPending(open);
+
+  const closing = open.length
+    ? {
+      section: tonight ? 'On the line tonight' : 'Still to play',
+      lines: open.slice(0, MAX_CLOSING_LINES)
+        .map((m, index) => tonightLine(m, ((index % 2) === 0 ? 0 : 1) as 0 | 1, week, tonight)),
+    }
+    : { section: `The week ${week} storylines`, lines: storylineLines(rows, matchups, week) };
+
   if (!lead) {
     return {
       title: `${heading}, Status Quo Maintained`,
       excerpt: `Week ${week} held its shape. No single score forced a late turnover, but the settled board still told its story.`,
       match_impact_summary: 'The matchups held their lanes from the opening window through the finish.',
-      section: 'The board held firm',
-      lines: ['No tracked starter posted a score worth isolating, but every matchup reached the finish without one player flipping the result on his own.'],
+      /* A board with nothing on it and nothing left to play has no lookahead
+         and no storyline, so it says exactly that rather than a heading with
+         nothing under it. */
+      section: closing.lines.length ? closing.section : 'The board held firm',
+      lines: closing.lines.length
+        ? closing.lines
+        : ['No tracked starter posted a score worth isolating, but every matchup reached the finish without one player flipping the result on his own.'],
     };
   }
 
@@ -854,8 +1020,8 @@ function quietWeekFallback(rows: TrackedPlayer[], heading: string, week: number)
     title,
     excerpt,
     match_impact_summary,
-    section: 'The performances that set the tone',
-    lines: featured.map(fallbackPerformerLine),
+    section: closing.section,
+    lines: closing.lines,
   };
 }
 
@@ -1720,7 +1886,7 @@ export const defaultComposer: Composer = (request) => {
   const decisive = decisiveRows(board);
   const quiet = decisive.length
     ? null
-    : quietWeekFallback(onTheField.length ? onTheField : rows, heading, request.week);
+    : quietWeekFallback(onTheField.length ? onTheField : rows, heading, request.week, matchups);
 
   const title = decisive.length
     ? `${heading}, ${decisive.length} ${decisive.length === 1 ? 'Result' : 'Results'} That Turned`
