@@ -1,8 +1,12 @@
 name: One-time Week 2 podcast regeneration
 
 on:
-  push:
-    branches: [codex/regen-podcast-57155288-week2]
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: Type REGENERATE-57155288-2026-W2 to replace this episode.
+        type: string
+        required: true
 
 permissions:
   contents: read
@@ -13,6 +17,7 @@ concurrency:
 
 jobs:
   regenerate:
+    if: github.event.inputs.confirm == 'REGENERATE-57155288-2026-W2'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
