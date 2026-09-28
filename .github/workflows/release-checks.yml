@@ -25,6 +25,27 @@ jobs:
           npm run check:podcast-audio
           npm run check:podcast-segments
 
+  story-reel-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Install test browser
+        run: |
+          npx playwright install --with-deps chromium
+          node --input-type=module -e "import { chromium } from 'playwright'; import { appendFileSync } from 'node:fs'; appendFileSync(process.env.GITHUB_ENV, 'FSN_CHROMIUM_PATH=' + chromium.executablePath() + '\n');"
+      - name: Verify Story Reel and Studio rendering
+        run: |
+          npm run check:scope
+          npm run check:render
+          npm run check:storyreel
+          npm run check:studio
+
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 20
