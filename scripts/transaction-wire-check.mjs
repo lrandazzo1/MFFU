@@ -54,7 +54,6 @@ function resolveChromium(){
 }
 const browser = await chromium.launch({executablePath:resolveChromium(),headless:true,args:['--no-sandbox']});
 const page = await browser.newPage();
-await page.addInitScript(()=>localStorage.setItem('hasCompletedOnboarding','true'));
 const errors = [];
 page.on('pageerror',e=>errors.push(String(e)));
 page.on('console',m=>{if(m.type()==='error' && /\[(FSN|NewsDesk|TransactionWire)/.test(m.text()))errors.push(m.text());});
@@ -79,8 +78,7 @@ try{
   assert.ok(requests.some(r=>r.method==='POST'));
   assert.match(await page.locator('#transactionWireStatus').textContent(),/Live roster updates are shown/);
   if(await page.getAttribute('#profilePicker','data-open')==='true')await page.click('#profileGuest');
-  // The app shell can intercept synthetic pointer clicks at desktop width.
-  await page.evaluate(()=>document.querySelector('[data-tab="news"]').click());
+  await page.click('[data-tab="news"]');
   await page.waitForTimeout(200);
   // The actual feed opens the backend-created article using the usual reader.
   const row = page.locator('[data-article="'+article.id+'"]:visible').first();
