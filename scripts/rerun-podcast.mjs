@@ -38,8 +38,19 @@ assert.ok(await readNewsPayload(db, leagueId, season, week),
   'No published Week 2 news payload; no TTS was requested');
 
 console.log('[rerun-podcast] Replacing 2026 Week 2 for league ' + leagueId);
-const outcome = await buildLeagueEpisode({ league_id: leagueId, season, week },
-  { db, format: 'news', script_only: false });
+let outcome;
+try {
+  outcome = await buildLeagueEpisode({ league_id: leagueId, season, week },
+    { db, format: 'news', script_only: false });
+} catch (err) {
+  if (err?.body && typeof err.body.getReader === 'function') {
+    const detail = await new Response(err.body).text();
+    console.error('[rerun-podcast] Provider response (' + (err.statusCode || 'unknown') + '): ' +
+      detail.slice(0, 2000));
+    throw new Error('Podcast voice provider rejected synthesis; no MP3 or episode was changed');
+  }
+  throw err;
+}
 assert.ok(outcome.audio?.length, 'The regenerated episode has no audio');
 assert.equal(outcome.turnMarkers.length, outcome.script.lines.length, 'Turn cues do not match lines');
 assert.equal(outcome.storyReelMarkers.length, outcome.script.stories.length,
