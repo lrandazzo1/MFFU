@@ -4,7 +4,7 @@ import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
 const ffmpeg = require('ffmpeg-static');
-const { buildPodcastAudio, duckStingers } = require('../lib/dist/build-podcast-audio.js');
+const { buildPodcastAudio, duckStingers, storyReelMarkers } = require('../lib/dist/build-podcast-audio.js');
 const { readMp3Frames } = require('../lib/dist/mp3-frames.js');
 const { sanitizePodcastScript } = require('../lib/dist/sanitize-podcast-script.js');
 
@@ -44,10 +44,25 @@ const plain = await buildPodcastAudio(turns);
 const withBeds = await buildPodcastAudio(turns, { intro: tone(220, 0.25), outro: tone(330, 0.25) });
 for (const result of [plain, withBeds]) {
   assert.equal(result.markers.length, 3);
-  assert.ok(result.markers[0] > 0.3 && result.markers[0] < 0.41);
+  assert.equal(result.turnMarkers.length, 3);
+  assert.equal(result.turnMarkers[0].startMs, result.leadInOffsetMs);
+  assert.ok(result.turnMarkers.every((cue, i) => cue.endMs > cue.startMs &&
+    (i === 0 || cue.startMs === result.turnMarkers[i - 1].endMs)));
+  assert.equal(result.leadInOffsetMs, result === withBeds ? 250 : 0);
+  const reel = storyReelMarkers(result.turnMarkers, 2);
+  assert.equal(reel.length, 2);
+  assert.equal(reel[0].endMs, result.turnMarkers[2].startMs);
+  assert.equal(reel[1].endMs, result.turnMarkers[2].endMs);
+  assert.equal(storyReelMarkers(result.turnMarkers, 2, [2, 1])[1].startMs,
+    result.turnMarkers[2].startMs);
+  assert.ok(result.markers[0] - result.leadInOffsetMs / 1000 > 0.3 &&
+    result.markers[0] - result.leadInOffsetMs / 1000 < 0.41);
   assert.ok(result.markers[1] > result.markers[0]);
   assert.ok(!result.audio.subarray(0, 3).equals(Buffer.from('ID3')));
-  assert.ok(Math.abs(readMp3Frames(result.audio).duration - result.markers[2]) < 1 / 44100);
+  const frames = readMp3Frames(result.audio);
+  assert.equal(frames.sampleRate, 48000);
+  assert.equal(frames.bitrateKbps, 128);
+  assert.ok(Math.abs(frames.duration * 1000 - result.turnMarkers[2].endMs) <= 0.5);
   run(['-f', 'mp3', '-i', 'pipe:0', '-f', 'null', '-'], result.audio);
   const measured = spawnSync(ffmpeg, ['-hide_banner', '-nostdin', '-i', 'pipe:0',
     '-af', 'loudnorm=I=-16:TP=-1.0:LRA=11:print_format=json', '-f', 'null', '-'],

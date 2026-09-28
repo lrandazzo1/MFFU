@@ -55,6 +55,7 @@
  * over the cap are not lost: the next run finds no episode for them.
  */
 import { type WeeklyPodcastScript } from './podcast-script';
+import { type PodcastCue } from './build-podcast-audio';
 import { readNewsPayload, type NewsPayload } from './podcast-news-script';
 export { readNewsPayload };
 export type PodcastRunStatus = 'created' | 'skipped' | 'failed';
@@ -197,6 +198,9 @@ export interface LeagueEpisodeOutcome {
     audio: Buffer | null;
     turns: number;
     markers: number[];
+    turnMarkers: PodcastCue[];
+    storyReelMarkers: PodcastCue[];
+    leadInOffsetMs: number;
 }
 /**
  * Build one league's episode: the script, and the stitched audio when audio is

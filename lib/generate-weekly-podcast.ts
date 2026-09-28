@@ -61,7 +61,7 @@ import {
   podcastHost,
   podcastVoiceIds,
 } from './generate-podcast';
-import { buildPodcastAudio, configuredPodcastStingers } from './build-podcast-audio';
+import { buildPodcastAudio, configuredPodcastStingers, storyReelMarkers, type PodcastCue } from './build-podcast-audio';
 import { podcastPronunciations, sanitizePodcastScript } from './sanitize-podcast-script';
 import { calculatePlayerOutcomeFlags, type TrackedPlayer } from './article-math';
 import { orderPreviewMatchups, previewMatchups } from './article-generator';
@@ -363,6 +363,9 @@ export interface LeagueEpisodeOutcome {
   audio: Buffer | null;
   turns: number;
   markers: number[];
+  turnMarkers: PodcastCue[];
+  storyReelMarkers: PodcastCue[];
+  leadInOffsetMs: number;
 }
 
 /**
@@ -489,7 +492,8 @@ async function finishEpisode(
   options: { script_only?: boolean } & PodcastRunDependencies,
 ): Promise<LeagueEpisodeOutcome> {
   if (options.script_only) {
-    return { script, audio: null, turns: 0, markers: [] };
+    return { script, audio: null, turns: 0, markers: [],
+      turnMarkers: [], storyReelMarkers: [], leadInOffsetMs: 0 };
   }
 
   if (!process.env.ELEVENLABS_API_KEY) {
@@ -513,13 +517,18 @@ async function finishEpisode(
   }
   if (!segments.length) throw fail('No dialogue turns were synthesized for ' + label, 502);
 
-  const { audio, markers } = await buildPodcastAudio(segments, stingers);
+  const { audio, markers, turnMarkers, leadInOffsetMs } = await buildPodcastAudio(segments, stingers);
+  const storyMarkers = storyReelMarkers(turnMarkers, script.stories.length,
+    script.segments.map(segment => segment.lines?.length ?? 0));
 
   return {
     script,
     audio,
     turns: segments.length,
     markers,
+    turnMarkers,
+    storyReelMarkers: storyMarkers,
+    leadInOffsetMs,
   };
 }
 
@@ -740,6 +749,9 @@ export async function runWeeklyPodcastCron(
           populated: s.populated,
         })),
         markers: outcome.markers,
+        turn_markers: outcome.turnMarkers,
+        story_reel_markers: outcome.storyReelMarkers,
+        leadInOffsetMs: outcome.leadInOffsetMs,
         week,
         year: season,
         leagueId: leagueId,

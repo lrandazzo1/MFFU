@@ -2,7 +2,7 @@ import { ElevenLabsClient } from 'elevenlabs';
 import { createClient } from '@supabase/supabase-js';
 import { timingSafeEqual } from 'node:crypto';
 import { buildNewsPodcastScript, readNewsPayload } from './podcast-news-script';
-import { buildPodcastAudio, configuredPodcastStingers } from './build-podcast-audio';
+import { buildPodcastAudio, configuredPodcastStingers, storyReelMarkers } from './build-podcast-audio';
 import { readMp3Frames } from './mp3-frames';
 import { podcastPronunciations, sanitizePodcastScript } from './sanitize-podcast-script';
 
@@ -234,7 +234,8 @@ export default async function handler(req: Request, res: Response) {
         for await (const chunk of stream) chunks.push(Buffer.from(chunk));
         segments.push(Buffer.concat(chunks));
       }
-      const { audio, markers } = await buildPodcastAudio(segments, stingers);
+      const { audio, markers, turnMarkers, leadInOffsetMs } = await buildPodcastAudio(segments, stingers);
+      const reelMarkers = storyReelMarkers(turnMarkers, scriptStories.length);
       const path = `${id}/${season}/${week}.mp3`;
       const uploaded = await client.storage.from(BUCKET).upload(path, audio,
         { contentType: 'audio/mpeg', upsert: false });
@@ -243,6 +244,7 @@ export default async function handler(req: Request, res: Response) {
       const episode = { title: scriptTitle,
         lines: episodeLines, stories: scriptStories,
         visuals: Array.isArray(payload.visuals) ? payload.visuals.slice(0, 10) : [], markers,
+        turn_markers: turnMarkers, story_reel_markers: reelMarkers, leadInOffsetMs,
         week, year: season, leagueId: id, createdAt: Date.now() };
       const saved = await client.from('podcast_episodes').update({
         status: 'ready', episode, audio_url: audioUrl, updated_at: new Date().toISOString(),

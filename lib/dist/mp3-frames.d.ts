@@ -3,5 +3,7 @@ export type Mp3Frames = {
     frames: number;
     duration: number;
     mono: boolean;
+    sampleRate: number;
+    bitrateKbps: number | null;
 };
 export declare function readMp3Frames(input: Buffer): Mp3Frames;

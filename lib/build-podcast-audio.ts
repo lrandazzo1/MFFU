@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import ffmpegStatic from 'ffmpeg-static';
 import { readMp3Frames } from './mp3-frames';
 
-const RATE = 44100;
+const RATE = 48000;
 const CHANNELS = 2;
 const BYTES_PER_SAMPLE = CHANNELS * 2; // interleaved signed 16-bit PCM
 const FADE_SAMPLES = Math.round(RATE * 0.07);
@@ -14,7 +14,33 @@ const MAX_TURN_BYTES = 8 * 1024 * 1024;
 const MAX_STINGER_BYTES = 5 * 1024 * 1024;
 const FFMPEG = process.env.FFMPEG_PATH || ffmpegStatic;
 
-export type PodcastStingers = { intro?: Buffer; outro?: Buffer };
+export type PodcastStingers = { intro?: Buffer; outro?: Buffer; leadInOffsetMs?: number };
+export type PodcastCue = { startMs: number; endMs: number };
+
+/** Build one card range per story from the final audio turn ranges. */
+export function storyReelMarkers(turns: PodcastCue[], storyCount: number, segmentTurnCounts?: number[]): PodcastCue[] {
+  if (!turns.length || !storyCount) return [];
+  const grouped = segmentTurnCounts && segmentTurnCounts.length === storyCount &&
+    segmentTurnCounts.every(n => Number.isInteger(n) && n > 0) &&
+    segmentTurnCounts.reduce((sum, n) => sum + n, 0) === turns.length;
+  const starts: number[] = [];
+  if (grouped) {
+    let turn = 0;
+    for (const count of segmentTurnCounts!) {
+      starts.push(turns[turn].startMs);
+      turn += count;
+    }
+  } else {
+    // News narration has a cold open followed by one performance per story.
+    // The closing line (if present) belongs to the final story.
+    for (let story = 0; story < storyCount; story++)
+      starts.push(turns[Math.min(story === 0 ? 0 :
+        storyCount < turns.length ? story + 1 : story, turns.length - 1)].startMs);
+  }
+  return starts.map((startMs, i) => ({
+    startMs, endMs: i + 1 < starts.length ? starts[i + 1] : turns[turns.length - 1].endMs,
+  }));
+}
 
 /** Optional, deploy-owned tracks. No file is needed for speech-only episodes. */
 export async function configuredPodcastStingers(): Promise<PodcastStingers> {
@@ -49,8 +75,8 @@ function runFfmpeg(args: string[]): Promise<void> {
   });
 }
 
-async function decode(input: Buffer, path: string, prefix: string): Promise<number> {
-  if (!input.length || input.length > MAX_TURN_BYTES) throw new Error('Invalid podcast audio input size');
+async function decode(input: Buffer, path: string, prefix: string, maxBytes = MAX_TURN_BYTES): Promise<number> {
+  if (!input.length || input.length > maxBytes) throw new Error('Invalid podcast audio input size');
   const encoded = path + '.mp3';
   await writeFile(encoded, input);
   await runFfmpeg(['-i', encoded, '-map', '0:a:0', '-vn', '-ac', String(CHANNELS),
@@ -121,11 +147,11 @@ export function duckStingers(speech: Buffer, intro?: Buffer, outro?: Buffer): Bu
 
 /** Decode each independent provider turn, overlap adjacent speakers by 70 ms,
  * optionally duck music beneath speech, normalize and encode one fresh MP3.
- * Markers switch at the midpoint of each overlap; the final one matches the
- * encoded MP3 duration used by the browser audio element. */
+ * Switch turns at the midpoint of each overlap and measure the final output
+ * again after encoding so playback cues share the browser's audio timeline. */
 export async function buildPodcastAudio(
   segments: Buffer[], stingers: PodcastStingers = {},
-): Promise<{ audio: Buffer; markers: number[] }> {
+): Promise<{ audio: Buffer; markers: number[]; turnMarkers: PodcastCue[]; leadInOffsetMs: number }> {
   if (!segments.length || segments.length > 16) throw new Error('Invalid podcast audio segment count');
   const directory = await mkdtemp(join(tmpdir(), 'fsn-podcast-'));
   try {
@@ -140,17 +166,23 @@ export async function buildPodcastAudio(
       throw new Error('Podcast turn is too short for a 70 ms crossfade');
 
     let mixed = crossfadePcm(await Promise.all(paths.map(path => readFile(path))));
-    const markers: number[] = [];
-    let elapsed = 0;
+    const requestedLeadIn = stingers.intro ? (stingers.leadInOffsetMs ?? 250) : (stingers.leadInOffsetMs ?? 0);
+    if (!Number.isFinite(requestedLeadIn) || requestedLeadIn < 0 || requestedLeadIn > 5000)
+      throw new Error('Invalid podcast lead-in offset');
+    const leadInSamples = Math.round(requestedLeadIn * RATE / 1000);
+    if (leadInSamples) mixed = Buffer.concat([Buffer.alloc(leadInSamples * BYTES_PER_SAMPLE), mixed]);
+    const mixedSamples = mixed.length / BYTES_PER_SAMPLE;
+    const boundaries: number[] = [];
+    let elapsed = leadInSamples;
     for (let i = 0; i < samples.length; i++) {
       elapsed += samples[i] - (i ? FADE_SAMPLES : 0);
-      // During an overlap both speakers are audible. Switch the active card
-      // at its midpoint instead of waiting until the next turn is fully up.
-      markers.push((elapsed - (i < samples.length - 1 ? FADE_SAMPLES / 2 : 0)) / RATE);
+      // Both hosts are audible during an overlap. Change the active cue halfway.
+      boundaries.push(elapsed - (i < samples.length - 1 ? FADE_SAMPLES / 2 : 0));
     }
 
     const beds: PodcastStingers = {};
-    for (const [kind, data] of Object.entries(stingers) as [keyof PodcastStingers, Buffer | undefined][]) {
+    for (const kind of ['intro', 'outro'] as const) {
+      const data = stingers[kind];
       if (!data) continue;
       if (data.length > MAX_STINGER_BYTES) throw new Error('Podcast ' + kind + ' stinger is too large');
       const path = join(directory, kind + '.pcm');
@@ -164,13 +196,31 @@ export async function buildPodcastAudio(
     await runFfmpeg(['-f', 's16le', '-ar', String(RATE), '-ac', String(CHANNELS), '-i', mixPath,
       '-af', `loudnorm=I=-16:TP=-1.0:LRA=11,aresample=${RATE}`,
       '-map_metadata', '-1', '-ac', String(CHANNELS), '-ar', String(RATE),
-      '-c:a', 'libmp3lame', '-b:a', '128k', '-id3v2_version', '0', output]);
+      '-c:a', 'libmp3lame', '-b:a', '128k', '-minrate', '128k', '-maxrate', '128k',
+       '-id3v2_version', '0', output]);
     const audio = await readFile(output);
     if (!audio.length) throw new Error('Podcast mix encoded an empty MP3');
-    // The final encoder adds one frame of priming. Match the player's MP3
-    // duration at the last marker while retaining speech boundaries earlier.
-    markers[markers.length - 1] = readMp3Frames(audio).duration;
-    return { audio, markers };
+    const frames = readMp3Frames(audio);
+    if (frames.sampleRate !== RATE || frames.bitrateKbps !== 128)
+      throw new Error('Podcast output must be 48 kHz / 128 kbps CBR MP3');
+    // FFmpeg's encoder/decoder may add or trim samples. Measure the *encoded*
+    // result and scale the known mix boundaries onto its decoded timeline.
+    const decodedSamples = await decode(audio, join(directory, 'final.pcm'), 'final MP3', 64 * 1024 * 1024);
+    const durationMs = Math.round(frames.duration * 1000);
+    if (Math.abs(decodedSamples / RATE - frames.duration) > 0.1)
+      throw new Error('Podcast decoded duration disagrees with MP3 frame timeline');
+    const cueAt = (sample: number) => Math.max(0, Math.min(durationMs,
+      Math.round(Math.round(sample * decodedSamples / mixedSamples) * 1000 / RATE)));
+    const turnMarkers: PodcastCue[] = [];
+    let startMs = cueAt(leadInSamples);
+    for (let i = 0; i < boundaries.length; i++) {
+      const endMs = i === boundaries.length - 1 ? durationMs : cueAt(boundaries[i]);
+      if (endMs <= startMs) throw new Error('Podcast output has a collapsed visual cue');
+      turnMarkers.push({ startMs, endMs });
+      startMs = endMs;
+    }
+    return { audio, markers: turnMarkers.map(cue => cue.endMs / 1000),
+      turnMarkers, leadInOffsetMs: turnMarkers[0].startMs };
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
