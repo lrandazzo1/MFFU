@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import vm from 'node:vm';
 import ts from 'typescript';
+import { spawnSync } from 'node:child_process';
 
 const require = createRequire(import.meta.url);
 const source = readFileSync(new URL('../lib/generate-podcast.ts', import.meta.url), 'utf8');
@@ -15,9 +16,11 @@ const token = 'x'.repeat(43);
 const rows = new Map();
 const files = new Map();
 let calls = 0;
-const frame = Buffer.alloc(417);
-frame.set([0xff, 0xfb, 0x90, 0x00]);
-const mp3 = Buffer.concat([frame, frame]);
+const fixture = spawnSync(require('ffmpeg-static'), ['-hide_banner', '-loglevel', 'error',
+  '-f', 'lavfi', '-i', 'sine=frequency=440:duration=0.25', '-ac', '2', '-ar', '44100',
+  '-b:a', '128k', '-f', 'mp3', 'pipe:1']);
+assert.equal(fixture.status, 0, fixture.stderr.toString());
+const mp3 = fixture.stdout;
 
 function table(name){
   const filters = {};

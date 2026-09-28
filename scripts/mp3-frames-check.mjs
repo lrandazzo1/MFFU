@@ -3,7 +3,6 @@ import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
 const { readMp3Frames } = require('../lib/dist/mp3-frames.js');
-const { buildPodcastAudio } = require('../lib/dist/build-podcast-audio.js');
 
 function frame(bitrateIndex = 9, padding = 0) {
   const bitrate = { 8: 112, 9: 128, 10: 160 }[bitrateIndex];
@@ -17,11 +16,11 @@ const xing = frame();
 xing.write('Xing', 36, 'ascii');
 const one = Buffer.concat([id3, xing, frame(9, 1), frame(10)]);
 const two = Buffer.concat([frame(8), frame(9), Buffer.alloc(3)]);
-const result = buildPodcastAudio([one, two]);
+const audio = Buffer.concat([readMp3Frames(one).audio, readMp3Frames(two).audio]);
 assert.equal(readMp3Frames(one).frames, 2);
-assert.equal(result.audio.length, frame(9, 1).length + frame(10).length + frame(8).length + frame(9).length);
-assert.deepEqual(result.markers, [2 * 1152 / 44100, 4 * 1152 / 44100]);
-assert.equal(result.audio.subarray(0, 4).compare(frame(9, 1).subarray(0, 4)), 0);
+assert.equal(audio.length, frame(9, 1).length + frame(10).length + frame(8).length + frame(9).length);
+assert.equal(readMp3Frames(one).duration, 2 * 1152 / 44100);
+assert.equal(audio.subarray(0, 4).compare(frame(9, 1).subarray(0, 4)), 0);
 assert.throws(() => readMp3Frames(one.subarray(0, -1)), /truncated/);
 assert.throws(() => readMp3Frames(Buffer.concat([frame(), Buffer.from('junk')])), /Invalid/);
 const dependent = frame();

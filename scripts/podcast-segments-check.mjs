@@ -92,6 +92,7 @@ const math = require(join(root, 'lib/dist/article-math.js'));
 const generator = require(join(root, 'lib/dist/article-generator.js'));
 const podcast = require(join(root, 'lib/dist/generate-podcast.js'));
 const news = require(join(root, 'lib/dist/podcast-news-script.js'));
+const speech = require(join(root, 'lib/dist/sanitize-podcast-script.js'));
 
 /* ==========================================================================
    0. The schema the shared read depends on
@@ -557,11 +558,15 @@ function makeDb(options = {}) {
 }
 
 let synthCalls = 0;
-/* A single valid MPEG-1 Layer III 128 kbps 44.1 kHz frame, which is what
-   stitchPodcastMp3 scans for. 417 bytes is that frame's length. */
-const frame = Buffer.alloc(417);
-frame.set([0xff, 0xfb, 0x90, 0x00]);
-const fakeMp3 = Buffer.concat([frame, frame]);
+/* The mix stage decodes provider MP3s, so give it a real short voice fixture.
+   This test binary is local only and never calls ElevenLabs. */
+const { spawnSync } = require('node:child_process');
+const fixture = spawnSync(require('ffmpeg-static'), [
+  '-hide_banner', '-loglevel', 'error', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=0.25',
+  '-ar', '44100', '-ac', '2', '-b:a', '128k', '-f', 'mp3', 'pipe:1',
+]);
+if (fixture.status !== 0) throw new Error('Could not generate MP3 test fixture: ' + fixture.stderr);
+const fakeMp3 = fixture.stdout;
 
 function deps(db, extra = {}) {
   return {
@@ -1018,7 +1023,7 @@ await (async () => {
   });
   check('one ElevenLabs call per turn, and every turn was spoken', () => {
     assert.equal(endpointStub.synthCalls, authored.lines.length);
-    assert.deepEqual(endpointStub.texts, authored.lines.map((l) => l.text));
+    assert.deepEqual(endpointStub.texts, authored.lines.map((l) => speech.sanitizePodcastScript(l.text)));
   });
   check('the browser’s visuals still travel, because only a browser can make them', () => {
     assert.deepEqual(served.body.episode.visuals, [{ kind: 'headline' }]);
