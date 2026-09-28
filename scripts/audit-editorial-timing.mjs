@@ -560,7 +560,14 @@ for (const r of results) {
     bullets.every((l) => /Thursday/.test(l)),
     bullets.find((l) => !/Thursday/.test(l)));
 
-  /* And a board with nothing left on it is prose, never a bare heading. */
+  /* And a board with nothing left on it is prose, never a bare heading.
+
+     The prose it is, changed twice since this cell was written. The no-swing
+     fallback retired the "Nothing in week 3 turned a matchup" apology for a
+     performance-led section, and the recap matchup board now leads with where
+     every head to head actually stands. What the cell is really pinning is
+     that a recap the flags left empty still says something, so it pins both
+     of the sections that say it. */
   const empty = defaultComposer({
     system_prompt: '', user_prompt: '', league_id: '123456', season: 2026, week: 3,
     day: 'tue', article_type: 'tuesday_verdict',
@@ -569,7 +576,18 @@ for (const r of results) {
   });
   universal('RECAP_EMPTY_BOARD/normal', empty, []);
   check('RECAP_EMPTY_BOARD/normal', 'EMPTY_BOARD_PROSE',
-    /Nothing in week 3 turned a matchup/.test(empty.content_markdown), empty.content_markdown);
+    /## Where the week stands/.test(empty.content_markdown) &&
+      /## The performances that set the tone/.test(empty.content_markdown) &&
+      !/Nothing in week 3 turned a matchup/.test(empty.content_markdown),
+    empty.content_markdown);
+
+  /* The point of the board: a recap with no flag on it still names a margin,
+     the side holding it, and what is left to play. */
+  check('RECAP_EMPTY_BOARD/normal', 'EMPTY_BOARD_MARGIN',
+    /point (?:lead|cushion|result)/.test(empty.content_markdown) &&
+      /(?:starters? still to play|still on the field|Every starter is in|came out)/
+        .test(empty.content_markdown),
+    empty.content_markdown);
 }
 
 /* ---- 6. The Monday margin actually moves across MNF ---- */
