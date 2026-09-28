@@ -71,7 +71,12 @@
   ],
   "functions": {
     "api/cron/generate-articles.js": {
-      "maxDuration": 60
+      "maxDuration": 60,
+      "includeFiles": "{node_modules/ffmpeg-static/ffmpeg,assets/podcast-audio/**}"
+    },
+    "api/admin/send-launch-email.ts": {
+      "maxDuration": 60,
+      "includeFiles": "{node_modules/ffmpeg-static/ffmpeg,assets/podcast-audio/**}"
     }
   },
   "crons": [

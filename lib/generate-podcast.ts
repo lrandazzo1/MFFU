@@ -2,7 +2,9 @@ import { ElevenLabsClient } from 'elevenlabs';
 import { createClient } from '@supabase/supabase-js';
 import { timingSafeEqual } from 'node:crypto';
 import { buildNewsPodcastScript, readNewsPayload } from './podcast-news-script';
-import { buildPodcastAudio } from './build-podcast-audio';
+import { buildPodcastAudio, configuredPodcastStingers } from './build-podcast-audio';
+import { readMp3Frames } from './mp3-frames';
+import { podcastPronunciations, sanitizePodcastScript } from './sanitize-podcast-script';
 
 type Line = { host: 'DAN' | 'STU' | 'MARK' | 'SULLY'; text: string };
 type Request = { method?: string; headers: Record<string, string | undefined>; body?: unknown };
@@ -46,7 +48,7 @@ export async function generateHostAudio(text: string, voiceId: string) {
   const elevenlabs = new ElevenLabsClient({ apiKey: process.env.ELEVENLABS_API_KEY });
   return elevenlabs.generate({
     voice: voiceId,
-    text,
+    text: sanitizePodcastScript(text, podcastPronunciations()),
     model_id: 'eleven_flash_v2_5',
     output_format: 'mp3_44100_128',
     voice_settings: { stability: 0.45, similarity_boost: 0.75, style: 0.35 },
@@ -70,10 +72,10 @@ export function podcastVoiceIds() {
   };
 }
 
-// Compatibility export for callers that only need the final bytes. Both
-// generation paths use buildPodcastAudio to obtain sample-based markers too.
+// Compatibility export for existing frame-level callers. Episode generation
+// uses the decoded mix below, including overlap and loudness normalization.
 export function stitchPodcastMp3(segments: Buffer[]): Buffer {
-  return buildPodcastAudio(segments).audio;
+  return Buffer.concat(segments.map(segment => readMp3Frames(segment).audio));
 }
 
 function podcastDb() {
@@ -205,6 +207,11 @@ export default async function handler(req: Request, res: Response) {
       console.log('[Podcast] Authored a news script for ' + id + '/' + season + '/w' + week + ': ' +
         built.words + ' words, ~' + built.estimatedSeconds + 's, ' + built.lines.length + ' turns.');
     }
+    const pronunciations = podcastPronunciations();
+    const spokenLines = episodeLines.map(line => sanitizePodcastScript(line.text, pronunciations));
+    if (spokenLines.some(text => text.length < 5))
+      return res.status(422).json({ error: 'The podcast script contains an empty spoken turn.' });
+    const stingers = await configuredPodcastStingers();
 
     // The database primary key is the cross-instance mutex. An insert loser
     // observes the winner's generating/ready status and never calls ElevenLabs.
@@ -220,14 +227,14 @@ export default async function handler(req: Request, res: Response) {
     try {
       const segments: Buffer[] = [];
       const voices = podcastVoiceIds();
-      for (const line of episodeLines) {
+      for (const [index, line] of episodeLines.entries()) {
         const voiceId = voices[podcastHost(line.host)!];
-        const stream = await generateHostAudio(line.text, voiceId);
+        const stream = await generateHostAudio(spokenLines[index], voiceId);
         const chunks: Buffer[] = [];
         for await (const chunk of stream) chunks.push(Buffer.from(chunk));
         segments.push(Buffer.concat(chunks));
       }
-      const { audio, markers } = buildPodcastAudio(segments);
+      const { audio, markers } = await buildPodcastAudio(segments, stingers);
       const path = `${id}/${season}/${week}.mp3`;
       const uploaded = await client.storage.from(BUCKET).upload(path, audio,
         { contentType: 'audio/mpeg', upsert: false });

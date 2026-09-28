@@ -61,7 +61,8 @@ import {
   podcastHost,
   podcastVoiceIds,
 } from './generate-podcast';
-import { buildPodcastAudio } from './build-podcast-audio';
+import { buildPodcastAudio, configuredPodcastStingers } from './build-podcast-audio';
+import { podcastPronunciations, sanitizePodcastScript } from './sanitize-podcast-script';
 import { calculatePlayerOutcomeFlags, type TrackedPlayer } from './article-math';
 import { orderPreviewMatchups, previewMatchups } from './article-generator';
 import { computeFsnIndex } from './fsn-index';
@@ -497,18 +498,22 @@ async function finishEpisode(
 
   const synthesize = options.synthesize || defaultSynthesize;
   const voices = podcastVoiceIds();
+  const pronunciations = podcastPronunciations();
+  const spokenLines = script.lines.map(line => sanitizePodcastScript(line.text, pronunciations));
+  if (spokenLines.some(text => text.length < 5)) throw fail('The podcast script contains an empty spoken turn', 422);
+  const stingers = await configuredPodcastStingers();
   const segments: Buffer[] = [];
-  for (const line of script.lines) {
+  for (const [index, line] of script.lines.entries()) {
     const host = podcastHost(line.host);
     if (!host) {
       console.warn('[PodcastCron] skipping a line with an unknown host tag for ' + label, line.host);
       continue;
     }
-    segments.push(await synthesize(line.text, voices[host]));
+    segments.push(await synthesize(spokenLines[index], voices[host]));
   }
   if (!segments.length) throw fail('No dialogue turns were synthesized for ' + label, 502);
 
-  const { audio, markers } = buildPodcastAudio(segments);
+  const { audio, markers } = await buildPodcastAudio(segments, stingers);
 
   return {
     script,
