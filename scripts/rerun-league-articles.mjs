@@ -41,6 +41,18 @@
    league list, so a private league is read with its own session rather than
    anonymously (which ESPN answers with a 401).
 
+   TWO ATTEMPTS, IN THAT ORDER, because the token is not strictly better than
+   going without. The relay treats a token-bearing request as a reader with no
+   ESPN account of their own, so it will NOT fall back to the deployment-wide
+   session if the stored envelope is stale: the read is refused rather than
+   retried anonymously, by design. A league whose host has re-authenticated
+   since the envelope was stored therefore reads fine WITHOUT the token and
+   fails WITH it, which is exactly how league 1915228840 behaved. So the
+   league's own session is tried first, and a refusal falls back to the read
+   with no token, which lets the relay resolve whatever deployment-wide
+   credential it holds. A league that neither can read is reported, not
+   guessed at.
+
    The relay is deployed code and is not the thing being fixed here: it proxies
    a box score, it does not compose an article.
 
@@ -95,6 +107,18 @@ export function relayUrl(base, leagueId, season, week) {
     encodeURIComponent(boxScoreUrl(leagueId, season, week));
 }
 
+/**
+ * The credential attempts for one league, in the order they are made.
+ *
+ * The league's own stored session first, then the relay's own resolution with
+ * no token at all. See the note above for why the second is not redundant.
+ */
+export function credentialAttempts(token) {
+  const own = String(token == null ? '' : token).trim();
+  return own ? [{ label: 'league share token', token: own }, { label: 'no token', token: '' }]
+    : [{ label: 'no token', token: '' }];
+}
+
 /** Throws with the reason rather than returning a default: a scope this script
  *  cannot state exactly is a scope it must not write under. */
 export function resolveScope(input) {
@@ -123,6 +147,9 @@ if (flag('self-test')) {
     { season: 2026, week: 3, day: 'mon', leagues: [] });
   assert.deepEqual(resolveScope({ season: 2026, week: 3, day: 'tue', leagues: '1, 22 ,333' }).leagues,
     ['1', '22', '333']);
+  assert.deepEqual(credentialAttempts('tok').map((a) => a.token), ['tok', '']);
+  assert.deepEqual(credentialAttempts('  ').map((a) => a.token), ['']);
+  assert.deepEqual(credentialAttempts(null).map((a) => a.token), ['']);
   for (const bad of [
     { season: 1900, week: 3, day: 'mon' },
     { season: 2026, week: 0, day: 'mon' },
@@ -185,20 +212,30 @@ console.log('[rerun-league-articles] ' + ARTICLE_TYPE_BY_DAY[scope.day] + ', ' +
   ' week ' + scope.week + ', ' + targets.length + ' league(s), relay ' + base);
 
 const fetchBoxScoresFor = (leagueId) => async (input) => {
-  const token = byLeague.get(leagueId) || '';
-  const response = await fetch(relayUrl(base, input.league_id, input.season, input.week), {
-    headers: token ? { 'x-league-token': token } : {},
-    signal: AbortSignal.timeout(45000),
-  });
-  const body = await response.json().catch(() => null);
-  if (!response.ok || !body || typeof body !== 'object') {
+  const url = relayUrl(base, input.league_id, input.season, input.week);
+  const attempts = credentialAttempts(byLeague.get(leagueId));
+  let last = null;
+
+  for (const attempt of attempts) {
+    const response = await fetch(url, {
+      headers: attempt.token ? { 'x-league-token': attempt.token } : {},
+      signal: AbortSignal.timeout(45000),
+    });
+    const body = await response.json().catch(() => null);
+    if (response.ok && body && typeof body === 'object' && !body.error) return body;
+
     const detail = body && (body.error || body.message) ? ': ' + (body.error || body.message) : '';
-    throw Object.assign(
-      new Error('ESPN box score read failed (HTTP ' + response.status + ')' + detail),
+    last = Object.assign(
+      new Error('ESPN box score read failed for ' + leagueId + ' with the ' + attempt.label +
+        ' (HTTP ' + response.status + ')' + detail),
       { status: response.status },
     );
+    /* Reported every time, not only on the last one: a league that publishes
+       off the fallback still had a stale stored session, and that is the thing
+       its host has to fix. */
+    console.warn('[rerun-league-articles] ' + last.message);
   }
-  return body;
+  throw last;
 };
 
 const results = [];
