@@ -60,8 +60,8 @@ import {
   generateHostAudio,
   podcastHost,
   podcastVoiceIds,
-  stitchPodcastMp3,
 } from './generate-podcast';
+import { buildPodcastAudio } from './build-podcast-audio';
 import { calculatePlayerOutcomeFlags, type TrackedPlayer } from './article-math';
 import { orderPreviewMatchups, previewMatchups } from './article-generator';
 import { computeFsnIndex } from './fsn-index';
@@ -498,7 +498,6 @@ async function finishEpisode(
   const synthesize = options.synthesize || defaultSynthesize;
   const voices = podcastVoiceIds();
   const segments: Buffer[] = [];
-  const markers: number[] = [];
   for (const line of script.lines) {
     const host = podcastHost(line.host);
     if (!host) {
@@ -506,15 +505,14 @@ async function finishEpisode(
       continue;
     }
     segments.push(await synthesize(line.text, voices[host]));
-    /* 128 kbps output: each byte is 1/16000 of a second. Markers are turn
-       boundaries so the Story Reel advances with the spoken dialogue. */
-    markers.push(stitchPodcastMp3(segments).length / 16000);
   }
   if (!segments.length) throw fail('No dialogue turns were synthesized for ' + label, 502);
 
+  const { audio, markers } = buildPodcastAudio(segments);
+
   return {
     script,
-    audio: stitchPodcastMp3(segments),
+    audio,
     turns: segments.length,
     markers,
   };
