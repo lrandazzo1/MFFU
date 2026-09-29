@@ -25,8 +25,9 @@
  *   2. Works out which week just ended and refuses to go on until that week's
  *      box scores are closed, before spending anything. See "WHICH WEEK A
  *      SCHEDULED RUN RECAPS" on the HTTP handler below.
- *   3. Refuses any week other than `PODCAST_TARGET_WEEK` (default 2) before
- *      spending anything. See the testing boundary below.
+ *   3. Refuses any week other than `PODCAST_TARGET_WEEK` when that variable
+ *      pins one. Unset — the normal case — pins nothing. See the boundary
+ *      below.
  *   4. Sweeps `public.leagues` for the season's active leagues.
  *   5. Skips every league that already holds a `podcast_episodes` row for the
  *      week, so a retry or a double fire costs nothing and no member ever has
@@ -40,13 +41,19 @@
  * One league's failure never stops the others — the same contract
  * `lib/article-cron.ts` holds.
  *
- * ---- THE TESTING BOUNDARY ----
+ * ---- THE OPTIONAL WEEK PIN ----
  *
- * `PODCAST_TARGET_WEEK` defaults to 2 and the run refuses anything else. The
- * check is the FIRST thing that happens after auth, before the league sweep,
- * before any ESPN read and long before ElevenLabs, so a misfire on the wrong
- * week cannot spend a cent. Widen it by setting the variable in the Vercel
- * project; `PODCAST_TARGET_WEEK=any` lifts the lock entirely.
+ * `PODCAST_TARGET_WEEK` is unset in the deployment and that means `'any'`: the
+ * run recaps whatever week just ended. Set it to a number to pin every run to
+ * that one week — a rehearsal lever — and the run then refuses anything else.
+ * That check is the FIRST thing that happens after auth, before the league
+ * sweep, before any ESPN read and long before ElevenLabs, so a misfire on the
+ * wrong week cannot spend a cent.
+ *
+ * It defaulted to week 2 while the four-segment pipeline was being tested, and
+ * because the variable is not set in the deployment that default WAS the
+ * behaviour: every Tuesday run could only ever produce week 2. The guard that
+ * replaced it is the completion gate, which needs no human to move it.
  *
  * ---- THE SPEND CEILING ----
  *
@@ -199,7 +206,20 @@ export interface PodcastRunDependencies {
  * Configuration
  * ------------------------------------------------------------------ */
 
-export const DEFAULT_TARGET_WEEK = 2;
+/** What `PODCAST_TARGET_WEEK` means when it is not set: no pin at all. The run
+ *  resolves the week that just ended and recaps that.
+ *
+ *  This used to default to week 2 — a testing boundary that refused every other
+ *  week before spending anything. It is not the guard any more, and leaving it
+ *  as the default meant a Tuesday run could only ever produce week 2: the
+ *  variable is not set in the deployment, so the default WAS the behaviour.
+ *  What protects the spend now is stricter and does not need a human to move it
+ *  every week — the week has to be finished (`resolveRecapWeek()` /
+ *  `assertWeekComplete()`), a league that already holds a row for the week is
+ *  skipped, `PODCAST_CRON_MAX_LEAGUES` bounds the fan-out, and every attempt
+ *  lands in `podcast_episode_runs`. Setting the variable to a number still pins
+ *  the run to that week for a rehearsal. */
+export const DEFAULT_TARGET_WEEK = 'any';
 export const DEFAULT_MAX_LEAGUES = 5;
 const BUCKET = 'podcast-episodes';
 /** A league whose week produced fewer than this many real segments is not
@@ -210,24 +230,26 @@ export const MIN_POPULATED_SEGMENTS = 1;
 const fail = (message: string, status = 400): Error => Object.assign(new Error(message), { status });
 
 /**
- * The week this environment is allowed to generate, or `'any'`.
+ * The week this environment is pinned to, or `'any'` for no pin.
  *
- * Returns the raw configured string alongside the number so the summary can
- * report what the boundary actually was rather than what the default is.
+ * Unset — which is how the deployment runs — means `'any'`: the run resolves the
+ * week that just ended. A number pins it to that week, for a rehearsal or a
+ * backfill. Returns the raw configured string alongside the number so the
+ * summary can report what the setting actually was.
  */
 export function targetWeekSetting(): { value: string; week: number | null } {
   const raw = String(process.env.PODCAST_TARGET_WEEK || '').trim();
-  if (!raw) return { value: String(DEFAULT_TARGET_WEEK), week: DEFAULT_TARGET_WEEK };
+  if (!raw) return { value: 'any', week: null };
   if (/^(any|all|\*)$/i.test(raw)) return { value: 'any', week: null };
   const week = Number.parseInt(raw, 10);
   if (!Number.isInteger(week) || week < 1 || week > 18) {
     console.error(
       '[PodcastCron] PODCAST_TARGET_WEEK is set to "' + raw + '", which is not a week or "any". ' +
-        'Falling back to the week ' + DEFAULT_TARGET_WEEK + ' testing boundary rather than generating for an ' +
-        'unintended week.',
+        'Ignoring it and recapping the week that just ended, which is what an unset variable means. ' +
+        'A typo must not silently pin the schedule to a week nobody chose.',
       new Error('INVALID_PODCAST_TARGET_WEEK'),
     );
-    return { value: String(DEFAULT_TARGET_WEEK), week: DEFAULT_TARGET_WEEK };
+    return { value: 'any', week: null };
   }
   return { value: String(week), week };
 }
@@ -739,7 +761,9 @@ export async function runWeeklyPodcastCron(
   const requestedWeek = Number.isInteger(input.week as number) ? (input.week as number) : boundary.week;
 
   if (!Number.isInteger(requestedWeek as number) || (requestedWeek as number) < 1) {
-    throw fail('No week to generate for: pass ?week= or set PODCAST_TARGET_WEEK', 400);
+    /* Only reachable in-process: the HTTP handler resolves the just-completed
+       week before it gets here, so this is a caller that named neither. */
+    throw fail('No week to generate for: pass a week, or set PODCAST_TARGET_WEEK to pin one', 400);
   }
   const week = requestedWeek as number;
 
@@ -748,12 +772,12 @@ export async function runWeeklyPodcastCron(
      ElevenLabs. A wrong-week misfire costs nothing and says why. */
   if (boundary.week != null && week !== boundary.week) {
     console.warn(
-      '[PodcastCron] refusing week ' + week + ': this environment is locked to week ' +
-        boundary.week + ' for testing (PODCAST_TARGET_WEEK). No provider or storage call was made.',
+      '[PodcastCron] refusing week ' + week + ': this environment is pinned to week ' +
+        boundary.week + ' by PODCAST_TARGET_WEEK. No provider or storage call was made.',
     );
     throw fail(
-      'Podcast generation is locked to week ' + boundary.week +
-        ' while testing. Set PODCAST_TARGET_WEEK to change the boundary, or "any" to lift it.',
+      'Podcast generation is pinned to week ' + boundary.week +
+        '. Change PODCAST_TARGET_WEEK, or unset it to recap whatever week just ended.',
       409,
     );
   }
@@ -1016,11 +1040,11 @@ function intParam(req: any, name: string): number | null {
  *
  *   `?week=N`                  an explicit backfill. Taken as asked, then
  *                              checked for completion like any other week.
- *   PODCAST_TARGET_WEEK=N      the testing boundary pins this environment to one
- *                              week; that week is used and checked.
- *   PODCAST_TARGET_WEEK=any    resolveRecapWeek() asks the NFL scoreboard: the
- *                              live week if its games are in the books,
- *                              otherwise the week behind it.
+ *   PODCAST_TARGET_WEEK=N      the variable pins this environment to one week;
+ *                              that week is used and checked.
+ *   unset, or =any             the default. resolveRecapWeek() asks the NFL
+ *                              scoreboard: the live week if its games are in
+ *                              the books, otherwise the week behind it.
  *
  * `?allow_open_week=1` skips the completion check for a named week. It exists
  * for a deliberate mid-week rehearsal and for the case where the scoreboard read

@@ -24,15 +24,16 @@
 # The schedule sends no week. The route resolves the JUST COMPLETED week from
 # the NFL scoreboard — the live week when its games are in the books, otherwise
 # the week behind it — and refuses a week that is still being played with a 409.
-# A 409 is a skip here, the same way the week boundary's is.
+# A 409 is a skip here, not a failure.
 #
-# ---- THE WEEK 2 TESTING BOUNDARY ----
+# ---- THE OPTIONAL WEEK PIN ----
 #
-# The route refuses any week other than PODCAST_TARGET_WEEK (default 2) before
-# it reaches ESPN, Supabase or ElevenLabs, and answers 409. While that boundary
-# is in force this schedule is expected to succeed only on the week it is
-# pinned to; a 409 is reported as a skip, not a failure, so the weekly run does
-# not page anyone during testing.
+# PODCAST_TARGET_WEEK is unset in the Vercel project, and unset means "recap
+# whatever week just ended". Setting it to a week number pins every run to that
+# one week and answers 409 for the rest, before the route reaches ESPN,
+# Supabase or ElevenLabs — a rehearsal lever. It defaulted to week 2 while the
+# pipeline was being tested, which meant the schedule could only ever produce
+# week 2; the completion gate above is the guard now.
 #
 # Required repository secret:
 #   CRON_SECRET  — must equal the CRON_SECRET set in the Vercel project.
@@ -66,9 +67,9 @@ on:
     # is still in overtime costs nothing and the next run picks the leagues up.
     # It also resolves WHICH week that is rather than assuming: the live week if
     # its box scores are closed, otherwise the week ESPN has just rolled off.
-    # That resolution is only reachable with PODCAST_TARGET_WEEK=any; while the
-    # testing boundary pins a week, that pinned week is used (and still checked
-    # for completion).
+    # PODCAST_TARGET_WEEK is unset, so that resolution is the live path; setting
+    # it to a week number pins every run to that week instead (still checked for
+    # completion).
     - cron: '0 9 * * 2'
   workflow_dispatch:
     inputs:
@@ -77,7 +78,7 @@ on:
         type: string
         required: false
       week:
-        description: Week override. Leave blank to use PODCAST_TARGET_WEEK.
+        description: Week override. Leave blank for the week that just ended.
         type: string
         required: false
       # ---- SCOPE A MANUAL RUN TO ONE LEAGUE ----

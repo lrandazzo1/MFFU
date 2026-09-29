@@ -68,7 +68,7 @@ FSN weekly podcast generator
 
   node scripts/generate-podcast.mjs [options]
 
-  --week=<n>         The week to generate. Defaults to PODCAST_TARGET_WEEK,
+  --week=<n>         The week to generate. Falls back to PODCAST_TARGET_WEEK,
                      which itself defaults to 2 (the testing boundary).
   --season=<year>    Defaults to the pipeline's CURRENT_SEASON.
   --league=<id>      Generate for this league only, skipping the sweep.
@@ -93,10 +93,16 @@ Examples
 }
 
 /* ---- THE WEEK ----
-   An explicit --week wins; otherwise PODCAST_TARGET_WEEK; otherwise the
-   pipeline's own default of 2. Whatever is chosen is also exported into the
-   environment, because runWeeklyPodcastCron reads PODCAST_TARGET_WEEK to
-   enforce the boundary and would refuse a week the flag asked for. */
+   An explicit --week wins; otherwise PODCAST_TARGET_WEEK. Whatever is chosen is
+   also exported into the environment, because runWeeklyPodcastCron reads
+   PODCAST_TARGET_WEEK to enforce the pin and would refuse a week the flag asked
+   for.
+
+   Neither given is an error rather than a default. The scheduled run resolves
+   the week that just ended from the NFL scoreboard, but this CLI also runs
+   offline against a payload file, where a network resolve would be wrong and a
+   guessed week would generate the wrong episode for every league in the
+   sweep. */
 const cron = require(join(root, 'lib/dist/generate-weekly-podcast.js'));
 const scriptLib = require(join(root, 'lib/dist/podcast-script.js'));
 const fsnIndex = require(join(root, 'lib/dist/fsn-index.js'));
@@ -105,12 +111,18 @@ const generator = require(join(root, 'lib/dist/article-generator.js'));
 const podcast = require(join(root, 'lib/dist/generate-podcast.js'));
 
 const weekArg = value('week');
-const week = Number.parseInt(
-  weekArg != null ? weekArg : String(process.env.PODCAST_TARGET_WEEK || cron.DEFAULT_TARGET_WEEK),
-  10,
-);
+const weekRaw = weekArg != null ? weekArg : String(process.env.PODCAST_TARGET_WEEK || '').trim();
+if (!weekRaw || /^(any|all|\*)$/i.test(weekRaw)) {
+  console.error(
+    '[generate-podcast] no week to generate. Pass --week=<n>, or set PODCAST_TARGET_WEEK to a week ' +
+      'number. Unset (or "any") means "whatever week just ended", which only the scheduled HTTP run ' +
+      'resolves — this CLI does not guess one.',
+  );
+  process.exit(2);
+}
+const week = Number.parseInt(weekRaw, 10);
 if (!Number.isInteger(week) || week < 1 || week > 18) {
-  console.error('[generate-podcast] --week must be a whole number between 1 and 18; got ' + String(weekArg));
+  console.error('[generate-podcast] --week must be a whole number between 1 and 18; got ' + String(weekRaw));
   process.exit(2);
 }
 process.env.PODCAST_TARGET_WEEK = String(week);
@@ -119,7 +131,7 @@ const season = Number.parseInt(value('season') || String(podcast.CURRENT_SEASON)
 if (value('max')) process.env.PODCAST_CRON_MAX_LEAGUES = String(value('max'));
 
 console.log('[generate-podcast] week ' + week + ', season ' + season +
-  ' (boundary PODCAST_TARGET_WEEK=' + process.env.PODCAST_TARGET_WEEK + ')');
+  ' (pinned PODCAST_TARGET_WEEK=' + process.env.PODCAST_TARGET_WEEK + ')');
 
 /* ------------------------------------------------------------------ *
  * Preflight

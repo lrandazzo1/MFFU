@@ -598,22 +598,22 @@ await (async () => {
     try {
       await cron.runWeeklyPodcastCron({ season: 2026, week: 5 }, deps(db));
     } catch (err) { refused = err; }
-    check('week 5 is refused while the environment is locked to week 2', () => {
+    check('week 5 is refused while the environment is pinned to week 2', () => {
       assert.ok(refused, 'the run was not refused');
       assert.equal(Number(refused.status), 409);
-      assert.match(String(refused.message), /locked to week 2/);
+      assert.match(String(refused.message), /pinned to week 2/);
     });
     check('a refused week reaches neither the voice provider nor the database', () => {
-      assert.equal(synthCalls, 0, 'ElevenLabs was called for a locked week');
-      assert.equal(db._episodes.size, 0, 'a claim row was written for a locked week');
+      assert.equal(synthCalls, 0, 'ElevenLabs was called for a pinned-out week');
+      assert.equal(db._episodes.size, 0, 'a claim row was written for a pinned-out week');
     });
   });
 
-  /* ---- the default boundary is week 2 with nothing configured ---- */
+  /* ---- nothing configured means no pin at all ---- */
   await withEnv({ ELEVENLABS_API_KEY: 'k' }, async () => {
-    check('the boundary defaults to week 2 with PODCAST_TARGET_WEEK unset', () => {
-      assert.deepEqual(cron.targetWeekSetting(), { value: '2', week: cron.DEFAULT_TARGET_WEEK });
-      assert.equal(cron.DEFAULT_TARGET_WEEK, 2);
+    check('an unset PODCAST_TARGET_WEEK pins nothing, so the run recaps the week that just ended', () => {
+      assert.deepEqual(cron.targetWeekSetting(), { value: 'any', week: null });
+      assert.equal(cron.DEFAULT_TARGET_WEEK, 'any');
     });
   });
   await withEnv({ PODCAST_TARGET_WEEK: 'any', ELEVENLABS_API_KEY: 'k' }, async () => {
@@ -622,8 +622,9 @@ await (async () => {
     });
   });
   await withEnv({ PODCAST_TARGET_WEEK: 'banana', ELEVENLABS_API_KEY: 'k' }, async () => {
-    check('a malformed PODCAST_TARGET_WEEK falls back to the week 2 boundary', () => {
-      assert.equal(cron.targetWeekSetting().week, 2);
+    check('a malformed PODCAST_TARGET_WEEK pins nothing rather than a week nobody chose', () => {
+      assert.equal(cron.targetWeekSetting().week, null);
+      assert.equal(cron.targetWeekSetting().value, 'any');
     });
   });
 

@@ -185,8 +185,8 @@ all of them end at a week whose box scores are closed:
 | Source | When | Week |
 |---|---|---|
 | `?week=N` | a backfill or a scoped re-run | as asked, then checked for completion |
-| `PODCAST_TARGET_WEEK=N` | the testing boundary is pinning a week | that week, then checked for completion |
-| `PODCAST_TARGET_WEEK=any` | the boundary is lifted | `resolveRecapWeek()` |
+| `PODCAST_TARGET_WEEK=N` | the variable pins one week | that week, then checked for completion |
+| unset, or `=any` | **the default** | `resolveRecapWeek()` |
 
 `resolveRecapWeek()` takes the **just completed** week, never the one about to
 start. It reads the week the NFL scoreboard currently calls live and tries two
@@ -208,9 +208,9 @@ deliberate mid-week rehearsal and for the case where the scoreboard read itself
 is what is broken. Nothing on the schedule passes it.
 
 **While `PODCAST_TARGET_WEEK` pins a week, the resolver never runs.** The pinned
-week is used and checked, and every other week is refused by the boundary with a
-409 as before. Set `PODCAST_TARGET_WEEK=any` in the Vercel project for the
-Tuesday schedule to start recapping whatever week just ended.
+week is used and checked, and every other week is refused with a 409. The
+variable is **not set in the deployment**, which is what makes the resolver the
+live path — see the section below for why that used to be the opposite.
 
 ### Studio's button follows the same rule
 
@@ -240,16 +240,27 @@ locked. `scripts/studio-episode-check.mjs` asserts both halves: the disabled
 mid-week button beside its note, and a completed week that still plays its
 episode without a single POST to the generation endpoint.
 
-### Week 2 testing boundary
+### The optional week pin (was: the week 2 testing boundary)
 
-`PODCAST_TARGET_WEEK` defaults to **2** and the run refuses any other week with
-a `409`. The check is the first thing after auth — before the league sweep,
-before any ESPN read, long before ElevenLabs — so a misfire on the wrong week
-costs nothing. Set it to another week to move the boundary, or to `any` to lift
-it. A malformed value falls back to week 2 rather than opening up.
+`PODCAST_TARGET_WEEK` is **unset**, and unset means `any`: the run recaps
+whatever week just ended. Set it to a week number to pin every run to that one
+week and refuse the rest with a `409` — a rehearsal lever, not the spend guard.
+The check is the first thing after auth — before the league sweep, before any
+ESPN read, long before ElevenLabs — so a misfire on the wrong week costs
+nothing. A malformed value is ignored with a loud `console.error` and the run
+falls back to `any`, because a typo must not silently pin the schedule to a week
+nobody chose.
 
-The Tuesday workflow treats a `409` as a skip, not a failure, so the schedule
-does not page anyone while the boundary is in force.
+It **defaulted to week 2** while the four-segment pipeline was being tested, and
+since the variable is not set in the Vercel project that default *was* the
+behaviour: every Tuesday run could only ever have produced week 2, and every
+other week was a 409. The guard that replaced it does not need a human to move
+it every week — the week has to be finished, a league that already holds a row
+for it is skipped, `PODCAST_CRON_MAX_LEAGUES` bounds the fan-out, and every
+attempt lands in `podcast_episode_runs`.
+
+The Tuesday workflow treats a `409` as a skip, not a failure, so neither a pin
+nor an unfinished week pages anyone.
 
 ### Spend ceiling and the ledger
 
@@ -275,7 +286,8 @@ active league, so:
 Beyond the interactive path's variables:
 
 - `CRON_SECRET` — required; must match the scheduler's.
-- `PODCAST_TARGET_WEEK` — optional, defaults to `2`.
+- `PODCAST_TARGET_WEEK` — optional. Unset (the deployment's state) means the
+  run recaps whatever week just ended; a week number pins every run to it.
 - `PODCAST_CRON_MAX_LEAGUES` — optional, defaults to `5`.
 
 ## Why the schedule lives in GitHub Actions
