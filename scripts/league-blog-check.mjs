@@ -83,7 +83,7 @@ function truthy(value, label) { if (value) pass(label); else fail(label); }
    covering all four outcome flags plus an unflagged row.
 -------------------------------------------------------------------------- */
 const ARTICLE = {
-  slug: '2026-week-2-tuesday-verdict-777777',
+  slug: '2026-week-1-tuesday-verdict-777777',
 
   /* Tier 1 and tier 2. The headline deliberately differs from `title` so the
      check can prove which one the card paints, and the callout carries an
@@ -95,12 +95,12 @@ const ARTICLE = {
   category: 'Matchup Recap',
   author: 'FSN News Desk',
 
-  title: 'Tuesday Verdict: Week 2',
-  excerpt: 'What the math says about week 2.',
+  title: 'Tuesday Verdict: Week 1',
+  excerpt: 'What the math says about week 1.',
   content_markdown: [
-    '# Tuesday Verdict: Week 2',
+    '# Tuesday Verdict: Week 1',
     '',
-    'The week 2 performances that **actually** moved a matchup.',
+    'The week 1 performances that **actually** moved a matchup.',
     '',
     '## What the math says',
     '',
@@ -113,7 +113,7 @@ const ARTICLE = {
   ].join('\n'),
   article_type: 'tuesday_verdict',
   season: 2026,
-  week: 2,
+  week: 1,
   published_at: '2026-09-15T13:00:00.000Z',
   tracked_players: [
     { player_id: 'p2', player_name: 'Monday Back', owner_team: 'Ridgeback FC', opponent_team: 'Cobalt Kings',
@@ -141,13 +141,13 @@ ARTICLE.content = ARTICLE.content_markdown;
    point of the feed. Its headline and callout are distinct from the
    week-scoped fixture's so the check can prove which feed painted. */
 const ACTIVE_ARTICLE = {
-  slug: '2026-week-1-monday-sweat-777777',
+  slug: '2026-week-1-league-dispatch-777777',
   headline: 'Cobalt Kings Open On A Thin Bench',
   match_impact_summary: 'Sunday Wideout scored 40 points, not enough for Cobalt Kings.',
   content: '# Week 1 in the books\n\nThe **active** read carried this one.\n',
   category: 'Waiver Wire',
   author: 'FSN News Desk',
-  article_type: 'monday_sweat',
+  article_type: 'league_dispatch',
   season: 2026,
   week: 1,
   published_at: '2026-09-08T13:00:00.000Z',
@@ -158,13 +158,13 @@ const ACTIVE_ARTICLE = {
 };
 
 const LEGACY_ARTICLE = {
-  slug: '2026-week-2-monday-sweat-777777',
-  title: 'Monday Sweat: Week 2',
+  slug: '2026-week-1-monday-sweat-777777',
+  title: 'Monday Sweat: Week 1',
   excerpt: 'Before the late window.',
-  content_markdown: '# Monday Sweat: Week 2\n\nOne **legacy** paragraph.\n',
+  content_markdown: '# Monday Sweat: Week 1\n\nOne **legacy** paragraph.\n',
   article_type: 'monday_sweat',
   season: 2026,
-  week: 2,
+  week: 1,
   published_at: '2026-09-14T13:00:00.000Z',
   tracked_players: [],
 };
@@ -202,6 +202,7 @@ function startServer() {
           league_id,
           season: url.searchParams.get('season'),
           week: url.searchParams.get('week'),
+          display_week: url.searchParams.get('display_week'),
           limit: url.searchParams.get('limit'),
           include_global: url.searchParams.get('include_global'),
           active,
@@ -222,18 +223,22 @@ function startServer() {
            holds and the whole point of scoping the query would go untested. */
         const season = url.searchParams.get('season');
         const week = url.searchParams.get('week');
+        const displayWeek = url.searchParams.get('display_week');
         const includeGlobal = url.searchParams.get('include_global') === '1';
         let rows = active ? serveActive : serveArticles;
         if (active) {
           if (!includeGlobal) rows = rows.filter((row) => row.scope !== 'global');
-          if (season != null) rows = rows.filter((row) => Number(row.season) === Number(season));
-          if (week != null) rows = rows.filter((row) => Number(row.week) === Number(week));
         }
+        if (season != null) rows = rows.filter((row) => Number(row.season) === Number(season));
+        if (week != null) rows = rows.filter((row) => Number(row.week) === Number(week));
+        if (displayWeek != null) rows = rows.filter((row) => Number(row.week) +
+          (row.article_type === 'monday_sweat' || row.article_type === 'tuesday_verdict' ? 1 : 0) === Number(displayWeek));
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
           league_id,
           season: season == null ? null : Number(season),
           week: week == null ? null : Number(week),
+          display_week: displayWeek == null ? null : Number(displayWeek),
           active,
           count: rows.length,
           articles: rows,
@@ -397,7 +402,7 @@ try {
   if (weekRequests().length) {
     const first = weekRequests()[0];
     expect(first.season, '2026', 'the week-scoped read is scoped to the viewed season');
-    expect(first.week, '2', 'the week-scoped read is scoped to the viewed week');
+    expect(first.display_week, '2', 'the week-scoped read is scoped to the viewed week');
     truthy(first.league_id && first.league_id.length > 0, 'the week-scoped read carries a league_id');
   }
 
@@ -410,12 +415,12 @@ try {
 
   /* THE WEEK READ. This is the one that used to go out with no week at all and
      leave every week the league had published to the renderer to sort out. */
-  const activeWeekReads = activeRequests().filter((row) => row.week != null);
+  const activeWeekReads = activeRequests().filter((row) => row.display_week != null);
   truthy(activeWeekReads.length > 0, 'the active feed makes a week-scoped read');
   if (activeWeekReads.length) {
     const first = activeWeekReads[0];
     truthy(first.league_id && first.league_id.length > 0, 'the week-scoped active read carries a league_id');
-    expect(first.week, '2', 'the week-scoped active read is scoped to the viewed week');
+    expect(first.display_week, '2', 'the week-scoped active read is scoped to the viewed week');
     expect(first.season, '2026', 'the week-scoped active read is scoped to the viewed season');
     expect(first.include_global, null,
       'the week-scoped active read does not ask for league-wide editorial, which has no week to match');
@@ -427,7 +432,7 @@ try {
   truthy(leagueWideReads.length > 0, 'the active feed makes a league-wide read as well');
   if (leagueWideReads.length) {
     const first = leagueWideReads[0];
-    expect(first.week, null, 'the league-wide read sends no week');
+    expect(first.display_week, null, 'the league-wide read sends no week');
     expect(first.season, null, 'the league-wide read sends no season');
   }
   expect(await page.getAttribute('#leagueBlogWrap', 'hidden') !== null, true,
@@ -449,7 +454,7 @@ try {
   expect(await page.textContent('.lb-title'), 'Ridgeback FC Survive The Late Window',
     'TIER 1: the headline renders, not the legacy title');
   expect(await page.locator('.lb-md h2').first().textContent(), 'What the math says', 'a markdown heading renders as a heading');
-  /* This fixture's opening H1 ("Tuesday Verdict: Week 2") is NOT its headline
+  /* This fixture's opening H1 ("Tuesday Verdict: Week 1") is NOT its headline
      ("Ridgeback FC Survive The Late Window"), so it is a real heading and must
      survive. The echo case is asserted on the legacy fixture below. */
   expect(await page.locator('.lb-md h1').count(), 1, 'ECHO: a heading that differs from the headline is kept');
@@ -463,6 +468,8 @@ try {
     'the active feed does not paint alongside the week on screen');
   truthy((await page.textContent('#leagueBlogState')).includes('WEEK 2'),
     'the header says which week is on screen');
+  truthy((await page.textContent('.lb-kicker')).includes('WEEK 1'),
+    'the recap card still names the Week 1 slate it summarizes');
 
   /* ---- 2b. TIERS: headline, callout, narrative, meta ----------------- */
   expect(await page.locator('.lb-card').first().locator('.lb-impact').count(), 1,
@@ -552,7 +559,7 @@ try {
   await page.waitForTimeout(600);
 
   expect(await page.getAttribute('#leagueBlogWrap', 'hidden'), null, 'a legacy article still shows the section');
-  expect(await page.textContent('.lb-title'), 'Monday Sweat: Week 2',
+  expect(await page.textContent('.lb-title'), 'Monday Sweat: Week 1',
     'a legacy headline falls back to the title');
   truthy((await page.textContent('.lb-md')).includes('legacy'), 'a legacy body falls back to content_markdown');
   /* The generator opens every body with `# <title>`, and the headline now sits
@@ -682,7 +689,8 @@ try {
   /* ---- 5f. Switching weeks re-reads for the new week ----------------- */
   serveActive = [];
   const weekAsked = [];
-  serveArticles = [{ ...ARTICLE, slug: 'week-1-story', week: 1, headline: 'The Week One Board' }];
+  serveArticles = [{ ...ARTICLE, slug: 'week-1-story', week: 1,
+    article_type: 'league_dispatch', headline: 'The Week One Board' }];
   await page.evaluate(() => {
     document.getElementById('weekNum').value = '1';
     window.FSNBridge.call('renderLeagueBlog');
@@ -690,11 +698,46 @@ try {
   await page.waitForTimeout(1200);
   weekAsked.push(...weekRequests().slice(-1));
 
-  expect(weekAsked[0] && weekAsked[0].week, '1', 'switching weeks asks the endpoint for that week');
+  expect(weekAsked[0] && weekAsked[0].display_week, '1', 'switching weeks asks the endpoint for that week');
   expect(await page.textContent('.lb-title'), 'The Week One Board', 'and paints week 1\'s own story');
   truthy((await page.textContent('#leagueBlogState')).includes('WEEK 1'), 'under a WEEK 1 header');
   expect(await page.evaluate(() => document.body.innerText.includes('Ridgeback FC Survive The Late Window')), false,
     'with week 2\'s story gone from the screen');
+
+  /* A recap's label and stats remain on its source slate. Its card lives on
+     the following week's tab, including when navigating back and forth. */
+  serveArticles = [
+    { ...ARTICLE, slug: 'week-2-recap', week: 2, headline: 'Week 2 Matchup Recap' },
+    { ...ARTICLE, slug: 'week-3-recap', week: 3, headline: 'Week 3 Matchup Recap' },
+  ];
+  /* The placeholder fixture may have cached an empty Week 4 response above.
+     Clear that test-only cache before changing the server's published rows. */
+  await page.evaluate(() => {
+    window.FSNLeagueArticles.clear();
+    window.FSNSupabaseArticles.clear();
+  });
+  for (const [selected, expected, excluded] of [
+    ['3', 'Week 2 Matchup Recap', 'Week 3 Matchup Recap'],
+    ['4', 'Week 3 Matchup Recap', 'Week 2 Matchup Recap'],
+    ['3', 'Week 2 Matchup Recap', 'Week 3 Matchup Recap'],
+    ['2', '', 'Week 2 Matchup Recap'],
+  ]) {
+    await page.evaluate((wk) => {
+      document.getElementById('weekNum').value = wk;
+      window.FSNBridge.call('renderLeagueBlog');
+    }, selected);
+    let shown = [];
+    for(let attempt = 0; attempt < 15; attempt++){
+      shown = await page.locator('.lb-title').allTextContents();
+      if(!expected || shown.includes(expected)) break;
+      await page.waitForTimeout(200);
+    }
+    if(expected) truthy(shown.includes(expected), 'Week ' + selected + ' shows ' + expected +
+      ' (painted: ' + JSON.stringify(shown) + ')');
+    truthy(!shown.includes(excluded), 'Week ' + selected + ' excludes ' + excluded);
+    truthy(weekRequests().some((row) => row.display_week === selected),
+      'the feed requested display_week=' + selected);
+  }
 
   await page.evaluate(() => {
     document.getElementById('weekNum').value = '2';
@@ -734,11 +777,11 @@ try {
      league-wide editorial in rather than going blank, and must never dress it
      up as this league's own coverage of the week on screen. */
   truthy(
-    activeRequests().some((row) => row.include_global === '1' && row.week == null),
+    activeRequests().some((row) => row.include_global === '1' && row.display_week == null),
     'the league-wide read asks the endpoint for league-wide editorial, with no week',
   );
   truthy(
-    activeRequests().filter((row) => row.week != null).every((row) => row.include_global !== '1'),
+    activeRequests().filter((row) => row.display_week != null).every((row) => row.include_global !== '1'),
     'and no week-scoped read ever asks for it, because it has no week to match',
   );
 

@@ -6,6 +6,7 @@
    the boundary, exactly as /api/league is for league storage.
 
      GET /api/blog/articles?league_id=123456&season=2026&week=3&limit=10
+     GET /api/blog/articles?league_id=123456&season=2026&display_week=4&limit=10
      GET /api/blog/articles?league_id=123456&active=1&limit=6
 
    ---- WHAT IT RETURNS ----
@@ -13,7 +14,7 @@
      { league_id, season, week, count, articles: [{
          slug, headline, match_impact_summary, content, category, author,
          title, excerpt, content_markdown, article_type,
-         tracked_players, season, week, published_at }] }
+         tracked_players, season, week, display_week, published_at }] }
 
    Only published columns. The table's internal id, created_at and updated_at
    are never serialized: they are operational, not editorial, and a public
@@ -47,7 +48,9 @@
    the filter is applied before any other, and an absent league_id is a 400
    rather than "everything".
 
-   `season` and `week` narrow further. With neither, the league's most recent
+   `season` and `week` narrow by the source slate. The News Desk instead sends
+   `display_week`: Monday/Tuesday recaps from Week N appear on Week N+1, while
+   other articles stay on Week N. With neither, the league's most recent
    articles come back newest first, which is what a blog index wants.
 
    ---- THE ACTIVE READ ----
@@ -127,6 +130,13 @@ const CATEGORY_BY_TYPE = {
 };
 
 const DEFAULT_AUTHOR = 'FSN News Desk';
+const RECAP_TYPES = ['monday_sweat', 'tuesday_verdict'];
+
+function displayWeek(row) {
+  const week = Number(row && row.week);
+  if (!Number.isInteger(week) || week < 1) return null;
+  return week + (RECAP_TYPES.includes(String(row.article_type || '')) ? 1 : 0);
+}
 
 const DEFAULT_LIMIT = 10;
 const MAX_LIMIT = 50;
@@ -191,10 +201,16 @@ function readScope(req) {
   if (!league_id || league_id.length > 64 || !/^[A-Za-z0-9._-]+$/.test(league_id)) {
     throw Object.assign(new Error('league_id is required'), { status: 400 });
   }
+  const week = intParam(req, 'week', { min: 1, max: 18 });
+  const display_week = intParam(req, 'display_week', { min: 1, max: 18 });
+  if (week != null && display_week != null) {
+    throw Object.assign(new Error('week and display_week cannot be combined'), { status: 400 });
+  }
   return {
     league_id,
     season: intParam(req, 'season', { min: 1990, max: 2100 }),
-    week: intParam(req, 'week', { min: 1, max: 18 }),
+    week,
+    display_week,
     active: flagParam(req, 'active'),
     /* Opt in, not on by default. A caller that asked for one league's week
        and silently received league-wide editorial mixed into the same array
@@ -241,6 +257,7 @@ function toArticle(row) {
     tracked_players: Array.isArray(row.tracked_players) ? row.tracked_players : [],
     season: row.season == null ? null : Number(row.season),
     week: row.week == null ? null : Number(row.week),
+    display_week: displayWeek(row),
     published_at: row.published_at || null,
 
     /* 'league' or 'global'. The league id itself is deliberately NOT echoed:
@@ -347,6 +364,18 @@ async function handler(req, res) {
     }
     if (scope.season != null) query = query.eq('season', scope.season);
     if (scope.week != null) query = query.eq('week', scope.week);
+    if (scope.display_week != null) {
+      /* `week` is the slate being described. Recaps are filed on the next
+         week's wire; other articles stay with their source week. Apply this
+         before ordering/limiting so a busy prior week cannot crowd out the
+         selected week's articles. Both numbers are validated integers. */
+      const recapTypes = '(' + RECAP_TYPES.join(',') + ')';
+      const current = 'and(week.eq.' + scope.display_week + ',article_type.not.in.' + recapTypes + ')';
+      const prior = scope.display_week > 1
+        ? ',and(week.eq.' + (scope.display_week - 1) + ',article_type.in.' + recapTypes + ')'
+        : '';
+      query = query.or(current + prior);
+    }
     /* The active floor. Applied as part of the query rather than by filtering
        the rows afterwards, so a league whose next few stories are staged ahead
        does not quietly get a short page back. */
@@ -369,6 +398,10 @@ async function handler(req, res) {
     if (result.error) throw result.error;
 
     let articles = (result.data || []).map(toArticle);
+    /* Also defend against an incorrect cached/proxied response. */
+    if (scope.display_week != null) {
+      articles = articles.filter((article) => article.display_week === scope.display_week);
+    }
     let fallback = false;
 
     /* THE FALLBACK.
@@ -404,6 +437,7 @@ async function handler(req, res) {
       league_id: scope.league_id,
       season: scope.season,
       week: scope.week,
+      display_week: scope.display_week,
       active: scope.active,
       include_global: scope.include_global,
       /* True when every row below is league-wide editorial standing in for a
