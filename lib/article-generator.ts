@@ -2067,7 +2067,15 @@ async function defaultFetchBoxScores(input: GenerateInput & { req?: any }): Prom
     response,
   );
   if (status < 200 || status >= 300 || !body || typeof body !== 'object') {
-    throw fail('ESPN box score read failed (HTTP ' + status + ')', [400, 401, 403, 404, 429].includes(status) ? status : 502);
+    /* The status is forwarded, not flattened, because the scheduled run sorts
+       failures by it: 401/403 means a league has to reconnect ESPN and no retry
+       will help, while 408/504 (the relay's own read timeout) and 429 mean try
+       again. Collapsing a timeout into 502 filed it under PROVIDER_DOWN and
+       told an operator ESPN was broken when the read had simply run long. */
+    throw fail(
+      'ESPN box score read failed (HTTP ' + status + ')',
+      [400, 401, 403, 404, 408, 429, 504].includes(status) ? status : 502,
+    );
   }
   return body;
 }

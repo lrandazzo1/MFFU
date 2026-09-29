@@ -75,6 +75,12 @@ export interface CronRunSummary {
    *  retry or needs somebody to reconnect a league. Absent keys are zero. */
   failed_by_reason: Partial<Record<CronFailureReason, number>>;
   dry_run: boolean;
+  /** Whether this run was allowed to re-attempt previously failed leagues. */
+  force_rerun: boolean;
+  /** Leagues re-attempted only because `force_rerun` was set: they hold a row
+   *  for this scope AND their last recorded outcome was a failure. Zero on a
+   *  normal run. */
+  forced: number;
   results: CronLeagueResult[];
 }
 
@@ -87,6 +93,25 @@ export interface CronRunInput {
   dry_run?: boolean;
   /** Identifies one invocation across every audit row it writes. */
   run_id?: string;
+  /**
+   * Re-attempt the leagues whose last recorded outcome for THIS scope was a
+   * failure, even though a row now exists for them.
+   *
+   * The repair this exists for: a league's stored espn_s2 / SWID expire, ESPN
+   * answers 401, `classifyFailure` files it as ESPN_AUTH and the league gets no
+   * article. A member reconnects the league in Supabase — and nothing picks the
+   * missed story back up, because the next run of this day is a week later and
+   * resolves a different week. An operator has to be able to say "that week,
+   * that day, again" once the credential is fixed.
+   *
+   * Deliberately NOT "regenerate everything". A league whose article published
+   * cleanly is still skipped: rewriting a story a reader has already opened is
+   * the one thing the idempotency check exists to prevent, and a credential
+   * repair is no reason to do it. The forced set is exactly the leagues
+   * `cron_article_logs` last recorded as failed — missed leagues need no flag,
+   * since they hold no row and a plain re-invocation already publishes them.
+   */
+  force_rerun?: boolean;
   /** Stop starting new leagues once this many milliseconds have elapsed. A
    *  serverless invocation is killed at its maxDuration with no chance to
    *  report, so the route leaves itself a margin and returns an honest
@@ -210,6 +235,54 @@ export async function leaguesAlreadyPublished(
   return seen;
 }
 
+/**
+ * The leagues whose LAST recorded outcome for this scope was a failure.
+ *
+ * `cron_article_logs` holds one row per league per attempt, so a league that
+ * failed on the 08:00 run and published on a repair run has both. Only the
+ * latest row counts: anything else would re-attempt a league that has since
+ * been fixed and rewrite the story it now holds.
+ *
+ * Read-only, and tolerant by design. A deployment whose logs table is missing
+ * or unreadable gets an empty set and a loud warning rather than a dead run:
+ * without the audit trail a forced run simply has nothing extra to attempt,
+ * which is the same as a normal run and can never rewrite anything.
+ */
+export async function leaguesWithFailedRuns(
+  db: any,
+  scope: { season: number; week: number; article_type: ArticleType },
+): Promise<Set<string>> {
+  const failed = new Set<string>();
+  let result: any;
+  try {
+    result = await db
+      .from('cron_article_logs')
+      .select('league_id, status, executed_at')
+      .eq('season', scope.season)
+      .eq('week', scope.week)
+      .eq('article_type', scope.article_type)
+      .order('executed_at', { ascending: true });
+    if (result && result.error) throw result.error;
+  } catch (err) {
+    console.error(
+      '[ArticleCron] the audit trail could not be read for ' + scope.season + ' week ' +
+        scope.week + ' ' + scope.article_type + ', so a forced run has no failed leagues to ' +
+        're-attempt and behaves as a normal one',
+      err,
+    );
+    return failed;
+  }
+
+  /* Ascending, so the last row seen for a league is its latest outcome. */
+  for (const row of (result && result.data) || []) {
+    if (!row || row.league_id == null) continue;
+    const id = String(row.league_id);
+    if (String(row.status) === 'failed') failed.add(id);
+    else failed.delete(id);
+  }
+  return failed;
+}
+
 /* ------------------------------------------------------------------ *
  * The audit trail
  * ------------------------------------------------------------------ */
@@ -324,13 +397,20 @@ export async function runArticleCron(
   const db = dependencies.db;
   if (!db) throw fail('Blog article storage is not configured', 503);
 
+  const forceRerun = !!input.force_rerun;
   const leagueIds = await (dependencies.listLeagues || activeLeagueIds)(db, season);
   const published = await leaguesAlreadyPublished(db, { season, week, article_type: articleType });
+
+  /* Only read on a forced run. A normal morning never needs the audit trail to
+     decide what to write, and it should not start paying for it. */
+  const previouslyFailed = forceRerun
+    ? await leaguesWithFailedRuns(db, { season, week, article_type: articleType })
+    : new Set<string>();
 
   const summary: CronRunSummary = {
     day, article_type: articleType, season, week, run_id: runId,
     leagues: leagueIds.length, created: 0, skipped: 0, failed: 0, not_attempted: 0,
-    failed_by_reason: {}, dry_run: dryRun, results: [],
+    failed_by_reason: {}, dry_run: dryRun, force_rerun: forceRerun, forced: 0, results: [],
   };
 
   if (!leagueIds.length) {
@@ -367,7 +447,22 @@ export async function runArticleCron(
       error_message: null, failure_reason: null,
     };
 
-    if (published.has(league_id)) {
+    /* A row exists AND this league's last recorded outcome was a failure, on a
+       run that was explicitly told to repair those. The row it holds was not
+       written by a run that succeeded, so replacing it rewrites nothing a
+       successful run produced. Everything else that holds a row is skipped. */
+    const forced = forceRerun && published.has(league_id) && previouslyFailed.has(league_id);
+    if (forced) {
+      console.warn(
+        '[ArticleCron] re-attempting league ' + league_id + ' for ' + season + ' week ' + week +
+          ' ' + articleType + ': it holds a row but its last recorded outcome was a failure and ' +
+          'this run was invoked with force_rerun',
+        new Error('FORCED_RERUN'),
+      );
+      summary.forced++;
+    }
+
+    if (published.has(league_id) && !forced) {
       // Already written by an earlier run. Re-generating would rewrite a story
       // a reader may have already seen, so it is left exactly as it is.
       summary.skipped++;
@@ -422,7 +517,9 @@ export async function runArticleCron(
         ' league(s). Failures by cause: ' + tally + '.' +
         (summary.failed_by_reason.ESPN_AUTH
           ? ' ' + summary.failed_by_reason.ESPN_AUTH + ' league(s) need a member to reconnect ESPN; ' +
-            'retrying the run will not produce their articles.'
+            'retrying the run will not produce their articles. Once the credential is fixed, ' +
+            're-invoke this day with season=' + season + '&week=' + week + ' (add force_rerun=1 if a ' +
+            'row was already written for them) to publish what they missed.'
           : ''),
       new Error('LEAGUES_WITHOUT_ARTICLES'),
     );

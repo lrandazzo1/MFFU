@@ -63,6 +63,22 @@
      * One league's failure never stops the others, every league's outcome is
        printed, and the exit code is non-zero if any of them failed.
 
+   ---- --force-rerun: THE POST-CREDENTIAL REPAIR ----
+
+   Without it this runner rewrites every league it is pointed at, which is the
+   right blunt instrument when the COMPOSER is what changed. It is the wrong one
+   after a credential fix: a league whose espn_s2 / SWID expired failed with a
+   401 and holds no story, while its twelve neighbours published fine hours
+   earlier and have readers. Rewriting those twelve to repair one is exactly the
+   trade the idempotency check exists to refuse.
+
+   `--force-rerun` narrows the run to the leagues that actually missed: the ones
+   holding no `blog_articles` row for this scope, plus the ones whose LAST
+   recorded outcome in `cron_article_logs` for this scope was a failure. Every
+   league that published cleanly is listed as untouched and left alone. It reads
+   both tables directly rather than trusting a flag, so a league fixed by an
+   earlier repair is not re-attempted a second time.
+
    Options:
      --season=<year>    Required. 1990-2100.
      --week=<1-18>      Required.
@@ -71,6 +87,9 @@
                         season. Ids only, digits.
      --base=<url>       The deployed relay. Defaults to the production app.
      --force            Required to write.
+     --force-rerun      Only publish the leagues that are missing this scope's
+                        article or whose last recorded outcome was a failure.
+                        The mode to use after updating expired ESPN cookies.
      --self-test        Offline check of the guards and the relay URL. Writes
                         nothing and reads nothing.
 
@@ -119,6 +138,42 @@ export function credentialAttempts(token) {
     : [{ label: 'no token', token: '' }];
 }
 
+/**
+ * The leagues a `--force-rerun` pass should publish, out of the leagues asked
+ * for, the article rows that exist, and the recorded outcomes.
+ *
+ * `logs` arrives oldest-first, so the last row seen for a league is its latest
+ * outcome — a league that failed at 08:00 and was repaired at 10:00 is NOT a
+ * target. Pure, so the self-test can assert the decision without a database.
+ */
+export function repairTargets(leagueIds, publishedIds, logs) {
+  const published = new Set((publishedIds || []).map((id) => String(id)));
+  const latest = new Map();
+  for (const row of logs || []) {
+    if (!row || row.league_id == null) continue;
+    latest.set(String(row.league_id), String(row.status || ''));
+  }
+  const targets = [];
+  const untouched = [];
+  for (const id of leagueIds) {
+    const key = String(id);
+    /* No row at all is the plain "missed" case and needs no log to justify it.
+       A row plus a failed last outcome is the degraded case. Anything else
+       published cleanly and is left exactly as it is. */
+    if (!published.has(key) || latest.get(key) === 'failed') targets.push(key);
+    else untouched.push(key);
+  }
+  return { targets, untouched };
+}
+
+/** True for the statuses that mean "ESPN would not accept this identity", which
+ *  is the one failure no retry of this script can fix. Reported separately so a
+ *  run says which leagues need a member to reconnect rather than burying it in
+ *  a per-league stack trace. */
+export function isAuthFailureStatus(status) {
+  return Number(status) === 401 || Number(status) === 403;
+}
+
 /** Throws with the reason rather than returning a default: a scope this script
  *  cannot state exactly is a scope it must not write under. */
 export function resolveScope(input) {
@@ -150,6 +205,24 @@ if (flag('self-test')) {
   assert.deepEqual(credentialAttempts('tok').map((a) => a.token), ['tok', '']);
   assert.deepEqual(credentialAttempts('  ').map((a) => a.token), ['']);
   assert.deepEqual(credentialAttempts(null).map((a) => a.token), ['']);
+
+  /* --force-rerun targets: missing rows and last-failed rows, nothing else. */
+  const repair = repairTargets(['1', '2', '3', '4'], ['2', '3', '4'], [
+    { league_id: '2', status: 'failed' },
+    { league_id: '3', status: 'failed' },
+    { league_id: '3', status: 'created' },   // repaired since; not a target
+    { league_id: '4', status: 'created' },
+  ]);
+  assert.deepEqual(repair.targets, ['1', '2']);
+  assert.deepEqual(repair.untouched, ['3', '4']);
+  // No logs at all: only the leagues holding no row are attempted.
+  assert.deepEqual(repairTargets(['1', '2'], ['2'], []).targets, ['1']);
+  // Nothing missing and nothing failed is a clean no-op, not a full rewrite.
+  assert.deepEqual(repairTargets(['1', '2'], ['1', '2'], []).targets, []);
+  assert.equal(isAuthFailureStatus(401), true);
+  assert.equal(isAuthFailureStatus(403), true);
+  assert.equal(isAuthFailureStatus(504), false);
+  assert.equal(isAuthFailureStatus(200), false);
   for (const bad of [
     { season: 1900, week: 3, day: 'mon' },
     { season: 2026, week: 0, day: 'mon' },
@@ -198,7 +271,7 @@ for (const row of rows || []) {
   if (!byLeague.has(id)) byLeague.set(id, row.share_token || '');
 }
 
-const targets = scope.leagues.length
+let targets = scope.leagues.length
   ? scope.leagues.filter((id) => {
     if (byLeague.has(id)) return true;
     console.warn('[rerun-league-articles] ' + id + ' is not an active ' + scope.season +
@@ -207,6 +280,50 @@ const targets = scope.leagues.length
   })
   : Array.from(byLeague.keys()).sort();
 assert.ok(targets.length, 'No leagues resolved for ' + scope.season + '; nothing was written');
+
+/* ---- --force-rerun ----
+   Narrow the run to the leagues that actually missed this scope's article. The
+   reads are the same two the cron makes, so this agrees with the route by
+   construction rather than by convention. A read failure is fatal HERE on
+   purpose: a repair that cannot tell which leagues published must not guess and
+   rewrite the ones that did. */
+let untouched = [];
+if (flag('force-rerun')) {
+  const articleType = ARTICLE_TYPE_BY_DAY[scope.day];
+  const publishedRead = await db
+    .from('blog_articles')
+    .select('league_id')
+    .eq('season', scope.season)
+    .eq('week', scope.week)
+    .eq('article_type', articleType);
+  if (publishedRead.error) throw publishedRead.error;
+
+  const logRead = await db
+    .from('cron_article_logs')
+    .select('league_id, status, executed_at')
+    .eq('season', scope.season)
+    .eq('week', scope.week)
+    .eq('article_type', articleType)
+    .order('executed_at', { ascending: true });
+  if (logRead.error) throw logRead.error;
+
+  const decided = repairTargets(
+    targets,
+    (publishedRead.data || []).map((row) => row.league_id),
+    logRead.data || [],
+  );
+  targets = decided.targets;
+  untouched = decided.untouched;
+  console.log('[rerun-league-articles] --force-rerun: ' + targets.length +
+    ' league(s) missing this article or last recorded as failed; ' + untouched.length +
+    ' league(s) published cleanly and are left untouched' +
+    (untouched.length ? ' (' + untouched.join(', ') + ')' : ''));
+  if (!targets.length) {
+    console.log('[rerun-league-articles] nothing to repair for ' + ARTICLE_TYPE_BY_DAY[scope.day] +
+      ', ' + scope.season + ' week ' + scope.week + '; no article was changed');
+    process.exit(0);
+  }
+}
 
 console.log('[rerun-league-articles] ' + ARTICLE_TYPE_BY_DAY[scope.day] + ', ' + scope.season +
   ' week ' + scope.week + ', ' + targets.length + ' league(s), relay ' + base);
@@ -253,6 +370,7 @@ for (const leagueId of targets) {
       evaluated: outcome.evaluated,
       kickoffs: outcome.kickoffs,
       error: null,
+      auth_failure: false,
     });
     console.log('  published  ' + leagueId + '  ' + outcome.record.title);
   } catch (err) {
@@ -267,17 +385,33 @@ for (const leagueId of targets) {
       evaluated: 0,
       kickoffs: 0,
       error: String((err && err.message) || err),
+      /* The one failure this script cannot retry its way out of. Separated so a
+         run ends by naming the leagues whose ESPN session has to be renewed,
+         instead of leaving that to whoever reads twelve stack traces. */
+      auth_failure: isAuthFailureStatus(err && err.status),
     });
   }
 }
 
 const published = results.filter((row) => row.status === 'published');
 const failed = results.filter((row) => row.status === 'failed');
+const needReconnect = failed.filter((row) => row.auth_failure);
 console.log(JSON.stringify({
   season: scope.season, week: scope.week, day: scope.day,
   article_type: ARTICLE_TYPE_BY_DAY[scope.day],
-  leagues: results.length, published: published.length, failed: failed.length, results,
+  force_rerun: flag('force-rerun'),
+  leagues: results.length, published: published.length, failed: failed.length,
+  untouched: untouched.length,
+  espn_auth_failures: needReconnect.map((row) => row.league_id),
+  results,
 }, null, 2));
+
+if (needReconnect.length) {
+  console.error('[rerun-league-articles] ESPN refused the identity for ' + needReconnect.length +
+    ' league(s): ' + needReconnect.map((row) => row.league_id).join(', ') + '. Re-running this ' +
+    'script will not fix them — a member of each has to re-save the league from Setup with a ' +
+    'current ESPN sign-in, and then this can be run again with --force-rerun.');
+}
 
 if (process.env.GITHUB_STEP_SUMMARY) {
   const { appendFileSync } = await import('node:fs');

@@ -38,6 +38,13 @@
    skipped, never rewritten, so a retry or a double fire costs nothing and no
    reader ever sees a story change under them.
 
+   `?force_rerun=1` narrows one hole in that: a league whose stored ESPN cookies
+   expired failed with ESPN_AUTH and holds no story, and the next run of this day
+   is a week later on a different week, so nothing picks it back up once the
+   credential is fixed. With the flag set, a league whose LAST recorded outcome
+   in `cron_article_logs` for this exact scope was a failure is attempted again.
+   A league that published cleanly is still skipped, flag or no flag.
+
    One league's failure never stops the others. Every league's outcome, good or
    bad, lands in `cron_article_logs`.
 ============================================================================ */
@@ -185,6 +192,12 @@ async function handler(req, res) {
         season: scope.season,
         week: scope.week,
         dry_run: flag(req, 'dry_run'),
+        /* `?force_rerun=1` — re-attempt the leagues whose last recorded
+           outcome for this exact season/week/day was a failure, which is what
+           an operator needs after fixing a league's expired ESPN cookies. A
+           league that published cleanly is still skipped; see the flag's note
+           in lib/article-cron.ts for why that line is where it is. */
+        force_rerun: flag(req, 'force_rerun'),
         run_id: `${scope.season}-w${scope.week}-${day}-${new Date(now).toISOString().slice(0, 10)}`,
         /* The function is configured for a 60s maxDuration in vercel.json and
            is killed at it with no chance to respond. Stop starting leagues at

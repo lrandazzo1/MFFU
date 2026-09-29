@@ -22,6 +22,37 @@ const { authorizedByCronSecret } = require('../lib/dist/article-cron');
    looks like. See lib/espn-cookies.js for the paste shapes it repairs. */
 const { buildEspnCookieHeader } = require('../lib/espn-cookies');
 
+/* ---- ONE READ'S TIME BUDGET ----
+   Every other outbound read in this codebase carries one (the Supabase clients
+   use AbortSignal.timeout(10000)); this one did not, and it is the only fetch
+   in the pipeline with no ceiling at all.
+
+   That matters most to the scheduled article run, which calls this handler
+   IN-PROCESS for one league after another. `runArticleCron` checks its 50s
+   budget BETWEEN leagues, never inside one, so a single league whose ESPN read
+   hangs — a stalled TLS handshake, a connection ESPN accepts and never answers
+   — burns the whole 60s maxDuration. The function is then killed with no
+   summary and no audit rows, and every league after it in the queue silently
+   loses its article. One league's bad connection stalling the queue is exactly
+   what that loop exists to prevent.
+
+   15s, because a refused read costs at most two upstream attempts (the
+   deployment-env and invite-token retries below), so a league's worst case
+   stays inside the run's per-league margin. An expired cookie is answered by
+   ESPN in milliseconds; nothing legitimate here takes fifteen seconds. */
+const ESPN_READ_TIMEOUT_MS = 15000;
+
+/* An aborted fetch is a timeout, not a provider error, and the two want
+   opposite responses upstream: `classifyFailure` in lib/article-cron maps a 504
+   to TIMEOUT ("worth retrying") and a 502 to PROVIDER_DOWN. Node reports the
+   abort as either an AbortError or a TimeoutError depending on the runtime, so
+   both names are recognised. */
+function isTimeoutError(error) {
+  const name = String((error && error.name) || '');
+  if (name === 'TimeoutError' || name === 'AbortError') return true;
+  return String((error && error.message) || '').toLowerCase().includes('operation was aborted');
+}
+
 const ALLOWED_ESPN_HOSTS = new Set([
   'lm-api-reads.fantasy.espn.com',
   'fantasy.espn.com',
@@ -287,10 +318,14 @@ async function readEspnUpstream(url, cookieHeader) {
   console.log('[api/espn]   Accept:     ' + upstreamHeaders.Accept);
   console.log('[api/espn]   Cookie:     ' + cookieSummary);
 
+  /* One signal for the whole read, headers AND body: a response whose headers
+     arrive promptly and whose body then drips forever stalls the caller just as
+     completely as a connection that never answers. */
   const upstream = await fetch(url, {
     method: 'GET',
     headers: upstreamHeaders,
     redirect: 'follow',
+    signal: AbortSignal.timeout(ESPN_READ_TIMEOUT_MS),
   });
   const body = await upstream.text();
   console.log('[api/espn] ← ESPN ' + upstream.status + ' (' + body.length + ' bytes) for ' + url);
@@ -697,6 +732,22 @@ module.exports = async function handler(req, res) {
 
     return res.status(upstream.status).json(payload);
   } catch (error) {
+    /* A read that ran out of time is reported as a gateway timeout rather than
+       a generic 502. The scheduled run classifies the two differently — TIMEOUT
+       is retried, PROVIDER_DOWN is reported as ESPN's own fault — and a reader
+       is told the honest thing instead of "ESPN is down". */
+    if (isTimeoutError(error)) {
+      console.error('[api/espn] ESPN did not answer ' + target.pathname + ' within ' +
+        ESPN_READ_TIMEOUT_MS + 'ms; abandoning this read so one slow league cannot ' +
+        'consume the whole scheduled run.', error);
+      return res.status(504).json({
+        error: 'ESPN did not answer within ' + Math.round(ESPN_READ_TIMEOUT_MS / 1000) +
+          ' seconds. This is a transient upstream problem, not a credential one — try again.',
+        code: 'ESPN_READ_TIMEOUT',
+        league_id: leagueContextFromTarget(target).leagueId || null,
+        timeout_ms: ESPN_READ_TIMEOUT_MS,
+      });
+    }
     console.error('[api/espn] upstream request failed', error);
     return res.status(502).json({ error: 'ESPN upstream request failed' });
   }

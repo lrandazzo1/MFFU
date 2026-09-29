@@ -53,6 +53,12 @@ export interface CronRunSummary {
      *  retry or needs somebody to reconnect a league. Absent keys are zero. */
     failed_by_reason: Partial<Record<CronFailureReason, number>>;
     dry_run: boolean;
+    /** Whether this run was allowed to re-attempt previously failed leagues. */
+    force_rerun: boolean;
+    /** Leagues re-attempted only because `force_rerun` was set: they hold a row
+     *  for this scope AND their last recorded outcome was a failure. Zero on a
+     *  normal run. */
+    forced: number;
     results: CronLeagueResult[];
 }
 export interface CronRunInput {
@@ -64,6 +70,25 @@ export interface CronRunInput {
     dry_run?: boolean;
     /** Identifies one invocation across every audit row it writes. */
     run_id?: string;
+    /**
+     * Re-attempt the leagues whose last recorded outcome for THIS scope was a
+     * failure, even though a row now exists for them.
+     *
+     * The repair this exists for: a league's stored espn_s2 / SWID expire, ESPN
+     * answers 401, `classifyFailure` files it as ESPN_AUTH and the league gets no
+     * article. A member reconnects the league in Supabase — and nothing picks the
+     * missed story back up, because the next run of this day is a week later and
+     * resolves a different week. An operator has to be able to say "that week,
+     * that day, again" once the credential is fixed.
+     *
+     * Deliberately NOT "regenerate everything". A league whose article published
+     * cleanly is still skipped: rewriting a story a reader has already opened is
+     * the one thing the idempotency check exists to prevent, and a credential
+     * repair is no reason to do it. The forced set is exactly the leagues
+     * `cron_article_logs` last recorded as failed — missed leagues need no flag,
+     * since they hold no row and a plain re-invocation already publishes them.
+     */
+    force_rerun?: boolean;
     /** Stop starting new leagues once this many milliseconds have elapsed. A
      *  serverless invocation is killed at its maxDuration with no chance to
      *  report, so the route leaves itself a margin and returns an honest
@@ -109,6 +134,24 @@ export declare function activeLeagueIds(db: any, season: number): Promise<string
  * nothing to do.
  */
 export declare function leaguesAlreadyPublished(db: any, scope: {
+    season: number;
+    week: number;
+    article_type: ArticleType;
+}): Promise<Set<string>>;
+/**
+ * The leagues whose LAST recorded outcome for this scope was a failure.
+ *
+ * `cron_article_logs` holds one row per league per attempt, so a league that
+ * failed on the 08:00 run and published on a repair run has both. Only the
+ * latest row counts: anything else would re-attempt a league that has since
+ * been fixed and rewrite the story it now holds.
+ *
+ * Read-only, and tolerant by design. A deployment whose logs table is missing
+ * or unreadable gets an empty set and a loud warning rather than a dead run:
+ * without the audit trail a forced run simply has nothing extra to attempt,
+ * which is the same as a normal run and can never rewrite anything.
+ */
+export declare function leaguesWithFailedRuns(db: any, scope: {
     season: number;
     week: number;
     article_type: ArticleType;
