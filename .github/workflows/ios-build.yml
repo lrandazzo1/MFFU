@@ -52,14 +52,14 @@ jobs:
       # marketing version must have a strictly greater CFBundleVersion than the
       # previous one, or App Store Connect rejects it. github.run_number
       # normally provides that, but if a run is re-triggered or the counter has
-      # not yet caught up with the last uploaded build (186), fall back to this
+      # not yet caught up with the last uploaded build (229), fall back to this
       # floor so a fresh upload is never below it. Raise this to the last
       # DELIVERED build whenever it drifts behind, or the fallback stops being
       # a floor at all and a re-triggered run can re-offer a taken number.
-      # 186 rather than the last *accepted* build (181): 186 was delivered to
-      # App Store Connect before it was rejected on version grounds, so that
-      # number is spent even though the build never shipped.
-      APP_BUILD_NUMBER_FLOOR: '186'
+      # 230 so the resolved CFBundleVersion strictly EXCEEDS the already-
+      # delivered build 229: that number is spent (delivered to App Store
+      # Connect), so the next upload must be 230 or higher.
+      APP_BUILD_NUMBER_FLOOR: '230'
 
     steps:
       - uses: actions/checkout@v5
