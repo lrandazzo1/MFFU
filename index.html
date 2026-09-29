@@ -38012,22 +38012,51 @@ const STUDIO_TEST_WEEK = 2;
 const STUDIO_TEST_NOTE = 'Testing exception: league ' + STUDIO_TEST_LEAGUE_ID +
   ' may generate week ' + STUDIO_TEST_WEEK + '. Every other league and week stays locked.';
 
+/* THE SLATE THE EPISODE ON THIS SCREEN RECAPS.
+
+   The weekly podcast is filed the morning after the Monday night final, so it
+   anchors the FOLLOWING week's feed: the Week 3 recap belongs on Week 4. That is
+   the same rule tuesday_verdict follows in api/blog/articles.js and
+   fsnArticleDisplayWeek(), and the reason it has to hold here too is the Tuesday
+   morning a reader actually opens the app. The week scrubber has already rolled
+   to Week 4 by then — the calendar rollover, the schedule rollover and
+   completedSlateNextWeek() all agree on that — while the 09:00 UTC cron files
+   the episode under Week 3. Asking podcast_episodes for the week on screen
+   therefore answered `missing` and printed NO EPISODE YET over an episode the
+   league already had, with Episode Archives empty beside it because it holds
+   only the shared episode for the week on screen.
+
+   Every week coordinate in Studio goes through here: the shared-episode lookup
+   key, the archive row it adopts, the generation lock, and the week the POST
+   asks the endpoint to record. The rows themselves are untouched — `week` stays
+   the slate an episode describes, which is what its title and subtitle quote.
+
+   Week 1 has no completed slate behind it and returns 0, which the lock reads as
+   'opening': the season's first episode lands on the Week 2 feed. */
+function studioRecapWeek(){
+  const display = Number(effectiveWeek()) || 0;
+  return display > 1 ? display - 1 : 0;
+}
+
 function studioTestExceptionActive(){
   return String(selectedLeagueId()) === STUDIO_TEST_LEAGUE_ID &&
-    effectiveWeek() === STUDIO_TEST_WEEK &&
+    studioRecapWeek() === STUDIO_TEST_WEEK &&
     !studioIsArchivedSeason();
 }
 
 function studioGenerationLock(){
   if(studioTestExceptionActive()) return '';
   if(studioIsArchivedSeason()) return 'season';
+  const recap = studioRecapWeek();
+  /* Week 1's feed: there is no earlier slate for this season to recap. */
+  if(!recap) return 'opening';
   if(effectiveWeek() < currentLeagueWeek()) return 'week';
-  /* The week is still being played. Nothing to recap yet, and nothing the
-     Tuesday run would narrate either: the scheduled generator reads the article
-     pipeline's evaluated stat lines, which are not written until the week's box
-     scores close. A Wednesday-through-Monday tap used to mint an episode over a
-     half-played slate. */
-  if(!weekBoxScoresComplete(effectiveWeek())) return 'midweek';
+  /* The recapped week is still being played. Nothing to recap yet, and nothing
+     the Tuesday run would narrate either: the scheduled generator reads the
+     article pipeline's evaluated stat lines, which are not written until the
+     week's box scores close. A Wednesday-through-Monday tap used to mint an
+     episode over a half-played slate. */
+  if(!weekBoxScoresComplete(recap)) return 'midweek';
   return '';
 }
 const STUDIO_LOCK_MESSAGE = 'Historical weeks and past seasons cannot generate new podcasts.';
@@ -38035,8 +38064,20 @@ const STUDIO_LOCK_MESSAGE = 'Historical weeks and past seasons cannot generate n
    Written in sentence case because .btn-primary uppercases its own text; the
    note below the button is not transformed and reads as prose. */
 const STUDIO_MIDWEEK_LABEL = '\u{1F399}\uFE0F Weekly Recap Unlocks Tuesday After MNF';
-const STUDIO_MIDWEEK_MESSAGE = 'This week is still being played. The weekly recap unlocks Tuesday morning, ' +
+const STUDIO_MIDWEEK_MESSAGE = 'The week this recap covers is still being played. It unlocks Tuesday morning, ' +
   'once every Sunday and Monday night box score is final.';
+/* Week 1's feed. The recap always covers the week before the one on screen, so
+   the season's first episode lands here on Week 2. */
+const STUDIO_OPENING_LABEL = '\u{1F399}\uFE0F First Recap Lands On Week 2';
+const STUDIO_OPENING_MESSAGE = 'The weekly recap covers the completed week before the one on screen, so the ' +
+  'season\u2019s first episode arrives on the Week 2 feed once Week 1 is final.';
+/* One resolver, so the button note, the locked-tap status line and the archive
+   note cannot drift apart. */
+function studioLockMessage(lock){
+  if(lock === 'midweek') return STUDIO_MIDWEEK_MESSAGE;
+  if(lock === 'opening') return STUDIO_OPENING_MESSAGE;
+  return STUDIO_LOCK_MESSAGE;
+}
 
 function studioStopReel(){
   clearTimeout(studioReelTimer);
@@ -38296,7 +38337,10 @@ function renderStudio(){
     studioTestArchiveScope = '';
     studioHydrateTestArchive(scope);
   }
-  const key = `${scope}:${effectiveWeek()}`;
+  /* The recapped week, not the week on screen: see studioRecapWeek(). A 0 here is
+     Week 1's feed, which has no earlier slate, so there is nothing to look up. */
+  const recapWeek = studioRecapWeek();
+  const key = `${scope}:${recapWeek}`;
   /* The shared-episode lookup needs exactly two things: this league's numeric id
      and its share token. It used to ALSO require LeagueData.hasLive(), which is
      precisely what a reader who arrived on an invite link does not have — their
@@ -38309,17 +38353,28 @@ function renderStudio(){
      reader leaves Studio (studioSchedulePoll refuses to arm off-screen), so a
      week that was still 'missing' then needs a fresh lookup on the way back —
      the key alone has not changed. */
-  if(!archived && ui.screen === 'studio' &&
+  if(!archived && recapWeek && ui.screen === 'studio' &&
       (studioRemoteKey !== key ||
        (!studioPollTimer && !studioRemotePending && studioRemoteStatus === 'missing'))){
     if(studioRemoteKey !== key){
       studioRemoteKey = key;
       studioRemoteDeferred = { key:'', attempts:0 };
       studioRemoteStatus = 'missing';
-      if(studioCurrent && studioCurrent.week !== effectiveWeek())
-        studioSetEpisode(studioEpisodes.find(row=>row.week === effectiveWeek()) || null);
+      if(studioCurrent && studioCurrent.week !== recapWeek)
+        studioSetEpisode(studioEpisodes.find(row=>row.week === recapWeek) || null);
     }
     studioCheckShared(key);
+  }
+  if(!recapWeek && !archived){
+    /* Week 1's feed. Same shape as the archived branch below and for the same
+       reason: there is nothing to look up, and leaving the live state behind
+       would hide the button behind a stale 'ready' from another week. */
+    clearTimeout(studioPollTimer);
+    studioPollTimer = null;
+    studioRemoteKey = '';
+    studioRemoteDeferred = { key:'', attempts:0 };
+    studioRemoteStatus = 'missing';
+    if(studioCurrent) studioSetEpisode(null);
   }
   if(archived){
     /* An archived season has nothing to poll for: the endpoint answers a GET
@@ -38347,7 +38402,8 @@ function renderStudio(){
   $('studioGenerate').textContent = studioRemoteStatus === 'ready' ? 'EPISODE READY' :
     studioRemoteStatus === 'generating' ? 'GENERATING FOR YOUR LEAGUE…' :
     studioRemoteStatus === 'failed' ? 'EPISODE UNAVAILABLE' :
-    lock === 'midweek' ? STUDIO_MIDWEEK_LABEL : 'GENERATE WEEKLY RECAP';
+    lock === 'midweek' ? STUDIO_MIDWEEK_LABEL :
+    lock === 'opening' ? STUDIO_OPENING_LABEL : 'GENERATE WEEKLY RECAP';
   /* Disabled, not hidden. A control that vanishes reads as a broken screen; a
      disabled one beside #studioArchiveLock says what the rule is. Only the
      'ready' state still hides it, because the hero's play button replaces it. */
@@ -38369,8 +38425,7 @@ function renderStudio(){
      directly underneath a finished episode's play button. */
   const testing = studioTestExceptionActive();
   const noteLock = studioRemoteStatus === 'ready' ? '' : lock;
-  $('studioArchiveLock').textContent = testing ? STUDIO_TEST_NOTE :
-    noteLock === 'midweek' ? STUDIO_MIDWEEK_MESSAGE : STUDIO_LOCK_MESSAGE;
+  $('studioArchiveLock').textContent = testing ? STUDIO_TEST_NOTE : studioLockMessage(noteLock);
   $('studioArchiveLock').hidden = !noteLock && !testing;
   if(!studioCurrent && !studioBusy) studioPaintFeed();
 }
@@ -38589,15 +38644,17 @@ function studioDraft(week, year){
 async function studioGenerate(){
   if(studioBusy || !LeagueData.hasLive()) return;
   const scope = studioScope;
-  const week = effectiveWeek();
+  /* The recapped week, so a tap on the Week 4 feed records Week 3's episode —
+     the same row, under the same coordinates, the Tuesday cron writes. */
+  const week = studioRecapWeek();
   const year = Number($('seasonYear').value) || uiActiveSeasonYear();
   /* The same rule the button state renders, enforced on the action itself: the
      button can be re-enabled by a render that lands between a tap and this
      call, and for an archived season the endpoint would refuse the POST anyway
      (HISTORICAL_SEASON_ERROR) after the reader had already watched a spinner. */
   const lock = studioGenerationLock();
-  if(lock){
-    $('studioStatus').textContent = lock === 'midweek' ? STUDIO_MIDWEEK_MESSAGE : STUDIO_LOCK_MESSAGE;
+  if(lock || !week){
+    $('studioStatus').textContent = studioLockMessage(lock || 'opening');
     renderStudio();
     return;
   }
