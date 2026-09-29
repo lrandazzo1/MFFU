@@ -31,6 +31,7 @@ import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, dirname, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
+import { dismissFirstRun } from './lib/first-run.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..');
@@ -321,11 +322,11 @@ try {
   }, syntheticLeague());
   await page.waitForTimeout(900);
 
-  const pickerOpen = await page.getAttribute('#profilePicker', 'data-open');
-  if (pickerOpen === 'true') {
-    await page.click('#profileGuest');
-    await page.waitForTimeout(400);
-  }
+  /* The picker, the walkthrough and the Setup takeover each swallow clicks, and
+     the walkthrough opens on a timer, so a single check races it. Seeding
+     LeagueData does not close Setup the way connecting a league does, so the
+     tab bar under it stays unreachable until it is closed. */
+  await dismissFirstRun(page);
 
   await page.click('#tabBar .tab-btn[data-tab="news"]');
   await page.waitForTimeout(700);
@@ -412,7 +413,14 @@ try {
 
     const opened = await page.evaluate(() => ({
       reader: document.getElementById('reader').dataset.open,
-      screen: (document.querySelector('.screen[data-active="true"]') || document.createElement('div')).dataset.screen || '',
+      /* setScreen('setup') leaves the screen behind the takeover active too, so
+       both carry data-active="true" and querySelector returns the one
+       underneath. Setup is what the reader is looking at whenever it is up. */
+    screen: (() => {
+      const setup = document.querySelector('.screen[data-screen="setup"]');
+      if (setup && setup.dataset.active === 'true') return 'setup';
+      return (document.querySelector('.screen[data-active="true"]') || document.createElement('div')).dataset.screen || '';
+    })(),
     }));
     if (opened.reader === 'true') pass('the link opened the reader from a cold Setup screen');
     else fail('the link did not open the reader (reader data-open=' + opened.reader + ')');
@@ -500,7 +508,14 @@ try {
   await page.waitForTimeout(1800);
 
   const launched = await page.evaluate(() => ({
-    screen: (document.querySelector('.screen[data-active="true"]') || document.createElement('div')).dataset.screen || '',
+    /* setScreen('setup') leaves the screen behind the takeover active too, so
+       both carry data-active="true" and querySelector returns the one
+       underneath. Setup is what the reader is looking at whenever it is up. */
+    screen: (() => {
+      const setup = document.querySelector('.screen[data-screen="setup"]');
+      if (setup && setup.dataset.active === 'true') return 'setup';
+      return (document.querySelector('.screen[data-active="true"]') || document.createElement('div')).dataset.screen || '';
+    })(),
     provider: (document.querySelector('.provider-tab.is-active') || document.createElement('div')).dataset.provider || '',
   }));
   if (launched.screen === 'setup') pass('the launch URL landed the app on Setup');

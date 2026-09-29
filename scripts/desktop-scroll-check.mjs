@@ -55,6 +55,7 @@ import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, dirname, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
+import { dismissFirstRun, dismissSetup } from './lib/first-run.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..');
@@ -208,10 +209,13 @@ try {
     window.__fsnRender();
   }, syntheticLeague());
   await page.waitForTimeout(1100);
-  if (await page.getAttribute('#profilePicker', 'data-open') === 'true') {
-    await page.click('#profileGuest');
-    await page.waitForTimeout(500);
-  }
+  /* All three first-run surfaces have to be down before a single line of this
+     check means anything: the Setup takeover locks the page scroll while it is
+     open, so the structural read below would measure the modal's scroll lock
+     and report the viewport as broken, and the tab walk after it would time
+     out on an intercepted click. Seeding LeagueData does not close Setup the
+     way connecting a league does. */
+  await dismissFirstRun(page);
 
   /* ---- 1. Structural: one scroller only --------------------------------- */
   const structure = await page.evaluate(() => {
@@ -266,13 +270,22 @@ try {
     if (tab === 'setup') await page.click('.screen[data-active="true"] .gear-btn');
     else await page.click('#tabBar .tab-btn[data-tab="' + tab + '"]');
     await page.waitForTimeout(420);
-    await page.evaluate(() => window.scrollTo(0, 0));
+    /* Setup is not a screen the viewport scrolls: it is position:fixed over the
+       whole app with overflow-y:auto of its own, so its wheel gesture moves that
+       element and never the document. Measure whichever scroller the screen on
+       show actually owns, or the check reports desktop scrolling as broken on a
+       screen that scrolls perfectly well. */
+    const onSetup = tab === 'setup';
+    await page.evaluate((setup) => {
+      if (setup) document.querySelector('.screen[data-screen="setup"]').scrollTop = 0;
+      else window.scrollTo(0, 0);
+    }, onSetup);
     await page.waitForTimeout(80);
 
-    const room = await page.evaluate(() => {
-      const de = document.documentElement;
-      return Math.max(0, de.scrollHeight - de.clientHeight);
-    });
+    const room = await page.evaluate((setup) => {
+      const el = setup ? document.querySelector('.screen[data-screen="setup"]') : document.documentElement;
+      return Math.max(0, el.scrollHeight - el.clientHeight);
+    }, onSetup);
     if (room < 40) {
       pass(tab + ': content fits a 1440x900 laptop, nothing to scroll (skipped)');
       continue;
@@ -283,18 +296,23 @@ try {
     await page.mouse.move(720, 520);
     await page.mouse.wheel(0, 400);
     await page.waitForTimeout(320);
-    const down = await page.evaluate(() => window.scrollY);
+    const offset = (setup) => (setup
+      ? document.querySelector('.screen[data-screen="setup"]').scrollTop
+      : window.scrollY);
+    const down = await page.evaluate(offset, onSetup);
     if (down > 0) pass(tab + ': a wheel gesture over the content scrolls the page (scrollY=' + Math.round(down) + ')');
     else fail(tab + ': the page did not move under a wheel gesture — desktop scrolling is broken on this screen');
 
     await page.mouse.wheel(0, -400);
     await page.waitForTimeout(320);
-    const up = await page.evaluate(() => window.scrollY);
+    const up = await page.evaluate(offset, onSetup);
     if (up < down) pass(tab + ': the page scrolls back up again (scrollY=' + Math.round(up) + ')');
     else fail(tab + ': the page would not scroll back up (stuck at scrollY=' + Math.round(up) + ')');
   }
 
   /* ---- 3. The overlays still contain their own scroll -------------------- */
+  /* The walk ended on Setup, which covers the tab bar until it is closed. */
+  await dismissSetup(page);
   await page.click('#tabBar .tab-btn[data-tab="news"]');
   await page.waitForTimeout(500);
   const opened = await page.evaluate(() => {
