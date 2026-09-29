@@ -10192,12 +10192,25 @@ function nflRegularSeasonWeek(seasonYear, now){
   return Math.min(18, Math.floor(days / 7) + 1);
 }
 
-/* A recap's `week` stays the source slate for its scores and copy. Its feed
-   week is the following one; other article types stay on their source week. */
+/* THE WEEK A LEAGUE ARTICLE IS FILED UNDER.
+
+   `week` stays the source slate for an article's scores and copy. Only a
+   Tuesday verdict moves: it is written the morning after the Monday night
+   final, so Week N's slate is complete and the story reads as last week's —
+   its feed week is N+1.
+
+   A Monday sweat does NOT move, and that is the whole point of this helper
+   being explicit rather than a list of "recap" types. It is filed Monday
+   morning, recapping Sunday and previewing that night's MNF game, which is a
+   Week N game still to be played. Rolling it forward printed an in-progress
+   story under the next week's heading while its own games were still on.
+   Every other type stays on its source week for the same reason. Keep this in
+   step with NEXT_WEEK_TYPES in api/blog/articles.js, which filters the read
+   this function then re-checks on the client. */
 function fsnArticleDisplayWeek(row){
   const week = Number(row && row.week);
   if(!Number.isInteger(week) || week < 1) return null;
-  return week + (row.article_type === 'monday_sweat' || row.article_type === 'tuesday_verdict' ? 1 : 0);
+  return week + (row && row.article_type === 'tuesday_verdict' ? 1 : 0);
 }
 
 /* One row in, one card-ready article out, or null when the row carries no
@@ -11111,8 +11124,8 @@ window.FSNArticles = (function(){
      (nflRegularSeasonWeek, a block 1 global for exactly this reason), with the
      Tuesday rollover the week scrubber already honours.
 
-     No recap bump, deliberately, unlike fsnArticleDisplayWeek() above. That
-     bump exists because a league recap row stores the slate it DESCRIBES
+     No verdict bump, deliberately, unlike fsnArticleDisplayWeek() above. That
+     bump exists because a league verdict row stores the slate it DESCRIBES
      separately from when it was filed. A global article stores no slate, so its
      date has either crossed the Tuesday rollover or it has not, and adding a
      bump would count the same rollover twice.
