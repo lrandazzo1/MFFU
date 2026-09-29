@@ -4586,8 +4586,11 @@ body.fsn-dd-lock{ overflow:hidden; }
          now". A different corpus from the League Blog below it, which is this
          league's own private recaps.
 
-         Hidden whenever FSNArticles has nothing for today's slot, and gated
-         off any historical view, so the deterministic desk stands alone. -->
+         Scoped to the week on screen as well as the season: the article is
+         picked for that week and checked against it again before it paints,
+         so a story from another week never lands under this week's heading.
+         Hidden whenever FSNArticles has nothing for today's slot on that
+         week, so the deterministic desk stands alone. -->
     <div id="deskWireWrap" hidden></div>
 
     <!-- LEAGUE BLOG — this league's OWN published articles, read from
@@ -10159,6 +10162,36 @@ window.FSN_ARTICLE_CATEGORY_BY_TYPE = {
 };
 window.FSN_ARTICLE_DEFAULT_AUTHOR = 'FSN News Desk';
 
+/* GLOBAL SCOPE — THE SEASON CALENDAR.
+
+   The official NFL regular-season week for a calendar date. Week 1 opens on the
+   Thursday after Labor Day (the first Monday of September); each new fantasy
+   week locks the Tuesday before its Thursday games and rolls every seven days
+   after. Returns 0 before the opener (the draft/preseason window) and clamps at
+   18. This is the calendar authority the live-week mapping leans on so a season
+   that has drafted but not kicked off cannot be pulled ahead by an ESPN
+   scoring-period or draft timestamp.
+
+   It lives here rather than in the UI block because two closed scopes need it:
+   the mobile UI's week mapping (block 6) and FSNArticles just below, which has
+   no week column on a global article and has to read one off its publish date.
+   Per CLAUDE.md rule 1 a helper crossing blocks is declared once, at global
+   scope, in the first block. */
+function nflRegularSeasonWeek(seasonYear, now){
+  const year = parseInt(seasonYear, 10);
+  if(!year) return 0;
+  const ref = now instanceof Date ? now : new Date();
+  const sept1 = new Date(year, 8, 1);
+  // First Monday of September = Labor Day.
+  const laborDay = new Date(year, 8, 1 + ((8 - sept1.getDay()) % 7));
+  // Week 1 Thursday kickoff = Labor Day + 3 days; the slate locks the Tuesday
+  // two days before it.
+  const firstRoll = new Date(laborDay.getFullYear(), laborDay.getMonth(), laborDay.getDate() + 1);
+  const days = Math.floor((ref - firstRoll) / 86400000);
+  if(days < 0) return 0; // preseason — the season has not opened yet
+  return Math.min(18, Math.floor(days / 7) + 1);
+}
+
 /* A recap's `week` stays the source slate for its scores and copy. Its feed
    week is the following one; other article types stay on their source week. */
 function fsnArticleDisplayWeek(row){
@@ -10838,10 +10871,14 @@ window.FSNSupabaseArticles = (function(){
 
      1. FETCH   the manifest on launch and on every return to the foreground,
                 behind a TTL so a tab switch does not hammer the origin.
-     2. ROUTE   one article to the surface, chosen by the day of the week. The
-                desk publishes on a fixed weekly cadence, so the app shows the
-                slot that is actually live right now rather than whatever
-                happens to be newest:
+     2. ROUTE   one article to the surface, chosen by the day of the week AND
+                by the week the reader is looking at (setViewWeek). The desk
+                publishes on a fixed weekly cadence, so the app shows the slot
+                that is actually live right now rather than whatever happens to
+                be newest — and, within that slot, the story belonging to the
+                week on screen rather than the newest of any week, because the
+                eight-day publishing window always straddles a Tuesday
+                rollover:
 
                   Sunday            pregame previews, matchup breakdowns
                   Monday, Tuesday   recaps, highs and lows, MNF standouts
@@ -11065,16 +11102,63 @@ window.FSNArticles = (function(){
     return Math.round((to - from) / 86400000);
   }
 
+  /* THE WEEK A PUBLISHED ARTICLE BELONGS TO.
+
+     A global article carries no week: it is real-world NFL copy filed against a
+     calendar day, so there is no stored coordinate to filter on the way
+     /api/blog/articles filters this league's own rows by `week`. Its publish
+     date IS its week, read through the app's own season calendar
+     (nflRegularSeasonWeek, a block 1 global for exactly this reason), with the
+     Tuesday rollover the week scrubber already honours.
+
+     No recap bump, deliberately, unlike fsnArticleDisplayWeek() above. That
+     bump exists because a league recap row stores the slate it DESCRIBES
+     separately from when it was filed. A global article stores no slate, so its
+     date has either crossed the Tuesday rollover or it has not, and adding a
+     bump would count the same rollover twice.
+
+     Returns 0 when the date is unparseable or falls outside the regular season.
+     The caller treats 0 as "cannot tell" and leaves the article eligible rather
+     than guessing a week for it. */
+  function postWeek(post, seasonYear){
+    const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String((post && post.publishDate) || ''));
+    if(!parts) return 0;
+    /* Local midnight, because nflRegularSeasonWeek builds Labor Day from the
+       local calendar too and mixing the two shifts the boundary by a day for
+       every reader west of the meridian. */
+    const when = new Date(Number(parts[1]), Number(parts[2]) - 1, Number(parts[3]));
+    if(!Number.isFinite(when.getTime())) return 0;
+    return Number(nflRegularSeasonWeek(Number(seasonYear) || Number(parts[1]), when)) || 0;
+  }
+
   /* Pick the one article for a slot: published, inside the publishing window,
      newest first, ties broken on slug so the choice is stable. Returns null
-     when the slot has nothing, which is the signal to disable the card. */
-  function selectForSlot(posts, slot, todayKey){
+     when the slot has nothing, which is the signal to disable the card.
+
+     `scope` narrows to one week. It is not optional decoration: the publishing
+     window is eight days wide and therefore always straddles a Tuesday
+     rollover, so "newest article for today's slot" is, by construction, "newest
+     article in any week". That is what put a card dated Sep 28 on the Week 4
+     wire. With a scope, a week that has published nothing gets nothing rather
+     than the previous week's story, and a reader who scrubs back to week 3 gets
+     WEEK 3's story instead of this morning's. */
+  function selectForSlot(posts, slot, todayKey, scope){
+    const wantWeek = Number(scope && scope.week) || 0;
+    const wantSeason = Number(scope && scope.season) || 0;
     const rows = (Array.isArray(posts) ? posts : []).filter(row=>{
       if(!row || !row.slug || !row.title) return false;
       const age = daysBetween(row.publishDate, todayKey);
       if(age == null) return false;
       if(age < 0) return false;                 // scheduled, not published yet
       if(age > MAX_AGE_DAYS) return false;      // outside this publishing window
+      if(wantWeek){
+        const week = postWeek(row, wantSeason);
+        /* A week this cannot resolve stays eligible — the render-side gate in
+           block 6 makes the same call, and dropping an article because its date
+           sits outside the regular season would empty the slot every preseason
+           and every January. */
+        if(week && week !== wantWeek) return false;
+      }
       return postMatchesSlot(row, slot);
     });
     rows.sort((a, b)=>{
@@ -11092,7 +11176,8 @@ window.FSNArticles = (function(){
        ready    `post` holds the article for today's slot
        empty    the fetch succeeded and today's slot has no article
        offline  the fetch failed and no usable cached article exists   */
-  let state = { status:'idle', slot:slotForDate(), post:null, dateKey:'', fetchedAt:0, cached:false, reason:'' };
+  let state = { status:'idle', slot:slotForDate(), post:null, dateKey:'', fetchedAt:0, cached:false,
+                reason:'', viewKey:'' };
   let inflight = null;
   let lastAttemptAt = 0;
 
@@ -11222,33 +11307,44 @@ window.FSNArticles = (function(){
        answer belongs to yesterday's slot, so it has to be re-routed even
        though the payload itself is still fresh. */
     const dayChanged = state.dateKey && state.dateKey !== dateKey;
+    /* The reader moved the week scrubber. The answer in hand was picked for the
+       week they were on, so it has to be re-picked for the week they are on
+       now — otherwise the freshness gate would serve the previous week's
+       article for the next ten minutes, which is the leak with a timer on it. */
+    const scopeKey = viewScopeKey();
+    const scopeChanged = state.viewKey !== scopeKey;
 
     if(inflight) return inflight;
-    if(!opts.force && !dayChanged && state.status !== 'idle' && (now - lastAttemptAt) < FRESH_MS){
+    if(!opts.force && !dayChanged && !scopeChanged && state.status !== 'idle' &&
+       (now - lastAttemptAt) < FRESH_MS){
       return Promise.resolve(current());
     }
 
     lastAttemptAt = now;
-    if(state.status === 'idle') settle({ status:'loading', slot, dateKey });
+    /* Captured now, so the answer is settled against the scope it was picked
+       for even if the reader scrubs again while the read is in flight. */
+    const scope = { week: viewWeek, season: viewSeason };
+    const scopeNote = scope.week ? ' for week ' + scope.week : '';
+    if(state.status === 'idle') settle({ status:'loading', slot, dateKey, viewKey:scopeKey });
 
     inflight = (async ()=>{
       const manifest = await readGlobal(apiIndexUrl(), indexUrl(), 'blog manifest');
       const posts = (manifest && Array.isArray(manifest.posts)) ? manifest.posts : [];
-      const pick = selectForSlot(posts, slot, dateKey);
+      const pick = selectForSlot(posts, slot, dateKey, scope);
       if(!pick){
-        return { status:'empty', slot, post:null, dateKey, cached:false, fetchedAt:Date.now(),
-                 reason:'No ' + slot.label + ' article is published for today.' };
+        return { status:'empty', slot, post:null, dateKey, cached:false, fetchedAt:Date.now(), viewKey:scopeKey,
+                 reason:'No ' + slot.label + ' article is published for today' + scopeNote + '.' };
       }
       const body = await readGlobal(apiPostUrl(pick.slug), postUrl(pick.slug), 'blog post ' + pick.slug);
       /* The endpoint wraps its answer; the compiled payload is the article
          itself. Unwrapping here keeps normalizePost reading one shape. */
       const post = normalizePost((body && body.article) ? body.article : body, pick);
       if(!post.slug || !post.bodyHtml){
-        return { status:'empty', slot, post:null, dateKey, cached:false, fetchedAt:Date.now(),
+        return { status:'empty', slot, post:null, dateKey, cached:false, fetchedAt:Date.now(), viewKey:scopeKey,
                  reason:'The published ' + slot.label + ' article carried no body.' };
       }
       writeCache(post, slot.id, dateKey);
-      return { status:'ready', slot, post, dateKey, cached:false, fetchedAt:Date.now(), reason:'' };
+      return { status:'ready', slot, post, dateKey, cached:false, fetchedAt:Date.now(), viewKey:scopeKey, reason:'' };
     })().then(next=>{
       inflight = null;
       annotationMemo = null;
@@ -11262,15 +11358,24 @@ window.FSNArticles = (function(){
       console.warn('[FSNArticles] the article feed could not be read for ' +
         slot.label + ' (' + dateKey + '); falling back to the cached copy if there is one.', err);
       const cached = readCache();
-      if(cached && cached.slot === slot.id && cached.post){
+      /* The saved copy stands in only for the week it was saved for. A device
+         that went offline on Monday holding week 3's recap must not paint it on
+         Tuesday's week 4 screen — that is the same leak, arriving through the
+         cache instead of through the feed. */
+      const cachedPost = cached && cached.slot === slot.id && cached.post ? cached.post : null;
+      const cachedWeek = cachedPost ? postWeek(cachedPost, scope.season) : 0;
+      if(cachedPost && (!scope.week || !cachedWeek || cachedWeek === scope.week)){
         annotationMemo = null;
-        settle({ status:'ready', slot, post:normalizePost(cached.post, cached.post), dateKey,
-                 cached:true, fetchedAt:Number(cached.ts) || 0,
+        settle({ status:'ready', slot, post:normalizePost(cachedPost, cachedPost), dateKey,
+                 cached:true, fetchedAt:Number(cached.ts) || 0, viewKey:scopeKey,
                  reason:'Showing the last article this device downloaded.' });
       }else{
         annotationMemo = null;
-        settle({ status:'offline', slot, post:null, dateKey, cached:false, fetchedAt:0,
-                 reason:'The article feed could not be reached.' });
+        settle({ status:'offline', slot, post:null, dateKey, cached:false, fetchedAt:0, viewKey:scopeKey,
+                 reason: cachedPost
+                   ? 'The article feed could not be reached, and the saved copy is week ' +
+                     cachedWeek + ' coverage.'
+                   : 'The article feed could not be reached.' });
       }
       return current();
     });
@@ -11439,6 +11544,44 @@ window.FSNArticles = (function(){
      both point at FSNStore's canonical key. */
   const READER_ACTIVE_TEAM_KEY = 'fsn_active_team_id';
 
+  /* THE WEEK THE CARD IS PAINTED UNDER.
+   *
+   * The roster context line ("on your roster", "your week N opponent") used to
+   * be built from the league's LIVE week unconditionally, whatever week the
+   * News screen was showing. That is the second half of the stale-article
+   * report: a card carrying week 3 copy, dated Sep 28, printed a "WEEK 4
+   * OPPONENT" chip because the league had already rolled to week 4. One card,
+   * two different weeks, and nothing on it to tell the reader which was which.
+   *
+   * So the renderer states the week the card is being painted under before it
+   * reads the annotation, and every week-shaped thing in the context — the
+   * opponent mapping AND the label that names it — is derived from that one
+   * number. Unset (0) falls back to the league's live week, which is what a
+   * caller with no screen of its own should get.
+   *
+   * It is part of annotated()'s memo signature already (context.currentWeek),
+   * so changing it re-annotates rather than serving the previous week's tags
+   * out of the cache. */
+  let viewWeek = 0;
+  let viewSeason = 0;
+
+  /* The renderer states the week and season on screen. Both are used twice: by
+     selectForSlot(), so the article this engine picks is the one that belongs
+     to that week, and by readerContext(), so the roster context is built for
+     the same week the card is painted under. Called with anything unusable
+     (0, null, a week outside the season) it clears the scope, and the engine
+     falls back to the day-routed pick and the league's live week — which is
+     what a caller with no screen of its own should get. */
+  function setViewWeek(week, season){
+    const wk = Number(week);
+    const yr = Number(season);
+    viewWeek = (Number.isInteger(wk) && wk >= 1 && wk <= 18) ? wk : 0;
+    viewSeason = (Number.isInteger(yr) && yr >= 1990 && yr <= 2100) ? yr : 0;
+    return viewWeek;
+  }
+
+  function viewScopeKey(){ return viewSeason + ':' + viewWeek; }
+
   /* A reader-scoped view of the league: the team the reader has claimed as
      their own (via the profile picker in block 6) plus the current-week
      opponent for each team. Used to enrich the ownership tag so a piece about
@@ -11464,7 +11607,13 @@ window.FSNArticles = (function(){
     const status = (data && data.status) || {};
     const rawWeek = status.currentMatchupPeriod || status.currentScoringPeriod ||
                     (data && (data.currentMatchupPeriod || data.scoringPeriodId)) || 0;
-    const currentWeek = Number(rawWeek) || 0;
+    /* The week on screen wins when the renderer has named one. The league's
+       live week is the fallback, not the authority: painting this week's
+       opponent onto another week's article is exactly the mix the week gate
+       in renderDeskWire() exists to prevent, and it must not be reachable
+       from this side either. */
+    const liveWeek = Number(rawWeek) || 0;
+    const currentWeek = viewWeek || liveWeek;
 
     const opponentByTeamId = Object.create(null);
     const schedule = (data && Array.isArray(data.schedule)) ? data.schedule : [];
@@ -11481,7 +11630,7 @@ window.FSNArticles = (function(){
         }
       }
     }
-    return { activeTeamId, currentWeek, opponentByTeamId };
+    return { activeTeamId, currentWeek, liveWeek, opponentByTeamId };
   }
 
   /* Classify one owner relative to the reader's active team. `self` = the
@@ -11795,6 +11944,7 @@ window.FSNArticles = (function(){
     slotForDay,
     slotForDate,
     postMatchesSlot,
+    postWeek,
     selectForSlot,
     normalizeName,
     ownership,
@@ -11803,6 +11953,7 @@ window.FSNArticles = (function(){
     ownerRole,
     ownerTagText,
     readerContext,
+    setViewWeek,
     annotated,
     current,
     refresh,
@@ -24804,27 +24955,12 @@ function deriveCurrentWeek(d, now){
   return Math.max(providerWeek, calendarWeek, scheduleWeek, completedWeek) || null;
 }
 
-/* The official NFL regular-season week for a calendar date. Week 1 opens on the
-   Thursday after Labor Day (the first Monday of September); each new fantasy
-   week locks the Tuesday before its Thursday games and rolls every seven days
-   after. Returns 0 before the opener (the draft/preseason window) and clamps at
-   18. This is the calendar authority the live-week mapping leans on so a season
-   that has drafted but not kicked off cannot be pulled ahead by an ESPN
-   scoring-period or draft timestamp. */
-function nflRegularSeasonWeek(seasonYear, now){
-  const year = parseInt(seasonYear, 10);
-  if(!year) return 0;
-  const ref = now instanceof Date ? now : new Date();
-  const sept1 = new Date(year, 8, 1);
-  // First Monday of September = Labor Day.
-  const laborDay = new Date(year, 8, 1 + ((8 - sept1.getDay()) % 7));
-  // Week 1 Thursday kickoff = Labor Day + 3 days; the slate locks the Tuesday
-  // two days before it.
-  const firstRoll = new Date(laborDay.getFullYear(), laborDay.getMonth(), laborDay.getDate() + 1);
-  const days = Math.floor((ref - firstRoll) / 86400000);
-  if(days < 0) return 0; // preseason — the season has not opened yet
-  return Math.min(18, Math.floor(days / 7) + 1);
-}
+/* nflRegularSeasonWeek() used to be declared here. It moved to global scope in
+   the first script block, per CLAUDE.md rule 1: FSNArticles (block 1) needs the
+   same calendar to work out which week a published article belongs to, and a
+   second copy of the Labor Day math in two closed scopes is exactly the kind of
+   drift that rule exists to prevent. The declaration is a global, so every
+   reference in this block resolves to it unchanged. */
 
 /* Schedule timestamps are a second live authority. They cover provider lag and
    unusual kickoff calendars without letting a future matchup activate early:
@@ -36401,8 +36537,14 @@ function newsPlaceholderCard(week, newsLabel){
 
    Everything below the card — the lead story, the timeline, the topic bar — is
    the existing deterministic News Desk and is not touched by any of this. When
-   the engine has no article for today the wrapper is hidden outright and the
-   desk renders exactly as it always has.
+   the engine has no article for today's slot on the week being viewed, the
+   wrapper is hidden outright and the desk renders exactly as it always has.
+
+   THE WEEK ON SCREEN IS THE CARD'S WEEK. This renderer names it (setViewWeek)
+   before it reads anything, so the engine picks for that week and the roster
+   context is built for it, and it checks the article it gets back against it
+   again before painting. A story from another week is never shown here, and a
+   "week N opponent" chip never names a week other than the one on screen.
 ============================================================ */
 
 /* The wire card is a timeline entry, not an inline reader. Everything long-form
@@ -36519,28 +36661,45 @@ function renderDeskWire(){
      view would present 2026 copy as 2019 league coverage, and a reader only
      reaches another season by choosing it, so the wire is held back there.
 
-     It is deliberately NOT gated on the week, for the reason the League Blog
-     is not: the app's default landing week can legitimately sit behind the
-     week the league has rolled forward to (effectiveWeek() 2 while
-     currentLeagueWeek() reads 3 is an ordinary Tuesday). A week comparison
-     suppressed the wire on exactly the view a reader who has navigated
-     nowhere sees, which is where this feature is for. The card carries the
-     article's own publish date, so nothing is presented as the viewed week's
-     coverage.
-
      A gate that throws hides the wire: losing it costs a card, and guessing
-     wrong puts one season's copy under another's name. */
+     wrong puts one season's copy under another's name.
+
+     The WEEK gate is two separate things and both sit further down: the scope
+     handed to the engine just below this block, and the check on the article
+     that comes back. Neither can run here — one needs the season this gate
+     resolves, the other needs the article in hand. */
+  let wireSeason = 0;
   try{
     const viewed = Number(($('seasonYear').value || '').trim()) || 0;
     const active = (typeof NewsDesk !== 'undefined' && typeof NewsDesk.activeSeasonYear === 'function')
       ? Number(NewsDesk.activeSeasonYear())
       : (typeof uiActiveSeasonYear === 'function' ? Number(uiActiveSeasonYear()) : 0);
     if(viewed && active && viewed !== active){ hide(); return; }
+    wireSeason = viewed || active;
   }catch(err){
     console.warn('[FSNArticles] the desk-wire season gate failed; leaving the wire hidden rather than ' +
       'painting one season\u2019s copy under another\u2019s name.', err);
     hide();
     return;
+  }
+
+  /* NAME THE WEEK BEFORE READING ANYTHING.
+
+     This is what turns the week from a filter applied after the fact into the
+     query itself. The engine uses it twice: selectForSlot() picks the article
+     that belongs to this week rather than the newest of any week, and
+     readerContext() builds the roster context — the opponent mapping AND the
+     "week N opponent" label — for this week rather than for whatever week the
+     league has since rolled to. That second one is the half of the report about
+     a Week 4 opponent chip on a Week 3 card.
+
+     renderNews() calls this renderer before it asks the engine to refresh, so
+     the scope is always in place by the time a read goes out. */
+  const viewedWeek = Number(effectiveWeek()) || 0;
+  try{ FSNArticles.setViewWeek(viewedWeek, wireSeason); }
+  catch(err){
+    console.error('[FSNArticles] the desk wire could not scope the article feed to week ' + viewedWeek +
+      ' of ' + wireSeason + '; the feed falls back to the day-routed pick and the league\u2019s live week.', err);
   }
 
   const snapshot = FSNArticles.current();
@@ -36566,6 +36725,37 @@ function renderDeskWire(){
     hide();
     return;
   }
+
+  const slot = snapshot.slot || {};
+
+  /* THE WEEK GATE, second half.
+
+     The first half is in the engine: setViewWeek() above told it which week to
+     pick for, and selectForSlot() filtered the manifest on that. This is the
+     check that the article in hand actually belongs to the week about to be
+     painted — the same second-line-of-defence the League Blog keeps beside its
+     own server-side filter, and for the same reason.
+
+     It matters because the engine's state is shared and asynchronous. A read
+     started for week 4 can still be in flight when the reader scrubs to week 3,
+     and current() answers with whatever was settled last. Without this the card
+     would paint for a moment under the wrong heading, which is the whole defect
+     in miniature.
+
+     A week this cannot resolve (0 on either side) leaves the card alone.
+     Guessing is what produced the mismatch in the first place. */
+  const articleWeek = Number(FSNArticles.postWeek(snapshot.post, wireSeason)) || 0;
+  if(viewedWeek && articleWeek && articleWeek !== viewedWeek){
+    const why = 'the published ' + (slot.label || 'desk') + ' article is week ' + articleWeek +
+      ' copy and the screen is on week ' + viewedWeek;
+    if(why !== lastWireReason){
+      lastWireReason = why;
+      console.warn('[FSNArticles] the desk wire is showing nothing: ' + why +
+        '; a past week\u2019s story is never painted under another week\u2019s heading.');
+    }
+    hide();
+    return;
+  }
   lastWireReason = '';
 
   const view = FSNArticles.annotated();
@@ -36575,7 +36765,6 @@ function renderDeskWire(){
   if(!view || !view.post){ hide(); return; }
 
   const post = view.post;
-  const slot = snapshot.slot || {};
   const published = wirePublishLabel(post.publishDate);
   const contextHtml = wireContextLine(view, slot);
   const slotLabel = String(slot.label || 'From the Desk').toUpperCase();
@@ -37308,8 +37497,31 @@ function lbPaint(){
     return;
   }
 
-  /* 5. Neither feed has this league's own coverage for this week. Before
-     giving up the slot, stand league-wide editorial in its place.
+  /* 5. This league DOES publish, and this week's stories are not filed yet.
+
+     The section used to disappear here, which on the live week is the worst
+     of the three options: the reader who watched Week 3 fill up opens Week 4
+     on Tuesday and the League Blog is simply gone, with the desk wire above
+     it still carrying a dated banner. That is the shape the leak was reported
+     as — not a Week 3 story reprinted under a Week 4 heading, but a Week 4
+     screen that had no way of saying Week 4 had not started yet.
+
+     So the live week gets a placeholder that names itself and says when its
+     coverage lands, and it says so INSTEAD of standing anything else in its
+     place — including the league-wide editorial below, which is why this now
+     runs FIRST. A reader on Week 4 asked about Week 4: "Week 4 coverage
+     begins Friday" answers that question, and a league-wide column sitting
+     under the Week 4 scrubber does not, however honestly it is labelled. */
+  if(lbOnLiveWeek(view)){
+    const when = lbNextDropLabel();
+    label('WEEK ' + view.week);
+    notice('Week ' + view.week + ' coverage begins' + (when ? ' ' + when : ' shortly') +
+      '. Nothing has been filed for this week yet \u2014 the timeline below is already covering it.');
+    return;
+  }
+
+  /* 6. Not the live week, and neither feed has this league's own coverage for
+     it. Before giving up the slot, stand league-wide editorial in its place.
 
      This is the case a reader in a league with no recaps sees on every visit,
      and it is common: the pipeline publishes three mornings a week, and a
@@ -37324,27 +37536,6 @@ function lbPaint(){
   const globals = lbGlobalFallback(leagueWideSnap.articles || []);
   if(globals.length){
     show(globals, 'LEAGUE-WIDE', false);
-    return;
-  }
-
-  /* 6. This league DOES publish, and this week's stories are not filed yet.
-
-     The section used to disappear here, which on the live week is the worst
-     of the three options: the reader who watched Week 3 fill up opens Week 4
-     on Tuesday and the League Blog is simply gone, with the desk wire above
-     it still carrying a dated banner. That is the shape the leak was reported
-     as — not a Week 3 story reprinted under a Week 4 heading, but a Week 4
-     screen that had no way of saying Week 4 had not started yet.
-
-     So the live week gets a placeholder that names itself and says when its
-     coverage lands, and it says so INSTEAD of standing another week's stories
-     in its place. A finished week that was never covered is not waiting on
-     anything, so it keeps the old behaviour and gives the slot back. */
-  if(lbOnLiveWeek(view)){
-    const when = lbNextDropLabel();
-    label('WEEK ' + view.week);
-    notice('Week ' + view.week + ' coverage begins' + (when ? ' ' + when : ' shortly') +
-      '. Nothing has been filed for this week yet \u2014 the timeline below is already covering it.');
     return;
   }
 
