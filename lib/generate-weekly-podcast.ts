@@ -93,12 +93,42 @@ export type PodcastRunStatus = 'created' | 'skipped' | 'failed';
 
 export type PodcastFailureReason =
   | 'ESPN_AUTH'
+  /** The article for this league-week has not published yet, so there is no
+   *  `blog_articles` payload to narrate. The only reason that costs NOTHING:
+   *  it is raised before ESPN, before ElevenLabs and before Storage, which is
+   *  what makes it the only one safe to retry automatically. See
+   *  RETRYABLE_PODCAST_FAILURES. */
+  | 'ARTICLE_NOT_READY'
   | 'NO_MATCHUP_DATA'
   | 'EMPTY_SCRIPT'
   | 'TTS'
   | 'STORAGE'
   | 'TIMEOUT'
   | 'OTHER';
+
+/* ---- WHICH FAILURES MAY BE RETRIED WITHOUT A HUMAN ----
+ *
+ * `leaguesAlreadyRecorded()` counts a `podcast_episodes` row in ANY status,
+ * `failed` included, and that is deliberate: an ambiguous provider or storage
+ * failure may already have been billed and an automatic retry would bill again.
+ *
+ * ARTICLE_NOT_READY is the one failure where that reasoning does not hold. It
+ * is raised by the payload read at the very top of buildLeagueEpisode, before
+ * any external call, so nothing was spent and nothing was written anywhere but
+ * the claim row itself. Leaving a `failed` row behind for it turns a run that
+ * merely arrived early into a whole week with no episode for that league,
+ * recoverable only by a manual forced catch-up that DOES re-bill. So the claim
+ * is released instead of being marked, and the next run finds the league with
+ * no row and picks it up.
+ *
+ * The run still counts it in `failed` and still exits non-zero: arriving before
+ * the article is a real fault worth a red run, it is just not a fault that
+ * should cost the league its week. */
+export const RETRYABLE_PODCAST_FAILURES: readonly PodcastFailureReason[] = ['ARTICLE_NOT_READY'];
+
+export function podcastFailureIsRetryable(reason: PodcastFailureReason | null | undefined): boolean {
+  return !!reason && RETRYABLE_PODCAST_FAILURES.indexOf(reason) !== -1;
+}
 
 export interface PodcastLeagueResult {
   league_id: string;
@@ -781,6 +811,10 @@ export function classifyPodcastFailure(err: any): PodcastFailureReason {
   const status = Number(err && err.status);
   const message = String((err && err.message) || '');
   if (status === 401 || status === 403 || /cookie|unauthor|forbidden/i.test(message)) return 'ESPN_AUTH';
+  /* Before NO_MATCHUP_DATA, which this message would otherwise never reach but
+     which describes a different fault: there IS a week to narrate, the article
+     that evaluates it simply has not been written yet. */
+  if (/no news payload in blog_articles/i.test(message)) return 'ARTICLE_NOT_READY';
   if (/no matchups|NO_MATCHUP|empty box score/i.test(message)) return 'NO_MATCHUP_DATA';
   if (/abort|timeout|timed out/i.test(message)) return 'TIMEOUT';
   if (/elevenlabs|voice|synthes|mp3/i.test(message)) return 'TTS';
@@ -1263,36 +1297,77 @@ export async function runWeeklyPodcastCron(
          lands on `failed`: an ambiguous provider or storage failure may already
          have been billed, and an automatic retry next Tuesday would bill
          again. */
-      const restore = claim && claim.mode === 'regenerated' && claim.previous
-        ? {
-            status: claim.previous.status,
-            episode: claim.previous.episode,
-            audio_url: claim.previous.audio_url,
-            updated_at: new Date(now()).toISOString(),
-          }
-        : { status: 'failed', updated_at: new Date(now()).toISOString() };
-      if (restore.status !== 'failed') {
+      /* ---- A FAILURE THAT SPENT NOTHING RELEASES ITS CLAIM ----
+         The one reason that cannot have been billed is ARTICLE_NOT_READY: the
+         payload read raises it before ESPN, before ElevenLabs and before
+         Storage. Marking the claim `failed` would be counted by
+         leaguesAlreadyRecorded() on every later run this week, so a podcast run
+         that merely arrived before the article run — GitHub queues scheduled
+         workflows independently, which is why generate-weekly-podcast.yml waits
+         on the article run before it POSTs — would leave the league no episode
+         at all until someone dispatched a forced catch-up that re-bills. Delete
+         the claim instead: the next run sees no row and picks the league up.
+
+         Only for a first-time claim. A forced regeneration has an episode the
+         league is being served right now and that one is restored below,
+         untouched by this. */
+      const releasable = podcastFailureIsRetryable(reason) &&
+        !(claim && claim.mode === 'regenerated' && claim.previous);
+      if (releasable) {
         console.warn(
-          '[PodcastCron] restoring league ' + leagueId + ' week ' + week + ' to its previous "' +
-            restore.status + '" episode: the forced regeneration failed and the league keeps the ' +
-            'episode it already had.',
+          '[PodcastCron] releasing the claim on league ' + leagueId + ' week ' + week +
+            ' (' + reason + '): nothing was spent, so the league stays retryable and the next ' +
+            'run will pick it up without a forced catch-up.',
         );
-      }
-      try {
-        const marked = await db
-          .from('podcast_episodes')
-          .update(restore)
-          .eq('league_id', leagueId)
-          .eq('season', season)
-          .eq('week', week)
-          .eq('status', 'generating');
-        if (marked.error) throw marked.error;
-      } catch (markErr) {
-        console.error(
-          '[PodcastCron] could not mark league ' + leagueId + ' week ' + week + ' as failed; the row ' +
-            'may sit in "generating" until the interactive path\'s ten-minute staleness sweep clears it.',
-          markErr,
-        );
+        try {
+          const released = await db
+            .from('podcast_episodes')
+            .delete()
+            .eq('league_id', leagueId)
+            .eq('season', season)
+            .eq('week', week)
+            .eq('status', 'generating');
+          if (released.error) throw released.error;
+        } catch (releaseErr) {
+          console.error(
+            '[PodcastCron] could not release the claim on league ' + leagueId + ' week ' + week +
+              '; the row may sit in "generating" until the interactive path\'s ten-minute ' +
+              'staleness sweep clears it, and until then this league is skipped as already recorded.',
+            releaseErr,
+          );
+        }
+      } else {
+        const restore = claim && claim.mode === 'regenerated' && claim.previous
+          ? {
+              status: claim.previous.status,
+              episode: claim.previous.episode,
+              audio_url: claim.previous.audio_url,
+              updated_at: new Date(now()).toISOString(),
+            }
+          : { status: 'failed', updated_at: new Date(now()).toISOString() };
+        if (restore.status !== 'failed') {
+          console.warn(
+            '[PodcastCron] restoring league ' + leagueId + ' week ' + week + ' to its previous "' +
+              restore.status + '" episode: the forced regeneration failed and the league keeps the ' +
+              'episode it already had.',
+          );
+        }
+        try {
+          const marked = await db
+            .from('podcast_episodes')
+            .update(restore)
+            .eq('league_id', leagueId)
+            .eq('season', season)
+            .eq('week', week)
+            .eq('status', 'generating');
+          if (marked.error) throw marked.error;
+        } catch (markErr) {
+          console.error(
+            '[PodcastCron] could not mark league ' + leagueId + ' week ' + week + ' as failed; the row ' +
+              'may sit in "generating" until the interactive path\'s ten-minute staleness sweep clears it.',
+            markErr,
+          );
+        }
       }
     }
 

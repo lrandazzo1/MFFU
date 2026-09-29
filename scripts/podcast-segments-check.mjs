@@ -479,6 +479,10 @@ function makeDb(options = {}) {
       limit() { return q.run(); },
       insert(v) { action = 'insert'; value = v; return q.run(); },
       update(v) { action = 'update'; value = v; return q; },
+      /* The claim release on a failure that spent nothing. PostgREST returns a
+         builder from .delete() the same way it does from .update(), so the
+         filters that follow have to keep chaining. */
+      delete() { action = 'delete'; return q; },
       then(resolve, reject) { return q.run().then(resolve, reject); },
       /* `.not('share_token', 'is', null)` on the authorization read. The double
          never stores a null token, so there is nothing to filter. */
@@ -511,6 +515,9 @@ function makeDb(options = {}) {
              ESPN. Keyed on the league-week asked for. */
           const week = Number(filters.week);
           if (!Number.isFinite(week)) return { data: [], error: null };
+          /* The morning the podcast run arrives before the article run: the
+             league-week has no row at all yet. */
+          if (options.noArticleRows) return { data: [], error: null };
           const row = newsPayload(week);
           return { data: [{ league_id: filters.league_id, season: Number(filters.season),
             week, headline: row.headline, title: row.headline,
@@ -529,6 +536,17 @@ function makeDb(options = {}) {
           const row = episodes.get(key);
           if (row && (!filters.status || row.status === filters.status)) {
             Object.assign(row, value);
+            return { data: row, error: null };
+          }
+          return { data: null, error: null };
+        }
+        if (action === 'delete') {
+          const key = `${filters.league_id}:${filters.season}:${filters.week}`;
+          const row = episodes.get(key);
+          /* The status filter is the whole safety of the release: it may only
+             remove the claim THIS run took, never a playable episode. */
+          if (row && (!filters.status || row.status === filters.status)) {
+            episodes.delete(key);
             return { data: row, error: null };
           }
           return { data: null, error: null };
@@ -1585,31 +1603,12 @@ check('vercel.json stays inside the plan’s two cron slots', () => {
   );
 });
 
-check('the Tuesday schedule exists and fires on Tuesday morning UTC', () => {
-  const workflow = readFileSync(join(root, '.github/workflows/generate-weekly-podcast.yml'), 'utf8');
-  const cron = (workflow.match(/cron:\s*'([^']+)'/) || [])[1] || '';
-  const [minute, hour, dom, month, dow] = cron.split(/\s+/);
-  assert.equal(dow, '2', 'the weekly recap must run on a Tuesday; the schedule says "' + cron + '"');
-  assert.equal(dom, '*', 'the schedule is pinned to a day of the month: "' + cron + '"');
-  assert.equal(month, '*', 'the schedule is pinned to a month: "' + cron + '"');
-  assert.equal(minute, '0', 'the schedule does not fire on the hour: "' + cron + '"');
-  /* Morning, and after the Monday night final: 05:00-11:00 UTC is midnight to
-     06:00 ET. Anything earlier is still Monday night football. */
-  const h = Number(hour);
-  assert.ok(Number.isInteger(h) && h >= 5 && h <= 11,
-    'the Tuesday run fires at ' + hour + ':00 UTC, which is not Tuesday morning after MNF');
-  /* And after the Tuesday ARTICLE run, which writes the blog_articles row this
-     episode narrates. Ahead of it, readNewsPayload() finds nothing and every
-     league is skipped — a silent no-op that costs a week to notice. */
-  const articles = readFileSync(join(root, '.github/workflows/generate-articles.yml'), 'utf8');
-  const articleTuesday = (articles.match(/cron:\s*'0 (\d+) \* \* 2'/) || [])[1];
-  assert.ok(articleTuesday != null, 'the article workflow has no Tuesday schedule to order against');
-  assert.ok(h > Number(articleTuesday),
-    'the podcast runs at ' + h + ':00 UTC but the Tuesday article it narrates runs at ' +
-      articleTuesday + ':00 UTC. Ahead of the article there is no payload and every league is skipped.');
-  assert.match(workflow, /generate-weekly-podcast/, 'the workflow does not call the route');
-  assert.match(workflow, /CRON_SECRET/, 'the workflow does not present CRON_SECRET');
-});
+/* The Tuesday schedule, the margin it leaves after the article run and the gate
+   that actually orders the two are asserted together under THE TUESDAY
+   EXECUTION ORDER, near the end of this file. This check used to live here and
+   required minute 0, which is the minute a queued run is most likely to be late
+   on; it read only the FIRST cron entry in each file, and it compared whole
+   hours, so it certified an ordering GitHub's scheduler does not provide. */
 
 /* ------------------------------------------------------------------ *
  * THE WEEK A SCHEDULED RUN RECAPS
@@ -1741,6 +1740,210 @@ check('a manual dispatch defaults to a dry run, and only the schedule is live', 
     'an unrecognised mode does not fall back to a dry run');
   assert.match(workflowRaw, /Dry run was not honoured/,
     'the workflow does not verify the route actually honoured the dry run');
+});
+
+/* ------------------------------------------------------------------ *
+ * ARRIVING BEFORE THE ARTICLE RUN
+ *
+ * The Tuesday podcast run narrates the `blog_articles` row the Tuesday ARTICLE
+ * run writes two hours earlier. GitHub queues scheduled workflows and starts
+ * them late under load, per workflow and independently, so the schedule alone
+ * does not order the two — generate-weekly-podcast.yml waits on the article run
+ * for that reason, and these assertions cover what happens when a league still
+ * has no row: on a per-league ESPN cookie failure in the article run, or on the
+ * morning the gate is bypassed by a manual dispatch.
+ *
+ * The rule: a failure that spent nothing must not cost the league its week.
+ * `leaguesAlreadyRecorded()` counts a row in ANY status, so a `failed` row left
+ * behind here is skipped by every later run and only a forced catch-up — which
+ * re-bills — recovers it.
+ * ------------------------------------------------------------------ */
+
+const notReadyDb = makeDb({ noArticleRows: true });
+const notReady = await withEnv({ PODCAST_TARGET_WEEK: '2', ELEVENLABS_API_KEY: 'k' }, () =>
+  cron.runWeeklyPodcastCron({ season: 2026, week: 2, run_id: 'before-the-article' }, deps(notReadyDb)));
+
+check('a league whose article has not published yet fails as ARTICLE_NOT_READY', () => {
+  assert.equal(notReady.created, 0, 'an episode was minted with no article to narrate');
+  assert.ok(notReady.failed > 0, 'a missing article payload was not reported as a failure');
+  assert.equal(notReady.failed_by_reason.ARTICLE_NOT_READY, notReady.failed,
+    'the missing payload was classified as something else: ' + JSON.stringify(notReady.failed_by_reason));
+  for (const result of notReady.results) {
+    assert.equal(result.status, 'failed');
+    assert.equal(result.failure_reason, 'ARTICLE_NOT_READY');
+  }
+});
+
+check('the run still exits non-zero for it — arriving early is a real fault', () => {
+  /* The workflow keys its exit on summary.failed. Downgrading this to a skip
+     would make the whole class of defect silent, which is how a week goes by
+     unnoticed. It stays loud AND stays retryable; those are not in tension. */
+  assert.ok(notReady.failed > 0);
+  assert.equal(notReady.skipped, 0, 'a missing article was quietly counted as a skip');
+});
+
+check('it leaves NO row behind, so the next run picks the league up without force', () => {
+  assert.equal(notReadyDb._episodes.size, 0,
+    'the claim was marked instead of released: ' + JSON.stringify([...notReadyDb._episodes.values()]) +
+      '. leaguesAlreadyRecorded() counts a row in any status, so every later run this week ' +
+      'skips these leagues and only a forced catch-up recovers them.');
+});
+
+check('nothing was spent on it: no synthesis, no upload', () => {
+  assert.equal(notReadyDb._uploads.size, 0, 'an MP3 was uploaded for a league with no article');
+});
+
+check('the ledger still records the attempt, so a quiet morning is diagnosable', () => {
+  assert.ok(notReadyDb._runs.length > 0, 'no podcast_episode_runs row was written');
+  assert.ok(notReadyDb._runs.every((r) => r && r.failure_reason === 'ARTICLE_NOT_READY'),
+    'the ledger did not carry the reason: ' + JSON.stringify(notReadyDb._runs));
+});
+
+check('a retry once the article has landed succeeds, with no force and no week pin', () => {
+  /* The point of releasing the claim. Same season, same week, same leagues. */
+  assert.equal(notReadyDb._episodes.size, 0);
+});
+const afterArticle = await withEnv({ PODCAST_TARGET_WEEK: '2', ELEVENLABS_API_KEY: 'k' }, () =>
+  cron.runWeeklyPodcastCron({ season: 2026, week: 2, run_id: 'after-the-article' },
+    deps(makeDb({ episodes: [...notReadyDb._episodes] }))));
+check('the same week regenerates cleanly on the next run', () => {
+  assert.ok(afterArticle.created > 0, 'the retry created nothing: ' + JSON.stringify(afterArticle.results));
+  assert.equal(afterArticle.failed, 0, JSON.stringify(afterArticle.results));
+});
+
+/* ---- and the non-regression half: a failure that MAY have been billed still
+   poisons the week on purpose, so an automatic retry cannot bill twice. ---- */
+const billedDb = makeDb();
+const billed = await withEnv({ PODCAST_TARGET_WEEK: '2', ELEVENLABS_API_KEY: 'k' }, () =>
+  cron.runWeeklyPodcastCron({ season: 2026, week: 2, run_id: 'tts-down' },
+    deps(billedDb, { synthesize: async () => { throw new Error('ElevenLabs returned 500'); } })));
+
+check('a provider failure is NOT released — it may already have been billed', () => {
+  assert.ok(billed.failed > 0, 'the provider failure was not reported');
+  assert.equal(billed.failed_by_reason.TTS, billed.failed, JSON.stringify(billed.failed_by_reason));
+  assert.equal(billedDb._episodes.size, billed.failed,
+    'the claim was released for a billable failure, so next week’s run would bill again');
+  assert.ok([...billedDb._episodes.values()].every((r) => r.status === 'failed'),
+    'a billable failure did not land on "failed": ' + JSON.stringify([...billedDb._episodes.values()]));
+});
+
+check('podcastFailureIsRetryable() names exactly the reason that spends nothing', () => {
+  assert.deepEqual([...cron.RETRYABLE_PODCAST_FAILURES], ['ARTICLE_NOT_READY']);
+  assert.equal(cron.podcastFailureIsRetryable('ARTICLE_NOT_READY'), true);
+  for (const reason of ['ESPN_AUTH', 'NO_MATCHUP_DATA', 'EMPTY_SCRIPT', 'TTS', 'STORAGE', 'TIMEOUT', 'OTHER']) {
+    assert.equal(cron.podcastFailureIsRetryable(reason), false, reason + ' was made retryable');
+  }
+  assert.equal(cron.podcastFailureIsRetryable(null), false);
+});
+
+check('the message the payload read raises is the one the classifier keys on', () => {
+  /* The two are in the same module and could drift apart silently: the
+     classifier matches on prose. If the throw is reworded, this fails here
+     rather than in production, where the reward is a poisoned week. */
+  const raised = new Error('No news payload in blog_articles for 100001/2026/w2; the article ' +
+    'for this league-week has not published yet');
+  assert.equal(cron.classifyPodcastFailure(raised), 'ARTICLE_NOT_READY');
+  const source = readFileSync(join(root, 'lib/generate-weekly-podcast.ts'), 'utf8');
+  assert.match(source, /No news payload in blog_articles for/,
+    'the throw was reworded; classifyPodcastFailure() matches on its prose');
+});
+
+/* ------------------------------------------------------------------ *
+ * THE TUESDAY EXECUTION ORDER
+ *
+ * Two independent GitHub Actions schedules, and the podcast one reads what the
+ * article one writes. The nominal gap widens the odds; the `article-gate` job is
+ * the only thing that actually orders them. Both are asserted, because the gap
+ * alone was what used to be relied on and it was not enough.
+ * ------------------------------------------------------------------ */
+
+const podcastWorkflowRaw = readFileSync(join(root, '.github/workflows/generate-weekly-podcast.yml'), 'utf8');
+const articleWorkflowRaw = readFileSync(join(root, '.github/workflows/generate-articles.yml'), 'utf8');
+/* Statements only, both files: the comment blocks quote the schedules they
+   explain, and matching those would compare the explanation against itself. */
+const statementsOf = (raw) => raw.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+const podcastWorkflow = statementsOf(podcastWorkflowRaw);
+const articleWorkflow = statementsOf(articleWorkflowRaw);
+
+/** Every `- cron: '...'` entry, as minutes-past-Sunday-midnight per weekday. */
+const tuesdaySchedules = (yaml) => {
+  const out = [];
+  for (const m of yaml.matchAll(/-\s*cron:\s*'([^']+)'/g)) {
+    const [minute, hour, dom, month, dow] = m[1].trim().split(/\s+/);
+    if (dow !== '2') continue;
+    out.push({ cron: m[1].trim(), minute: Number(minute), hour: Number(hour), dom, month,
+      atMinute: Number(hour) * 60 + Number(minute) });
+  }
+  return out;
+};
+
+const podcastTuesdays = tuesdaySchedules(podcastWorkflow);
+const articleTuesdays = tuesdaySchedules(articleWorkflow);
+
+check('the podcast has exactly one Tuesday schedule, on Tuesday morning UTC', () => {
+  /* Exactly one, and read from ALL the entries rather than the first match: a
+     second slot added later would otherwise be ordered against nothing. */
+  assert.equal(podcastTuesdays.length, 1,
+    'expected one Tuesday podcast schedule, found ' + JSON.stringify(podcastTuesdays.map((c) => c.cron)));
+  const [slot] = podcastTuesdays;
+  assert.equal(slot.dom, '*', 'the schedule is pinned to a day of the month: "' + slot.cron + '"');
+  assert.equal(slot.month, '*', 'the schedule is pinned to a month: "' + slot.cron + '"');
+  /* Morning, and after the Monday night final: 05:00-11:00 UTC is midnight to
+     06:00 ET. Anything earlier is still Monday night football. */
+  assert.ok(Number.isInteger(slot.hour) && slot.hour >= 5 && slot.hour <= 11,
+    'the Tuesday run fires at ' + slot.hour + ':00 UTC, which is not Tuesday morning after MNF');
+  assert.match(podcastWorkflow, /generate-weekly-podcast/, 'the workflow does not call the route');
+  assert.match(podcastWorkflow, /CRON_SECRET/, 'the workflow does not present CRON_SECRET');
+});
+
+check('the podcast leaves a wide nominal margin after the Tuesday article run', () => {
+  assert.ok(articleTuesdays.length >= 1, 'the article workflow has no Tuesday schedule to order against');
+  /* The LAST article slot of the day, not the first: an added afternoon slot
+     must not be allowed to drift behind the podcast unnoticed. */
+  const article = articleTuesdays.reduce((a, b) => (b.atMinute > a.atMinute ? b : a));
+  const [podcastSlot] = podcastTuesdays;
+  const margin = podcastSlot.atMinute - article.atMinute;
+  /* 90 minutes is not a guarantee — the gate below is — but it is wide enough
+     that an ordinary queueing delay does not consume it. A one-hour gap was
+     what the ordering used to rest on, and it was not. */
+  assert.ok(margin >= 90,
+    'the podcast fires ' + margin + ' minutes after the Tuesday article run ("' + article.cron +
+      '" then "' + podcastSlot.cron + '"). GitHub starts scheduled workflows late and per ' +
+      'workflow, so a narrow gap does not order them: leave at least 90 minutes.');
+  /* Minute 0 is the most contended minute of the hour and the one most likely
+     to arrive late — generate-editorial.yml moved four of its five schedules
+     off it for exactly this reason. */
+  assert.notEqual(podcastSlot.minute, 0,
+    'the Tuesday podcast run is on minute 0, the most contended minute of the hour and the one ' +
+      'most likely to be queued late. Move it off the hour, as generate-editorial.yml does.');
+});
+
+check('the podcast WAITS for the article run rather than trusting the gap', () => {
+  assert.match(podcastWorkflow, /^\s{2}article-gate:/m,
+    'the article-gate job is gone. Without it the two schedules are ordered by nothing but hope: ' +
+      'a podcast run that arrives first narrates the MONDAY row — a preview of a week that has ' +
+      'not been played — and idempotency locks that in for the whole week.');
+  assert.match(podcastWorkflow, /needs:\s*article-gate/,
+    'the record job does not depend on article-gate, so the gate orders nothing');
+  assert.match(podcastWorkflow, /actions:\s*read/,
+    'the gate cannot read this repository’s workflow runs without actions: read');
+  assert.match(podcastWorkflow, /generate-articles\.yml\/runs/,
+    'the gate does not look at the article workflow’s runs');
+  assert.match(podcastWorkflow, /event=schedule/,
+    'the gate would accept a workflow_dispatch backfill of an older week as this morning’s run');
+  /* A rehearsal, a dry run or a catch-up names its own week and must not sit
+     behind this morning's article run. */
+  assert.match(podcastWorkflow, /EVENT_NAME[^\n]*!=\s*"schedule"/,
+    'the gate does not let a manual dispatch through, so every rehearsal waits on the schedule');
+  /* And it must give up rather than hold a runner all day. */
+  assert.match(podcastWorkflow, /WAIT_SECONDS/, 'the gate has no wait budget and could poll forever');
+});
+
+check('the article and podcast runs cannot be reordered by editing one file only', () => {
+  /* Both halves of the ordering are named in the podcast workflow, so whoever
+     moves either schedule is reading the reason. */
+  assert.match(podcastWorkflowRaw, /generate-articles\.yml/,
+    'the podcast workflow no longer names the article workflow it depends on');
 });
 
 console.log(
