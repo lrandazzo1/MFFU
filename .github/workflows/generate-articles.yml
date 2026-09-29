@@ -50,6 +50,13 @@ on:
         description: Week override for a backfill. Leave blank for the live week.
         type: string
         required: false
+      force_rerun:
+        description: >-
+          Re-attempt the leagues whose last recorded outcome for this season,
+          week and day was a failure. Use it after fixing a league's expired
+          ESPN cookies. Leagues that published cleanly are still skipped.
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -92,6 +99,7 @@ jobs:
           DRY_RUN: ${{ inputs.dry_run && '1' || '0' }}
           SEASON: ${{ inputs.season }}
           WEEK: ${{ inputs.week }}
+          FORCE_RERUN: ${{ inputs.force_rerun && '1' || '0' }}
         run: |
           set -euo pipefail
           if [ -z "${CRON_SECRET:-}" ]; then
@@ -102,6 +110,9 @@ jobs:
           url="${BASE_URL%/}/api/cron/generate-articles?day=${DAY}&dry_run=${DRY_RUN}"
           [ -n "${SEASON:-}" ] && url="${url}&season=${SEASON}"
           [ -n "${WEEK:-}" ] && url="${url}&week=${WEEK}"
+          # Only ever sent when a human asked for it: the scheduled runs leave
+          # inputs empty, so this resolves to 0 and the URL is unchanged.
+          [ "${FORCE_RERUN:-0}" = '1' ] && url="${url}&force_rerun=1"
 
           # The secret is passed as a header, never in the URL, so it stays out
           # of access logs and out of this job's own echoed command line.
@@ -124,7 +135,8 @@ jobs:
           failed=$(jq -r '.failed // 0' response.json)
           created=$(jq -r '.created // 0' response.json)
           skipped=$(jq -r '.skipped // 0' response.json)
-          echo "created=$created skipped=$skipped failed=$failed"
+          forced=$(jq -r '.forced // 0' response.json)
+          echo "created=$created skipped=$skipped failed=$failed forced=$forced"
           echo "### ${DAY}: $created created, $skipped skipped, $failed failed" >> "$GITHUB_STEP_SUMMARY"
 
           if [ "$failed" != "0" ]; then
