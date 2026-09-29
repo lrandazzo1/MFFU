@@ -49,8 +49,9 @@
    rather than "everything".
 
    `season` and `week` narrow by the source slate. The News Desk instead sends
-   `display_week`: Monday/Tuesday recaps from Week N appear on Week N+1, while
-   other articles stay on Week N. With neither, the league's most recent
+   `display_week`: a Tuesday verdict from Week N appears on Week N+1, while
+   other articles — the Monday sweat included, because its Monday night game
+   has not been played yet — stay on Week N. With neither, the league's most recent
    articles come back newest first, which is what a blog index wants.
 
    ---- THE ACTIVE READ ----
@@ -130,12 +131,23 @@ const CATEGORY_BY_TYPE = {
 };
 
 const DEFAULT_AUTHOR = 'FSN News Desk';
-const RECAP_TYPES = ['monday_sweat', 'tuesday_verdict'];
+
+/* The types that anchor the FOLLOWING week's feed, and only those.
+   `tuesday_verdict` is filed the morning after the Monday night final, so by
+   the time it exists its slate is complete and it reads as last week's story:
+   Week N's verdict belongs on Week N+1.
+   `monday_sweat` is NOT one of them, deliberately. It is filed Monday morning
+   while Week N is still being played — it recaps the Sunday slate and previews
+   that night's MNF game, which is a Week N game nobody has seen yet. An
+   in-progress story rolled forward would appear under the next week's heading
+   while its own games were still on, so it stays on the week whose games it
+   is describing. Same for every other type: they stay on their source week. */
+const NEXT_WEEK_TYPES = ['tuesday_verdict'];
 
 function displayWeek(row) {
   const week = Number(row && row.week);
   if (!Number.isInteger(week) || week < 1) return null;
-  return week + (RECAP_TYPES.includes(String(row.article_type || '')) ? 1 : 0);
+  return week + (NEXT_WEEK_TYPES.includes(String(row.article_type || '')) ? 1 : 0);
 }
 
 const DEFAULT_LIMIT = 10;
@@ -365,14 +377,15 @@ async function handler(req, res) {
     if (scope.season != null) query = query.eq('season', scope.season);
     if (scope.week != null) query = query.eq('week', scope.week);
     if (scope.display_week != null) {
-      /* `week` is the slate being described. Recaps are filed on the next
-         week's wire; other articles stay with their source week. Apply this
+      /* `week` is the slate being described. Tuesday verdicts are filed on the
+         next week's wire; every other type, the Monday sweat included, stays
+         with its source week because its slate is not finished. Apply this
          before ordering/limiting so a busy prior week cannot crowd out the
          selected week's articles. Both numbers are validated integers. */
-      const recapTypes = '(' + RECAP_TYPES.join(',') + ')';
-      const current = 'and(week.eq.' + scope.display_week + ',article_type.not.in.' + recapTypes + ')';
+      const nextWeekTypes = '(' + NEXT_WEEK_TYPES.join(',') + ')';
+      const current = 'and(week.eq.' + scope.display_week + ',article_type.not.in.' + nextWeekTypes + ')';
       const prior = scope.display_week > 1
-        ? ',and(week.eq.' + (scope.display_week - 1) + ',article_type.in.' + recapTypes + ')'
+        ? ',and(week.eq.' + (scope.display_week - 1) + ',article_type.in.' + nextWeekTypes + ')'
         : '';
       query = query.or(current + prior);
     }

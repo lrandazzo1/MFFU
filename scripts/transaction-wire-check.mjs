@@ -77,8 +77,39 @@ try{
   assert.ok(requests.some(r=>r.method==='GET'));
   assert.ok(requests.some(r=>r.method==='POST'));
   assert.match(await page.locator('#transactionWireStatus').textContent(),/Live roster updates are shown/);
-  if(await page.getAttribute('#profilePicker','data-open')==='true')await page.click('#profileGuest');
-  await page.click('[data-tab="news"]');
+  /* maybeShowFtu() opens the first-run walkthrough on a 450ms timer after boot,
+     so a single check here races it: the picker can be shut when asked and the
+     FTU modal open by the time the tab is clicked, and its backdrop then eats
+     every click for the rest of the run. Poll both overlays until the screen is
+     actually clear, as scripts/league-blog-check.mjs and the other browser
+     checks already do. */
+  for(let attempt=0;attempt<12;attempt++){
+    const open=await page.evaluate(()=>({
+      profile:(document.getElementById('profilePicker')||{}).dataset?.open==='true',
+      ftu:(document.getElementById('ftuModal')||{}).dataset?.open==='true',
+    }));
+    if(!open.profile&&!open.ftu){
+      /* Two clean passes: the FTU timer may not have fired yet. */
+      await page.waitForTimeout(400);
+      const still=await page.evaluate(()=>({
+        profile:(document.getElementById('profilePicker')||{}).dataset?.open==='true',
+        ftu:(document.getElementById('ftuModal')||{}).dataset?.open==='true',
+      }));
+      if(!still.profile&&!still.ftu) break;
+    }
+    if(open.profile) await page.click('#profileGuest');
+    else if(open.ftu) await page.click('#ftuSkip');
+    await page.waitForTimeout(400);
+  }
+  /* Setup is a full-screen takeover at z-index 85 and the tab bar sits at 60,
+     so while it is open every tab click lands on the Setup card instead.
+     Seeding LeagueData directly does not close it the way connecting a league
+     does, so close it the way a reader would. */
+  if(await page.getAttribute('.screen[data-screen="setup"]','data-active')==='true'){
+    await page.click('#setupClose');
+    await page.waitForTimeout(500);
+  }
+  await page.click('#tabBar .tab-btn[data-tab="news"]');
   await page.waitForTimeout(200);
   // The actual feed opens the backend-created article using the usual reader.
   const row = page.locator('[data-article="'+article.id+'"]:visible').first();

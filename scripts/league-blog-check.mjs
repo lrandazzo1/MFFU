@@ -157,15 +157,20 @@ const ACTIVE_ARTICLE = {
   ],
 };
 
+/* A pre-three-tier row, and a Monday sweat, so this fixture also carries the
+   in-progress side of the week-routing rule: its `week` is the week it is
+   painted under, because a sweat previews that night's MNF game and therefore
+   belongs to the week still being played. (The Tuesday verdict above is the
+   other side: filed for week 1, painted on week 2.) The view is on week 2. */
 const LEGACY_ARTICLE = {
-  slug: '2026-week-1-monday-sweat-777777',
-  title: 'Monday Sweat: Week 1',
+  slug: '2026-week-2-monday-sweat-777777',
+  title: 'Monday Sweat: Week 2',
   excerpt: 'Before the late window.',
-  content_markdown: '# Monday Sweat: Week 1\n\nOne **legacy** paragraph.\n',
+  content_markdown: '# Monday Sweat: Week 2\n\nOne **legacy** paragraph.\n',
   article_type: 'monday_sweat',
   season: 2026,
-  week: 1,
-  published_at: '2026-09-14T13:00:00.000Z',
+  week: 2,
+  published_at: '2026-09-21T13:00:00.000Z',
   tracked_players: [],
 };
 
@@ -231,8 +236,11 @@ function startServer() {
         }
         if (season != null) rows = rows.filter((row) => Number(row.season) === Number(season));
         if (week != null) rows = rows.filter((row) => Number(row.week) === Number(week));
+        /* Only a Tuesday verdict anchors the following week; a Monday sweat
+           is still describing a week in progress, so it stays put. Mirrors
+           NEXT_WEEK_TYPES in api/blog/articles.js. */
         if (displayWeek != null) rows = rows.filter((row) => Number(row.week) +
-          (row.article_type === 'monday_sweat' || row.article_type === 'tuesday_verdict' ? 1 : 0) === Number(displayWeek));
+          (row.article_type === 'tuesday_verdict' ? 1 : 0) === Number(displayWeek));
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
           league_id,
@@ -559,7 +567,7 @@ try {
   await page.waitForTimeout(600);
 
   expect(await page.getAttribute('#leagueBlogWrap', 'hidden'), null, 'a legacy article still shows the section');
-  expect(await page.textContent('.lb-title'), 'Monday Sweat: Week 1',
+  expect(await page.textContent('.lb-title'), 'Monday Sweat: Week 2',
     'a legacy headline falls back to the title');
   truthy((await page.textContent('.lb-md')).includes('legacy'), 'a legacy body falls back to content_markdown');
   /* The generator opens every body with `# <title>`, and the headline now sits
@@ -577,6 +585,32 @@ try {
     'a legacy article gets the shelf its article type belongs to');
   truthy((await page.textContent('.lb-meta')).includes('FSN News Desk'),
     'a legacy article gets the default byline');
+
+  /* ---- 5b-ii. WEEK ROUTING: in-progress stays, verdict anchors ------- */
+  /* The rule, asserted against the running app rather than a copy of it.
+     fsnArticleDisplayWeek is a block 1 global, so page.evaluate reaches the
+     same function the feed filter calls. A Monday sweat is written while its
+     week is still being played — it previews that night's MNF game — so it
+     stays on its source week; a Tuesday verdict is written once that slate is
+     final, so it anchors the next one. */
+  const routed = await page.evaluate(() => {
+    const at = (article_type, week) => window.fsnArticleDisplayWeek({ article_type, week });
+    return {
+      sweat: at('monday_sweat', 3),
+      verdict: at('tuesday_verdict', 3),
+      tnf: at('friday_tnf_preview', 3),
+      noWeek: at('tuesday_verdict', 0),
+    };
+  });
+  expect(routed.sweat, 3, 'ROUTING: a week 3 Monday sweat shows on week 3, not week 4');
+  expect(routed.verdict, 4, 'ROUTING: a week 3 Tuesday verdict anchors week 4');
+  expect(routed.tnf, 3, 'ROUTING: every other type stays on its source week');
+  expect(routed.noWeek, null, 'ROUTING: a row with no usable week routes nowhere');
+
+  /* And the same rule through the painted card: the week 2 sweat above is on
+     screen right now under the week 2 heading, which the endpoint asked for. */
+  truthy(weekRequests().some((row) => row.display_week === '2'),
+    'ROUTING: the feed asked the endpoint for the week on screen');
 
   /* ---- 5c. WEEKFILTER: another week's story is never painted --------- */
   /* ACTIVE_ARTICLE is a WEEK 1 story and the view is on week 2. It is held out
