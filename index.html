@@ -10159,6 +10159,14 @@ window.FSN_ARTICLE_CATEGORY_BY_TYPE = {
 };
 window.FSN_ARTICLE_DEFAULT_AUTHOR = 'FSN News Desk';
 
+/* A recap's `week` stays the source slate for its scores and copy. Its feed
+   week is the following one; other article types stay on their source week. */
+function fsnArticleDisplayWeek(row){
+  const week = Number(row && row.week);
+  if(!Number.isInteger(week) || week < 1) return null;
+  return week + (row.article_type === 'monday_sweat' || row.article_type === 'tuesday_verdict' ? 1 : 0);
+}
+
 /* One row in, one card-ready article out, or null when the row carries no
    headline or no body under either naming. A blank card is worse than one
    fewer story, so the caller drops what comes back null. */
@@ -10191,6 +10199,7 @@ function fsnArticleTiers(row){
     tracked_players: Array.isArray(src.tracked_players) ? src.tracked_players : [],
     season: Number(src.season) || null,
     week: Number(src.week) || null,
+    display_week: fsnArticleDisplayWeek(src),
     published_at: src.published_at || null,
 
     /* 'league' or 'global', as the endpoint labelled it. Anything that is not
@@ -10234,7 +10243,7 @@ window.FSNLeagueArticles = (function(){
   'use strict';
 
   const ENDPOINT = '/api/blog/articles';
-  const CACHE_PREFIX = 'fsn_league_articles_v1:';
+  const CACHE_PREFIX = 'fsn_league_articles_v2:';
   /* A screen change is cheap to trigger and the pipeline publishes three
      times a week, so a cached scope is reused rather than re-fetched. */
   const FRESH_MS = 10 * 60 * 1000;
@@ -10271,7 +10280,7 @@ window.FSNLeagueArticles = (function(){
     return ENDPOINT +
       '?league_id=' + encodeURIComponent(scope.leagueId) +
       '&season=' + encodeURIComponent(scope.season) +
-      '&week=' + encodeURIComponent(scope.week) +
+      '&display_week=' + encodeURIComponent(scope.week) +
       '&limit=' + MAX_ARTICLES;
   }
 
@@ -10512,7 +10521,7 @@ window.FSNSupabaseArticles = (function(){
   'use strict';
 
   const ENDPOINT = '/api/blog/articles';
-  const CACHE_PREFIX = 'fsn_active_articles_v1:';
+  const CACHE_PREFIX = 'fsn_active_articles_v2:';
   /* The pipeline publishes three mornings a week, so a cached league is
      reused for ten minutes rather than re-read on every screen change. Same
      window as the week-scoped feed: the two are refreshed together and a
@@ -10538,13 +10547,12 @@ window.FSNSupabaseArticles = (function(){
      this module.
 
        WEEK-SCOPED   scopeOf(leagueId, week, season)
-         The read the News Desk paints from. The season and the week ride in
-         the query string, so the endpoint applies `.eq('season', ...)` and
-         `.eq('week', ...)` in the database and a row belonging to another week
-         never reaches the phone at all. The client-side filter in the renderer
+         The read the News Desk paints from. The season and display week ride
+         in the query string, so the endpoint filters them in the database.
+         A recap keeps its source week on the row but arrives in the following
+         week's feed. The client-side filter in the renderer
          stays as a second line of defence, but it is no longer the only one:
-         a feed ordered `published_at desc` across every week is exactly how a
-         week 3 recap ended up under a week 4 heading.
+         a feed ordered `published_at desc` across every week can mix slates.
 
          `include_global` is deliberately NOT sent on this read. League-wide
          editorial carries the week it was written in, not the week on screen,
@@ -10581,10 +10589,10 @@ window.FSNSupabaseArticles = (function(){
     if(scope.week == null){
       return base + '&include_global=1&limit=' + MAX_ARTICLES;
     }
-    /* The week read: one season, one week, this league only. */
+    /* The week read: one season and one display week, this league only. */
     return base +
       '&season=' + encodeURIComponent(scope.season) +
-      '&week=' + encodeURIComponent(scope.week) +
+      '&display_week=' + encodeURIComponent(scope.week) +
       '&limit=' + MAX_ARTICLES;
   }
 
@@ -36672,9 +36680,9 @@ document.addEventListener('click', (e)=>{
    Unlike the desk wire above, this feed needs NO season/week gate. The desk
    wire reads the root-domain blog, which publishes real-world NFL copy dated
    to today and would misrepresent itself if painted into a historical view.
-   Every article here is stored against an explicit league, season and week
-   and is requested by those three coordinates, so a Week 3 article is
-   correct on the Week 3 view and nowhere else by construction.
+   Every article here is stored against an explicit league, season and source
+   week. The read requests a display week: recaps of Week 3 belong on the
+   Week 4 view while their score and headline still refer to Week 3.
 
    Everything below this section — the lead story, the timeline, the topic
    bar — is the existing deterministic News Desk and is untouched. When the
@@ -37029,10 +37037,9 @@ function lbWire(){
 
 /* The section shows the week on screen, and only the week on screen.
 
-   Every article is stored against an explicit league, SEASON and WEEK, so
-   "does this story belong on this view" is a fact the row states rather than
-   something to infer. Both feeds are filtered through here before anything is
-   painted.
+   Every article is stored against an explicit league, season and source week.
+   The display week is derived from its source week and type. Both feeds are
+   filtered through here before anything is painted.
 
    Both week reads now ask the endpoint for these coordinates, so this is the
    second of two checks on each rather than the only one on either. It stays
@@ -37098,17 +37105,16 @@ function lbForViewedWeek(articles, season, week){
   if(!week || !season) return [];
   return rows.filter((article)=>
     Number(article && article.season) === Number(season) &&
-    Number(article && article.week) === Number(week));
+    fsnArticleDisplayWeek(article) === Number(week));
 }
 
 /* ---- THE SECTION, FROM THREE READS ---------------------------------------
 
    THE WEEK ON SCREEN IS THE SECTION. Every story painted under a WEEK n
-   heading was stored against that league, that season and that week, was
-   asked for by those three coordinates, and was checked against them again
-   before it reached the DOM.
+   heading matches that league, season and display week at the server and
+   passes the same check again before reaching the DOM.
 
-     1. FSNLeagueArticles       this league, this season, this week
+     1. FSNLeagueArticles       this league, this season, this display week
      2. FSNSupabaseArticles     the same coordinates, with the `active=1`
         (week scope)            publish-time floor: a second source for the
                                 same view, never a different view's content
@@ -37152,7 +37158,7 @@ function lbViewScope(){
     week,
     season,
     /* The two week reads. Both ask the endpoint for this league, this season
-       and this week, so both are filtered in the database before anything
+       and this display week, so both are filtered in the database before anything
        reaches the phone. */
     weekScope: FSNLeagueArticles.scopeOf(leagueId, week, season),
     activeScope: FSNSupabaseArticles.scopeOf(leagueId, week, season),
