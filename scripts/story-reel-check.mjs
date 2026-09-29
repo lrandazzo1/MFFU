@@ -277,18 +277,8 @@ try {
   /* An inactive .screen is display:none, so a gear can only be measured on the
      screen that is showing. Walk the screens and measure each one in turn. */
   for (const screen of ['home', 'matchups', 'news', 'analytics', 'recordbook', 'setup']) {
-    /* The empty-launch Setup takeover can cover the nav in headless Chromium.
-       Dispatch the same DOM click handler while inspecting each screen. */
-    await page.evaluate((name) => {
-      const selector = name === 'setup'
-        ? '.screen[data-active="true"] .gear-btn'
-        : name === 'recordbook'
-          ? '[data-goto="recordbook"]'
-          : '#tabBar .tab-btn[data-tab="' + name + '"]';
-      const button = document.querySelector(selector);
-      if (!button) throw new Error('Missing navigation control: ' + selector);
-      button.click();
-    }, screen);
+    if (screen === 'setup') await page.click('.screen[data-active="true"] .gear-btn');
+    else await page.click('#tabBar .tab-btn[data-tab="' + screen + '"]');
     await page.waitForTimeout(320);
 
     const gear = await page.evaluate((name) => {
@@ -330,7 +320,7 @@ try {
   else fail('the gear does not reflect the Setup screen as current');
 
   /* The empty-state prompts and the gear must land on the same screen. */
-  await page.evaluate(() => document.querySelector('#tabBar .tab-btn[data-tab="home"]').click());
+  await page.click('#tabBar .tab-btn[data-tab="home"]');
   await page.waitForTimeout(350);
   const emptyRoutes = await page.$$eval('#homeNoData [data-goto], #homeSeasonGap [data-goto]',
     (els) => els.map((e) => e.getAttribute('data-goto')));
@@ -360,7 +350,7 @@ try {
     await page.click('#profileGuest');
     await page.waitForTimeout(500);
   }
-  await page.evaluate(() => document.querySelector('#tabBar .tab-btn[data-tab="home"]').click());
+  await page.click('#tabBar .tab-btn[data-tab="home"]');
   await page.waitForTimeout(900);
 
   /* The Desk opens on the week the calendar says is current, which drifts. Walk
