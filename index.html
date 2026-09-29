@@ -10396,7 +10396,15 @@ window.FSNLeagueArticles = (function(){
   const normalize = fsnNormalizeArticles;
 
   async function request(scope){
-    const response = await FSNNet.fetch(urlFor(scope), { headers: { Accept: 'application/json' } }, {
+    /* `no-store`, like every other data read in this file. /api/blog/articles
+       answers with `max-age=300, stale-while-revalidate=86400`, which is right
+       for a CDN and wrong for this client: a row REGENERATED over an existing
+       one is the same URL with different text, and under that header the phone
+       may keep painting the copy it already has for up to a day after the row
+       changed. This module does its own freshness accounting (FRESH_MS in
+       memory, CACHE_TTL_MS in localStorage), so when it decides to go to the
+       network it must actually reach the origin. */
+    const response = await FSNNet.fetch(urlFor(scope), { headers: { Accept: 'application/json' }, cache: 'no-store' }, {
       timeoutMs: TIMEOUT_MS,
       label: 'league articles ' + scope.key,
     });
@@ -10706,7 +10714,15 @@ window.FSNSupabaseArticles = (function(){
   /* ---- 4. THE READ ---------------------------------------------------- */
 
   async function request(scope){
-    const response = await FSNNet.fetch(urlFor(scope), { headers: { Accept: 'application/json' } }, {
+    /* `no-store`, like every other data read in this file. /api/blog/articles
+       answers with `max-age=300, stale-while-revalidate=86400`, which is right
+       for a CDN and wrong for this client: a row REGENERATED over an existing
+       one is the same URL with different text, and under that header the phone
+       may keep painting the copy it already has for up to a day after the row
+       changed. This module does its own freshness accounting (FRESH_MS in
+       memory, CACHE_TTL_MS in localStorage), so when it decides to go to the
+       network it must actually reach the origin. */
+    const response = await FSNNet.fetch(urlFor(scope), { headers: { Accept: 'application/json' }, cache: 'no-store' }, {
       timeoutMs: TIMEOUT_MS,
       label: 'active league articles ' + scope.key,
     });
@@ -38340,11 +38356,22 @@ function renderStudio(){
   $('studioGenerate').hidden = studioRemoteStatus === 'ready';
   /* The note carries the lock message when locked, and the testing exception's
      own sentence when a closed week is open for one league — so an unlocked
-     past week never looks like the guardrail silently failing. */
+     past week never looks like the guardrail silently failing.
+
+     An episode that EXISTS silences it, exactly as it already hides the button.
+     The midweek lock is a generation gate read from the client's own view of the
+     slate — weekBoxScoresComplete() off whatever schedule this phone has loaded
+     — and it says 'midweek' for every case where that view is incomplete: no
+     schedule hydrated yet, an ESPN read that failed, a device clock behind the
+     Monday night final, ESPN leaving `winner` on UNDECIDED. The audio asset in
+     Supabase Storage is the authority over all of them. Leaving the note up put
+     'This week is still being played. The weekly recap unlocks Tuesday morning'
+     directly underneath a finished episode's play button. */
   const testing = studioTestExceptionActive();
+  const noteLock = studioRemoteStatus === 'ready' ? '' : lock;
   $('studioArchiveLock').textContent = testing ? STUDIO_TEST_NOTE :
-    lock === 'midweek' ? STUDIO_MIDWEEK_MESSAGE : STUDIO_LOCK_MESSAGE;
-  $('studioArchiveLock').hidden = !lock && !testing;
+    noteLock === 'midweek' ? STUDIO_MIDWEEK_MESSAGE : STUDIO_LOCK_MESSAGE;
+  $('studioArchiveLock').hidden = !noteLock && !testing;
   if(!studioCurrent && !studioBusy) studioPaintFeed();
 }
 

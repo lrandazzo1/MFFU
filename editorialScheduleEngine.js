@@ -567,12 +567,55 @@
       return Number(window.NewsDesk.activeSeasonYear())===Number(window.NewsDesk.viewedSeasonYear());
     }catch(err){ console.error('[WeekBucket] active-season check failed',err); return false; }
   }
+  /* Has week N's slate actually finished?
+
+     The forward roll is only correct for coverage whose own games are over.
+     weekBoxScoresComplete() is the app's single answer to that question — the
+     block 1 global the Studio generation gate reads and the client half of what
+     lib/week-complete.ts asks the NFL scoreboard for — so this reads it rather
+     than carrying a second copy of the test.
+
+     Missing means "cannot tell", and the safe direction to be wrong in is to
+     roll nothing: a story left on its own week is merely early, while a story
+     rolled forward is filed under a week whose games have not kicked off. It is
+     reported rather than swallowed, because the only way this global is absent
+     is a load-order regression in index.html. */
+  var slateWarned=false;
+  function slateComplete(week){
+    if(typeof window.weekBoxScoresComplete!=='function'){
+      if(!slateWarned){
+        slateWarned=true;
+        console.error('[WeekBucket] weekBoxScoresComplete() is not on window; no postgame coverage will be rolled forward.',
+          new Error('WEEK_BUCKET_SLATE_TEST_UNAVAILABLE'));
+      }
+      return false;
+    }
+    try{ return !!window.weekBoxScoresComplete(week); }
+    catch(err){ console.error('[WeekBucket] slate-completion check failed for week '+week,err); return false; }
+  }
+
+  /* THE WEEK POSTGAME COVERAGE IS FILED UNDER.
+
+     A finished week's postgame copy anchors the NEXT week's feed: by the time it
+     exists its slate is complete and it reads as last week's story. That is the
+     same rule tuesday_verdict follows in api/blog/articles.js and
+     fsnArticleDisplayWeek() in index.html, and all three have to agree.
+
+     An UNFINISHED week's postgame copy does not move, for the reason
+     monday_sweat does not move. The recap-slot generators fire as soon as any
+     score is posted — the Sunday-afternoon debriefs off the early finals, the
+     rivalry spotlight the moment ctx.anyScored flips, the bottom-board watch —
+     so rolling on the slot alone printed Week N coverage under the Week N+1
+     heading while Week N's late games and Monday night were still to be played,
+     and took those cards off Week N's own board at the same time. The slot says
+     "this card is about games that are over"; only the slate says the week is. */
   function routeWeek(original,week){
     var display=Math.max(1,Number(week)||1);
     var current=original(display);
     if(!activeSeason()) return current;
-    var advance=(Array.isArray(current)?current:[]).filter(function(article){return !postgame(article);});
-    if(display===1) return advance;
+    var rolls=slateComplete(display);
+    var advance=(Array.isArray(current)?current:[]).filter(function(article){return !rolls||!postgame(article);});
+    if(display===1||!slateComplete(display-1)) return advance;
     var prior=original(display-1);
     var finished=(Array.isArray(prior)?prior:[]).filter(postgame);
     return advance.concat(finished).sort(function(a,b){
