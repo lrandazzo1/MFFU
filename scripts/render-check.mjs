@@ -297,6 +297,8 @@ try {
   const tabs = await page.$$eval('#tabBar .tab-btn', (els) => els.map((e) => e.getAttribute('data-tab')));
   if (tabs.length !== 5) fail('expected 5 tabs, found ' + tabs.length);
   else pass('found all 5 tabs: ' + tabs.join(', '));
+  if (tabs.join(',') !== 'home,studio,matchups,news,analytics')
+    fail('bottom tab order does not match Hub, Studio, Matchups, News, Stats');
   if (tabs.includes('setup')) fail('Setup is still in the bottom nav; it belongs behind the header gear');
   else pass('Setup is out of the bottom nav');
 
@@ -317,12 +319,12 @@ try {
   /* ---- 3b. The header gear is the one route to Setup --------------------- */
   const gears = await page.$$eval('.screen .gear-btn', (els) =>
     els.map((e) => e.closest('.screen').getAttribute('data-screen')));
-  const gearScreens = ['home', 'matchups', 'news', 'analytics', 'recordbook', 'setup'];
+  const gearScreens = ['home', 'studio', 'matchups', 'news', 'analytics', 'recordbook'];
   const missingGear = gearScreens.filter((s) => !gears.includes(s));
   if (missingGear.length) fail('screens with no header gear: ' + missingGear.join(', '));
   else pass('every screen carries a header Setup gear');
 
-  await page.click('.screen[data-active="true"] .gear-btn');
+  await page.click('.screen[data-screen="analytics"] .gear-btn');
   await page.waitForTimeout(450);
   if ((await page.getAttribute('.screen[data-screen="setup"]', 'data-active')) === 'true') {
     pass('the header gear routes to Setup');
@@ -440,7 +442,9 @@ try {
      Back tracking the position), confirm each tab tour renders its mini
      bottom-nav map, then finish and confirm both that it closed and that
      completion persisted to the localStorage flag the boot check reads. */
-  await page.click('.screen[data-active="true"] .gear-btn');
+  if ((await page.getAttribute('.screen[data-screen="setup"]', 'data-active')) !== 'true') {
+    await page.click('.screen[data-active="true"] .gear-btn');
+  }
   await page.waitForTimeout(300);
 
   if (!(await page.$('#ftuReopenBtn'))) {
@@ -459,7 +463,7 @@ try {
 
     // The five core tabs each get a tour slide with a highlighted bottom-nav map.
     const tourAudit = await page.evaluate(() => {
-      const wanted = ['home', 'matchups', 'news', 'analytics', 'recordbook'];
+      const wanted = ['home', 'studio', 'matchups', 'news', 'analytics'];
       return wanted.map((key) => {
         const slide = document.querySelector('.ftu-tour[data-tour-tab="' + key + '"]');
         if (!slide) return { key, ok: false, why: 'missing slide' };
@@ -473,7 +477,7 @@ try {
     if (brokenTour) fail('a tab-tour slide is malformed: ' + JSON.stringify(brokenTour));
     else pass('all 5 tab tours render a 5-cell nav map with the right tab lit');
 
-    // Welcome → Desk → Matchups → News → Season Stats → Record Book → CTA.
+    // Welcome → Hub → Matchups → News → Stats → Studio → CTA.
     const dotCount = await page.evaluate(
       () => document.querySelectorAll('#ftuDots .ftu-dot').length
     );
@@ -516,6 +520,7 @@ try {
   }
 
   /* Score bindings must update on hydration, without tab switching. */
+  await page.click('#setupClose');
   await page.click('#tabBar .tab-btn[data-tab="home"]');
   for (const scenario of ['projected', 'missing', 'live', 'live-espn', 'negative', 'final-zero']) {
     const data = syntheticLeague();
@@ -585,14 +590,13 @@ try {
      projection is a labelled secondary value beneath it — never the projection
      promoted into the score slot.
 
-     The secondary value takes one of two shapes, per SIDE:
-       • a side with no points yet reads "Projected: N", the only forecast it
-         has;
-       • a side that has scored reads a signed "±N.N vs PROJ" delta, whose
-         title attribute still names the projected number.
-     Both shapes carry data-score-projected, so the split assertion below is
-     shape-independent: what it proves is that the projection never reaches the
-     data-score-actual slot. */
+     The secondary value reads "Projected: N" in every state, on every side.
+     It used to flip to a signed "±N.N vs PROJ" delta once a side had points,
+     but mid-slate that reads as a verdict on a week that has barely started —
+     a lineup one player deep shows a −118.5 against its own projection and
+     looks like a collapse rather than a team yet to kick off. The line carries
+     data-score-projected in every state, so the split assertion below proves
+     the projection never reaches the data-score-actual slot. */
   for (const scenario of ['pregame', 'live', 'live-espn']) {
     const data = syntheticLeague();
     data.schedule.forEach(game=>{
@@ -630,14 +634,10 @@ try {
     else pass('matchup cards (' + scenario + ') show true scores ' + JSON.stringify(wantActual) +
       ' with projections ' + JSON.stringify(wantProjected) + ' beneath');
 
-    /* Which side reads which shape is decided by whether that side has points
-       on the board, so the expectation is written out per scenario rather than
-       inferred from the scenario name. */
-    const wantShape = {
-      pregame:      ['projected', 'projected'],
-      live:         ['projected', 'delta'],       // away 0.0, home 42.7
-      'live-espn':  ['delta', 'delta'],
-    }[scenario];
+    /* Every side reads the labelled projection, whether or not it has points
+       on the board. The delta shape is gone deliberately; a 'delta' here is a
+       regression, not an alternative. */
+    const wantShape = ['projected', 'projected'];
 
     const shapes = await page.evaluate(()=> Array.from(document.querySelectorAll('#matchupList .card')).map(card=>
       Array.from(card.querySelectorAll('[data-score-projected]')).map(el=>({
@@ -652,16 +652,33 @@ try {
     if(badShape) fail('projection sub-value shape wrong (' + scenario + '): ' + JSON.stringify(badShape));
     else pass('projection sub-values take the ' + wantShape.join(' / ') + ' shape (' + scenario + ')');
 
-    /* Whichever shape a side takes, the projected number has to still be
-       readable on it — in the copy for the labelled line, in the title for
-       the delta. A delta with no projection named anywhere is a number with no
-       referent. */
-    const unreadable = shapes.find(card=> card.some(side=> side.shape === 'projected'
-      ? !new RegExp('Projected: ' + side.projected.replace('.', '\\.')).test(side.text)
-      : !(new RegExp('vs PROJ').test(side.text) &&
-          new RegExp('Projected ' + side.projected.replace('.', '\\.')).test(side.title))));
+    /* The projected number has to be readable in the copy itself — a bare
+       number with no label is indistinguishable from a score. */
+    const unreadable = shapes.find(card=> card.some(side=>
+      !new RegExp('Projected: ' + side.projected.replace('.', '\\.')).test(side.text)));
     if(unreadable) fail('projection sub-value does not name its projection (' + scenario + '): ' + JSON.stringify(unreadable));
     else pass('projection sub-values name their projection (' + scenario + ')');
+
+    /* ---- The point-share bar ----
+       The bar under the two sides splits on the PROJECTIONS in every state,
+       never on the live score. Splitting on real points pinned it to 0/100
+       through the early window — one roster mid-slate, the other yet to kick
+       off — and read as a rout that had not happened. With 109.4 away and
+       127.8 home the split is 46 / 54 whatever the scoreboard says, and the
+       legend has to name the basis so the reader knows which it is. */
+    const bar = await page.evaluate(()=> Array.from(document.querySelectorAll('#matchupList .card .mx-dominance')).map(el=>{
+      const legend = Array.from(el.querySelectorAll('.mx-dominance-legend > span')).map(s=> (s.textContent||'').trim());
+      return { away: legend[0], label: legend[1], home: legend[2] };
+    }));
+
+    if(!bar.length){ fail('no point-share bar rendered (' + scenario + ')'); }
+    else {
+      const wantBar = { away:'46%', label:'PROJECTED SHARE', home:'54%' };
+      const badBar = bar.find(b=> b.away !== wantBar.away || b.home !== wantBar.home || b.label !== wantBar.label);
+      if(badBar) fail('point-share bar should split on projections ' + JSON.stringify(wantBar) +
+        ' (' + scenario + '), got ' + JSON.stringify(badBar));
+      else pass('point-share bar splits 46 / 54 on the projections, labelled PROJECTED SHARE (' + scenario + ')');
+    }
 
     /* ---- Matchup of the Week ----
        The marquee card carries no projection at all: its two scores are real,

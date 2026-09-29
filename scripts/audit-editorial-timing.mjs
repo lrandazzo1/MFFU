@@ -258,6 +258,9 @@ function check(cell, name, condition, detail) {
 
 const BANNED_JUNK = /\b(?:NaN|undefined|null|Infinity)\b/;
 const PROJECTION_DUMP = /starts for .+ on an? [\d.]+ point projection/i;
+/* Two decimals anywhere in the prose, and the retired "at X projected" tail. */
+const TWO_DECIMALS = /\*\*\d+\.\d{2}/;
+const TRAILING_PROJECTED = /\bat \*\*[\d.]+\*\* projected|\bprojected for \*\*/;
 
 /**
  * Headings with nothing underneath them.
@@ -303,6 +306,13 @@ function universal(cell, draft, tracked) {
   check(cell, 'NO_JUNK', !BANNED_JUNK.test(md) && !BANNED_JUNK.test(draft.match_impact_summary || ''),
     md.split('\n').find((l) => BANNED_JUNK.test(l)));
   check(cell, 'NO_DUMP', !PROJECTION_DUMP.test(md), md.split('\n').find((l) => PROJECTION_DUMP.test(l)));
+  /* Prose figures: one decimal at most, everywhere, in every cell. A second
+     decimal is how a box score reads, not how a person says a number. */
+  check(cell, 'ONE_DECIMAL', !TWO_DECIMALS.test(md), md.split('\n').find((l) => TWO_DECIMALS.test(l)));
+  /* And a projection rides in parentheses after the name. "Saquon Barkley at
+     17.37 projected" is the shape that was retired. */
+  check(cell, 'NO_TRAILING_PROJECTED', !TRAILING_PROJECTED.test(md),
+    md.split('\n').find((l) => TRAILING_PROJECTED.test(l)));
   check(cell, 'NO_FRIDAY', !/Friday Night Preview/.test(md) && !/Friday/.test(draft.title), draft.title);
   check(cell, 'TITLE_ECHO', md.startsWith('# ' + draft.title), draft.title + ' vs ' + md.slice(0, 80));
 
@@ -445,12 +455,14 @@ for (const [key, expected] of Object.entries(LABEL_EXPECTATIONS)) {
   check(r.cell, 'FRI_SECTION_LIVE', md.includes('## Where the week stands'), md.slice(0, 200));
   check(r.cell, 'FRI_SECTION_UPCOMING', md.includes('## Still on the clock') || md.includes('still to play'),
     md.slice(0, 300));
-  /* Thursday is FINAL at this clock, so the real number is quoted. */
-  check(r.cell, 'FRI_TNF_ACTUAL', /\*\*30\.00 pts\*\*/.test(md), 'Harbor Thursday 30.00 not quoted');
-  /* Sunday and Monday have not kicked off, so they appear as projections. */
-  check(r.cell, 'FRI_UPCOMING_PROJECTED', /projected/.test(md), md.slice(0, 400));
+  /* Thursday is FINAL at this clock, so the real number is quoted. Prose
+     figures, so a whole number is whole: 30, not 30.00. */
+  check(r.cell, 'FRI_TNF_ACTUAL', /\*\*30 pts\*\*/.test(md), 'Harbor Thursday 30 not quoted');
+  /* Sunday and Monday have not kicked off, so they appear as projections,
+     carried in parentheses after the name rather than trailing it. */
+  check(r.cell, 'FRI_UPCOMING_PROJECTED', /\(\*\*[\d.]+\*\* proj\)/.test(md), md.slice(0, 400));
   /* And both live in the SAME matchup block, which is the grouping claim. */
-  const block = md.split('### ').find((b) => /pts\*\*/.test(b) && /projected/.test(b));
+  const block = md.split('### ').find((b) => /pts\*\*/.test(b) && /proj\)/.test(b));
   check(r.cell, 'FRI_GROUPED', Boolean(block),
     'no block carried both a played number and an upcoming projection');
   /* Nothing is called finished while 24 starters have yet to play. */
@@ -530,7 +542,7 @@ for (const key of ['FRI_MORNING', 'TUE_FINAL']) {
    0.00 pts" for a player who would not be on a field until Sunday. The flags
    are right; crediting an unplayed man for them is not. ---- */
 
-const ZERO_CREDIT = /(?:tacked on|padded the score with|notched|scoring|adding|dropping|banking) \*\*0\.00 pts\*\*/i;
+const ZERO_CREDIT = /(?:tacked on|padded the score with|notched|scoring|adding|dropping|banking) \*\*0(?:\.0)? pts\*\*/i;
 
 for (const r of results) {
   check(r.cell, 'NO_ZERO_CREDIT', !ZERO_CREDIT.test(r.draft.content_markdown),
@@ -554,13 +566,36 @@ for (const r of results) {
   check(cell, 'NO_ZERO_CREDIT', !ZERO_CREDIT.test(draft.content_markdown),
     draft.content_markdown.split('\n').find((l) => ZERO_CREDIT.test(l)));
 
-  /* Every bullet names a Thursday player, because nobody else has played. */
-  const bullets = draft.content_markdown.split('\n').filter((l) => l.trim().startsWith('- '));
+  /* Every bullet that CREDITS a performance names a Thursday player, because
+     nobody else has played. The lookahead that closes the article is exempt by
+     construction: naming a starter who is STILL TO PLAY, against the
+     projection he has still to play it against, is the opposite of crediting
+     him with something he has not done. It is scanned below for the claim
+     that would be wrong there, which is a points total. */
+  const [credited, lookahead = ''] =
+    draft.content_markdown.split(/^## (?:On the line tonight|Still to play)$/m);
+  const bullets = credited.split('\n').filter((l) => l.trim().startsWith('- '));
   check(cell, 'ONLY_PLAYED_ON_BOARD',
     bullets.every((l) => /Thursday/.test(l)),
     bullets.find((l) => !/Thursday/.test(l)));
 
-  /* And a board with nothing left on it is prose, never a bare heading. */
+  /* A starter who has not kicked off is named with a projection, never with a
+     score. "Copper Monday at 12.00" is what he is due; "Copper Monday 0.00
+     pts" is a claim about a game that has not happened. */
+  const aheadLines = lookahead.split('\n').filter((l) => l.trim().startsWith('- '));
+  check(cell, 'LOOKAHEAD_PROJECTS_ONLY',
+    aheadLines.every((l) => !/\*\*0(?:\.0)? pts\*\*/.test(l)),
+    aheadLines.find((l) => /\*\*0(?:\.0)? pts\*\*/.test(l)));
+
+  /* And a board with nothing left on it is prose, never a bare heading.
+
+     The prose it is, changed three times since this cell was written. The no-swing
+     fallback retired the "Nothing in week 3 turned a matchup" apology for a
+     performance-led section, the recap matchup board now leads with where
+     every head to head actually stands, and that performance-led section has
+     become a lookahead when starters are still to play. What the cell is
+     really pinning is that a recap the flags left empty still says something,
+     so it pins the board and whichever section closes it. */
   const empty = defaultComposer({
     system_prompt: '', user_prompt: '', league_id: '123456', season: 2026, week: 3,
     day: 'tue', article_type: 'tuesday_verdict',
@@ -569,7 +604,24 @@ for (const r of results) {
   });
   universal('RECAP_EMPTY_BOARD/normal', empty, []);
   check('RECAP_EMPTY_BOARD/normal', 'EMPTY_BOARD_PROSE',
-    /Nothing in week 3 turned a matchup/.test(empty.content_markdown), empty.content_markdown);
+    /## Where the week stands/.test(empty.content_markdown) &&
+      /## (?:On the line tonight|Still to play|The week 3 storylines)/.test(empty.content_markdown) &&
+      !/Nothing in week 3 turned a matchup/.test(empty.content_markdown),
+    empty.content_markdown);
+
+  /* The suffix that made this section three copies of one sentence. It was
+     printed under every name a quiet week had, and it is not coming back. */
+  check('RECAP_EMPTY_BOARD/normal', 'NO_CANNED_SWING_SUFFIX',
+    !/swing math found no individual turnover/.test(empty.content_markdown),
+    empty.content_markdown);
+
+  /* The point of the board: a recap with no flag on it still names a margin,
+     the side holding it, and what is left to play. */
+  check('RECAP_EMPTY_BOARD/normal', 'EMPTY_BOARD_MARGIN',
+    /point (?:lead|cushion|result)/.test(empty.content_markdown) &&
+      /(?:starters? still to play|still on the field|Every starter is in|came out)/
+        .test(empty.content_markdown),
+    empty.content_markdown);
 }
 
 /* ---- 6. The Monday margin actually moves across MNF ---- */

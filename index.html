@@ -662,6 +662,13 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
      the space it had and every screen scrolled that far into nothing. */
   min-height:calc(100dvh - var(--shell-inset-top) - var(--shell-inset-bottom));
 }
+.screen[data-screen="setup"][data-active="true"]{
+  position:fixed; inset:0; z-index:85; overflow-y:auto; overscroll-behavior:contain;
+  min-height:0; max-height:100dvh; padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+  background:rgba(9,13,20,.98);
+}
+#setupClose svg{ display:none; }
+#setupClose::after{ content:'×'; font-size:25px; line-height:1; }
 @keyframes screenIn{ from{opacity:0; transform:translateY(7px);} to{opacity:1; transform:none;} }
 
 /* ---------- CARDS ---------- */
@@ -3824,26 +3831,63 @@ body.fsn-dd-lock{ overflow:hidden; }
    competing with the screen title beside it.
 ============================================================ */
 .gear-btn{
-  flex:none; width:40px; height:40px; border-radius:12px;
+  flex:none; width:40px; height:40px; border-radius:10px; padding:8px;
   display:inline-flex; align-items:center; justify-content:center;
-  color:var(--dim);
-  border:1px solid var(--line);
-  background:linear-gradient(160deg,rgba(255,255,255,.05),rgba(255,255,255,.012));
+  color:#9ca3af;
+  border:1px solid rgba(51,65,85,.5);
+  background:rgba(30,41,59,.6);
   transition:color .18s ease, border-color .18s ease, background .18s ease, transform .12s ease;
   -webkit-tap-highlight-color:transparent;
 }
 .gear-btn svg{
-  width:22px; height:22px; fill:none; stroke:currentColor;
-  stroke-width:1.7; stroke-linecap:round; stroke-linejoin:round;
+  width:20px; height:20px; fill:none; stroke:currentColor;
+  stroke-width:2; stroke-linecap:round; stroke-linejoin:round;
 }
-.gear-btn:hover{ color:var(--off); border-color:var(--line-2); }
-.gear-btn:active{ transform:scale(.93); background:#161c27; }
+.gear-btn:hover{ color:#fff; border-color:rgba(100,116,139,.7); }
+.gear-btn:active{ transform:scale(.93); background:rgba(51,65,85,.8); }
 .gear-btn[data-active="true"]{
-  color:var(--cyan); border-color:rgba(0,224,255,.42);
-  background:rgba(0,224,255,.10);
-  box-shadow:0 0 14px rgba(0,224,255,.18);
+  color:#fff; border-color:rgba(100,116,139,.7);
+  background:rgba(51,65,85,.8);
 }
 .gear-btn:focus-visible{ outline:2px solid var(--cyan); outline-offset:2px; }
+
+/* Podcast Studio, scoped so the existing editorial cards remain untouched. */
+.studio-shell{ max-width:760px; margin:auto; padding:0 16px 32px; }
+.studio-hero{ padding:20px; border:1px solid rgba(0,224,255,.3); border-radius:20px;
+  background:radial-gradient(circle at 85% 0%,rgba(0,224,255,.17),transparent 45%),#111925; }
+.studio-hosts{ display:flex; align-items:center; gap:10px; margin:16px 0; }
+.studio-avatar{ display:grid; place-items:center; width:48px; height:48px; border-radius:50%;
+  border:2px solid var(--cyan); background:#203242; font-family:'Anton',sans-serif; color:var(--off); font-size:15px; }
+.studio-avatar.stu{ border-color:var(--gold); background:#3a3020; }
+.studio-wave{ height:48px; display:flex; align-items:center; justify-content:center; gap:4px; margin:10px 0; }
+.studio-wave i{ width:4px; height:var(--bar-height); min-height:5px; border-radius:5px; background:var(--cyan); opacity:.8; }
+.studio-hero[data-playing="true"] .studio-wave i{ animation:studioPulse .7s ease-in-out infinite alternate; animation-delay:var(--bar-delay); }
+@keyframes studioPulse{ to{ transform:scaleY(.35); opacity:.45; } }
+.studio-controls{ display:flex; align-items:center; gap:12px; }
+.studio-play{ flex:none; width:48px; height:48px; border-radius:50%; background:var(--cyan); color:#071019; font-size:19px; font-weight:bold; }
+.studio-progress{ flex:1; min-width:0; accent-color:var(--cyan); }
+.studio-time{ font:10px 'JetBrains Mono',monospace; color:var(--dim); white-space:nowrap; }
+.studio-tabs{ display:flex; gap:8px; margin:22px 0 12px; }
+.studio-tabs button{ flex:1; border:1px solid var(--line); border-radius:10px; padding:11px 4px; color:var(--dim); font-size:11px; }
+.studio-tabs button[aria-selected="true"]{ color:var(--cyan); border-color:var(--cyan); background:rgba(0,224,255,.08); }
+.studio-line{ margin:10px 0; padding:12px; border-left:3px solid var(--cyan); background:#121a26; border-radius:0 9px 9px 0; color:var(--off); font-size:13px; }
+.studio-line[data-host="STU"],.studio-line[data-host="SULLY"]{ border-color:var(--gold); }
+.studio-line[data-active="true"]{ background:rgba(0,224,255,.12); outline:1px solid rgba(0,224,255,.4); }
+.studio-line[data-host="STU"][data-active="true"]{ background:rgba(255,190,65,.12); outline-color:rgba(255,190,65,.4); }
+.studio-line strong{ display:block; color:var(--cyan); font:700 10px 'JetBrains Mono',monospace; margin-bottom:5px; }
+.studio-line[data-host="STU"] strong,.studio-line[data-host="SULLY"] strong{ color:var(--gold); }
+.studio-archive button{ display:block; width:100%; padding:14px; margin-top:8px; text-align:left; border:1px solid var(--line); border-radius:10px; color:var(--off); background:#111925; }
+.studio-reel{ width:100%; padding:18px; background:linear-gradient(145deg,#172636,#111925); border:1px solid var(--line); border-radius:15px; }
+.studio-reel .sv-panel{ animation:none; }
+.studio-reel .sv-headline{ font-size:25px; }
+.studio-reel .sv-side-score{ font-size:24px; }
+.studio-reel-next{ display:block; width:100%; margin-top:18px; padding:12px; border:1px solid var(--line-2); border-radius:10px; text-align:center; color:var(--cyan); font-size:11px; font-weight:700; letter-spacing:.1em; }
+.studio-reel-next:focus-visible{ outline:2px solid var(--cyan); outline-offset:2px; }
+.ftu-studio-hosts{ display:flex; align-items:center; gap:7px; margin:5px 0; }
+.ftu-studio-hosts .studio-avatar{ width:30px; height:30px; font-size:10px; }
+.ftu-studio-wave{ display:flex; align-items:center; gap:3px; height:18px; margin-left:auto; }
+.ftu-studio-wave i{ width:3px; height:var(--h); border-radius:3px; background:var(--gold); }
+@media (prefers-reduced-motion:reduce){ .studio-hero[data-playing="true"] .studio-wave i{ animation:none; } }
 
 /* ============================================================
    STORY REEL — Instagram-style avatar rings on the Desk, directly
@@ -3929,6 +3973,12 @@ body.fsn-dd-lock{ overflow:hidden; }
 .sv-seg > i{ display:block; height:100%; width:0; border-radius:2px; background:var(--off); }
 .sv-seg[data-state="done"] > i{ width:100%; }
 .sv-seg[data-state="active"] > i{ animation:svFill var(--sv-dur,7000ms) linear forwards; }
+#storyViewer[data-held="true"] .sv-seg[data-state="active"] > i{ animation-play-state:paused; }
+.studio-reel .sv-progress{ padding:0 0 13px; }
+#studioGenerate[hidden]{ display:none !important; }
+.studio-reel[data-held="true"] .sv-seg[data-state="active"] > i{ animation-play-state:paused; }
+.studio-reel-nav{ display:flex; gap:10px; margin-top:16px; }
+.studio-reel-nav button{ flex:1; padding:12px; border:1px solid var(--line-2); border-radius:10px; color:var(--cyan); font-size:11px; font-weight:700; }
 @keyframes svFill{ from{ width:0; } to{ width:100%; } }
 .sv-head{
   flex:none; display:flex; align-items:center; gap:10px;
@@ -3961,8 +4011,8 @@ body.fsn-dd-lock{ overflow:hidden; }
   background:transparent; border:0; padding:0;
   -webkit-tap-highlight-color:transparent;
 }
-.sv-tap[data-story-nav="prev"]{ left:0; width:30%; }
-.sv-tap[data-story-nav="next"]{ right:0; width:30%; }
+.sv-tap[data-story-nav="prev"]{ left:0; width:50%; }
+.sv-tap[data-story-nav="next"]{ right:0; width:50%; }
 .sv-hint{
   flex:none; text-align:center; position:relative; z-index:6;
   font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:#3b4657;
@@ -4283,7 +4333,7 @@ body.fsn-dd-lock{ overflow:hidden; }
           </div>
           <button type="button" class="gear-btn" data-goto="setup" data-active="false"
                   aria-label="Open Setup and league connection" title="Setup">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.1"></circle><path d="M19.14 12.94a7.6 7.6 0 0 0 .05-.94 7.6 7.6 0 0 0-.05-.94l2-1.58a.5.5 0 0 0 .12-.62l-1.9-3.28a.5.5 0 0 0-.6-.22l-2.36.95a7.3 7.3 0 0 0-1.62-.94l-.36-2.5a.5.5 0 0 0-.5-.43h-3.8a.5.5 0 0 0-.5.43l-.36 2.5a7.3 7.3 0 0 0-1.62.94l-2.36-.95a.5.5 0 0 0-.6.22L2.8 8.86a.5.5 0 0 0 .12.62l2 1.58a7.6 7.6 0 0 0 0 1.88l-2 1.58a.5.5 0 0 0-.12.62l1.9 3.28a.5.5 0 0 0 .6.22l2.36-.95c.5.38 1.04.7 1.62.94l.36 2.5a.5.5 0 0 0 .5.43h3.8a.5.5 0 0 0 .5-.43l.36-2.5a7.3 7.3 0 0 0 1.62-.94l2.36.95a.5.5 0 0 0 .6-.22l1.9-3.28a.5.5 0 0 0-.12-.62Z"></path></svg>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/></svg>
           </button>
         </div>
       </div>
@@ -4399,7 +4449,7 @@ body.fsn-dd-lock{ overflow:hidden; }
         </div>
         <button type="button" class="gear-btn" data-goto="setup" data-active="false"
                 aria-label="Open Setup and league connection" title="Setup">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.1"></circle><path d="M19.14 12.94a7.6 7.6 0 0 0 .05-.94 7.6 7.6 0 0 0-.05-.94l2-1.58a.5.5 0 0 0 .12-.62l-1.9-3.28a.5.5 0 0 0-.6-.22l-2.36.95a7.3 7.3 0 0 0-1.62-.94l-.36-2.5a.5.5 0 0 0-.5-.43h-3.8a.5.5 0 0 0-.5.43l-.36 2.5a7.3 7.3 0 0 0-1.62.94l-2.36-.95a.5.5 0 0 0-.6.22L2.8 8.86a.5.5 0 0 0 .12.62l2 1.58a7.6 7.6 0 0 0 0 1.88l-2 1.58a.5.5 0 0 0-.12.62l1.9 3.28a.5.5 0 0 0 .6.22l2.36-.95c.5.38 1.04.7 1.62.94l.36 2.5a.5.5 0 0 0 .5.43h3.8a.5.5 0 0 0 .5-.43l.36-2.5a7.3 7.3 0 0 0 1.62-.94l2.36.95a.5.5 0 0 0 .6-.22l1.9-3.28a.5.5 0 0 0-.12-.62Z"></path></svg>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/></svg>
         </button>
       </div>
       <p class="view-blurb">Every head-to-head result for the selected week, with team scores and the difference that decided each game.</p>
@@ -4429,7 +4479,7 @@ body.fsn-dd-lock{ overflow:hidden; }
             </div>
             <button type="button" class="gear-btn" data-goto="setup" data-active="false"
                     aria-label="Open Setup and league connection" title="Setup">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.1"></circle><path d="M19.14 12.94a7.6 7.6 0 0 0 .05-.94 7.6 7.6 0 0 0-.05-.94l2-1.58a.5.5 0 0 0 .12-.62l-1.9-3.28a.5.5 0 0 0-.6-.22l-2.36.95a7.3 7.3 0 0 0-1.62-.94l-.36-2.5a.5.5 0 0 0-.5-.43h-3.8a.5.5 0 0 0-.5.43l-.36 2.5a7.3 7.3 0 0 0-1.62.94l-2.36-.95a.5.5 0 0 0-.6.22L2.8 8.86a.5.5 0 0 0 .12.62l2 1.58a7.6 7.6 0 0 0 0 1.88l-2 1.58a.5.5 0 0 0-.12.62l1.9 3.28a.5.5 0 0 0 .6.22l2.36-.95c.5.38 1.04.7 1.62.94l.36 2.5a.5.5 0 0 0 .5.43h3.8a.5.5 0 0 0 .5-.43l.36-2.5a7.3 7.3 0 0 0 1.62-.94l2.36.95a.5.5 0 0 0 .6-.22l1.9-3.28a.5.5 0 0 0-.12-.62Z"></path></svg>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/></svg>
             </button>
           </div>
         </div>
@@ -4441,6 +4491,7 @@ body.fsn-dd-lock{ overflow:hidden; }
         <button type="button" data-stats-mode="power" data-active="false" role="tab" aria-selected="false">FSN Index</button>
         <button type="button" data-stats-mode="advanced" data-active="false" role="tab" aria-selected="false">Advanced</button>
       </div>
+      <div class="px-4 pb-3"><button type="button" class="btn-ghost" data-goto="recordbook">OPEN THE RECORD BOOK →</button></div>
       <div id="analyticsBody" class="analytics-shell"></div>
     </div>
   </section>
@@ -4459,7 +4510,7 @@ body.fsn-dd-lock{ overflow:hidden; }
         </div>
         <button type="button" class="gear-btn" data-goto="setup" data-active="false"
                 aria-label="Open Setup and league connection" title="Setup">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.1"></circle><path d="M19.14 12.94a7.6 7.6 0 0 0 .05-.94 7.6 7.6 0 0 0-.05-.94l2-1.58a.5.5 0 0 0 .12-.62l-1.9-3.28a.5.5 0 0 0-.6-.22l-2.36.95a7.3 7.3 0 0 0-1.62-.94l-.36-2.5a.5.5 0 0 0-.5-.43h-3.8a.5.5 0 0 0-.5.43l-.36 2.5a7.3 7.3 0 0 0-1.62.94l-2.36-.95a.5.5 0 0 0-.6.22L2.8 8.86a.5.5 0 0 0 .12.62l2 1.58a7.6 7.6 0 0 0 0 1.88l-2 1.58a.5.5 0 0 0-.12.62l1.9 3.28a.5.5 0 0 0 .6.22l2.36-.95c.5.38 1.04.7 1.62.94l.36 2.5a.5.5 0 0 0 .5.43h3.8a.5.5 0 0 0 .5-.43l.36-2.5a7.3 7.3 0 0 0 1.62-.94l2.36.95a.5.5 0 0 0 .6-.22l1.9-3.28a.5.5 0 0 0-.12-.62Z"></path></svg>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/></svg>
         </button>
       </div>
       <p class="view-blurb">The all-time archive — franchise legacies, rivalry ledgers, and the league's biggest performances across every season on record.</p>
@@ -4506,7 +4557,7 @@ body.fsn-dd-lock{ overflow:hidden; }
           </div>
           <button type="button" class="gear-btn" data-goto="setup" data-active="false"
                   aria-label="Open Setup and league connection" title="Setup">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.1"></circle><path d="M19.14 12.94a7.6 7.6 0 0 0 .05-.94 7.6 7.6 0 0 0-.05-.94l2-1.58a.5.5 0 0 0 .12-.62l-1.9-3.28a.5.5 0 0 0-.6-.22l-2.36.95a7.3 7.3 0 0 0-1.62-.94l-.36-2.5a.5.5 0 0 0-.5-.43h-3.8a.5.5 0 0 0-.5.43l-.36 2.5a7.3 7.3 0 0 0-1.62.94l-2.36-.95a.5.5 0 0 0-.6.22L2.8 8.86a.5.5 0 0 0 .12.62l2 1.58a7.6 7.6 0 0 0 0 1.88l-2 1.58a.5.5 0 0 0-.12.62l1.9 3.28a.5.5 0 0 0 .6.22l2.36-.95c.5.38 1.04.7 1.62.94l.36 2.5a.5.5 0 0 0 .5.43h3.8a.5.5 0 0 0 .5-.43l.36-2.5a7.3 7.3 0 0 0 1.62-.94l2.36.95a.5.5 0 0 0 .6-.22l1.9-3.28a.5.5 0 0 0-.12-.62Z"></path></svg>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/></svg>
           </button>
         </div>
       </div>
@@ -4598,9 +4649,49 @@ body.fsn-dd-lock{ overflow:hidden; }
   </div>
 
   <!-- ==========================================================
-       SCREEN 6 — SETUP
+       PODCAST STUDIO
   ========================================================== -->
-  <section class="screen" data-screen="setup" data-active="false">
+  <section class="screen" data-screen="studio" data-active="false">
+    <div class="screen-shell max-w-6xl mx-auto w-full px-4 sm:px-6">
+      <header class="px-4 pt-4 pb-3 flex items-start justify-between gap-3">
+        <div><div class="kicker text-[var(--cyan)]">FSN Desk · Audio</div>
+          <h1 class="font-display text-[27px] leading-none mt-1.5">STUDIO</h1></div>
+        <button type="button" class="gear-btn" data-goto="setup" aria-label="Open Setup and league connection" title="Setup">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/></svg>
+        </button>
+      </header>
+      <div class="studio-shell">
+        <div class="studio-hero" id="studioHero" data-playing="false">
+          <div class="kicker text-[var(--cyan)]">On Air · Dan &amp; Stu</div>
+          <h2 class="font-display text-[25px] mt-2" id="studioTitle">THE WEEKLY RECAP</h2>
+          <p class="text-[12px] text-[var(--dim)] mt-2" id="studioSubtitle">Connect a league to get started.</p>
+          <div class="studio-hosts" aria-label="Hosts Dan and Stu"><div class="studio-avatar">DAN</div><div class="studio-avatar stu">STU</div></div>
+          <div class="studio-wave" aria-hidden="true" id="studioWave"></div>
+          <div class="studio-controls">
+            <button type="button" class="studio-play" id="studioPlay" aria-label="Play episode" disabled>▶</button>
+            <input type="range" class="studio-progress" id="studioSeek" min="0" max="100" value="0" aria-label="Episode position" disabled>
+            <span class="studio-time" id="studioTime">0:00 / 0:00</span>
+          </div>
+          <audio id="studioAudio" preload="metadata"></audio>
+        </div>
+        <button type="button" class="btn-primary mt-4 w-full" id="studioGenerate">GENERATE WEEKLY RECAP</button>
+        <p id="studioArchiveLock" class="text-[11px] text-[var(--dim)] mt-2" role="note" hidden>Historical weeks and past seasons cannot generate new podcasts.</p>
+        <p id="studioStatus" class="text-[11px] text-[var(--dim)] mt-2" role="status" aria-live="polite"></p>
+        <div class="studio-tabs" role="tablist" aria-label="Episode content">
+          <button type="button" data-studio-tab="script" role="tab" aria-selected="true">Script Read-Along</button>
+          <button type="button" data-studio-tab="reels" role="tab" aria-selected="false">Story Reels</button>
+        </div>
+        <div id="studioFeed"></div>
+        <div class="section-head mt-5"><span class="bar"></span><h2>Episode Archives</h2></div>
+        <div class="studio-archive" id="studioArchive"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==========================================================
+       SETUP / SETTINGS
+  ========================================================== -->
+  <section class="screen" data-screen="setup" data-active="false" role="dialog" aria-modal="true" aria-label="Setup and league configuration" aria-hidden="true">
     <div class="screen-shell max-w-6xl mx-auto w-full px-4 sm:px-6">
     <header class="px-4 pt-4 pb-3">
       <div class="flex items-start justify-between gap-3">
@@ -4609,9 +4700,9 @@ body.fsn-dd-lock{ overflow:hidden; }
           <h1 class="font-display text-[27px] leading-none mt-1.5">SETUP</h1>
           <div class="mt-2"><span class="pill pill-final" id="connStatus" style="color: var(--cyan); border-color: rgba(0, 224, 255, 0.45);">● MANUAL DATA</span></div>
         </div>
-        <button type="button" class="gear-btn" data-goto="setup" data-active="true" aria-current="page"
-                aria-label="Open Setup and league connection" title="Setup">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.1"></circle><path d="M19.14 12.94a7.6 7.6 0 0 0 .05-.94 7.6 7.6 0 0 0-.05-.94l2-1.58a.5.5 0 0 0 .12-.62l-1.9-3.28a.5.5 0 0 0-.6-.22l-2.36.95a7.3 7.3 0 0 0-1.62-.94l-.36-2.5a.5.5 0 0 0-.5-.43h-3.8a.5.5 0 0 0-.5.43l-.36 2.5a7.3 7.3 0 0 0-1.62.94l-2.36-.95a.5.5 0 0 0-.6.22L2.8 8.86a.5.5 0 0 0 .12.62l2 1.58a7.6 7.6 0 0 0 0 1.88l-2 1.58a.5.5 0 0 0-.12.62l1.9 3.28a.5.5 0 0 0 .6.22l2.36-.95c.5.38 1.04.7 1.62.94l.36 2.5a.5.5 0 0 0 .5.43h3.8a.5.5 0 0 0 .5-.43l.36-2.5a7.3 7.3 0 0 0 1.62-.94l2.36.95a.5.5 0 0 0 .6-.22l1.9-3.28a.5.5 0 0 0-.12-.62Z"></path></svg>
+        <button type="button" class="gear-btn" id="setupClose" data-active="true"
+                aria-label="Close Setup" title="Close Setup">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
         </button>
       </div>
     </header>
@@ -4989,8 +5080,12 @@ body.fsn-dd-lock{ overflow:hidden; }
 ============================================================ -->
 <nav id="tabBar">
   <button class="tab-btn" data-tab="home" data-active="true">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"></path><path d="M5 9.5V21h14V9.5"></path><path d="M9.5 21v-6h5v6"></path></svg>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="15" rx="2"></rect><path d="m7 2 5 4 5-4"></path></svg>
     <span>Desk</span>
+  </button>
+  <button class="tab-btn" data-tab="studio" data-active="false">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="13" rx="3"></rect><path d="M5 10a7 7 0 0 0 14 0M12 17v5m-4 0h8"></path></svg>
+    <span>Studio</span>
   </button>
   <button class="tab-btn" data-tab="matchups" data-active="false">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M12 5v14"></path><path d="M6.5 10.5h2"></path><path d="M15.5 10.5h2"></path></svg>
@@ -5002,11 +5097,7 @@ body.fsn-dd-lock{ overflow:hidden; }
   </button>
   <button class="tab-btn" data-tab="analytics" data-active="false">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V9"></path><path d="M10 19V5"></path><path d="M16 19v-7"></path><path d="M22 19H2"></path></svg>
-    <span>Season Stats</span>
-  </button>
-  <button class="tab-btn" data-tab="recordbook" data-active="false">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"></rect><circle cx="12" cy="12" r="3.5"></circle><path d="M12 6v2"></path><path d="M12 16v2"></path></svg>
-    <span>Record Book</span>
+    <span>Stats</span>
   </button>
 </nav>
 
@@ -5307,7 +5398,7 @@ body.fsn-dd-lock{ overflow:hidden; }
         <!-- SLIDE 2 — DESK TAB -->
         <div class="ftu-slide ftu-tour" data-slide="1" data-accent="cyan" data-tour-tab="home" role="group" aria-roledescription="slide" aria-label="2 of 7">
           <span class="ftu-badge" data-accent="cyan">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.5 12 3l9 7.5"></path><path d="M5 9.5V21h14V9.5"></path><path d="M9.5 21v-6h5v6"></path></svg>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="6" width="20" height="15" rx="2"></rect><path d="m7 2 5 4 5-4"></path></svg>
             Tab 1 · Desk
           </span>
           <div class="ftu-shot" aria-hidden="true">
@@ -5325,11 +5416,32 @@ body.fsn-dd-lock{ overflow:hidden; }
           <p class="ftu-body">Your <strong>home dashboard</strong>. Every launch opens to the week's top story, live scores, and the biggest movers — a single command center for the whole league.</p>
         </div>
 
-        <!-- SLIDE 3 — MATCHUPS TAB -->
-        <div class="ftu-slide ftu-tour" data-slide="2" data-accent="cyan" data-tour-tab="matchups" role="group" aria-roledescription="slide" aria-label="3 of 7">
+        <!-- SLIDE 3 — STUDIO TAB -->
+        <div class="ftu-slide ftu-tour" data-slide="2" data-accent="gold" data-tour-tab="studio" role="group" aria-roledescription="slide" aria-label="3 of 7">
+          <span class="ftu-badge" data-accent="gold">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><circle cx="12" cy="12" r="3.5"></circle><path d="M12 6v2"></path><path d="M12 16v2"></path></svg>
+            Tab 2 · Studio
+          </span>
+          <div class="ftu-shot" aria-hidden="true">
+            <div class="ftu-shot-bar"><span class="ftu-shot-dot"></span><span class="ftu-shot-title">Studio · Weekly Recap</span></div>
+            <div class="ftu-shot-body">
+              <div class="ftu-hl">
+                <div class="ftu-m-kicker">Dan &amp; Stu · On Air</div>
+                <div class="ftu-studio-hosts"><span class="studio-avatar">DAN</span><span class="studio-avatar stu">STU</span><span class="ftu-studio-wave"><i style="--h:8px"></i><i style="--h:16px"></i><i style="--h:11px"></i><i style="--h:18px"></i><i style="--h:7px"></i><i style="--h:13px"></i></span></div>
+                <div class="ftu-m-row"><span class="ftu-m-rankn">▶</span><span class="ftu-m-team">Week 7: The Title Race</span><span class="ftu-m-stat">3:24</span></div>
+              </div>
+              <div class="ftu-m-card"><div class="ftu-m-kicker">Read Along</div><div class="ftu-m-team">Headlines from your league's News Desk</div></div>
+            </div>
+          </div>
+          <h2 class="ftu-headline">FSN Studio &amp; Audio Recaps</h2>
+          <p class="ftu-body"><strong>Your weekly audio desk.</strong> Generate a weekly audio summary voiced by Dan and Stu, then follow its script and real league story cards. The all-time Record Book is available from Stats.</p>
+        </div>
+
+        <!-- SLIDE 4 — MATCHUPS TAB -->
+        <div class="ftu-slide ftu-tour" data-slide="3" data-accent="cyan" data-tour-tab="matchups" role="group" aria-roledescription="slide" aria-label="4 of 7">
           <span class="ftu-badge" data-accent="cyan">
             <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M12 5v14"></path><path d="M6.5 10.5h2"></path><path d="M15.5 10.5h2"></path></svg>
-            Tab 2 · Matchups
+            Tab 3 · Matchups
           </span>
           <div class="ftu-shot" aria-hidden="true">
             <div class="ftu-shot-bar"><span class="ftu-shot-dot"></span><span class="ftu-shot-title">Matchups · Week 7</span></div>
@@ -5342,11 +5454,11 @@ body.fsn-dd-lock{ overflow:hidden; }
           <p class="ftu-body">The full <strong>head-to-head slate</strong>. Every game on the board with <strong>records, streaks and scores</strong>, so you can read the whole week at a glance.</p>
         </div>
 
-        <!-- SLIDE 4 — NEWS TAB -->
-        <div class="ftu-slide ftu-tour" data-slide="3" data-accent="cyan" data-tour-tab="news" role="group" aria-roledescription="slide" aria-label="4 of 7">
+        <!-- SLIDE 5 — NEWS TAB -->
+        <div class="ftu-slide ftu-tour" data-slide="4" data-accent="cyan" data-tour-tab="news" role="group" aria-roledescription="slide" aria-label="5 of 7">
           <span class="ftu-badge" data-accent="cyan">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h12v14H5.5A1.5 1.5 0 0 1 4 17.5Z"></path><path d="M16 9h3.5A1.5 1.5 0 0 1 21 10.5v7a1.5 1.5 0 0 1-1.5 1.5H16"></path><path d="M7 8.5h6"></path><path d="M7 11.5h6"></path><path d="M7 14.5h4"></path></svg>
-            Tab 3 · News
+            Tab 4 · News
           </span>
           <div class="ftu-shot" aria-hidden="true">
             <div class="ftu-shot-bar"><span class="ftu-shot-dot"></span><span class="ftu-shot-title">News · The Wire</span></div>
@@ -5363,11 +5475,11 @@ body.fsn-dd-lock{ overflow:hidden; }
           <button type="button" class="ftu-preview-btn" data-ftu-preview aria-controls="ftuDemo"><span aria-hidden="true">▶</span> Preview a Sample Story</button>
         </div>
 
-        <!-- SLIDE 5 — SEASON STATS TAB -->
-        <div class="ftu-slide ftu-tour" data-slide="4" data-accent="cyan" data-tour-tab="analytics" role="group" aria-roledescription="slide" aria-label="5 of 7">
+        <!-- SLIDE 6 — SEASON STATS TAB -->
+        <div class="ftu-slide ftu-tour" data-slide="5" data-accent="cyan" data-tour-tab="analytics" role="group" aria-roledescription="slide" aria-label="6 of 7">
           <span class="ftu-badge" data-accent="cyan">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V9"></path><path d="M10 19V5"></path><path d="M16 19v-7"></path><path d="M22 19H2"></path></svg>
-            Tab 4 · Season Stats
+            Tab 5 · Stats
           </span>
           <div class="ftu-shot" aria-hidden="true">
             <div class="ftu-shot-bar"><span class="ftu-shot-dot"></span><span class="ftu-shot-title">Season Stats · Analytics</span></div>
@@ -5381,26 +5493,6 @@ body.fsn-dd-lock{ overflow:hidden; }
           </div>
           <h2 class="ftu-headline">Season Stats</h2>
           <p class="ftu-body"><strong>Analytics & the FSN Index.</strong> Power ratings, consistency, luck, and standings — the advanced numbers that settle every group-chat argument.</p>
-        </div>
-
-        <!-- SLIDE 6 — RECORD BOOK TAB -->
-        <div class="ftu-slide ftu-tour" data-slide="5" data-accent="gold" data-tour-tab="recordbook" role="group" aria-roledescription="slide" aria-label="6 of 7">
-          <span class="ftu-badge" data-accent="gold">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"></rect><circle cx="12" cy="12" r="3.5"></circle><path d="M12 6v2"></path><path d="M12 16v2"></path></svg>
-            Tab 5 · Record Book
-          </span>
-          <div class="ftu-shot" aria-hidden="true">
-            <div class="ftu-shot-bar"><span class="ftu-shot-dot"></span><span class="ftu-shot-title">Record Book · All-Time</span></div>
-            <div class="ftu-shot-body">
-              <div class="ftu-hl">
-                <div class="ftu-m-kicker">All-Time Wins</div>
-                <div class="ftu-m-row"><span class="ftu-m-rankn">1</span><span class="ftu-m-team">Dynasty Dogs</span><span class="ftu-m-stat">148–72</span></div>
-              </div>
-              <div class="ftu-m-card"><div class="ftu-m-kicker">Rivalry</div><div class="ftu-m-team">Dogs lead the series 14–11</div></div>
-            </div>
-          </div>
-          <h2 class="ftu-headline">Record Book</h2>
-          <p class="ftu-body"><strong>The all-time history vault.</strong> Every season, champion, record, and <strong>rivalry</strong> your league has ever produced — reconstructed automatically.</p>
         </div>
 
         <!-- SLIDE 7 — THE CTA -->
@@ -5708,6 +5800,46 @@ function weekHasLiveGame(week){
     if(!scheduleGameFinal(game)) return true;
   }
   return false;
+}
+
+/* Are this week's box scores CLOSED — every Sunday game and the Monday night
+   final settled, with nothing left that can move a fantasy score?
+
+   Shared across blocks (the Studio generation gate in block 6 reads it, and it
+   is the client's half of the same question `lib/week-complete.ts` asks the NFL
+   scoreboard for the scheduled Tuesday run), so per rule 1 it lives at global
+   scope.
+
+   Completion is read with scheduleMatchupNarrativeFinal(), not
+   scheduleGameFinal(): ESPN routinely leaves `winner` on UNDECIDED for hours
+   after the Monday night whistle while stat corrections settle, and a recap
+   that waits for the official flag would still be locked on Tuesday morning
+   with every starter's game long over. The narrative test closes a matchup once
+   no starter on either side can score again, which is exactly "the box scores
+   are in" — and it is the same test the matchup cards and the Local Read
+   already show the reader.
+
+   A week with no regular-season matchup loaded is NOT complete. "I cannot see
+   this week's slate" and "this week's slate is finished" are different answers,
+   and defaulting the unknown to complete would offer a recap of a week the
+   client has no scores for. Playoff tiers are excluded for the same reason
+   weekHasLiveGame() excludes them. */
+function weekBoxScoresComplete(week){
+  const wk = Number(week) || 0;
+  if(!wk) return false;
+  const data = (typeof LeagueData !== 'undefined' && LeagueData) ? LeagueData.espnData : null;
+  const schedule = data && Array.isArray(data.schedule) ? data.schedule : [];
+  let counted = 0;
+  for(let i=0; i<schedule.length; i++){
+    const game = schedule[i];
+    if(!game || !game.home || !game.away) continue;
+    if(Number(game.matchupPeriodId) !== wk) continue;
+    const tier = String(game.playoffTierType || 'NONE').toUpperCase();
+    if(tier && tier !== 'NONE') continue;
+    counted += 1;
+    if(!scheduleMatchupNarrativeFinal(game)) return false;
+  }
+  return counted > 0;
 }
 
 /* ============================================================
@@ -6299,7 +6431,7 @@ window.FSNDeepLink = (function(){
   ];
 
   /* The six tabs, matching the .screen[data-screen] sections in the markup. */
-  const SCREENS = ['home', 'matchups', 'news', 'analytics', 'recordbook', 'setup'];
+  const SCREENS = ['home', 'studio', 'matchups', 'news', 'analytics', 'recordbook', 'setup'];
 
   /* Deliberately narrow. Article ids are built by the Desk out of a kind, a
      week and team ids ('tl-rivalry-3-1-2'); owner ids are ESPN GUIDs, braces
@@ -19634,6 +19766,67 @@ const DAY_NAMES = ['SUNDAY','MONDAY','TUESDAY','WEDNESDAY','THURSDAY','FRIDAY','
 const MIN = 60000, HOUR = 60 * MIN, DAY = 24 * HOUR;
 
 /* ============================================================
+   DRAFT / PRESEASON WEEK CLAMP
+
+   The draft desk reports on an event that happens once, before the season
+   starts. Its four cards used to carry no week of their own, so
+   ensureArticleIdentity() stamped them with whatever week the reader happened
+   to be sitting on — which meant the Round 1 Shocker, the Reach, the Steal and
+   the report cards re-keyed themselves into Week 3 and rode the Week 3 wire on
+   a Week 3 timestamp. Two separate bugs in one: the cards leaked forward, and
+   the same draft story got a different deterministic article key (and therefore
+   a different narrative draw) in every week it leaked into.
+
+   Both are fixed by pinning the desk to the week it belongs to. DRAFT_WEEK is
+   the canonical home for every draft and preseason card; DRAFT_EVENT_TYPE is
+   the explicit type tag the stream filter matches on, so a future draft-desk
+   generator is clamped by declaring `eventType: DRAFT_EVENT_TYPE` rather than
+   by being added to a list somewhere else.
+============================================================ */
+const DRAFT_WEEK = 1;
+const DRAFT_EVENT_TYPE = 'DRAFT';
+
+/* True for anything filed by a draft desk, by explicit type first and by the
+   topic/kind the generators already publish second. */
+function isDraftDeskEvent(e){
+  if(!e) return false;
+  return e.eventType === DRAFT_EVENT_TYPE || e.topic === 'draft' || e.kind === 'draft';
+}
+
+/* The week a card DECLARES it belongs to, which is not the same thing as the
+   week it happens to carry.
+
+   `a.week` is assigned by ensureArticleIdentity() from effectiveWeek() whenever
+   a generator does not set one, so for almost every card it records the week
+   the reader was sitting on at generation time rather than a claim about the
+   card's subject. It is therefore useless as a filter input — and actively
+   misleading inside editorialScheduleEngine's routeWeek(), which builds the
+   previous week's stream while the UI is parked on the current one.
+
+   A declared week is the opposite: a generator stating that its card belongs to
+   one specific week no matter which wire asked for it. The draft desk is the
+   only such generator today, and DRAFT_WEEK is its declaration. Everything else
+   returns null and passes the filter untouched, because a card built from
+   weekContext(week) is week-correct by construction. */
+function timelineDeclaredWeek(e){
+  if(!e) return null;
+  if(isDraftDeskEvent(e)) return DRAFT_WEEK;
+  const wk = Number(e.declaredWeek);
+  return Number.isFinite(wk) && wk > 0 ? wk : null;
+}
+
+/* The draft desk is on the air only while the reader is on the week it is
+   filed under. Week 2 onward the board is history, not news — and it is not
+   lost either: matchupDraftSnapshot() keeps each team's first pick and draft
+   grade inside the week's own Matchup of the Week, which is where draft
+   context still belongs once the games have started. */
+function draftDeskOnAir(week){
+  const wk = Number(week);
+  if(!Number.isFinite(wk)) return true;
+  return wk <= DRAFT_WEEK;
+}
+
+/* ============================================================
    LIVE SEASON RELEASE CALENDAR
 
    Off-season and in the archives the desk is a time machine: every slot is
@@ -19877,6 +20070,14 @@ function tl(o){
   a.slot = slot;
   a.topic = o.topic || def.topic;
   a.at = at;
+  /* Explicit event type, carried alongside the topic so the stream's week
+     filter has a declared signal to match on rather than inferring one from
+     copy. Draft coverage defaults to it even when a generator forgets. */
+  a.eventType = o.eventType || (a.topic === 'draft' ? DRAFT_EVENT_TYPE : null);
+  /* A generator that passed an explicit week is claiming this card belongs to
+     that week and no other. Recorded separately from a.week, which the identity
+     pass fills in from the viewed week whenever nobody declared one. */
+  a.declaredWeek = o.week != null && Number(o.week) > 0 ? Number(o.week) : null;
   a.metaTag = o.metaTag || def.label;
   a.meta = stamp(at) + ' · ' + a.metaTag;
   a.stream = o.stream || null;         // extra payload for special cards (studio launcher)
@@ -21150,6 +21351,10 @@ function tlInjury(ctx){
    DRAFT SEASON
 ============================================================ */
 function tlDraft(ctx){
+  /* Week gate first, before any board work: outside the draft week this desk
+     has nothing to file, and generating four cards only to have the stream
+     filter drop them is wasted work that also pollutes the row store. */
+  if(!draftDeskOnAir(ctx && ctx.week)) return [];
   const board = FSNIntel.draft();
   if(!board || !board.picks.length) return [];
   const out = [];
@@ -21166,6 +21371,7 @@ function tlDraft(ctx){
     out.push(tl({
       id: 'tl-draft-r1',
       kind:'draft', topic:'draft', at: at(1),
+      week: DRAFT_WEEK, eventType: DRAFT_EVENT_TYPE,
       metaTag:'ROUND 1',
       tag:'ROUND 1 SHOCKER', tone:'gold', priority: 96,
       byline:'FSN Draft Desk',
@@ -21200,6 +21406,7 @@ function tlDraft(ctx){
     out.push(tl({
       id: 'tl-draft-reach',
       kind:'draft', topic:'draft', at: at(3),
+      week: DRAFT_WEEK, eventType: DRAFT_EVENT_TYPE,
       metaTag:'DRAFT',
       tag:'REACH OF THE DRAFT', tone:'red', priority: 92,
       byline:'FSN Draft Desk',
@@ -21231,6 +21438,7 @@ function tlDraft(ctx){
     out.push(tl({
       id: 'tl-draft-steal',
       kind:'draft', topic:'draft', at: at(5),
+      week: DRAFT_WEEK, eventType: DRAFT_EVENT_TYPE,
       metaTag:'DRAFT',
       tag:'STEAL OF THE DRAFT', tone:'green', priority: 90,
       byline:'FSN Draft Desk',
@@ -21262,6 +21470,7 @@ function tlDraft(ctx){
     out.push(tl({
       id: 'tl-draft-grades',
       kind:'draft', topic:'draft', at: at(8),
+      week: DRAFT_WEEK, eventType: DRAFT_EVENT_TYPE,
       metaTag:'REPORT CARDS',
       tag:'DRAFT GRADES', tone:'cyan', priority: 88,
       byline:'FSN Draft Desk',
@@ -22705,6 +22914,42 @@ function getTimelineStream(week){
       released.push(held[0]);
     }
     events = released;
+  }
+
+  /* ---- STRICT WEEK FILTER ----
+     The stream is ordered by timestamp, but it must not be *scoped* by one.
+     A timestamp only says when a card would have broken; the week says which
+     wire it belongs on. Draft coverage is the case that proves the difference:
+     its cards are stamped into the recent past so they read as a weekend of
+     programming, and on a Week 3 wire that stamp put them at the top of TODAY —
+     four draft cards above the actual Week 3 slate.
+
+     So every card that DECLARES a week (see timelineDeclaredWeek) is matched
+     against the week being assembled before it reaches the feed. The draft desk
+     declares DRAFT_WEEK, which confines it to the Week 1 wire and keeps it one
+     click away rather than gone: switch the week selector back to Week 1 and
+     the whole desk is there. A card that declares nothing passes untouched —
+     it was built from weekContext(week) and is week-correct by construction,
+     and its a.week is a generation artifact, not a claim.
+
+     Community copy is exempt: it is week-scoped at the source by
+     scopedCustom() and is the one desk the app does not overrule. */
+  const wireWeek = Number(week);
+  if(Number.isFinite(wireWeek) && wireWeek > 0){
+    const offWire = [];
+    events = events.filter(e=>{
+      if(!e) return false;
+      if(e.custom) return true;
+      const declared = timelineDeclaredWeek(e);
+      if(declared == null || declared === wireWeek) return true;
+      offWire.push(e);
+      return false;
+    });
+    if(offWire.length){
+      console.info('[Timeline] held ' + offWire.length + ' off-week card(s) off the Week ' +
+        wireWeek + ' wire: ' + offWire.map(e=>
+          (e.id || 'unknown') + ' → week ' + timelineDeclaredWeek(e)).join(', '));
+    }
   }
 
   let list = upsertDeterministicArticleRows(events).sort((a,b)=> b.at - a.at);
@@ -24208,6 +24453,7 @@ const MATCHUP_FLAVOR = {
 
 const ui = {
   screen: 'home',
+  studioTab: 'script',
   recordBookTab: 'franchises',
   /* Which board the RECORDS sub-tab shows: 'alltime' keeps the career
      aggregate leaderboards, 'season' swaps in the single-season peak
@@ -24334,7 +24580,8 @@ function toast(msg){
    DOM state after every transition instead of trusting paired assignments. */
 function syncBodyScrollLock(){
   const overlayIds = ['reader','franchiseModal','onboardModal','ftuModal','profilePicker','fsnIndexInfoModal','mxBoxSheet','storyViewer'];
-  const locked = overlayIds.some(id=>{
+  const setup = document.querySelector('.screen[data-screen="setup"]');
+  const locked = (setup && setup.dataset.active === 'true') || overlayIds.some(id=>{
     const node = $(id);
     return node && node.dataset && node.dataset.open === 'true';
   });
@@ -26128,6 +26375,11 @@ const STORY_TONES = {
 let storyReel = [];
 let storyViewerIndex = 0;
 let storyViewerTimer = null;
+let storyViewerRemaining = 0;
+let storyViewerStarted = 0;
+let storyViewerHeld = false;
+let storyViewerPressAt = 0;
+let storyViewerIgnoreClick = false;
 const STORY_VIEWER_MS = 7000;
 
 function storyPrefersReducedMotion(){
@@ -27035,6 +27287,20 @@ function renderStoryProgress(duration){
 function clearStoryTimer(){
   if(storyViewerTimer){ clearTimeout(storyViewerTimer); storyViewerTimer = null; }
 }
+function pauseStoryViewer(){
+  if(storyViewerHeld || $('storyViewer').dataset.open !== 'true') return;
+  storyViewerHeld = true;
+  storyViewerRemaining = Math.max(0, storyViewerRemaining - (performance.now() - storyViewerStarted));
+  clearStoryTimer();
+  $('storyViewer').dataset.held = 'true';
+}
+function resumeStoryViewer(){
+  if(!storyViewerHeld) return;
+  storyViewerHeld = false;
+  $('storyViewer').dataset.held = 'false';
+  storyViewerStarted = performance.now();
+  storyViewerTimer = setTimeout(()=> showStory(storyViewerIndex + 1), storyViewerRemaining);
+}
 
 function showStory(index){
   const stage = $('storyViewerStage');
@@ -27047,7 +27313,7 @@ function showStory(index){
   const tone = STORY_TONES[story.key] || STORY_TONES.mover;
   /* A promo card carries more to read than a stat panel, so a type may ask for
      longer on glass. Everything else keeps the reel's cadence. */
-  const dwell = Number(story.dwell) > 0 ? Number(story.dwell) : STORY_VIEWER_MS;
+  const dwell = Math.max(5000, Math.min(10000, Number(story.dwell) || STORY_VIEWER_MS));
   if(label) label.textContent = 'FSN · ' + (story.ringLabel || tone.label) + ' · ' + (index + 1) + ' of ' + storyReel.length;
   try{
     stage.innerHTML = storyPanelHtml(story);
@@ -27059,6 +27325,10 @@ function showStory(index){
   renderStoryProgress(dwell);
   animateStoryPanel(stage);
   clearStoryTimer();
+  storyViewerRemaining = dwell;
+  storyViewerStarted = performance.now();
+  storyViewerHeld = false;
+  $('storyViewer').dataset.held = 'false';
   storyViewerTimer = setTimeout(()=> showStory(storyViewerIndex + 1), dwell);
 }
 
@@ -27074,7 +27344,9 @@ function openStoryViewer(index){
 function closeStoryViewer(){
   const modal = $('storyViewer');
   clearStoryTimer();
+  storyViewerHeld = false;
   if(!modal) return;
+  modal.dataset.held = 'false';
   modal.dataset.open = 'false';
   const stage = $('storyViewerStage');
   if(stage) stage.innerHTML = '';
@@ -27089,6 +27361,17 @@ document.addEventListener('click', (e)=>{
 });
 
 $('storyViewerClose').addEventListener('click', closeStoryViewer);
+$('storyViewer').addEventListener('pointerdown', e=>{
+  if(e.target.closest('[data-story-nav]')){
+    storyViewerPressAt = performance.now();
+    pauseStoryViewer();
+  }
+});
+$('storyViewer').addEventListener('pointerup', e=>{
+  storyViewerIgnoreClick = !!e.target.closest('[data-story-nav]') && storyViewerHeld && performance.now() - storyViewerPressAt > 250;
+  resumeStoryViewer();
+});
+$('storyViewer').addEventListener('pointercancel', resumeStoryViewer);
 $('storyViewer').addEventListener('click', (e)=>{
   /* The CTA is checked before the tap zones: a promo card exists to be opened,
      and a button the "next story" strip swallows is a dead one. The viewer
@@ -27106,6 +27389,7 @@ $('storyViewer').addEventListener('click', (e)=>{
   }
   const nav = e.target.closest('[data-story-nav]');
   if(!nav) return;
+  if(storyViewerIgnoreClick){ storyViewerIgnoreClick = false; return; }
   if(nav.getAttribute('data-story-nav') === 'prev'){
     if(storyViewerIndex <= 0){ showStory(0); return; }
     showStory(storyViewerIndex - 1);
@@ -27206,16 +27490,31 @@ function matchupAccents(away, home){
   return { away:a, home:h };
 }
 
-/* The contribution bar that replaced the plain divider. Scored games split on
-   real points; a board that has not kicked off splits on projections when the
-   feed carries both, and otherwise sits evenly and says so. */
-function matchupDominanceBar(awayScore, homeScore, awayProj, homeProj, accents, scored){
+/* The contribution bar that replaced the plain divider. It splits on the two
+   PROJECTIONS whenever the feed carries both, in every state.
+
+   It used to split on real points the moment a game went live, which pinned
+   the bar to 0% / 100% for most of a Sunday: the early window decides the
+   whole width while half of both rosters have not kicked off, so a 123.0-
+   versus-147.3 matchup reads as a wire-to-wire rout. Projected share answers
+   the question the bar is actually asking — how the week is expected to
+   divide — and it converges on the real split anyway, because a settled
+   matchup projects exactly what it scored.
+
+   With a projection missing on either side there is nothing to split, so the
+   bar falls back to real points, and with neither it sits evenly and says so. */
+function matchupDominanceBar(awayScore, homeScore, awayProj, homeProj, accents, status){
+  const scored = status !== 'pre';
   let a = Number(awayScore) || 0, h = Number(homeScore) || 0;
   let label = 'POINT SHARE';
-  if(!scored){
-    const ap = projectedPoints(awayProj), hp = projectedPoints(homeProj);
-    if(ap != null && hp != null){ a = ap; h = hp; label = 'PROJECTED SHARE'; }
-    else { a = 0; h = 0; }
+  const ap = projectedPoints(awayProj), hp = projectedPoints(homeProj);
+  if(ap != null && hp != null){
+    a = ap; h = hp;
+    /* A settled matchup projects exactly what it scored, so the split is the
+       real one and calling it a projection would be the only lie on the card. */
+    label = status === 'final' ? 'POINT SHARE' : 'PROJECTED SHARE';
+  } else if(!scored){
+    a = 0; h = 0;
   }
   const total = a + h;
   const awayPct = total > 0 ? (a / total) * 100 : 50;
@@ -27309,7 +27608,7 @@ function matchupCard(g, motwKey, week){
         ${marginBadge}
       </div>
       ${matchupSide(g.awayTeam, as, awayLeads, st, awayProj, boxWeek)}
-      ${matchupDominanceBar(as, hs, awayProj, homeProj, accents, scored)}
+      ${matchupDominanceBar(as, hs, awayProj, homeProj, accents, st)}
       ${matchupSide(g.homeTeam, hs, homeLeads, st, homeProj, boxWeek)}
       ${finalizeNotice}
       <div class="mx-cue"><span>View Box Score</span><span class="mx-cue-chev" aria-hidden="true">›</span></div>
@@ -27327,29 +27626,18 @@ function matchupSide(team, score, leading, status, projected, week){
       border-color:${won ? 'rgba(57,255,140,.4)' : 'rgba(255,45,85,.4)'};
       color:${won ? 'var(--green)' : 'var(--red)'};">${won ? 'W' : 'L'}${streak.length}</span>`;
   }
-  /* Before a side has scored, the projection is the only forecast there is, so
-     it rides under the score as a small muted annotation. Once real points are
-     on the board, the raw forecast is a second copy of a number the reader has
-     already read; what is actually new is the DISTANCE from it, so the line
-     becomes a signed delta — green over the projection, red under it.
-
-     The switch is per SIDE, not per game: in a live week one roster can be
-     mid-slate while the other has not played, and printing that team a
-     −109.4 deficit against its own projection would read as a collapse
-     rather than as a team whose players have not kicked off. A missing
-     projection drops the line entirely in both states. */
+  /* The projection rides under the score as a small muted annotation, in every
+     state. It used to flip to a signed delta once a side had points on the
+     board, but mid-slate that reads as a verdict on a week that has barely
+     started: a roster with one player done shows a −118.5 against its own
+     projection and looks like a collapse rather than a team whose players
+     have not kicked off. The plain forecast is honest at every point in the
+     week. A missing projection drops the line entirely. */
   const proj = projectedPoints(projected);
-  const hasScored = status !== 'pre' && Number(score) > 0;
   let projLine = '';
-  if(proj != null && !hasScored){
+  if(proj != null){
     projLine = `<div class="font-mono tabular text-[10px] text-[var(--dim)] leading-none mt-1.5 whitespace-nowrap"
          data-score-projected="${esc(formatPoints(proj))}">Projected: ${esc(formatPoints(proj))}</div>`;
-  } else if(proj != null){
-    const delta = Number(score) - proj;
-    const tone = delta > 0.05 ? 'is-over' : (delta < -0.05 ? 'is-under' : '');
-    const sign = delta > 0 ? '+' : (delta < 0 ? '−' : '±');
-    projLine = `<div class="mx-proj ${tone}" data-score-projected="${esc(formatPoints(proj))}"
-         title="Projected ${esc(formatPoints(proj))}">${sign}${Math.abs(delta).toFixed(1)} vs PROJ</div>`;
   }
 
   return `<div class="flex items-center gap-3">
@@ -33167,6 +33455,19 @@ async function eraseLocalDataAndDisconnect(){
     if(btn){ btn.disabled = false; btn.textContent = 'RETRY ERASE & DISCONNECT'; }
     return;
   }
+  try{
+    if(typeof indexedDB !== 'undefined') await new Promise((resolve, reject)=>{
+      const request = indexedDB.deleteDatabase('fsn.podcast.v1');
+      request.onsuccess = resolve;
+      request.onerror = ()=> reject(request.error);
+      request.onblocked = ()=> reject(new Error('Podcast archive is still open'));
+    });
+  }catch(err){
+    console.error('[Privacy] Podcast archive erasure failed', err);
+    if(status) status.textContent = 'Podcast audio could not be erased. Close other FSN tabs and retry.';
+    if(btn){ btn.disabled = false; btn.textContent = 'RETRY LOCAL ERASURE'; }
+    return;
+  }
   const result = FSNStore.eraseOwnedData();
   LEAGUE_RUNTIME_CACHE.clear();
   if(result.failures.length){
@@ -34268,11 +34569,11 @@ let ftuSlide = 0;
    slides each render this strip with one tab lit so a new visitor sees exactly
    where the section they just read about lives. Static markup, no data. */
 const FTU_TAB_MAP = [
-  { key:'home',       label:'Desk',         icon:'<path d="M3 10.5 12 3l9 7.5"></path><path d="M5 9.5V21h14V9.5"></path><path d="M9.5 21v-6h5v6"></path>' },
+  { key:'home',       label:'Desk',          icon:'<rect x="2" y="6" width="20" height="15" rx="2"></rect><path d="m7 2 5 4 5-4"></path>' },
+  { key:'studio',     label:'Studio',       icon:'<rect x="9" y="2" width="6" height="13" rx="3"></rect><path d="M5 10a7 7 0 0 0 14 0M12 17v5m-4 0h8"></path>' },
   { key:'matchups',   label:'Matchups',     icon:'<rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M12 5v14"></path><path d="M6.5 10.5h2"></path><path d="M15.5 10.5h2"></path>' },
   { key:'news',       label:'News',         icon:'<path d="M4 5h12v14H5.5A1.5 1.5 0 0 1 4 17.5Z"></path><path d="M16 9h3.5A1.5 1.5 0 0 1 21 10.5v7a1.5 1.5 0 0 1-1.5 1.5H16"></path><path d="M7 8.5h6"></path><path d="M7 11.5h6"></path><path d="M7 14.5h4"></path>' },
-  { key:'analytics',  label:'Season Stats', icon:'<path d="M4 19V9"></path><path d="M10 19V5"></path><path d="M16 19v-7"></path><path d="M22 19H2"></path>' },
-  { key:'recordbook', label:'Record Book',  icon:'<rect x="3" y="4" width="18" height="16" rx="2"></rect><circle cx="12" cy="12" r="3.5"></circle><path d="M12 6v2"></path><path d="M12 16v2"></path>' },
+  { key:'analytics',  label:'Stats',        icon:'<path d="M4 19V9"></path><path d="M10 19V5"></path><path d="M16 19v-7"></path><path d="M22 19H2"></path>' },
 ];
 
 // Inject the mini bottom-nav map into each tour slide, highlighting the tab the
@@ -37222,19 +37523,806 @@ document.addEventListener('keydown', (e)=>{
 /* ============================================================
    NAVIGATION
 ============================================================ */
+const studioAudio = $('studioAudio');
+const studioEpisodes = [];
+let setupReturnFocus = null;
+let studioScope = '';
+let studioCurrent = null;
+let studioObjectUrl = '';
+let studioReelIndex = 0;
+let studioActiveLineIndex = -1;
+let studioBusy = false;
+let studioReelTimer = null;
+let studioReelRemaining = 7000;
+let studioReelStarted = 0;
+let studioReelHeld = false;
+let studioHeldAudio = false;
+let studioPressAt = 0;
+let studioIgnoreClick = false;
+let studioRemoteKey = '';
+let studioPollTimer = null;
+let studioRemoteStatus = 'missing';
+/* How many times the lookup for one league-week has been deferred for want of
+   league context, and the league-week whose fetch is in flight. Both are keyed
+   so a week or league change starts fresh instead of inheriting the previous
+   view's state, and the count is what keeps a reader sitting on Studio with no
+   league from collecting a console warning every fifteen seconds. */
+let studioRemoteDeferred = { key:'', attempts:0 };
+let studioRemotePending = '';
+
+function studioViewedSeason(){
+  return Number(($('seasonYear').value || '').trim()) || Number(uiActiveSeasonYear()) || 2026;
+}
+function studioIsArchivedSeason(){
+  return studioViewedSeason() < Number(uiActiveSeasonYear());
+}
+
+/* Why this view cannot MINT a new episode — '' when it can.
+
+     'season'  an archived season. lib/generate-podcast.ts refuses these before
+               auth, the Supabase claim and any ElevenLabs call
+               (HISTORICAL_SEASON_ERROR), so offering the button would only
+               trade a disabled control for a 400.
+     'week'    a completed week of the live season. The board is already in the
+               books; the episode it generated at the time still plays.
+     'midweek' the live week, still open. Its box scores are not closed, so
+               there is no finished week to recap. This is the state the screen
+               sits in from Wednesday through Monday night, and it clears on its
+               own the moment the last starter's game goes final.
+
+   Reading an episode is deliberately NOT gated on this. A past week of the live
+   season still has to play the episode its league generated at the time — only
+   generating a new one is locked. */
+/* ============================================================
+   TEMPORARY TESTING EXCEPTION — REMOVE WHEN TESTING ENDS
+
+   One league, one week, current season only. It exists so the four-segment
+   pipeline can be exercised against a week that has already closed, and it is
+   deliberately three constants and one predicate so deleting it is a single
+   contiguous edit: drop this block, drop the first line of
+   studioGenerationLock(), drop the studioHydrateTestArchive() call in
+   renderStudio(), and the guardrail is back to global.
+
+   Scoped to the LIVE season on purpose. An archived season is refused by
+   lib/generate-podcast.ts before auth, the Supabase claim and any ElevenLabs
+   call (HISTORICAL_SEASON_ERROR), so unlocking week 2 of 2019 would trade a
+   disabled button for a 400. Every other league and every other week keeps the
+   existing lock and the existing message.
+============================================================ */
+const STUDIO_TEST_LEAGUE_ID = '57155288';
+const STUDIO_TEST_WEEK = 2;
+const STUDIO_TEST_NOTE = 'Testing exception: league ' + STUDIO_TEST_LEAGUE_ID +
+  ' may generate week ' + STUDIO_TEST_WEEK + '. Every other league and week stays locked.';
+
+function studioTestExceptionActive(){
+  return String(selectedLeagueId()) === STUDIO_TEST_LEAGUE_ID &&
+    effectiveWeek() === STUDIO_TEST_WEEK &&
+    !studioIsArchivedSeason();
+}
+
+function studioGenerationLock(){
+  if(studioTestExceptionActive()) return '';
+  if(studioIsArchivedSeason()) return 'season';
+  if(effectiveWeek() < currentLeagueWeek()) return 'week';
+  /* The week is still being played. Nothing to recap yet, and nothing the
+     Tuesday run would narrate either: the scheduled generator reads the article
+     pipeline's evaluated stat lines, which are not written until the week's box
+     scores close. A Wednesday-through-Monday tap used to mint an episode over a
+     half-played slate. */
+  if(!weekBoxScoresComplete(effectiveWeek())) return 'midweek';
+  return '';
+}
+const STUDIO_LOCK_MESSAGE = 'Historical weeks and past seasons cannot generate new podcasts.';
+/* The label the button wears while the week is open, and the sentence under it.
+   Written in sentence case because .btn-primary uppercases its own text; the
+   note below the button is not transformed and reads as prose. */
+const STUDIO_MIDWEEK_LABEL = '\u{1F399}\uFE0F Weekly Recap Unlocks Tuesday After MNF';
+const STUDIO_MIDWEEK_MESSAGE = 'This week is still being played. The weekly recap unlocks Tuesday morning, ' +
+  'once every Sunday and Monday night box score is final.';
+
+function studioStopReel(){
+  clearTimeout(studioReelTimer);
+  studioReelTimer = null;
+}
+function studioReelDuration(){
+  return Math.max(5000, Math.min(10000, Number(studioCurrent && studioCurrent.dwell) || 7000));
+}
+function studioScheduleReel(remaining = studioReelDuration()){
+  studioStopReel();
+  studioReelRemaining = remaining;
+  studioReelStarted = performance.now();
+  // Timed episodes follow the audio clock, including while playback is paused.
+  if(studioCurrent && Array.isArray(studioCurrent.story_reel_markers)) return;
+  if(ui.screen === 'studio' && ui.studioTab === 'reels' && studioCurrent &&
+      studioAudio.paused && !studioReelHeld && !document.hidden){
+    studioReelTimer = setTimeout(()=> studioMoveReel(1), remaining);
+  }
+}
+function studioReelCues(){
+  if(!studioCurrent) return [];
+  const cues = studioCurrent.story_reel_markers;
+  if(Array.isArray(cues)) return cues;
+  const ends = studioCurrent.markers || [];
+  return (studioCurrent.stories || []).map((_, i)=> ({
+    startMs:(i ? Number(ends[i-1]) || 0 : 0) * 1000,
+    endMs:(Number(ends[i]) || studioAudio.duration || 0) * 1000,
+  }));
+}
+function studioCueIndex(cues, timeMs){
+  for(let i=cues.length-1; i>0; i--)
+    if(timeMs >= Number(cues[i].startMs)) return i;
+  return 0;
+}
+function studioSyncScript(){
+  if(!studioCurrent || !Array.isArray(studioCurrent.turn_markers) ||
+      studioCurrent.turn_markers.length !== studioCurrent.lines.length) return;
+  const index = studioCueIndex(studioCurrent.turn_markers, studioAudio.currentTime * 1000);
+  if(index === studioActiveLineIndex) return;
+  studioActiveLineIndex = index;
+  const rows = $('studioFeed').querySelectorAll('.studio-line');
+  rows.forEach((row, i)=> row.dataset.active = String(i === index));
+  if(rows[index]) rows[index].scrollIntoView({block:'nearest', behavior:'smooth'});
+}
+function studioMoveReel(delta){
+  const cues = studioReelCues();
+  if(!cues.length) return;
+  studioReelIndex = (studioReelIndex + delta + cues.length) % cues.length;
+  const cue = cues[studioReelIndex];
+  if(studioAudio.src && Number.isFinite(Number(cue.startMs)))
+    studioAudio.currentTime = Number(cue.startMs) / 1000;
+  studioPaintFeed();
+}
+function studioHoldReel(held){
+  if(held === studioReelHeld) return;
+  studioReelHeld = held;
+  const card = $('studioFeed').querySelector('.studio-reel');
+  if(card) card.dataset.held = String(held);
+  if(held){
+    studioHeldAudio = !studioAudio.paused;
+    if(studioHeldAudio) studioAudio.pause();
+    studioReelRemaining = Math.max(0, studioReelRemaining - (performance.now() - studioReelStarted));
+    studioStopReel();
+  }else{
+    if(studioHeldAudio){
+      studioHeldAudio = false;
+      studioAudio.play().catch(err=> console.error('[Podcast] Could not resume held audio', err));
+    }else studioScheduleReel(studioReelRemaining);
+  }
+}
+
+function studioOpenDb(){
+  return new Promise((resolve, reject)=>{
+    const request = indexedDB.open('fsn.podcast.v1', 1);
+    request.onupgradeneeded = ()=> request.result.createObjectStore('episodes', { keyPath:'id' });
+    request.onsuccess = ()=> resolve(request.result);
+    request.onerror = ()=> reject(request.error);
+  });
+}
+async function studioStore(mode, value){
+  const db = await studioOpenDb();
+  try{
+    return await new Promise((resolve, reject)=>{
+      const tx = db.transaction('episodes', mode);
+      const request = value ? tx.objectStore('episodes').put(value) : tx.objectStore('episodes').getAll();
+      request.onsuccess = ()=> resolve(request.result);
+      request.onerror = ()=> reject(request.error);
+    });
+  }finally{ db.close(); }
+}
+function studioSetEpisode(episode){
+  studioAudio.pause();
+  studioStopReel();
+  if(studioObjectUrl) URL.revokeObjectURL(studioObjectUrl);
+  studioCurrent = episode;
+  studioReelIndex = 0;
+  studioActiveLineIndex = -1;
+  studioObjectUrl = episode && episode.audio ? URL.createObjectURL(episode.audio) : '';
+  studioAudio.src = studioObjectUrl || (episode && episode.audioUrl) || '';
+  $('studioSeek').value = '0';
+  $('studioTime').textContent = '0:00 / 0:00';
+  $('studioPlay').disabled = !studioAudio.src;
+  $('studioSeek').disabled = !studioAudio.src;
+  $('studioTitle').textContent = episode ? episode.title : 'THE WEEKLY RECAP';
+  $('studioSubtitle').textContent = episode ? `Week ${episode.week} · ${episode.year} · Dan & Stu` :
+    (LeagueData.hasLive() ? 'Select a week and generate an episode.' : 'Connect a league to get started.');
+  studioAudio.load();
+  studioPaintFeed();
+}
+function studioPaintFeed(){
+  document.querySelectorAll('[data-studio-tab]').forEach(btn=>
+    btn.setAttribute('aria-selected', String(btn.dataset.studioTab === ui.studioTab)));
+  const feed = $('studioFeed');
+  if(!studioCurrent){
+    studioStopReel();
+    feed.innerHTML = emptyState('NO EPISODE YET', 'Generated episodes and their scripts appear here after you connect a league.', 'setup');
+    return;
+  }
+  if(ui.studioTab === 'script'){
+    studioStopReel();
+    feed.innerHTML = studioCurrent.lines.map(line=>{
+      const host = line.host === 'STU' || line.host === 'SULLY' ? 'STU' : 'DAN';
+      return `<div class="studio-line" data-host="${host}"><strong>${host}</strong>${esc(line.text)}</div>`;
+    }).join('');
+    studioActiveLineIndex = -1;
+    studioSyncScript();
+  }else{
+    const cues = studioReelCues();
+    const count = cues.length;
+    if(!count){
+      studioStopReel();
+      feed.innerHTML = emptyState('NO STORY REEL', 'This episode has no timed story segments.', 'studio');
+      return;
+    }
+    studioReelIndex = Math.max(0, Math.min(studioReelIndex, count - 1));
+    // A partial visual snapshot may include unrelated News Desk panels. Only
+    // use it when every visual has a matching audio cue at the same index.
+    const visuals = studioCurrent.visuals;
+    const visual = Array.isArray(visuals) && visuals.length === count ? visuals[studioReelIndex] : null;
+    const headline = (studioCurrent.stories || [])[studioReelIndex];
+    // Older device archives contain only headlines. Present them in the same
+    // News Desk card furniture; newly generated episodes snapshot live panels.
+    const card = visual || { key:'editorial', kicker:'From the News Desk · Week ' + studioCurrent.week,
+      headline:String(headline || `Story ${studioReelIndex + 1}`), badge:'FSN Desk' };
+    feed.innerHTML = `<div class="studio-reel" data-reel-index="${studioReelIndex}">
+      <div class="sv-progress" aria-label="Story ${studioReelIndex+1} of ${count}">${Array.from({length:count}, (_,i)=>
+        `<span class="sv-seg" data-state="${i < studioReelIndex ? 'done' : i === studioReelIndex ? 'active' : 'idle'}"><i></i></span>`).join('')}</div>
+      <span class="kicker text-[var(--cyan)]">STORY ${studioReelIndex+1} / ${count}</span>
+      ${storyPanelHtml({ ...card, cta:null })}
+      <div class="studio-reel-nav"><button type="button" data-studio-nav="prev" aria-label="Previous story">← PREVIOUS</button>
+      <button type="button" data-studio-nav="next" aria-label="Next story">NEXT STORY →</button></div>
+    </div>`;
+    animateStoryPanel(feed);
+    studioScheduleReel();
+  }
+}
+function studioPaintArchive(){
+  $('studioArchive').innerHTML = studioEpisodes.length ? studioEpisodes.map((ep, index)=>
+    `<button type="button" data-studio-episode="${index}"><strong>${esc(ep.title)}</strong>
+      <span class="block text-[10px] text-[var(--dim)] mt-1">Week ${ep.week} · ${ep.year}${ep.audioUrl ? ' · shared with league' : ' · saved on this device'}</span></button>`).join('') :
+    '<p class="text-[12px] text-[var(--dim)]">No saved episodes for this league yet.</p>';
+}
+async function studioLoadArchive(scope){
+  try{
+    const rows = await studioStore('readonly');
+    if(studioScope !== scope) return;
+    const saved = rows.filter(row=> row.scope === scope);
+    const merged = new Map(saved.map(row=> [row.id, row]));
+    studioEpisodes.forEach(row=> merged.set(row.id, row));
+    studioEpisodes.splice(0, studioEpisodes.length, ...Array.from(merged.values())
+      .sort((a,b)=> b.createdAt - a.createdAt));
+    studioPaintArchive();
+    if(!studioCurrent) studioSetEpisode(studioEpisodes[0] || null);
+  }catch(err){
+    console.warn('[Podcast] Device archive is unavailable; episodes will last only until this page closes.', err);
+    $('studioStatus').textContent = 'Device archive is unavailable. New audio will play during this session.';
+  }
+}
+/* One shared-episode read for a NAMED week, with none of studioCheckShared()'s
+   state machine: it touches no poll timer, no studioRemoteKey and no status
+   line, so pulling an old week into the archive cannot disturb the lookup for
+   the week on screen. Returns the episode or null; never throws for an HTTP
+   answer, because a league with no episode for that week is the ordinary case. */
+async function studioReadSharedWeek(leagueId, season, week){
+  const id = String(leagueId || '');
+  const headers = leagueShareHeaders(id);
+  if(!/^\d{1,20}$/.test(id) || !headers['x-league-token']) return null;
+  const params = new URLSearchParams({ leagueId:id, season:String(season), week:String(week) });
+  const response = await fetch(FSNApi.resolve('/api/generate-podcast') + '?' + params, { headers });
+  let data = {};
+  try{
+    data = (await response.json()) || {};
+  }catch(parseErr){
+    console.error('[Podcast] The archive read for league ' + id + ' week ' + week +
+      ' answered HTTP ' + response.status + ' with a body that is not JSON.', parseErr);
+    return null;
+  }
+  if(!response.ok && response.status !== 202 && response.status !== 409){
+    console.warn('[Podcast] The archive read for league ' + id + ' week ' + week +
+      ' was refused with HTTP ' + response.status + ': ' + String(data.error || '').trim());
+    return null;
+  }
+  return data.status === 'ready' && data.episode
+    ? { ...data.episode, audioUrl:data.audioUrl }
+    : null;
+}
+
+/* ---- TEMPORARY, PAIRED WITH THE TESTING EXCEPTION ABOVE ----
+   Episode Archives is built from this device's IndexedDB rows plus the ONE
+   shared episode for the week on screen, which is why an episode that exists in
+   podcast_episodes for a DIFFERENT week never appears as a card. For the test
+   league this pulls the exception week's row in as well, so its card is present
+   and clickable whatever week the scrubber sits on, and clicking it hands the
+   stored episode to studioSetEpisode() — the same path the current week uses,
+   so the audio url, the title and the Script Read-Along all load from it.
+
+   Scoped to the one league rather than generalised: listing every week for
+   every league needs a list endpoint on /api/generate-podcast, and this adds
+   none. Runs once per scope; a failure is logged and not retried, because the
+   archive is a convenience and the current week's lookup is unaffected. */
+let studioTestArchiveScope = '';
+async function studioHydrateTestArchive(scope){
+  const [leagueId, season] = String(scope || '').split(':');
+  if(leagueId !== STUDIO_TEST_LEAGUE_ID) return;
+  if(studioTestArchiveScope === scope) return;
+  studioTestArchiveScope = scope;
+  try{
+    const episode = await studioReadSharedWeek(leagueId, season, STUDIO_TEST_WEEK);
+    if(!episode || studioScope !== scope) return;
+    const id = `${scope}:${STUDIO_TEST_WEEK}`;
+    const row = { ...episode, scope, id };
+    const at = studioEpisodes.findIndex(x=> x && x.id === id);
+    if(at >= 0) studioEpisodes.splice(at, 1);
+    studioEpisodes.unshift(row);
+    studioPaintArchive();
+    console.info('[Podcast] Testing exception: league ' + leagueId + ' week ' +
+      STUDIO_TEST_WEEK + ' is in Episode Archives.');
+  }catch(err){
+    console.error('[Podcast] The testing-exception archive read failed for league ' +
+      leagueId + ' week ' + STUDIO_TEST_WEEK + '; its card will not appear.', err);
+  }
+}
+
+function renderStudio(){
+  const scope = `${selectedLeagueId()}:${Number($('seasonYear').value) || uiActiveSeasonYear()}`;
+  const lock = studioGenerationLock();
+  const archived = lock === 'season';
+  if(studioScope !== scope){
+    studioScope = scope;
+    studioEpisodes.length = 0;
+    studioSetEpisode(null);
+    studioPaintArchive();
+    /* A real league id, not LeagueData.hasLive(): the device archive is keyed by
+       scope, and a reader whose league came from the shared archive rather than
+       a live ESPN fetch has episodes saved under that same scope. */
+    if(/^\d{1,20}$/.test(selectedLeagueId()) || LeagueData.hasLive()) studioLoadArchive(scope);
+    studioTestArchiveScope = '';
+    studioHydrateTestArchive(scope);
+  }
+  const key = `${scope}:${effectiveWeek()}`;
+  /* The shared-episode lookup needs exactly two things: this league's numeric id
+     and its share token. It used to ALSO require LeagueData.hasLive(), which is
+     precisely what a reader who arrived on an invite link does not have — their
+     only source is the shared archive behind /api/league. Studio therefore
+     skipped the lookup outright and left them on "NO EPISODE YET" over an
+     episode their league had already generated. studioCheckShared() owns the
+     "context is still arriving" case now, and retries instead of giving up.
+
+     The second clause is the return trip: the poll chain stops itself when the
+     reader leaves Studio (studioSchedulePoll refuses to arm off-screen), so a
+     week that was still 'missing' then needs a fresh lookup on the way back —
+     the key alone has not changed. */
+  if(!archived && ui.screen === 'studio' &&
+      (studioRemoteKey !== key ||
+       (!studioPollTimer && !studioRemotePending && studioRemoteStatus === 'missing'))){
+    if(studioRemoteKey !== key){
+      studioRemoteKey = key;
+      studioRemoteDeferred = { key:'', attempts:0 };
+      studioRemoteStatus = 'missing';
+      if(studioCurrent && studioCurrent.week !== effectiveWeek())
+        studioSetEpisode(studioEpisodes.find(row=>row.week === effectiveWeek()) || null);
+    }
+    studioCheckShared(key);
+  }
+  if(archived){
+    /* An archived season has nothing to poll for: the endpoint answers a GET
+       for it with HISTORICAL_SEASON_ERROR. A locked WEEK of the live season is
+       different — its episode is real and the poll above keeps running.
+
+       Clearing the remote state matters as much as clearing the timer. It is
+       what the live season last resolved to, and nothing in this branch can
+       refresh it: a reader who left a ready episode and switched to an archived
+       season would otherwise have the GENERATE button HIDDEN behind a stale
+       'ready' (the hero is showing that season's empty player, so there is no
+       play button standing in for it), and would keep whichever status line the
+       live week had left behind. Blanking the key also means the return trip to
+       the live season is a fresh lookup rather than an unchanged key. */
+    clearTimeout(studioPollTimer);
+    studioPollTimer = null;
+    studioRemoteKey = '';
+    studioRemoteDeferred = { key:'', attempts:0 };
+    studioRemoteStatus = 'missing';
+    $('studioStatus').textContent = 'Viewing archived season data.';
+  }
+  /* An existing episode wins every other state: the reader is told it is ready
+     and the hero's play button is the control they want. Only when there is no
+     episode does the open-week lock get to speak. */
+  $('studioGenerate').textContent = studioRemoteStatus === 'ready' ? 'EPISODE READY' :
+    studioRemoteStatus === 'generating' ? 'GENERATING FOR YOUR LEAGUE…' :
+    studioRemoteStatus === 'failed' ? 'EPISODE UNAVAILABLE' :
+    lock === 'midweek' ? STUDIO_MIDWEEK_LABEL : 'GENERATE WEEKLY RECAP';
+  /* Disabled, not hidden. A control that vanishes reads as a broken screen; a
+     disabled one beside #studioArchiveLock says what the rule is. Only the
+     'ready' state still hides it, because the hero's play button replaces it. */
+  $('studioGenerate').disabled = !!lock || studioBusy || !LeagueData.hasLive() ||
+    studioRemoteStatus !== 'missing';
+  $('studioGenerate').hidden = studioRemoteStatus === 'ready';
+  /* The note carries the lock message when locked, and the testing exception's
+     own sentence when a closed week is open for one league — so an unlocked
+     past week never looks like the guardrail silently failing. */
+  const testing = studioTestExceptionActive();
+  $('studioArchiveLock').textContent = testing ? STUDIO_TEST_NOTE :
+    lock === 'midweek' ? STUDIO_MIDWEEK_MESSAGE : STUDIO_LOCK_MESSAGE;
+  $('studioArchiveLock').hidden = !lock && !testing;
+  if(!studioCurrent && !studioBusy) studioPaintFeed();
+}
+
+/* One owner for the poll timer, so a path that DECLINES to reschedule leaves it
+   null rather than holding a fired id. renderStudio() reads it to decide whether
+   a return to Studio needs a fresh lookup, and a stale id made that read a
+   permanent "a poll is already pending" lie. */
+function studioSchedulePoll(key, delay){
+  clearTimeout(studioPollTimer);
+  studioPollTimer = ui.screen === 'studio' && studioRemoteKey === key
+    ? setTimeout(()=> studioCheckShared(key), delay)
+    : null;
+}
+async function studioCheckShared(key){
+  clearTimeout(studioPollTimer);
+  studioPollTimer = null;
+  /* Two callers can arrive at the same key in one tick — renderStudio()'s gate
+     and the renderStudio() that studioGenerate()'s finally block runs — so the
+     in-flight key stops a duplicate GET rather than relying on ordering. */
+  if(studioRemotePending === key) return;
+  const scope = key.slice(0, key.lastIndexOf(':'));
+  const [leagueId, season, week] = key.split(':');
+  const headers = leagueShareHeaders(leagueId);
+
+  /* ---- LEAGUE CONTEXT STILL ARRIVING ----
+     Neither of these is a failure and neither is permanent:
+
+       - the id is LeagueData.leagueId()'s 'league' placeholder, because boot
+         paints Studio before applyDeepLink() has written the invited league id
+         into #leagueIdInput;
+       - the id is real but this browser holds no token yet, because the invite
+         link's cloud hydrate (adoptCloudRecord -> rememberShareTokenFromRecord)
+         is still in flight, and on a second device that hydrate IS the only
+         thing that will ever produce the token.
+
+     The old code returned here with no status, no retry and studioRemoteKey
+     already latched, so the lookup never ran again: the reader sat on
+     "NO EPISODE YET" until they navigated away and back. Retry once after a
+     second — long enough for the hydrate that is usually already resolving —
+     then say plainly which half is missing and keep a slow poll going. */
+  if(!/^\d{1,20}$/.test(leagueId) || !headers['x-league-token']){
+    if(studioRemoteKey !== key) return;
+    const missing = !/^\d{1,20}$/.test(leagueId)
+      ? 'no league id is on screen yet'
+      : 'this browser holds no share token for league ' + leagueId + ' yet';
+    if(studioRemoteDeferred.key !== key) studioRemoteDeferred = { key, attempts:0 };
+    studioRemoteDeferred.attempts += 1;
+    if(studioRemoteDeferred.attempts === 1){
+      console.warn('[Podcast] Shared episode lookup for ' + key + ' deferred — ' + missing +
+        '. Retrying in 1s while the league context finishes loading.');
+      studioSchedulePoll(key, 1000);
+      return;
+    }
+    /* Said once per league-week, not once per poll: a reader who opens Studio
+       with no league connected would otherwise collect a warning every fifteen
+       seconds for as long as they stayed on the screen. */
+    if(studioRemoteDeferred.attempts === 2){
+      console.warn('[Podcast] Shared episode lookup for ' + key + ' still cannot run — ' + missing +
+        '. Polling every 15s while Studio is open.');
+    }
+    $('studioStatus').textContent = /^\d{1,20}$/.test(leagueId)
+      ? 'Waiting for this league\u2019s access to sync. Save or join the league in Setup if this does not clear.'
+      : 'Connect or join a league in Setup to load its shared episode.';
+    studioSchedulePoll(key, 15000);
+    return;
+  }
+
+  studioRemotePending = key;
+  try{
+    const params = new URLSearchParams({ leagueId, season, week });
+    const response = await fetch(FSNApi.resolve('/api/generate-podcast') + '?' + params, { headers });
+    let data = {};
+    try{
+      data = (await response.json()) || {};
+    }catch(parseErr){
+      console.error('[Podcast] The shared episode endpoint answered HTTP ' + response.status +
+        ' for ' + key + ' with a body that is not JSON.', parseErr);
+    }
+    if(studioRemoteKey !== key) return;
+    if(!response.ok && response.status !== 202 && response.status !== 409){
+      /* The endpoint's own sentence is the only thing that tells the reader
+         WHICH half is wrong: a rejected token (403 "Save or join this league
+         with a valid invite…") reads nothing like a service outage (502). The
+         old code threw here and the catch below replaced every one of those
+         with "Could not check the shared episode. Reopen Studio to retry." —
+         advice that fixes none of them. */
+      const detail = String(data.error || '').trim();
+      console.error('[Podcast] Shared episode lookup for ' + key + ' was refused with HTTP ' +
+        response.status + '.', new Error(detail || 'HTTP ' + response.status));
+      $('studioStatus').textContent = detail ||
+        ('Could not check the shared episode (HTTP ' + response.status + '). Reopen Studio to retry.');
+      studioSchedulePoll(key, 30000);
+      renderStudio();
+      return;
+    }
+    studioRemoteStatus = data.status || 'missing';
+    if(data.status === 'ready' && data.episode){
+      const ep = { ...data.episode, audioUrl:data.audioUrl, scope,
+        id:`${scope}:${week}` };
+      const i = studioEpisodes.findIndex(row=>row.id === ep.id);
+      if(i >= 0) studioEpisodes.splice(i, 1);
+      studioEpisodes.unshift(ep);
+      /* Adopt whatever cloud sync just resolved, including the case the old
+         condition missed: a device-archive row with the SAME id and the same
+         (absent) audioUrl already loaded into the player. That row carries the
+         headlines but no cloud audio, so an invited reader on a second device
+         saw the script beside a dead play button. Checking the element's own
+         src is what makes "the player is actually on this audio" the test. */
+      if(!studioCurrent || studioCurrent.id !== ep.id ||
+         studioCurrent.audioUrl !== ep.audioUrl ||
+         !Array.isArray(studioCurrent.lines) || !studioCurrent.lines.length ||
+         !studioAudio.src)
+        studioSetEpisode(ep);
+      studioPaintArchive();
+      $('studioStatus').textContent = 'Shared episode ready for everyone in this league.';
+    }else if(data.status === 'generating'){
+      $('studioStatus').textContent = 'A league member is generating this episode. It will appear here shortly.';
+      studioSchedulePoll(key, 4000);
+    }else if(data.status === 'missing'){
+      studioSchedulePoll(key, 15000);
+    }else if(data.status === 'failed'){
+      $('studioStatus').textContent = data.error ||
+        'Episode generation needs administrator review.';
+    }
+    renderStudio();
+  }catch(err){
+    /* Only a genuine transport failure reaches here now — DNS, offline, an
+       aborted request. Every HTTP answer is handled above with its own words. */
+    console.error('[Podcast] Shared episode lookup for ' + key + ' could not reach the network.', err);
+    if(studioRemoteKey !== key) return;
+    $('studioStatus').textContent = 'Could not reach the shared episode service. Retrying\u2026';
+    studioSchedulePoll(key, 15000);
+  }finally{
+    if(studioRemotePending === key) studioRemotePending = '';
+  }
+}
+function studioTime(seconds){
+  if(!Number.isFinite(seconds) || seconds < 0) return '0:00';
+  return Math.floor(seconds/60) + ':' + String(Math.floor(seconds%60)).padStart(2,'0');
+}
+function studioSyncPlayback(){
+  const duration = Number.isFinite(studioAudio.duration) && studioAudio.duration > 0 ? studioAudio.duration : 0;
+  $('studioHero').dataset.playing = String(!studioAudio.paused);
+  $('studioPlay').textContent = studioAudio.paused ? '▶' : 'Ⅱ';
+  $('studioPlay').setAttribute('aria-label', studioAudio.paused ? 'Play episode' : 'Pause episode');
+  $('studioSeek').value = duration ? String(Math.round(100 * studioAudio.currentTime / duration)) : '0';
+  $('studioTime').textContent = studioTime(studioAudio.currentTime) + ' / ' + studioTime(duration);
+  if(ui.screen === 'studio' && ui.studioTab === 'script') studioSyncScript();
+  if(ui.screen === 'studio' && ui.studioTab === 'reels' && studioCurrent &&
+      (!studioAudio.paused || Array.isArray(studioCurrent.story_reel_markers))){
+    const cues = studioReelCues();
+    if(cues.length){
+      const index = studioCueIndex(cues, studioAudio.currentTime * 1000);
+      if(index !== studioReelIndex){ studioReelIndex = index; studioPaintFeed(); }
+      const cue = cues[index];
+      const fill = $('studioFeed').querySelector('.sv-seg[data-state="active"] > i');
+      if(fill){
+        fill.style.animation = 'none';
+        fill.style.width = Math.max(0, Math.min(100,
+          (studioAudio.currentTime * 1000 - Number(cue.startMs)) /
+          Math.max(100, Number(cue.endMs) - Number(cue.startMs)) * 100)) + '%';
+      }
+    }
+  }
+  if(!studioAudio.paused) studioStopReel();
+  else if(ui.screen === 'studio' && ui.studioTab === 'reels' && !studioReelTimer && !studioReelHeld)
+    studioScheduleReel();
+}
+function studioVisuals(week, articles){
+  let panels = [];
+  try{
+    const games = LeagueData.getWeekMatchups(week);
+    const marquee = NewsDesk.marqueeMatchup(week);
+    const game = games.find(g=> marquee && g.homeTeam && g.awayTeam &&
+      String(g.homeTeam.id) === String(marquee.homeTeam.id) &&
+      String(g.awayTeam.id) === String(marquee.awayTeam.id));
+    const motw = game ? { g:game, hs:actualOf(game,'home') || 0,
+      as:actualOf(game,'away') || 0, st:gameStatus(game) } : null;
+    panels = buildStoryReel({ week, games, hasScoring:games.some(g=>gameStatus(g) !== 'pre'), motw });
+  }catch(err){
+    console.error('[Podcast] Could not build visual panels for week ' + week, err);
+  }
+  return articles.map(a=>{
+    const subject = String(a.tag || '') + ' ' + String(a.headline || '');
+    const key = /power|ranking|index|mover/i.test(subject) ? 'mover' :
+      /blowout|beatdown/i.test(subject) ? 'blowout' :
+      /matchup of the week/i.test(subject) ? 'matchup' : null;
+    const panel = key && panels.find(p=>p.key === key);
+    // The same component used by the Desk's full-screen reel: its live
+    // rankings, score bars, margin and crests travel with this episode.
+    return panel || storyEditorialPanels({week}, {list:[a]})[0] || {
+      key:'editorial', kicker:'From the News Desk · Week ' + week,
+      headline:storyPlainText(a.headline), badge:String(a.tag || 'FSN Desk'),
+    };
+  });
+}
+function studioDraft(week, year){
+  const articles = newsList().filter(a=> a && !a.custom && a.headline).slice(0, 3);
+  const stories = articles
+    .map(a=> String(a.headline).replace(/<[^>]*>/g,'').trim().slice(0, 150));
+  if(!stories.length) return null;
+  const title = `Week ${week}: ${stories[0].replace(/^STATE OF THE LEAGUE:\s*/i,'').slice(0, 52)}`;
+  // Dan leads with the verified board; Stu supplies the color without adding
+  // scores, outcomes or manager decisions that the News Desk did not report.
+  const roast = /bench|blunder|collapse|choke|fraud|wasted/i.test(stories[1] || '');
+  const lines = [
+    { host:'DAN', text:`Week ${week} on the FSN Desk. The lead from the league board: ${stories[0]}. That's the result driving this week's conversation.` },
+    { host:'STU', text:stories[1] ? `Now this one deserves a replay: ${stories[1]}. ${roast ? 'Somebody is going to hear about that decision in the group chat all week.' : 'The group chat can debate it; the board has already filed the headline.'}` : `That is a loud opening headline. Every manager in this league knows the next slate has an answer coming.` },
+    { host:'DAN', text:stories[2] ? `One more result on the board: ${stories[2]}. The full numbers and matchup context are in the News Desk.` : `For the complete scores, standings and matchup context, go to the News Desk.` },
+    { host:'STU', text:`That's the week ${week} briefing. Dan brought the receipts, I brought the heat. We'll see you on the next slate.` },
+  ];
+  return { id:`${studioScope}:${week}`, scope:studioScope, year, week, title, lines, stories,
+    visuals:studioVisuals(week, articles), createdAt:Date.now() };
+}
+async function studioGenerate(){
+  if(studioBusy || !LeagueData.hasLive()) return;
+  const scope = studioScope;
+  const week = effectiveWeek();
+  const year = Number($('seasonYear').value) || uiActiveSeasonYear();
+  /* The same rule the button state renders, enforced on the action itself: the
+     button can be re-enabled by a render that lands between a tap and this
+     call, and for an archived season the endpoint would refuse the POST anyway
+     (HISTORICAL_SEASON_ERROR) after the reader had already watched a spinner. */
+  const lock = studioGenerationLock();
+  if(lock){
+    $('studioStatus').textContent = lock === 'midweek' ? STUDIO_MIDWEEK_MESSAGE : STUDIO_LOCK_MESSAGE;
+    renderStudio();
+    return;
+  }
+  /* studioDraft() is now consulted for TWO things only: the Story Reel visuals,
+     which are snapshots of rendered News Desk cards and so cannot be made
+     server-side, and the episode's local archive id. Its own `lines`, `title`
+     and `stories` are deliberately no longer sent — the endpoint authors those,
+     so the button and the Tuesday cron produce the same script. The copy is
+     left in place rather than deleted: it is hand-written narrative content,
+     and an older client build still posts it.
+
+     A null draft used to abort the whole generation. It no longer can: the
+     server narrates from the blog_articles payload, which has nothing to do
+     with whether the News Desk has headlines on screen. No visuals simply means
+     an episode whose Story Reel falls back to headline cards. */
+  const draft = studioDraft(week, year) ||
+    { id:`${studioScope}:${week}`, scope:studioScope, year, week, visuals:[] };
+  const headers = leagueShareHeaders(selectedLeagueId());
+  if(!headers['x-league-token']){
+    $('studioStatus').textContent = 'Save or join your ESPN league in Setup to unlock audio generation.';
+    return;
+  }
+  studioBusy = true;
+  $('studioGenerate').disabled = true;
+  $('studioStatus').textContent = 'Generating Dan and Stu’s audio…';
+  try{
+    const response = await fetch(FSNApi.resolve('/api/generate-podcast'), {
+      method:'POST', headers:{ 'Content-Type':'application/json', ...headers },
+      /* ---- NO `lines`, AND THAT IS THE POINT ----
+         Omitting them asks the endpoint to author the script, so the button
+         produces the SAME ~60 second news recap the Tuesday cron produces —
+         same generator, same blog_articles payload, same archetype phrasings.
+         Sending draft.lines here is what made manual generation a different,
+         shallower, four-line episode from the scheduled one.
+
+         `visuals` still travels: the Story Reel panels are snapshots of
+         rendered News Desk cards, which only a browser can produce. The title
+         and the stories now come back from the server's script. */
+      body:JSON.stringify({ leagueId:selectedLeagueId(), season:year, week,
+        visuals:draft.visuals }),
+    });
+    const result = await response.json();
+    if(studioScope !== scope) return;
+    if(result.status === 'generating'){
+      studioRemoteStatus = 'generating';
+      studioCheckShared(`${scope}:${week}`);
+    }else if(result.status === 'ready' && result.episode){
+      studioRemoteStatus = 'ready';
+      /* result.episode carries the server's title, lines and stories. Only the
+         visuals are spread back over it, because they never left the browser. */
+      const episode = { ...result.episode, audioUrl:result.audioUrl, scope, id:draft.id,
+        visuals:draft.visuals };
+      const oldIndex = studioEpisodes.findIndex(row=> row.id === episode.id);
+      if(oldIndex !== -1) studioEpisodes.splice(oldIndex, 1);
+      studioEpisodes.unshift(episode);
+      studioSetEpisode(episode);
+      studioPaintArchive();
+      $('studioStatus').textContent = 'Shared episode ready. Tap play to listen.';
+    }else throw new Error(result.error || `Audio service returned ${response.status}`);
+  }catch(err){
+    console.error('[Podcast] Episode generation failed', err);
+    $('studioStatus').textContent = err.message || 'Audio generation failed.';
+  }finally{
+    studioBusy = false;
+    renderStudio();
+  }
+}
+
+$('studioWave').innerHTML = Array.from({length:31}, (_,i)=>
+  `<i style="--bar-height:${10 + ((i*13)%37)}px;--bar-delay:${(i%7)*.09}s"></i>`).join('');
+$('studioGenerate').addEventListener('click', studioGenerate);
+$('studioPlay').addEventListener('click', ()=>{
+  if(studioAudio.paused) studioAudio.play().catch(err=>{
+    console.error('[Podcast] Episode playback failed', err);
+    $('studioStatus').textContent = 'Could not play this episode on this device.';
+  });
+  else studioAudio.pause();
+});
+$('studioSeek').addEventListener('input', e=>{
+  if(Number.isFinite(studioAudio.duration) && studioAudio.duration > 0)
+    studioAudio.currentTime = Number(e.target.value) * studioAudio.duration / 100;
+});
+['timeupdate','seeked','loadedmetadata','durationchange','play','pause','ended'].forEach(event=> studioAudio.addEventListener(event, studioSyncPlayback));
+document.querySelectorAll('[data-studio-tab]').forEach(btn=> btn.addEventListener('click', ()=>{
+  ui.studioTab = btn.dataset.studioTab;
+  studioPaintFeed();
+}));
+$('studioFeed').addEventListener('click', e=>{
+  const nav = e.target.closest('[data-studio-nav]');
+  if(studioIgnoreClick){ studioIgnoreClick = false; return; }
+  if(nav){ studioMoveReel(nav.dataset.studioNav === 'prev' ? -1 : 1); return; }
+  const card = e.target.closest('.studio-reel');
+  if(card && !e.target.closest('button, a')){
+    const box = card.getBoundingClientRect();
+    studioMoveReel(e.clientX < box.left + box.width / 2 ? -1 : 1);
+  }
+});
+$('studioFeed').addEventListener('pointerdown', e=>{
+  if(e.target.closest('.studio-reel')){
+    studioPressAt = performance.now();
+    studioHoldReel(true);
+  }
+});
+$('studioFeed').addEventListener('pointerup', e=>{
+  studioIgnoreClick = !!e.target.closest('[data-studio-nav]') && studioReelHeld && performance.now() - studioPressAt > 250;
+  studioHoldReel(false);
+});
+$('studioFeed').addEventListener('pointercancel', ()=> studioHoldReel(false));
+document.addEventListener('visibilitychange', ()=>{
+  if(document.hidden) studioStopReel();
+  else if(ui.screen === 'studio' && ui.studioTab === 'reels') studioScheduleReel();
+  if(!document.hidden && studioRemoteKey && ui.screen === 'studio') studioCheckShared(studioRemoteKey);
+});
+$('studioArchive').addEventListener('click', e=>{
+  const btn = e.target.closest('[data-studio-episode]');
+  if(btn) studioSetEpisode(studioEpisodes[Number(btn.dataset.studioEpisode)]);
+});
+
 function setScreen(name){
+  if(name !== 'setup') ui.previousScreen = name;
   ui.screen = name;
   document.querySelectorAll('.screen').forEach(s=>
-    s.dataset.active = String(s.dataset.screen === name));
+    s.dataset.active = String(s.dataset.screen === name || (name === 'setup' && s.dataset.screen === (ui.previousScreen || 'home'))));
   document.querySelectorAll('.tab-btn').forEach(b=>
-    b.dataset.active = String(b.dataset.tab === name));
+    b.dataset.active = String(b.dataset.tab === (name === 'setup' ? (ui.previousScreen || 'home') : name)));
   /* Setup no longer has a tab to light up, so the header gear carries the
      current-screen state instead. */
   document.querySelectorAll('.gear-btn').forEach(b=>
     b.dataset.active = String(name === 'setup'));
+  document.querySelector('.screen[data-screen="setup"]').setAttribute('aria-hidden', String(name !== 'setup'));
+  syncBodyScrollLock();
   window.scrollTo({ top:0, behavior:'auto' });
   renderAll();
+  if(name === 'setup') $('setupClose').focus();
 }
+
+$('setupClose').addEventListener('click', ()=>{
+  setScreen(ui.previousScreen || 'home');
+  if(setupReturnFocus && setupReturnFocus.isConnected) setupReturnFocus.focus();
+});
+document.addEventListener('keydown', e=>{
+  if(ui.screen !== 'setup') return;
+  if(document.querySelector('#onboardModal[data-open="true"],#ftuModal[data-open="true"],#profilePicker[data-open="true"],#reader[data-open="true"]')) return;
+  if(e.key === 'Escape'){
+    $('setupClose').click();
+  }else if(e.key === 'Tab'){
+    const controls = Array.from(document.querySelectorAll('.screen[data-screen="setup"] button:not([disabled]), .screen[data-screen="setup"] input:not([disabled]), .screen[data-screen="setup"] select:not([disabled]), .screen[data-screen="setup"] a[href]'))
+      .filter(el=> el.getClientRects().length);
+    if(!controls.length) return;
+    const first = controls[0], last = controls[controls.length-1];
+    if(e.shiftKey && document.activeElement === first){ e.preventDefault(); last.focus(); }
+    else if(!e.shiftKey && document.activeElement === last){ e.preventDefault(); first.focus(); }
+  }
+});
 
 document.querySelectorAll('.tab-btn').forEach(btn=>{
   btn.addEventListener('click', ()=> setScreen(btn.dataset.tab));
@@ -37243,7 +38331,10 @@ document.querySelectorAll('.tab-btn').forEach(btn=>{
 // Any [data-goto] button anywhere jumps to that tab.
 document.addEventListener('click', (e)=>{
   const el = e.target.closest('[data-goto]');
-  if(el) setScreen(el.dataset.goto);
+  if(el){
+    if(el.dataset.goto === 'setup') setupReturnFocus = el;
+    setScreen(el.dataset.goto);
+  }
 });
 
 /* ALL-TIME ⇄ SINGLE-SEASON, nested inside the RECORDS view. Only the body
@@ -37330,6 +38421,7 @@ function renderAll(){
   else if(ui.screen === 'analytics') safeRun('analytics', renderAnalytics, ()=> renderScreenFallback('analytics'));
   else if(ui.screen === 'news')     safeRun('news', renderNews, ()=> renderScreenFallback('news'));
   else if(ui.screen === 'recordbook')    safeRun('recordbook', renderRecordBook, ()=> renderScreenFallback('recordbook'));
+  else if(ui.screen === 'studio') safeRun('studio', renderStudio);
   // Setup is static markup; only its status chips change.
 }
 
@@ -37429,7 +38521,7 @@ function applyDeepLink(){
   }
 
   const target = (params.get('goto') || '').toLowerCase();
-  const known = ['home','matchups','news','analytics','recordbook','setup'];
+  const known = ['home','studio','matchups','news','analytics','recordbook','setup'];
   /* A platform hint on its own implies the visitor came to CONNECT — that is
      the marketing site's ?goto=setup&platform=espn link — so Setup is the
      destination. A platform hint that arrives WITH a league id does not: that

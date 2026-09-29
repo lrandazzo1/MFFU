@@ -952,11 +952,18 @@ function shareTokenAccepted(tokens, supplied) {
    A storage failure resolves to 'none', never 'ok': an unreachable Supabase
    may leave a public league reading anonymously, but it can never be talked
    into handing out credentials. */
-async function resolveStoredLeagueAccess(leagueId, seasonYear, shareToken) {
+async function resolveStoredLeagueAccess(leagueId, seasonYear, shareToken, options) {
   const id = cleanLeagueId(leagueId);
   const year = cleanSeasonYear(seasonYear, 0);
   const supplied = cleanShareToken(shareToken);
   const rawToken = String(shareToken == null ? '' : shareToken).trim();
+  /* A scheduled server-side publisher has already authenticated with
+     CRON_SECRET at api/espn.js. It needs the same league-scoped session a
+     valid invite may borrow, but must not mint or expose an invite token just
+     to read a box score. This flag is deliberately usable only by a server
+     caller that api/espn.js has authenticated. All browser-facing calls keep
+     the share-token gate below. */
+  const trustedInternal = !!(options && options.trustedInternal);
 
   /* ---- DIAGNOSTIC LOG: what this lookup was actually asked for ----
      The token is masked to its first 8 characters. That is enough to
@@ -966,7 +973,8 @@ async function resolveStoredLeagueAccess(leagueId, seasonYear, shareToken) {
     ? supplied.slice(0, 8) + '…(' + supplied.length + ' chars)'
     : (rawToken ? '(malformed, ' + rawToken.length + ' chars)' : '(none)');
   console.log('[api/league] resolveStoredLeagueAccess league=' + (id || '(invalid)') +
-    ' season=' + (year || 'latest') + ' token=' + maskedToken);
+    ' season=' + (year || 'latest') + ' token=' + maskedToken +
+    (trustedInternal ? ' trusted-internal=yes' : ' trusted-internal=no'));
 
   const env = supabaseEnvStatus();
   if (!env.ok) {
@@ -1030,7 +1038,7 @@ async function resolveStoredLeagueAccess(leagueId, seasonYear, shareToken) {
 
     const tokens = await leagueShareTokens(client, id);
 
-    if (!tokens.length) {
+    if (!tokens.length && !trustedInternal) {
       /* A legacy row: cookies stored before share tokens existed, so there is
          no secret anyone could present. Refusing is the whole point of H-1 —
          the league id alone used to be enough. The next member save mints the
@@ -1045,7 +1053,7 @@ async function resolveStoredLeagueAccess(leagueId, seasonYear, shareToken) {
         code: 'SHARE_TOKEN_NOT_MINTED',
       };
     }
-    if (!supplied) {
+    if (!supplied && !trustedInternal) {
       return {
         status: 'unauthorized',
         cookies: null,
@@ -1053,7 +1061,7 @@ async function resolveStoredLeagueAccess(leagueId, seasonYear, shareToken) {
         code: 'SHARE_TOKEN_MISSING',
       };
     }
-    if (!shareTokenAccepted(tokens, supplied)) {
+    if (!trustedInternal && !shareTokenAccepted(tokens, supplied)) {
       console.warn('[api/league] Rejected a share token for league ' + id +
         '; it does not match any token stored for this league.');
       return {

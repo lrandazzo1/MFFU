@@ -73,6 +73,13 @@ if (functions.length <= MAX_FUNCTIONS) {
   );
 }
 
+/* The plan's cron ceiling, written here for the same reason MAX_FUNCTIONS is:
+   going over fails the DEPLOY, not the build. Hobby allows two scheduled cron
+   jobs per project and both are spent (the transaction wire and the
+   notification dispatch), which is why the league blog articles and the weekly
+   podcast are scheduled from GitHub Actions instead. */
+const MAX_CRONS = 2;
+
 /* Every rewrite destination must resolve to a function that exists. */
 const vercel = JSON.parse(readFileSync(join(root, 'vercel.json'), 'utf8'));
 const rewrites = Array.isArray(vercel.rewrites) ? vercel.rewrites : [];
@@ -88,6 +95,20 @@ for (const rule of rewrites) {
   else fail('rewrite ' + rule.source + ' -> ' + destination + ' names no function under api/');
 }
 if (!checkedRewrites) fail('no /api rewrites were checked, which means this scan is not scanning');
+
+/* Cron slots. A third entry here is the same class of failure as a thirteenth
+   function file: the build goes green and the deploy is rejected. */
+const crons = Array.isArray(vercel.crons) ? vercel.crons : [];
+if (crons.length <= MAX_CRONS) {
+  pass(crons.length + ' of ' + MAX_CRONS + ' cron slots used');
+} else {
+  fail(
+    crons.length + ' cron jobs in vercel.json, but the plan allows ' + MAX_CRONS + '. The deploy ' +
+    'will be rejected. Day-of-week and weekly schedules run from .github/workflows/ instead — see ' +
+    'generate-articles.yml and generate-weekly-podcast.yml, which POST to the same routes with ' +
+    'CRON_SECRET.',
+  );
+}
 
 console.log(failures ? '\n[vercel-functions-check] FAILED' : '\n[vercel-functions-check] clean');
 process.exit(failures ? 1 : 0);

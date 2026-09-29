@@ -1,0 +1,66 @@
+# Guarded, one-time repair for the stale Week 3 Monday League Blog.
+#
+# It republishes only the monday_sweat article for the active 2026 leagues.
+# The Friday TNF recap is intentionally out of scope.
+#
+# ---- WHY THIS NO LONGER CALLS THE PRODUCTION ROUTE ----
+#
+# The first version of this workflow deleted the Monday rows and then POSTed to
+# /api/cron/generate-articles. That publishes whatever composer is DEPLOYED, so
+# the repair could only ever be as new as production: with a Vercel deployment
+# cap in the way, it rewrote the same stale story it was meant to replace, and
+# left nine leagues with nothing at all when their ESPN reads came back 401.
+#
+# The run now composes on the runner, out of the code at this ref, and upserts
+# through the same publisher the route calls. No deploy is on the critical
+# path, no row is deleted before its replacement exists, and each league's box
+# score is read through the deployed /api/espn relay carrying that league's own
+# share token, so a private league is read with its own stored ESPN session.
+name: Regenerate Week 3 Monday League Blog
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: Type REGENERATE_WEEK_3_MONDAY to republish the active-league Monday rows.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: regenerate-week3-monday-blog
+  cancel-in-progress: false
+
+jobs:
+  regenerate:
+    if: github.event.inputs.confirm == 'REGENERATE_WEEK_3_MONDAY'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      BASE_URL: ${{ vars.ARTICLE_CRON_BASE_URL || 'https://app.fantasysportsnetwork.app' }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Compile the article pipeline at this commit
+        run: npm run build:articles
+      - name: Check the runner's own guards before it can write
+        run: node scripts/rerun-league-articles.mjs --self-test
+      - name: Republish the Week 3 Monday articles
+        run: |
+          set -euo pipefail
+          for required in SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY; do
+            if [ -z "${!required:-}" ]; then
+              echo "::error title=Missing secret::${required} is required. Nothing was written."
+              exit 1
+            fi
+          done
+          node scripts/rerun-league-articles.mjs \
+            --season=2026 --week=3 --day=mon --base="${BASE_URL}" --force

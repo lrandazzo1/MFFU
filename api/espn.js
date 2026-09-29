@@ -12,6 +12,11 @@
 ============================================================ */
 
 const { resolveStoredLeagueAccess } = require('./league');
+/* The league store normally requires a share token before lending an ESPN
+   session. The article cron is a server-side publisher, authenticated with
+   the same CRON_SECRET as its write endpoint, so it may read that session
+   without moving an invite token through the job. */
+const { authorizedByCronSecret } = require('../lib/dist/article-cron');
 /* One sanitizer/serializer shared with api/league.js so the relay and the
    cookie-ingestion handler can never disagree about what a valid credential
    looks like. See lib/espn-cookies.js for the paste shapes it repairs. */
@@ -154,13 +159,16 @@ async function resolveEspnCredentials(req, target, shareToken) {
 
   let storedDenied = null;
   let storedLookup = null;
+  const trustedInternal = authorizedByCronSecret(req);
   const context = leagueContextFromTarget(target);
   if (context.leagueId) {
     /* resolveStoredLeagueAccess swallows its own storage failures and answers
        'none' unless BOTH cookies decrypted AND the share token matched, so an
        unconfigured or unreachable Supabase can never turn a public read into
        an error — and can never be talked into lending credentials either. */
-    const access = await resolveStoredLeagueAccess(context.leagueId, context.seasonYear, shareToken);
+    const access = await resolveStoredLeagueAccess(context.leagueId, context.seasonYear, shareToken, {
+      trustedInternal,
+    });
     /* Every outcome is recorded, including the 'none' sub-cases. A token-
        bearing request that ends up with no cookies must be able to say WHY —
        "Supabase is not configured", "no row for this league", "the envelope
@@ -543,7 +551,9 @@ module.exports = async function handler(req, res) {
       const context = leagueContextFromTarget(target);
       if (context.leagueId) {
         try {
-          const access = await resolveStoredLeagueAccess(context.leagueId, context.seasonYear, shareToken);
+          const access = await resolveStoredLeagueAccess(context.leagueId, context.seasonYear, shareToken, {
+            trustedInternal: authorizedByCronSecret(req),
+          });
           if (access.status === 'ok') {
             const storedPair = credentialPair('league-store', access.cookies.swid, access.cookies.espn_s2);
             if (storedPair.complete) {

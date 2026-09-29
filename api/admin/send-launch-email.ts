@@ -32,6 +32,7 @@
 ============================================================ */
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import generatePodcast from '../../lib/generate-podcast';
 
 // Minimal inline shapes for the pieces of the Vercel Node request/response we
 // touch — avoids depending on @vercel/node types locally. Vercel injects the
@@ -306,6 +307,11 @@ function qparam(req: VercelRequest, key: string): string {
 }
 
 async function handler(req: VercelRequest, res: VercelResponse) {
+  // Shared function slot: Vercel Hobby permits twelve API files. The public
+  // /api/generate-podcast path rewrites here with action=podcast.
+  if (qparam(req, 'action') === 'podcast') {
+    return generatePodcast(req as any, res as any);
+  }
   res.setHeader('Cache-Control', 'no-store');
 
   if (req.method !== 'GET' && req.method !== 'POST') {

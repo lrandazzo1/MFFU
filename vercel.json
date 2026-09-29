@@ -22,6 +22,14 @@
   ],
   "rewrites": [
     {
+      "source": "/api/generate-podcast",
+      "destination": "/api/admin/send-launch-email?action=podcast"
+    },
+    {
+      "source": "/api/cron/generate-weekly-podcast",
+      "destination": "/api/cron/generate-articles?action=podcast-cron"
+    },
+    {
       "source": "/api/league-sync",
       "destination": "/api/league"
     },
@@ -63,7 +71,12 @@
   ],
   "functions": {
     "api/cron/generate-articles.js": {
-      "maxDuration": 60
+      "maxDuration": 60,
+      "includeFiles": "{node_modules/ffmpeg-static/ffmpeg,assets/podcast-audio/**}"
+    },
+    "api/admin/send-launch-email.ts": {
+      "maxDuration": 60,
+      "includeFiles": "{node_modules/ffmpeg-static/ffmpeg,assets/podcast-audio/**}"
     }
   },
   "crons": [

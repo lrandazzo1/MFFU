@@ -1,0 +1,37 @@
+name: One-time Week 2 podcast regeneration
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: Type REGENERATE-57155288-2026-W2 to replace this episode.
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: regen-podcast-57155288-week2
+  cancel-in-progress: false
+
+jobs:
+  regenerate:
+    if: github.event.inputs.confirm == 'REGENERATE-57155288-2026-W2'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Compile current audio pipeline
+        run: npm run build:podcast
+      - name: Regenerate, upload and verify Week 2 episode
+        run: node scripts/rerun-podcast.mjs --leagueId=57155288 --season=2026 --week=2 --force

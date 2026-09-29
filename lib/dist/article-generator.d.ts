@@ -143,6 +143,35 @@ export declare function buildUserPrompt(request: Omit<ComposeRequest, 'system_pr
  * copy nobody reviewed, and a thrown error means the row is never written.
  */
 export declare function assertOutcomeLanguage(draft: ArticleDraft, tracked: TrackedPlayer[]): void;
+/**
+ * A figure as prose says it: one decimal at most, and no trailing ".0".
+ *
+ * "16.2" and "16" are numbers a person reads out loud. "16.18" is a
+ * spreadsheet cell, and a paragraph of them reads like a settlement statement
+ * rather than a story about a football weekend. Rounding is HALF UP on the
+ * tenth, which can move a figure by up to 0.05 against the box score: that is
+ * the trade the prose is making, and the facts block handed to a model keeps
+ * `num2` precisely because precision is the point there.
+ */
+export declare const fig: (value: number) => string;
+/**
+ * Whether a fantasy team name takes a plural verb.
+ *
+ * "Harbor Pilots have", "War Eagle!!! has". A fantasy team is one entity, so
+ * the singular is the default and the name itself is the only signal worth
+ * reading: a trailing "s" takes the plural, everything else takes the
+ * singular.
+ *
+ * Trailing punctuation, emoji and digits are stripped before the test,
+ * because league names end in exclamation marks, stars and draft years far
+ * more often than they end in a letter. "Team Emery!!!!" is singular,
+ * "Choosin' Texas" is not: the rule reads the last letter rather than
+ * carrying a list of exceptions no two leagues would agree on.
+ */
+export declare function teamIsPlural(team: string): boolean;
+/** `teamVerb(team, 'has', 'have')`. The singular form comes first because it
+ *  is the default a fantasy team takes. */
+export declare function teamVerb(team: string, singular: string, plural: string): string;
 export type Archetype = 'PRIMETIME_COMEBACK' | 'RAZOR_THIN_COMEBACK' | 'SINGLE_HANDED_OVERHAUL' | 'HEAVYWEIGHT_BLOWOUT' | 'WASTED_ERUPTION' | 'HEARTBREAK_LOSS' | 'NECESSARY_INSURANCE' | 'STRAIGHT_COMEBACK' | 'GENERAL_SWING';
 /**
  * The first archetype whose trigger the row satisfies.
@@ -206,7 +235,7 @@ export declare function rotateVariants(board: TrackedPlayer[], week: number): Ar
  * One row, framed by its archetype.
  *
  * Every entity is emboldened: the player, both fantasy teams, the points (with
- * "pts"), and the deficit and margin as two-decimal figures. `lbMarkdown()` in
+ * "pts"), and the deficit and margin as prose figures. `lbMarkdown()` in
  * index.html renders `**x**` as <strong>, and its pattern is
  * `\*\*([^*]+)\*\*`, so a value containing an asterisk simply would not
  * embolden rather than corrupting the line.
@@ -334,6 +363,28 @@ export declare function leadSwing(side: PreviewSide): LeadSwing | null;
  * gap rests on.
  */
 export declare function previewBlock(m: PreviewMatchup, variant: 0 | 1, now?: number | null): string[];
+/**
+ * The matchup board, as a run of markdown sections.
+ *
+ * Shared by the preview and the recap so the two read the same way: one block
+ * per head to head, the standing first, then the number that produced it, then
+ * the lead change it came out of or what is still to come.
+ *
+ * ---- WHY THE RECAP HAS ONE AT ALL ----
+ *
+ * It used to be built from the outcome flags and nothing else, so the only
+ * performances it could name were the ones the math had marked decisive. A
+ * week whose leads never changed hands left it with nothing: the week 3 Monday
+ * run published six bullets of "put 41.40 pts on the board, the swing math
+ * found no individual turnover" and never named a margin, a leader, or a
+ * starter still to play, while the Friday breakdown of the same league was
+ * printing all three. The flags say what a performance MEANT. They were never
+ * meant to be the only thing a recap could report.
+ *
+ * Returns an empty list when nothing paired into a head to head. The caller
+ * decides what to say about that: neither article treats it as fatal.
+ */
+export declare function matchupBoardSections(matchups: PreviewMatchup[], week: number, limit: number, now?: number | null): string[];
 export declare const CATEGORY_BY_TYPE: Record<ArticleType, string>;
 export declare const DEFAULT_AUTHOR = "FSN News Desk";
 /**
