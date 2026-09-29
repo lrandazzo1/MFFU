@@ -720,9 +720,14 @@ try {
       document.getElementById('weekNum').value = wk;
       window.FSNBridge.call('renderLeagueBlog');
     }, selected);
-    await page.waitForTimeout(300);
-    const shown = await page.locator('.lb-title').allTextContents();
-    if(expected) truthy(shown.includes(expected), 'Week ' + selected + ' shows ' + expected);
+    let shown = [];
+    for(let attempt = 0; attempt < 15; attempt++){
+      shown = await page.locator('.lb-title').allTextContents();
+      if(!expected || shown.includes(expected)) break;
+      await page.waitForTimeout(200);
+    }
+    if(expected) truthy(shown.includes(expected), 'Week ' + selected + ' shows ' + expected +
+      ' (painted: ' + JSON.stringify(shown) + ')');
     truthy(!shown.includes(excluded), 'Week ' + selected + ' excludes ' + excluded);
     truthy(weekRequests().some((row) => row.display_week === selected),
       'the feed requested display_week=' + selected);
