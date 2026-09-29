@@ -25,9 +25,15 @@
      ECHO       a body whose opening heading repeats the headline drops it, so
                 the card does not print the same words twice, while a heading
                 that says something different is kept
-     ACTIVE     FSNSupabaseArticles.fetch() asks /api/blog/articles with
-                active=1 and no week, and its stories are a SECOND SOURCE for
-                the week on screen, never a stand-in for another week
+     ACTIVE     FSNSupabaseArticles.fetch() makes TWO different reads: a
+                week read carrying active=1 plus the viewed season and week
+                (so the database filters, not just the renderer), and a
+                league-wide read carrying active=1 and include_global=1 with
+                no week at all. The week read is a SECOND SOURCE for the week
+                on screen, never a stand-in for another week
+     PLACEHOLDER the live week with nothing filed yet names itself and says
+                when its coverage lands, instead of standing another week's
+                stories in its place or vanishing
      PRIORITY   the week-scoped read wins when it has coverage, so no article
                 is ever painted twice
      WEEKFILTER an article for another week or another season is never painted,
@@ -200,12 +206,38 @@ function startServer() {
           include_global: url.searchParams.get('include_global'),
           active,
         });
-        /* The two feeds hit the same path and are told apart by `active`,
-           exactly as the real route tells them apart. Serving them from one
-           list would make every assertion below ambiguous. */
-        const rows = active ? serveActive : serveArticles;
+        /* The feeds hit the same path and are told apart by `active`, exactly
+           as the real route tells them apart. Serving them from one list would
+           make every assertion below ambiguous.
+
+           The active list is then filtered the way api/blog/articles.js
+           filters in the database, so the check is asserting against the real
+           contract rather than against a stub that answers everything:
+
+             season / week     `.eq('season', ...)` / `.eq('week', ...)`
+             include_global    absent means `.eq('league_id', ...)`, which a
+                               global row (league_id null) cannot satisfy
+
+           Without this the week read would keep answering with every week it
+           holds and the whole point of scoping the query would go untested. */
+        const season = url.searchParams.get('season');
+        const week = url.searchParams.get('week');
+        const includeGlobal = url.searchParams.get('include_global') === '1';
+        let rows = active ? serveActive : serveArticles;
+        if (active) {
+          if (!includeGlobal) rows = rows.filter((row) => row.scope !== 'global');
+          if (season != null) rows = rows.filter((row) => Number(row.season) === Number(season));
+          if (week != null) rows = rows.filter((row) => Number(row.week) === Number(week));
+        }
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ league_id, active, count: rows.length, articles: rows }));
+        res.end(JSON.stringify({
+          league_id,
+          season: season == null ? null : Number(season),
+          week: week == null ? null : Number(week),
+          active,
+          count: rows.length,
+          articles: rows,
+        }));
         return;
       }
       if (url.pathname === '/api/notifications-register' || url.pathname === '/api/notifications') {
@@ -321,13 +353,37 @@ try {
   await page.evaluate((data) => { window.LeagueData.setEspnData(data); window.__fsnRender(); }, syntheticLeague());
   await page.waitForTimeout(600);
 
-  if (await page.getAttribute('#profilePicker', 'data-open') === 'true') {
-    await page.click('#profileGuest');
+  /* maybeShowFtu() opens the first-run walkthrough on a 450ms timer after
+     boot, so a single check here races it: the modal can still be shut when
+     asked and open by the time the tab is clicked, and its backdrop then eats
+     every click for the rest of the run. Poll both overlays until the screen
+     is actually clear. */
+  for (let attempt = 0; attempt < 12; attempt++) {
+    const open = await page.evaluate(() => ({
+      profile: (document.getElementById('profilePicker') || {}).dataset?.open === 'true',
+      ftu: (document.getElementById('ftuModal') || {}).dataset?.open === 'true',
+    }));
+    if (!open.profile && !open.ftu) {
+      /* Two clean passes: the FTU timer may not have fired yet. */
+      await page.waitForTimeout(400);
+      const still = await page.evaluate(() => ({
+        profile: (document.getElementById('profilePicker') || {}).dataset?.open === 'true',
+        ftu: (document.getElementById('ftuModal') || {}).dataset?.open === 'true',
+      }));
+      if (!still.profile && !still.ftu) break;
+    }
+    if (open.profile) await page.click('#profileGuest');
+    else if (open.ftu) await page.click('#ftuSkip');
     await page.waitForTimeout(400);
   }
-  if (await page.getAttribute('#ftuModal', 'data-open') === 'true') {
-    await page.click('#ftuSkip');
-    await page.waitForTimeout(400);
+
+  /* Setup is a full-screen takeover at z-index 85 and the tab bar sits at 60,
+     so while it is open every tab click lands on the Setup card instead. Seeding
+     LeagueData directly does not close it the way connecting a league does, so
+     close it the way a reader would. */
+  if (await page.getAttribute('.screen[data-screen="setup"]', 'data-active') === 'true') {
+    await page.click('#setupClose');
+    await page.waitForTimeout(500);
   }
 
   /* Chips are tapped later, so the News screen has to be the ACTIVE one: an
@@ -346,15 +402,33 @@ try {
   }
 
   /* The active feed is the second half of the wiring, and it fires on the same
-     pass rather than only once the week-scoped read comes back empty. */
+     pass rather than only once the week-scoped read comes back empty. It makes
+     two reads that must not be confused with each other. */
   truthy(await page.evaluate(() => !!(window.FSNSupabaseArticles && typeof window.FSNSupabaseArticles.fetch === 'function')),
     'FSNSupabaseArticles.fetch is published at global scope');
   truthy(activeRequests().length > 0, 'the active endpoint was called (' + activeRequests().length + ' request(s))');
-  if (activeRequests().length) {
-    const first = activeRequests()[0];
-    truthy(first.league_id && first.league_id.length > 0, 'the active read carries a league_id');
-    expect(first.week, null, 'the active read sends no week');
-    expect(first.season, null, 'the active read sends no season');
+
+  /* THE WEEK READ. This is the one that used to go out with no week at all and
+     leave every week the league had published to the renderer to sort out. */
+  const activeWeekReads = activeRequests().filter((row) => row.week != null);
+  truthy(activeWeekReads.length > 0, 'the active feed makes a week-scoped read');
+  if (activeWeekReads.length) {
+    const first = activeWeekReads[0];
+    truthy(first.league_id && first.league_id.length > 0, 'the week-scoped active read carries a league_id');
+    expect(first.week, '2', 'the week-scoped active read is scoped to the viewed week');
+    expect(first.season, '2026', 'the week-scoped active read is scoped to the viewed season');
+    expect(first.include_global, null,
+      'the week-scoped active read does not ask for league-wide editorial, which has no week to match');
+  }
+
+  /* THE LEAGUE-WIDE READ. No week by design, and the only source of a
+     LEAGUE-WIDE stand-in. */
+  const leagueWideReads = activeRequests().filter((row) => row.include_global === '1');
+  truthy(leagueWideReads.length > 0, 'the active feed makes a league-wide read as well');
+  if (leagueWideReads.length) {
+    const first = leagueWideReads[0];
+    expect(first.week, null, 'the league-wide read sends no week');
+    expect(first.season, null, 'the league-wide read sends no season');
   }
   expect(await page.getAttribute('#leagueBlogWrap', 'hidden') !== null, true,
     'with neither feed carrying anything the section stays hidden');
@@ -498,20 +572,73 @@ try {
     'a legacy article gets the default byline');
 
   /* ---- 5c. WEEKFILTER: another week's story is never painted --------- */
-  /* ACTIVE_ARTICLE is a WEEK 1 story and the view is on week 2. The active
-     read is deliberately not week-scoped, so before the filter existed this
-     painted the week 1 recap under a WEEK 2 header. */
+  /* ACTIVE_ARTICLE is a WEEK 1 story and the view is on week 2. It is held out
+     twice over now: the endpoint never sends it (the week read asks for week 2)
+     and the renderer would drop it if it arrived anyway. Whether the slot then
+     shows the live-week placeholder or gives itself back depends on where the
+     calendar is, and neither is a leak — what matters is that NO article card
+     is painted and week 1's headline is nowhere on the page. */
   serveArticles = [];
   await page.evaluate(() => window.FSNLeagueArticles.refresh());
   await page.waitForTimeout(900);
   await page.evaluate(() => { window.FSNBridge.call('renderLeagueBlog'); });
   await page.waitForTimeout(600);
 
-  expect(await page.getAttribute('#leagueBlogWrap', 'hidden') !== null, true,
-    'WEEKFILTER: a week with nothing of its own hides the section, even though ' +
+  expect(await page.locator('.lb-card').count(), 0,
+    'WEEKFILTER: a week with nothing of its own paints no article card, even though ' +
     'the active feed is holding another week\'s article');
   expect(await page.evaluate(() => document.body.innerText.includes('Cobalt Kings Open On A Thin Bench')), false,
     'and week 1\'s headline is nowhere on the page');
+  truthy(!(await page.textContent('#leagueBlogState')).includes('WEEK 1'),
+    'and the header never names week 1 while week 2 is on screen');
+
+  /* ---- 5c-ii. PLACEHOLDER: the live week, nothing filed yet ---------- */
+  /* The bug as it was actually reported: the reader who watched week 3 fill up
+     opens the new week and the section is simply gone, with no way of telling
+     "nothing yet" from "broken". On the live week the slot now names itself
+     and says when its coverage lands — and it does that INSTEAD of standing
+     another week's stories in its place, which is the other half of the fix. */
+  /* currentLeagueWeek() needs the UI layer's closure and is reached through
+     FSNBridge, exactly as the app reaches it from another block. */
+  const liveWeek = await page.evaluate(() => {
+    const wk = window.FSNBridge ? window.FSNBridge.call('currentLeagueWeek') : null;
+    return wk == null ? null : Number(wk);
+  });
+  const priorWeekValue = await page.evaluate(() => document.getElementById('weekNum').value);
+  if (liveWeek && liveWeek >= 1 && liveWeek <= 18) {
+    serveArticles = [];
+    serveActive = [ACTIVE_ARTICLE];
+    await page.evaluate((wk) => {
+      document.getElementById('weekNum').value = String(wk);
+      window.FSNBridge.call('renderLeagueBlog');
+    }, liveWeek);
+    await page.waitForTimeout(1400);
+
+    const placeholder = await page.evaluate(() => ({
+      hidden: document.getElementById('leagueBlogWrap').hidden,
+      label: (document.getElementById('leagueBlogState') || {}).textContent || '',
+      text: (document.getElementById('leagueBlogFeed') || {}).innerText || '',
+      cards: document.querySelectorAll('.lb-card').length,
+    }));
+    expect(placeholder.hidden, false, 'PLACEHOLDER: the live week keeps its slot instead of vanishing');
+    truthy(placeholder.text.includes('Week ' + liveWeek + ' coverage begins'),
+      'and says, in the week\'s own name, when its coverage lands');
+    expect(placeholder.cards, 0, 'with no article card standing in for it');
+    truthy(!placeholder.text.includes('Cobalt Kings Open On A Thin Bench'),
+      'and no leftover story from another week');
+    truthy(placeholder.label.includes('WEEK ' + liveWeek),
+      'under the live week\'s own header');
+
+    await page.evaluate((value) => {
+      document.getElementById('weekNum').value = value;
+      window.FSNBridge.call('renderLeagueBlog');
+    }, priorWeekValue);
+    await page.waitForTimeout(900);
+  } else {
+    pass('PLACEHOLDER: skipped — this fixture has no resolvable live week');
+  }
+  serveArticles = [];
+  serveActive = [ACTIVE_ARTICLE];
 
   /* ---- 5d. ACTIVE as a SECOND SOURCE for the same week --------------- */
   /* The same active read, now carrying a story FOR the week on screen. The
@@ -607,8 +734,12 @@ try {
      league-wide editorial in rather than going blank, and must never dress it
      up as this league's own coverage of the week on screen. */
   truthy(
-    activeRequests().every((row) => row.include_global === '1'),
-    'the active read asks the endpoint for league-wide editorial as well',
+    activeRequests().some((row) => row.include_global === '1' && row.week == null),
+    'the league-wide read asks the endpoint for league-wide editorial, with no week',
+  );
+  truthy(
+    activeRequests().filter((row) => row.week != null).every((row) => row.include_global !== '1'),
+    'and no week-scoped read ever asks for it, because it has no week to match',
   );
 
   serveArticles = [];
