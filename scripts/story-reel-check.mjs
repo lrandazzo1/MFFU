@@ -42,6 +42,7 @@ import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, dirname, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
+import { dismissFirstRun, dismissSetup } from './lib/first-run.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..');
@@ -265,10 +266,10 @@ try {
 
   await page.goto(base + '/', { waitUntil: 'load' });
   await page.waitForTimeout(1800);
-  if (await page.getAttribute('#profilePicker', 'data-open') === 'true') {
-    await page.click('#profileGuest');
-    await page.waitForTimeout(400);
-  }
+  /* The picker, the first-run walkthrough and the Setup takeover all swallow
+     clicks, and the walkthrough opens on a timer, so a single check races it.
+     Poll all three clear before the tab walk below. */
+  await dismissFirstRun(page);
 
   const tabs = await page.$$eval('#tabBar .tab-btn', (els) => els.map((e) => e.getAttribute('data-tab')));
   if (tabs.includes('setup')) fail('Setup is still a bottom-nav tab');
@@ -277,23 +278,41 @@ try {
   /* An inactive .screen is display:none, so a gear can only be measured on the
      screen that is showing. Walk the screens and measure each one in turn. */
   for (const screen of ['home', 'matchups', 'news', 'analytics', 'recordbook', 'setup']) {
+    /* Not every screen is a tab: Setup is reached by the gear this section is
+       measuring, and the Record Book by the button at the foot of Analytics.
+       Prefer the tab when one exists, and fall back to the in-screen route on
+       the screen that is showing, so a screen leaving the bottom nav shows up
+       as a gear assertion rather than as a click timeout. */
     if (screen === 'setup') await page.click('.screen[data-active="true"] .gear-btn');
-    else await page.click('#tabBar .tab-btn[data-tab="' + screen + '"]');
+    else if (tabs.includes(screen)) await page.click('#tabBar .tab-btn[data-tab="' + screen + '"]');
+    else await page.click('.screen[data-active="true"] [data-goto="' + screen + '"]');
     await page.waitForTimeout(320);
 
     const gear = await page.evaluate((name) => {
       const el = document.querySelector('.screen[data-screen="' + name + '"] .gear-btn');
       if (!el) return null;
       const box = el.getBoundingClientRect();
+      /* Setup's close control draws a typographic × (#setupClose svg is
+         display:none, with the glyph on ::after), so measuring the <svg> alone
+         reports 0px for a control that is plainly visible. Measure whichever
+         one the screen is actually drawing. */
       const icon = el.querySelector('svg');
-      const iconBox = icon ? icon.getBoundingClientRect() : { width: 0, height: 0 };
+      const iconHidden = !icon || getComputedStyle(icon).display === 'none';
+      const iconBox = iconHidden ? { width: 0 } : icon.getBoundingClientRect();
+      const after = getComputedStyle(el, '::after');
+      const glyphText = after.content && after.content !== 'none' && after.content !== 'normal';
+      const glyph = iconHidden
+        ? { kind: glyphText ? 'text' : 'none', size: glyphText ? Math.round(parseFloat(after.fontSize) || 0) : 0 }
+        : { kind: 'svg', size: Math.round(iconBox.width) };
       const header = el.closest('header');
       const headerBox = header ? header.getBoundingClientRect() : null;
       return {
+        id: el.id || '',
         goto: el.getAttribute('data-goto'),
         hitW: Math.round(box.width),
         hitH: Math.round(box.height),
-        icon: Math.round(iconBox.width),
+        icon: glyph.size,
+        iconKind: glyph.kind,
         label: el.getAttribute('aria-label') || '',
         /* Top-right of the header it lives in: nothing of the header extends
            meaningfully to the right of the gear. */
@@ -302,12 +321,17 @@ try {
     }, screen);
 
     if (!gear) { fail('no header gear on screen: ' + screen); continue; }
-    if (gear.goto !== 'setup') fail(screen + ': the gear does not route to Setup');
+    /* Setup's own gear is the close control, not a route back to the screen
+       the reader is already on; everywhere else it routes to Setup. */
+    const routes = screen === 'setup' ? gear.id === 'setupClose' : gear.goto === 'setup';
+    if (!routes) fail(screen + ': the gear does not ' + (screen === 'setup' ? 'close Setup' : 'route to Setup'));
     else if (gear.hitW < 40 || gear.hitH < 40) fail(screen + ': the gear hit area is ' + gear.hitW + 'x' + gear.hitH + 'px, under 40x40');
-    else if (gear.icon < 20 || gear.icon > 24) fail(screen + ': the gear glyph is ' + gear.icon + 'px, outside 20-24px');
+    else if (gear.iconKind === 'none') fail(screen + ': the gear draws no glyph at all');
+    else if (gear.iconKind === 'svg' && (gear.icon < 20 || gear.icon > 24)) fail(screen + ': the gear glyph is ' + gear.icon + 'px, outside 20-24px');
+    else if (gear.iconKind === 'text' && gear.icon < 18) fail(screen + ': the gear glyph is ' + gear.icon + 'px, too small to read');
     else if (!gear.label) fail(screen + ': the gear has no accessible label');
     else if (!gear.rightAligned) fail(screen + ': the gear is not pinned to the top-right of the header');
-    else pass(screen + ': top-right gear routes to Setup (' + gear.hitW + 'x' + gear.hitH + 'px hit area, ' + gear.icon + 'px glyph)');
+    else pass(screen + ': top-right gear ' + (screen === 'setup' ? 'closes Setup' : 'routes to Setup') + ' (' + gear.hitW + 'x' + gear.hitH + 'px hit area, ' + gear.icon + 'px glyph)');
   }
 
   if (await page.getAttribute('.screen[data-screen="setup"]', 'data-active') === 'true') {
@@ -318,6 +342,10 @@ try {
   const gearActive = await page.getAttribute('.screen[data-screen="setup"] .gear-btn', 'data-active');
   if (gearActive === 'true') pass('the gear lights up as the current screen on Setup');
   else fail('the gear does not reflect the Setup screen as current');
+
+  /* The walk ended on Setup, which is a full-screen takeover over the tab bar,
+     so it has to come down before the Desk is reachable again. */
+  await dismissSetup(page);
 
   /* The empty-state prompts and the gear must land on the same screen. */
   await page.click('#tabBar .tab-btn[data-tab="home"]');
@@ -345,11 +373,10 @@ try {
   await page.waitForTimeout(150);
   await page.click('#fetchBtn');
   await page.waitForTimeout(3000);
-  /* A newly connected league asks who is watching before anything else. */
-  if (await page.getAttribute('#profilePicker', 'data-open') === 'true') {
-    await page.click('#profileGuest');
-    await page.waitForTimeout(500);
-  }
+  /* A newly connected league asks who is watching before anything else, and
+     the fetch above was driven from the Setup takeover, which has to come down
+     before the tab bar under it is clickable again. */
+  await dismissFirstRun(page);
   await page.click('#tabBar .tab-btn[data-tab="home"]');
   await page.waitForTimeout(900);
 

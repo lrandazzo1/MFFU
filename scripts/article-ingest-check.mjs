@@ -57,6 +57,7 @@ import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, dirname, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
+import { dismissFirstRun } from './lib/first-run.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..');
@@ -331,18 +332,16 @@ async function openApp(base, articlesOrigin) {
   return { page, pageErrors, consoleErrors, blogRequests };
 }
 
-/* Seed the synthetic league, repaint, and dismiss the profile picker so the
-   reader is an explicit guest rather than an unanswered prompt. */
+/* Seed the synthetic league, repaint, and clear the first-run surfaces so the
+   reader is an explicit guest rather than an unanswered prompt, and so the tab
+   clicks below are not eaten by the walkthrough or the Setup takeover. */
 async function seedLeague(page) {
   await page.evaluate((data) => {
     window.LeagueData.setEspnData(data);
     window.__fsnRender();
   }, syntheticSleeperLeague());
   await page.waitForTimeout(600);
-  if ((await page.getAttribute('#profilePicker', 'data-open')) === 'true') {
-    await page.click('#profileGuest');
-    await page.waitForTimeout(400);
-  }
+  await dismissFirstRun(page);
 }
 
 try {

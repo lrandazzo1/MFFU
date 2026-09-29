@@ -41,6 +41,7 @@ import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, dirname, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
+import { dismissFirstRun } from './lib/first-run.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..');
@@ -234,10 +235,11 @@ async function seed(board) {
     window.__fsnRender();
   }, league(board));
   await page.waitForTimeout(900);
-  if (await page.getAttribute('#profilePicker', 'data-open') === 'true') {
-    await page.click('#profileGuest');
-    await page.waitForTimeout(400);
-  }
+  /* The picker, the walkthrough and the Setup takeover each swallow clicks, and
+     the walkthrough opens on a timer, so a single check races it. Seeding
+     LeagueData does not close Setup the way connecting a league does, so the
+     tab bar under it stays unreachable until it is closed. */
+  await dismissFirstRun(page);
   await page.click('#tabBar .tab-btn[data-tab="home"]');
   await page.waitForTimeout(500);
 }

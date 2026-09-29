@@ -37,6 +37,7 @@ import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, dirname, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
+import { dismissFirstRun } from './lib/first-run.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..');
@@ -298,26 +299,29 @@ async function switchTo(leagueId) {
   }, 'espn:' + leagueId);
 }
 
+/* innerText is the RENDERED text, so the team-name cards come back through
+   their text-transform:uppercase — "L222222-TEAM1", never "L222222-Team1".
+   Matching case-sensitively made every one of these reads come back false, so
+   the check reported an empty screen at every drop instead of measuring the
+   switch. Match the name, not the casing the stylesheet chose. */
 const drops = () => page.evaluate(() => window.__curtainDrops.map((d) => ({
   at: d.at, snag: d.snag,
   mutationsAfterDrop: d.mutationsAfterDrop,
-  sawA: /L111111-Team/.test(d.text),
-  sawB: /L222222-Team/.test(d.text),
-  sawC: /L333333-Team/.test(d.text),
+  sawA: /L111111-Team/i.test(d.text),
+  sawB: /L222222-Team/i.test(d.text),
+  sawC: /L333333-Team/i.test(d.text),
 })));
 
 try {
   await page.goto(base + '/', { waitUntil: 'load' });
   await page.waitForTimeout(2000);
 
-  /* The first live payload opens the modal team-profile chooser. Answer it as a
-     reader with no team so it does not sit over the switch under test. */
-  if (await page.getAttribute('#profilePicker', 'data-open') === 'true') {
-    await page.click('#profileGuest');
-    await page.waitForTimeout(400);
-  }
+  /* The first live payload opens the modal team-profile chooser, and the
+     first-run walkthrough follows it on a timer. Clear both as a reader with no
+     team would, so neither sits over the switch under test. */
+  await dismissFirstRun(page, { closeSetup: false });
 
-  const booted = await page.evaluate(() => /L222222-Team/.test(String(document.body.innerText || '')));
+  const booted = await page.evaluate(() => /L222222-Team/i.test(String(document.body.innerText || '')));
   if (booted) pass('booted into league ' + LEAGUE_B);
   else fail('league ' + LEAGUE_B + ' never painted at boot; the check cannot measure a switch away from it');
 

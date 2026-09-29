@@ -28,6 +28,7 @@ import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
+import { dismissSetup } from './lib/first-run.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(import.meta.url);
@@ -336,9 +337,17 @@ try {
      is where a reader with no league belongs. Home is what they see if they
      navigate there anyway, and that is the panel under test. */
   assert.equal(await cold.page.evaluate(() => {
+    /* setScreen('setup') leaves the screen behind the takeover active too, so
+       both carry data-active="true" and querySelector returns the one
+       underneath. Setup is what the reader is looking at whenever it is up. */
+    const setup = document.querySelector('.screen[data-screen="setup"]');
+    if (setup && setup.dataset.active === 'true') return 'setup';
     const el = document.querySelector('.screen[data-active="true"]');
     return el && el.getAttribute('data-screen');
   }), 'setup', 'a launch with no league to restore opens the connect flow');
+  /* Setup is a full-screen takeover at z-index 85 over a tab bar at 60, so it
+     has to come down before the tab under it is clickable. */
+  await dismissSetup(cold.page);
   await cold.page.click('#tabBar .tab-btn[data-tab="home"]');
   await cold.page.waitForTimeout(200);
   const empty = await cold.page.evaluate(() => {

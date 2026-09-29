@@ -256,7 +256,14 @@ try {
   await native.page.evaluate(() => window.__legal.finish());
   const returned = await native.page.evaluate(() => ({
     focus: document.activeElement.id,
-    screen: document.querySelector('.screen[data-active="true"]').dataset.screen,
+    /* setScreen('setup') leaves the screen behind the takeover active too, so
+       both carry data-active="true" and querySelector returns the one
+       underneath. Setup is what the reader is looking at whenever it is up. */
+    screen: (() => {
+      const setup = document.querySelector('.screen[data-screen="setup"]');
+      if (setup && setup.dataset.active === 'true') return 'setup';
+      return document.querySelector('.screen[data-active="true"]').dataset.screen;
+    })(),
     message: document.getElementById('externalLinkStatus').textContent,
     removed: window.__legal.listenerRemoved,
   }));

@@ -281,7 +281,15 @@ function instrument(seed) {
     const curtain = document.getElementById('leagueCurtain');
     const content = document.getElementById('homeContent');
     const noData = document.getElementById('homeNoData');
-    const active = document.querySelector('.screen[data-active="true"]');
+    /* setScreen('setup') leaves the screen BEHIND the takeover active too, so
+       the app still paints under it. Both are therefore [data-active="true"],
+       and querySelector returns whichever comes first in the markup — the one
+       underneath. The screen the reader is looking at is Setup whenever Setup
+       is up. */
+    const setup = document.querySelector('.screen[data-screen="setup"]');
+    const active = (setup && setup.dataset.active === 'true')
+      ? setup
+      : document.querySelector('.screen[data-active="true"]');
     return {
       at: Math.round(performance.now()),
       screen: active ? active.getAttribute('data-screen') : '',
