@@ -277,8 +277,16 @@ try {
   /* An inactive .screen is display:none, so a gear can only be measured on the
      screen that is showing. Walk the screens and measure each one in turn. */
   for (const screen of ['home', 'matchups', 'news', 'analytics', 'recordbook', 'setup']) {
-    if (screen === 'setup') await page.click('.screen[data-active="true"] .gear-btn');
-    else await page.click('#tabBar .tab-btn[data-tab="' + screen + '"]');
+    /* The empty-launch Setup takeover can cover the nav in headless Chromium.
+       Dispatch the same DOM click handler while inspecting each screen. */
+    await page.evaluate((name) => {
+      const selector = name === 'setup'
+        ? '.screen[data-active="true"] .gear-btn'
+        : '#tabBar .tab-btn[data-tab="' + name + '"]';
+      const button = document.querySelector(selector);
+      if (!button) throw new Error('Missing navigation control: ' + selector);
+      button.click();
+    }, screen);
     await page.waitForTimeout(320);
 
     const gear = await page.evaluate((name) => {
