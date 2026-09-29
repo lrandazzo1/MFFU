@@ -51,6 +51,7 @@ import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, dirname, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
+import { dismissFirstRun } from './lib/first-run.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..');
@@ -353,25 +354,16 @@ try {
   await page.waitForTimeout(700);
   pass('seeded the synthetic league and repainted');
 
-  /* The first live payload opens the team-profile chooser, which is modal and
-     intercepts every tap until it is answered. Answer it the way a reader
-     without a claimed team would, so the walk below exercises the real app
-     rather than fighting an overlay — and so the localized copy under test is
-     the league-wide framing rather than the reader-relative one. */
-  if (await page.getAttribute('#profilePicker', 'data-open') === 'true') {
-    await page.click('#profileGuest');
-    await page.waitForTimeout(500);
-    pass('dismissed the first-run profile picker (continue as guest)');
-  } else pass('no profile picker to dismiss');
-
-  /* And the first-run tour, which is the other modal that intercepts taps on a
-     fresh origin. Skipped rather than walked: this check is about the News
-     Desk, and render-check.mjs already owns the tour itself. */
-  if (await page.getAttribute('#ftuModal', 'data-open') === 'true') {
-    await page.click('#ftuSkip');
-    await page.waitForTimeout(500);
-    pass('skipped the first-run tour');
-  } else pass('no first-run tour to skip');
+  /* Three first-run surfaces stand between the boot and the first tap: the
+     team-profile chooser, the first-run tour (opened on a timer, so a single
+     check races it) and the Setup takeover, which seeding LeagueData does not
+     close the way connecting a league does. The chooser is answered the way a
+     reader without a claimed team would, so the localized copy under test is
+     the league-wide framing rather than the reader-relative one; the tour is
+     skipped rather than walked, since render-check.mjs owns the tour itself. */
+  const firstRun = await dismissFirstRun(page);
+  pass('cleared the first-run surfaces (picker ' + firstRun.profile + 'x, tour ' +
+    firstRun.ftu + 'x, setup ' + (firstRun.setup ? 'closed' : 'not showing') + ')');
 
   /* ======================================================================
      1. THE ENGINE — called directly, so a copy or stat failure is reported

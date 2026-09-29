@@ -30,6 +30,7 @@ import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
+import { dismissFirstRun } from './lib/first-run.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const require = createRequire(import.meta.url);
@@ -210,14 +211,13 @@ async function selectSeason(page, year) {
   await select.selectOption(year);
 }
 
-/* The first live payload opens the modal team-profile chooser, which
-   intercepts every tap until it is answered. Answer it the way a reader with
-   no team would, so the season walk exercises the real app. */
+/* The first live payload opens the modal team-profile chooser, the first-run
+   walkthrough follows it on a timer, and the Setup takeover sits over the tab
+   bar: each one intercepts every tap until it is answered. Clear all three the
+   way a reader with no team would, so the season walk exercises the real app
+   rather than timing out on an intercepted click. */
 async function dismissProfilePicker(page) {
-  if (await page.getAttribute('#profilePicker', 'data-open') === 'true') {
-    await page.click('#profileGuest');
-    await page.waitForTimeout(300);
-  }
+  await dismissFirstRun(page);
 }
 
 const origin = 'http://season-scope.test';
