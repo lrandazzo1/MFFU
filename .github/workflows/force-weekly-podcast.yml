@@ -1,0 +1,170 @@
+# The catch-up run: regenerate a week's audio recaps on demand.
+#
+# ---- WHY THIS EXISTS ALONGSIDE generate-weekly-podcast.yml ----
+#
+# The Tuesday schedule POSTs to the deployed route, which is a 60s Vercel
+# function that stops starting leagues at 50s and caps itself at
+# PODCAST_CRON_MAX_LEAGUES (5 in the deployment). With 14 active leagues that
+# is a partial sweep by construction: the 2026 week 3 run reached six leagues
+# and reported eight `not_attempted`. On a DAILY cron those are picked up by
+# the next run; on a weekly one the next run is seven days later and recapping
+# week 4, so week 3 simply stays missing for them.
+#
+# This workflow runs the same code on the runner instead — `runWeeklyPodcastCron`
+# via scripts/generate-podcast.mjs, no HTTP hop, no 60s ceiling — so one
+# dispatch can finish every league of a week.
+#
+# ---- WHAT force= DOES, AND WHY IT IS NOT ON THE SCHEDULE ----
+#
+# The sweep skips any league that already holds a `podcast_episodes` row for
+# the week. That idempotency is what makes a retry free and what stops an
+# episode changing under a reader, and it cannot tell a finished episode from
+# a WRONG one. League 57155288 held a `ready` 2026 week 3 row created on the
+# Sunday by the interactive Studio path — an injury-wire preview of a week
+# that had not been played — so the Tuesday run skipped it and the league got
+# no recap. `force` lifts the skip for a NAMED week; the route refuses it for
+# an unnamed one, and the schedule names none, so no schedule can force.
+#
+# A forced regeneration does not take an episode down to build its
+# replacement: the new MP3 goes to a content-addressed Storage path and the
+# row is repointed only once it is uploaded, and a failure restores the row
+# the league was already reading.
+#
+# ---- IT SPENDS MONEY ----
+#
+# One ElevenLabs call per dialogue turn per league. Leave `mode` on its
+# default `dry_run` to see the scope first; name a `league` unless the whole
+# sweep really is the intent.
+#
+# Required repository secrets:
+#   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY  — the sweep and the episode write
+#   ELEVENLABS_API_KEY                       — synthesis (not needed for a dry
+#                                              run or a script-only run)
+
+name: Podcast catch-up run
+
+on:
+  workflow_dispatch:
+    inputs:
+      week:
+        description: The week to generate. Required — a catch-up always names its week.
+        type: string
+        required: true
+      season:
+        description: Season. Blank uses the pipeline's current season.
+        type: string
+        required: false
+      league:
+        description: League id to generate for. Blank sweeps every active league.
+        type: string
+        required: false
+      # ---- ONE `choice`, AND IT DEFAULTS TO DRY ----
+      #
+      # `type: boolean` inputs are dropped when a workflow is dispatched through
+      # the REST API with JSON strings, falling back to the declared default. A
+      # run asked for as a dry run arrived as a live one once already and billed
+      # for it. `choice` values are strings and survive the trip, and the
+      # wildcard below is the safe mode.
+      mode:
+        description: What this run should do.
+        type: choice
+        default: dry_run
+        required: true
+        options:
+          - dry_run      # resolve leagues and scope, write nothing, spend nothing
+          - script_only  # store the scripts, no audio, no ElevenLabs spend
+          - live         # synthesize audio and spend at ElevenLabs
+      force:
+        description: Regenerate over episodes that already exist for the week.
+        type: choice
+        default: 'no'
+        required: false
+        options:
+          - 'no'
+          - 'yes'
+      max_leagues:
+        description: Per-run league ceiling. Blank uses PODCAST_CRON_MAX_LEAGUES (5).
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+# Never alongside the Tuesday schedule or another catch-up: two runs would both
+# pass the sweep and both claim. The scheduled workflow holds
+# `generate-weekly-podcast`; this one has to hold it too, or the two can race.
+concurrency:
+  group: generate-weekly-podcast
+  cancel-in-progress: false
+
+jobs:
+  catch-up:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
+      WEEK: ${{ inputs.week }}
+      SEASON: ${{ inputs.season }}
+      LEAGUE: ${{ inputs.league }}
+      MODE: ${{ inputs.mode }}
+      FORCE: ${{ inputs.force }}
+      MAX_LEAGUES: ${{ inputs.max_leagues }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Compile the podcast pipeline at this commit
+        run: npm run build:podcast
+      - name: Check the pipeline's own guards before it can write
+        run: npm run check:podcast-segments
+      - name: Generate
+        run: |
+          set -euo pipefail
+
+          if ! echo "${WEEK:-}" | grep -Eq '^([1-9]|1[0-8])$'; then
+            echo "::error title=week is not a week::week must be a whole number from 1 to 18; got '${WEEK:-}'. Nothing was generated."
+            exit 1
+          fi
+          if [ -n "${MAX_LEAGUES:-}" ] && ! echo "${MAX_LEAGUES}" | grep -Eq '^[1-9][0-9]*$'; then
+            echo "::error title=max_leagues is not a number::max_leagues must be a positive whole number; got '${MAX_LEAGUES}'. Nothing was generated."
+            exit 1
+          fi
+
+          # Fail safe: the wildcard is DRY. An empty or unexpected MODE writes
+          # nothing and spends nothing rather than defaulting to a billable run.
+          case "${MODE:-}" in
+            live)        FLAGS='' ;;
+            script_only) FLAGS='--script-only' ;;
+            dry_run)     FLAGS='--dry-run' ;;
+            *)
+              echo "::warning title=Unrecognised mode::MODE='${MODE:-}' is not one of live, script_only, dry_run. Running as a dry run."
+              FLAGS='--dry-run' ;;
+          esac
+
+          # --force-week=N is --week=N --force in one flag, so the week that is
+          # regenerated and the permission to regenerate it cannot drift apart.
+          if [ "${FORCE:-no}" = "yes" ]; then
+            FLAGS="--force-week=${WEEK} ${FLAGS}"
+          else
+            FLAGS="--week=${WEEK} ${FLAGS}"
+          fi
+          [ -n "${SEASON:-}" ] && FLAGS="${FLAGS} --season=${SEASON}"
+          [ -n "${LEAGUE:-}" ] && FLAGS="${FLAGS} --league=${LEAGUE}"
+          [ -n "${MAX_LEAGUES:-}" ] && FLAGS="${FLAGS} --max=${MAX_LEAGUES}"
+
+          for required in SUPABASE_URL SUPABASE_SERVICE_ROLE_KEY; do
+            if [ -z "${!required:-}" ]; then
+              echo "::error title=Missing secret::${required} is required. Nothing was generated."
+              exit 1
+            fi
+          done
+
+          echo "mode=${MODE:-} force=${FORCE:-no} -> $FLAGS"
+          echo "### Podcast catch-up: week ${WEEK}, mode ${MODE:-}, force ${FORCE:-no}" >> "$GITHUB_STEP_SUMMARY"
+          # shellcheck disable=SC2086
+          node scripts/generate-podcast.mjs $FLAGS --quiet

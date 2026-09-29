@@ -5,6 +5,7 @@
      PODCAST_TARGET_WEEK=2 npm run generate:podcast
      node scripts/generate-podcast.mjs --week=2
      node scripts/generate-podcast.mjs --week=2 --payload=<espn.json>   (offline)
+     node scripts/generate-podcast.mjs --force-week=3                   (catch-up)
 
    The same code path the Tuesday cron runs — `runWeeklyPodcastCron` from
    `lib/dist/generate-weekly-podcast.js` — driven from a terminal so the four
@@ -25,6 +26,34 @@
    synthesized, nothing is written, nothing is billed. This is the mode that
    works on a machine with no keys, and it is the one that answers "does the
    pipeline produce a sane episode for week 2".
+
+   ---- THE CATCH-UP RUN: --force-week ----
+
+   `--force-week=<n>` is `--week=<n> --force`: generate the week, and do not
+   skip a league because it already holds a `podcast_episodes` row for it.
+
+   The scheduled run must skip those leagues — that idempotency is what makes a
+   retry or a double fire free, and what stops an episode changing under a
+   reader. But it cannot tell a finished episode from a WRONG one, and a wrong
+   one is how this flag came to exist: league 57155288 held a `ready` 2026 week
+   3 row minted on the Sunday by the interactive Studio path — an injury-wire
+   preview of a week that had not been played — so the Tuesday run that should
+   have recapped week 3 reported the league `skipped` and it got no recap at
+   all. The only other way back is deleting the row by hand, which takes the
+   episode off every member's feed before its replacement exists.
+
+   What the forced path does not do:
+     - It does not weaken the mutex. A row already `generating` belongs to a
+       live invocation and is still refused.
+     - It does not take an episode down to build its replacement. The new MP3
+       goes to a content-addressed Storage path and the row is repointed only
+       once it is uploaded; a forced run that fails puts the previous row back.
+     - It cannot be reached by a schedule. Over HTTP the route refuses `force`
+       without an explicit `?week=`, and the Tuesday schedule names no week.
+
+   It DOES spend money — one ElevenLabs call per dialogue turn per league — so
+   pair it with `--league=<id>` unless the whole sweep really is the intent, and
+   rehearse with `--dry-run` first.
 
    ---- WHY A CLI AT ALL ----
 
@@ -70,6 +99,10 @@ FSN weekly podcast generator
 
   --week=<n>         The week to generate. Falls back to PODCAST_TARGET_WEEK,
                      which itself defaults to 2 (the testing boundary).
+  --force-week=<n>   The week to generate, AND regenerate over leagues that
+                     already hold an episode for it. Same as --week=<n> --force.
+  --force            Regenerate over existing episodes for --week. Spends at
+                     ElevenLabs per league; bound it with --league.
   --season=<year>    Defaults to the pipeline's CURRENT_SEASON.
   --league=<id>      Generate for this league only, skipping the sweep.
   --payload=<file>   OFFLINE: build the script from this ESPN league payload.
@@ -88,6 +121,9 @@ Examples
   PODCAST_TARGET_WEEK=2 npm run generate:podcast -- --preflight
   node scripts/generate-podcast.mjs --week=2 --payload=/tmp/league.json
   node scripts/generate-podcast.mjs --week=2 --dry-run
+  node scripts/generate-podcast.mjs --force-week=3 --dry-run
+  node scripts/generate-podcast.mjs --force-week=3 --league=57155288
+  node scripts/generate-podcast.mjs --force-week=3 --max=14
 `.trim());
   process.exit(0);
 }
@@ -110,7 +146,17 @@ const math = require(join(root, 'lib/dist/article-math.js'));
 const generator = require(join(root, 'lib/dist/article-generator.js'));
 const podcast = require(join(root, 'lib/dist/generate-podcast.js'));
 
-const weekArg = value('week');
+/* --force-week=<n> is --week=<n> --force in one flag, so the week a catch-up
+   names and the permission to overwrite it cannot drift apart: there is no way
+   to spell "force, but a different week than the one I meant". */
+const forceWeekArg = value('force-week');
+if (forceWeekArg != null && value('week') != null && forceWeekArg !== value('week')) {
+  console.error('[generate-podcast] --force-week=' + forceWeekArg + ' and --week=' + value('week') +
+    ' disagree. Pass one of them.');
+  process.exit(2);
+}
+const force = forceWeekArg != null || has('force');
+const weekArg = forceWeekArg != null ? forceWeekArg : value('week');
 const weekRaw = weekArg != null ? weekArg : String(process.env.PODCAST_TARGET_WEEK || '').trim();
 if (!weekRaw || /^(any|all|\*)$/i.test(weekRaw)) {
   console.error(
@@ -130,8 +176,24 @@ process.env.PODCAST_TARGET_WEEK = String(week);
 const season = Number.parseInt(value('season') || String(podcast.CURRENT_SEASON), 10);
 if (value('max')) process.env.PODCAST_CRON_MAX_LEAGUES = String(value('max'));
 
+/* --force with no week at all is refused above already (weekRaw is empty), but
+   --force alongside a bare PODCAST_TARGET_WEEK would let an environment
+   variable decide which week gets overwritten. Make the caller name it. */
+if (force && weekArg == null) {
+  console.error(
+    '[generate-podcast] --force regenerates over episodes that already exist, so it needs the ' +
+      'week spelled out on the command line: --force-week=<n>, or --week=<n> --force. Inheriting ' +
+      'it from PODCAST_TARGET_WEEK is not enough.',
+  );
+  process.exit(2);
+}
+
 console.log('[generate-podcast] week ' + week + ', season ' + season +
   ' (pinned PODCAST_TARGET_WEEK=' + process.env.PODCAST_TARGET_WEEK + ')');
+if (force) {
+  console.log('[generate-podcast] FORCE — leagues that already have a week ' + week +
+    ' episode will be REGENERATED, not skipped.');
+}
 
 /* ------------------------------------------------------------------ *
  * Preflight
@@ -291,6 +353,10 @@ async function runLive() {
 
   if (!dryRun && !scriptOnly) {
     console.log('[generate-podcast] LIVE — this will call ElevenLabs and write to Supabase.');
+    if (force && !value('league')) {
+      console.log('[generate-podcast] FORCE + full sweep: every active league missing OR already ' +
+        'holding a week ' + week + ' episode is in scope. --league=<id> bounds the spend.');
+    }
   }
 
   /* --league is a spend bound, not a convenience: the unfiltered sweep bills one
@@ -305,6 +371,7 @@ async function runLive() {
       season,
       week,
       league: league || null,
+      force,
       dry_run: dryRun,
       script_only: scriptOnly,
       format: value('format') === 'segments' ? 'segments' : 'news',
@@ -318,8 +385,15 @@ async function runLive() {
     console.error('[generate-podcast] ' + summary.failed + ' league(s) failed. See podcast_episode_runs.');
     process.exit(1);
   }
-  console.log('[generate-podcast] created ' + summary.created + ', skipped ' + summary.skipped +
+  console.log('[generate-podcast] created ' + summary.created +
+    ' (' + summary.regenerated + ' regenerated), skipped ' + summary.skipped +
     ', deferred ' + summary.not_attempted);
+  if (summary.not_attempted > 0) {
+    console.warn('[generate-podcast] ' + summary.not_attempted + ' league(s) were over the ' +
+      'per-run cap of ' + summary.max_leagues + '. The weekly schedule will NOT pick them up for ' +
+      'this week — its next run recaps the next week. Re-run with --max=' +
+      (summary.max_leagues + summary.not_attempted) + ' to finish week ' + week + '.');
+  }
 }
 
 /* ------------------------------------------------------------------ *

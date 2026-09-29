@@ -83,6 +83,8 @@ export interface PodcastLeagueResult {
     audio_bytes: number | null;
     error_message: string | null;
     failure_reason?: PodcastFailureReason | null;
+    /** True when this episode replaced one the league already held. */
+    regenerated?: boolean;
 }
 export interface PodcastRunSummary {
     season: number;
@@ -93,11 +95,16 @@ export interface PodcastRunSummary {
     /** The single league this run was narrowed to, or null for the full sweep. */
     league: string | null;
     created: number;
+    /** How many of `created` replaced a row the league already held. Only a
+     *  forced run can be non-zero; a scheduled one skips those leagues. */
+    regenerated: number;
     skipped: number;
     failed: number;
     /** Leagues the cap or the time budget kept this run from reaching. The next
      *  run finds no episode for them and picks them up. */
     not_attempted: number;
+    /** Whether this run was allowed to write over episodes that already exist. */
+    forced: boolean;
     failed_by_reason: Partial<Record<PodcastFailureReason, number>>;
     max_leagues: number;
     dry_run: boolean;
@@ -129,6 +136,44 @@ export interface PodcastRunInput {
     script_only?: boolean;
     run_id?: string;
     budget_ms?: number;
+    /**
+     * REGENERATE over episodes that already exist for this league-week.
+     *
+     * Off by default, and the scheduled Tuesday run can never turn it on — the
+     * HTTP handler refuses `force` unless the caller also NAMED a week, and the
+     * schedule names none. It exists for the case the idempotency skip cannot
+     * tell apart from a finished episode: a `podcast_episodes` row that is
+     * present but WRONG. That is not hypothetical. League 57155288 held a
+     * `ready` 2026 week 3 row minted on the Sunday, mid-week, by the interactive
+     * Studio path — an injury-wire preview, not a recap — so the Tuesday run
+     * that should have recapped week 3 reported it `skipped` and the league got
+     * no recap at all. Without this flag the only way back is deleting the row
+     * by hand, which takes the episode off every member's feed first.
+     *
+     * What it does NOT do is weaken the mutex. A row already `generating`
+     * belongs to a live invocation and is still refused; the claim is a
+     * compare-and-swap on the row's current status, so two forced runs cannot
+     * both reach ElevenLabs for one league-week.
+     *
+     * A regenerated episode is uploaded to a NEW, content-addressed Storage
+     * path and only then written into the row: the episode the league is
+     * reading stays exactly as it was until its replacement is in place, and a
+     * forced run that fails puts the previous row back rather than leaving a
+     * `failed` row where a playable episode used to be.
+     */
+    force?: boolean;
+    /**
+     * Override `PODCAST_CRON_MAX_LEAGUES` for this run only.
+     *
+     * The environment default is 5, which is a spend ceiling for a SCHEDULED
+     * run and a cliff for a manual one: the deployment has 14 active leagues,
+     * so the Tuesday sweep reaches at most five of them and reports the rest
+     * `not_attempted`. The comment on that field says the next run picks them
+     * up — true of a daily cron, false of a weekly one, where the next run is
+     * seven days later and recapping a different week. A manual catch-up needs
+     * to be able to raise the ceiling it is catching up on.
+     */
+    max_leagues?: number | null;
     /**
      * Narrow the run to ONE league id, instead of every active league.
      *
@@ -266,7 +311,12 @@ export declare function assertWeekComplete(input: {
     season: number;
     week: number;
 }, deps?: RecapWeekDependencies): Promise<WeekCompletion>;
-export declare function maxLeaguesPerRun(): number;
+/** The per-run league ceiling: an explicit override, else
+ *  `PODCAST_CRON_MAX_LEAGUES`, else {@link DEFAULT_MAX_LEAGUES}. An override
+ *  that is not a positive whole number is refused rather than ignored — a
+ *  typo in a manual catch-up must not silently fall back to the ceiling the
+ *  catch-up exists to raise. */
+export declare function maxLeaguesPerRun(override?: number | null): number;
 export declare function podcastDatabase(): any;
 /**
  * The leagues that already hold an episode for this week.
@@ -277,6 +327,66 @@ export declare function podcastDatabase(): any;
  * billed twice for one episode.
  */
 export declare function leaguesAlreadyRecorded(db: any, season: number, week: number): Promise<Set<string>>;
+/** The row as it stood before a forced run claimed it, so a failure can put it
+ *  back exactly as the league's members were reading it. */
+export interface PreviousEpisode {
+    status: string;
+    audio_url: string | null;
+    episode: any;
+}
+export interface EpisodeClaim {
+    /** 'new' inserted a row; 'regenerated' took over one that already existed. */
+    mode: 'new' | 'regenerated';
+    /** Only set for a regeneration. */
+    previous: PreviousEpisode | null;
+}
+/**
+ * Take the cross-instance lock on one league-week, or return null if another
+ * invocation already holds it.
+ *
+ * ---- THE ORDINARY PATH ----
+ *
+ * An insert. The primary key IS the mutex, exactly as it is on the interactive
+ * path: the loser of a race gets 23505 and never reaches ElevenLabs. Unchanged
+ * from the day this route was written, and it is what every scheduled run does.
+ *
+ * ---- THE FORCED PATH ----
+ *
+ * A row already exists and the caller has said, explicitly and with a week
+ * named, to replace it. The insert would only ever return 23505 here, so the
+ * claim becomes a compare-and-swap instead: read the row, then flip it to
+ * `generating` GUARDED ON THE STATUS IT WAS READ AT. Two forced runs racing
+ * both read `ready`, both issue the same guarded update, and PostgREST applies
+ * them one at a time — the first matches a row, the second matches none and
+ * backs out. The mutex is therefore no weaker than the insert it replaces.
+ *
+ * A row already `generating` is refused outright rather than swapped: it
+ * belongs to an invocation that may be mid-synthesis, and taking it would bill
+ * a second ElevenLabs run for one episode.
+ */
+export declare function claimEpisodeSlot(db: any, input: {
+    league_id: string;
+    season: number;
+    week: number;
+    force?: boolean;
+}): Promise<EpisodeClaim | null>;
+/** Where a regenerated MP3 goes.
+ *
+ *  NOT `<week>.mp3`, which is what a first-time episode uses and what every
+ *  client has already been served and cached under. Overwriting that object
+ *  leaves members playing the old audio from a CDN edge for as long as it is
+ *  cached, which on a regeneration is precisely the bug being fixed. The name
+ *  carries a digest of the audio, so a new episode is a new URL and the swap is
+ *  atomic from the reader's side. `scripts/rerun-podcast.mjs` settled on the
+ *  same shape for the same reason. */
+export declare function regeneratedAudioPath(leagueId: string, season: number, week: number, audio: Buffer): string;
+/** Best-effort removal of the object a regeneration replaced.
+ *
+ *  Never throws: the new episode is already live and published at this point,
+ *  and losing the delete only leaves an orphan MP3 in a bucket. Only paths
+ *  inside this league-season are ever removed, so a malformed or foreign URL
+ *  deletes nothing. */
+export declare function removeSupersededAudio(db: any, leagueId: string, season: number, previousUrl: string | null, keepPath: string): Promise<void>;
 export declare function classifyPodcastFailure(err: any): PodcastFailureReason;
 export interface LeagueEpisodeOutcome {
     script: WeeklyPodcastScript;
@@ -323,5 +433,24 @@ export declare function runWeeklyPodcastCron(input: PodcastRunInput, dependencie
  * `?allow_open_week=1` skips the completion check for a named week. It exists
  * for a deliberate mid-week rehearsal and for the case where the scoreboard read
  * itself is what is broken; nothing on the schedule passes it.
+ *
+ * ---- MANUALLY RE-RUNNING A WEEK ----
+ *
+ *   `?week=N&force=1`     regenerate over episodes that already exist for the
+ *                         week. REFUSED WITHOUT `?week=`, which is the whole
+ *                         guarantee: the Tuesday schedule names no week, so no
+ *                         schedule can ever reach this and quietly rewrite a
+ *                         league's episode. Pair it with `?league=` to bound
+ *                         the spend to one league.
+ *   `?max_leagues=N`      raise (or lower) the per-run league ceiling for this
+ *                         invocation only. The default of 5 is a spend ceiling
+ *                         sized for a schedule; a catch-up over 14 leagues
+ *                         needs to name its own.
+ *
+ * A word on `max_leagues` over HTTP: this route runs in a 60s function slot and
+ * stops starting leagues at 50s, so a large ceiling here still reports the
+ * remainder as `not_attempted` rather than running longer. The catch-up that
+ * actually finishes is the CLI — `scripts/generate-podcast.mjs --force-week=N`
+ * — which calls the same run function with no wall clock over it.
  */
 export default function handler(req: any, res: any): Promise<void>;

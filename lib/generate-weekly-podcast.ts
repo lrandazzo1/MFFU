@@ -112,6 +112,8 @@ export interface PodcastLeagueResult {
   audio_bytes: number | null;
   error_message: string | null;
   failure_reason?: PodcastFailureReason | null;
+  /** True when this episode replaced one the league already held. */
+  regenerated?: boolean;
 }
 
 export interface PodcastRunSummary {
@@ -123,11 +125,16 @@ export interface PodcastRunSummary {
   /** The single league this run was narrowed to, or null for the full sweep. */
   league: string | null;
   created: number;
+  /** How many of `created` replaced a row the league already held. Only a
+   *  forced run can be non-zero; a scheduled one skips those leagues. */
+  regenerated: number;
   skipped: number;
   failed: number;
   /** Leagues the cap or the time budget kept this run from reaching. The next
    *  run finds no episode for them and picks them up. */
   not_attempted: number;
+  /** Whether this run was allowed to write over episodes that already exist. */
+  forced: boolean;
   failed_by_reason: Partial<Record<PodcastFailureReason, number>>;
   max_leagues: number;
   dry_run: boolean;
@@ -161,6 +168,44 @@ export interface PodcastRunInput {
   script_only?: boolean;
   run_id?: string;
   budget_ms?: number;
+  /**
+   * REGENERATE over episodes that already exist for this league-week.
+   *
+   * Off by default, and the scheduled Tuesday run can never turn it on — the
+   * HTTP handler refuses `force` unless the caller also NAMED a week, and the
+   * schedule names none. It exists for the case the idempotency skip cannot
+   * tell apart from a finished episode: a `podcast_episodes` row that is
+   * present but WRONG. That is not hypothetical. League 57155288 held a
+   * `ready` 2026 week 3 row minted on the Sunday, mid-week, by the interactive
+   * Studio path — an injury-wire preview, not a recap — so the Tuesday run
+   * that should have recapped week 3 reported it `skipped` and the league got
+   * no recap at all. Without this flag the only way back is deleting the row
+   * by hand, which takes the episode off every member's feed first.
+   *
+   * What it does NOT do is weaken the mutex. A row already `generating`
+   * belongs to a live invocation and is still refused; the claim is a
+   * compare-and-swap on the row's current status, so two forced runs cannot
+   * both reach ElevenLabs for one league-week.
+   *
+   * A regenerated episode is uploaded to a NEW, content-addressed Storage
+   * path and only then written into the row: the episode the league is
+   * reading stays exactly as it was until its replacement is in place, and a
+   * forced run that fails puts the previous row back rather than leaving a
+   * `failed` row where a playable episode used to be.
+   */
+  force?: boolean;
+  /**
+   * Override `PODCAST_CRON_MAX_LEAGUES` for this run only.
+   *
+   * The environment default is 5, which is a spend ceiling for a SCHEDULED
+   * run and a cliff for a manual one: the deployment has 14 active leagues,
+   * so the Tuesday sweep reaches at most five of them and reports the rest
+   * `not_attempted`. The comment on that field says the next run picks them
+   * up — true of a daily cron, false of a weekly one, where the next run is
+   * seven days later and recapping a different week. A manual catch-up needs
+   * to be able to raise the ceiling it is catching up on.
+   */
+  max_leagues?: number | null;
   /**
    * Narrow the run to ONE league id, instead of every active league.
    *
@@ -413,7 +458,18 @@ export async function assertWeekComplete(
   return completion;
 }
 
-export function maxLeaguesPerRun(): number {
+/** The per-run league ceiling: an explicit override, else
+ *  `PODCAST_CRON_MAX_LEAGUES`, else {@link DEFAULT_MAX_LEAGUES}. An override
+ *  that is not a positive whole number is refused rather than ignored — a
+ *  typo in a manual catch-up must not silently fall back to the ceiling the
+ *  catch-up exists to raise. */
+export function maxLeaguesPerRun(override?: number | null): number {
+  if (override != null) {
+    if (!Number.isInteger(override) || override < 1) {
+      throw fail('max_leagues must be a positive whole number', 400);
+    }
+    return override;
+  }
   const raw = String(process.env.PODCAST_CRON_MAX_LEAGUES || '').trim();
   if (!raw) return DEFAULT_MAX_LEAGUES;
   const value = Number.parseInt(raw, 10);
@@ -466,6 +522,199 @@ export async function leaguesAlreadyRecorded(
     if (id) seen.add(id);
   }
   return seen;
+}
+
+/* ------------------------------------------------------------------ *
+ * Claiming one league-week
+ * ------------------------------------------------------------------ */
+
+/** The row as it stood before a forced run claimed it, so a failure can put it
+ *  back exactly as the league's members were reading it. */
+export interface PreviousEpisode {
+  status: string;
+  audio_url: string | null;
+  episode: any;
+}
+
+export interface EpisodeClaim {
+  /** 'new' inserted a row; 'regenerated' took over one that already existed. */
+  mode: 'new' | 'regenerated';
+  /** Only set for a regeneration. */
+  previous: PreviousEpisode | null;
+}
+
+/**
+ * Take the cross-instance lock on one league-week, or return null if another
+ * invocation already holds it.
+ *
+ * ---- THE ORDINARY PATH ----
+ *
+ * An insert. The primary key IS the mutex, exactly as it is on the interactive
+ * path: the loser of a race gets 23505 and never reaches ElevenLabs. Unchanged
+ * from the day this route was written, and it is what every scheduled run does.
+ *
+ * ---- THE FORCED PATH ----
+ *
+ * A row already exists and the caller has said, explicitly and with a week
+ * named, to replace it. The insert would only ever return 23505 here, so the
+ * claim becomes a compare-and-swap instead: read the row, then flip it to
+ * `generating` GUARDED ON THE STATUS IT WAS READ AT. Two forced runs racing
+ * both read `ready`, both issue the same guarded update, and PostgREST applies
+ * them one at a time — the first matches a row, the second matches none and
+ * backs out. The mutex is therefore no weaker than the insert it replaces.
+ *
+ * A row already `generating` is refused outright rather than swapped: it
+ * belongs to an invocation that may be mid-synthesis, and taking it would bill
+ * a second ElevenLabs run for one episode.
+ */
+export async function claimEpisodeSlot(
+  db: any,
+  input: { league_id: string; season: number; week: number; force?: boolean },
+): Promise<EpisodeClaim | null> {
+  const { league_id: leagueId, season, week } = input;
+
+  if (!input.force) {
+    const claim = await db.from('podcast_episodes').insert({
+      league_id: leagueId,
+      season,
+      week,
+      status: 'generating',
+    });
+    if (!claim.error) return { mode: 'new', previous: null };
+    if (String(claim.error.code || '') !== '23505') throw claim.error;
+    console.warn(
+      '[PodcastCron] league ' + leagueId + ' week ' + week +
+        ' was claimed by another invocation between the sweep and the claim; skipping.',
+    );
+    return null;
+  }
+
+  const read = await db
+    .from('podcast_episodes')
+    .select('status, audio_url, episode')
+    .eq('league_id', leagueId)
+    .eq('season', season)
+    .eq('week', week)
+    .maybeSingle();
+  if (read.error) throw read.error;
+
+  /* Forced, but there is nothing to replace: this league simply has no row for
+     the week, so it takes the ordinary insert and counts as a new episode. */
+  if (!read.data) {
+    const claim = await db.from('podcast_episodes').insert({
+      league_id: leagueId,
+      season,
+      week,
+      status: 'generating',
+    });
+    if (!claim.error) return { mode: 'new', previous: null };
+    if (String(claim.error.code || '') !== '23505') throw claim.error;
+    console.warn(
+      '[PodcastCron] league ' + leagueId + ' week ' + week +
+        ' was claimed by another invocation between the read and the claim; skipping.',
+    );
+    return null;
+  }
+
+  const previous: PreviousEpisode = {
+    status: String(read.data.status || ''),
+    audio_url: read.data.audio_url == null ? null : String(read.data.audio_url),
+    episode: read.data.episode == null ? null : read.data.episode,
+  };
+
+  if (previous.status === 'generating') {
+    console.warn(
+      '[PodcastCron] league ' + leagueId + ' week ' + week + ' is already being generated by ' +
+        'another invocation; a forced run will not take a claim out from under it.',
+    );
+    return null;
+  }
+
+  const swap = await db
+    .from('podcast_episodes')
+    .update({ status: 'generating' })
+    .eq('league_id', leagueId)
+    .eq('season', season)
+    .eq('week', week)
+    .eq('status', previous.status)
+    .select('league_id');
+  if (swap.error) throw swap.error;
+  const rows = Array.isArray(swap.data) ? swap.data.length : swap.data ? 1 : 0;
+  if (!rows) {
+    console.warn(
+      '[PodcastCron] league ' + leagueId + ' week ' + week + ' changed status between the read ' +
+        'and the forced claim; another invocation got there first, so this run leaves it alone.',
+    );
+    return null;
+  }
+
+  console.warn(
+    '[PodcastCron] FORCED: league ' + leagueId + ' week ' + week + ' already held a "' +
+      previous.status + '" episode and is being regenerated over. The existing audio stays ' +
+      'live until the replacement is uploaded.',
+  );
+  return { mode: 'regenerated', previous };
+}
+
+/** Where a regenerated MP3 goes.
+ *
+ *  NOT `<week>.mp3`, which is what a first-time episode uses and what every
+ *  client has already been served and cached under. Overwriting that object
+ *  leaves members playing the old audio from a CDN edge for as long as it is
+ *  cached, which on a regeneration is precisely the bug being fixed. The name
+ *  carries a digest of the audio, so a new episode is a new URL and the swap is
+ *  atomic from the reader's side. `scripts/rerun-podcast.mjs` settled on the
+ *  same shape for the same reason. */
+export function regeneratedAudioPath(
+  leagueId: string,
+  season: number,
+  week: number,
+  audio: Buffer,
+): string {
+  const { createHash } = require('node:crypto');
+  const digest = createHash('sha256').update(audio).digest('hex').slice(0, 16);
+  return `${leagueId}/${season}/${week}-regenerated-${digest}.mp3`;
+}
+
+/** Best-effort removal of the object a regeneration replaced.
+ *
+ *  Never throws: the new episode is already live and published at this point,
+ *  and losing the delete only leaves an orphan MP3 in a bucket. Only paths
+ *  inside this league-season are ever removed, so a malformed or foreign URL
+ *  deletes nothing. */
+export async function removeSupersededAudio(
+  db: any,
+  leagueId: string,
+  season: number,
+  previousUrl: string | null,
+  keepPath: string,
+): Promise<void> {
+  const marker = '/storage/v1/object/public/' + BUCKET + '/';
+  const url = String(previousUrl || '');
+  if (!url.includes(marker)) return;
+  let path: string;
+  try {
+    path = decodeURIComponent(url.split(marker)[1].split('?')[0]);
+  } catch (err) {
+    console.warn(
+      '[PodcastCron] could not read a Storage path out of the superseded audio URL for league ' +
+        leagueId + '; the old MP3 stays in the bucket.',
+      err,
+    );
+    return;
+  }
+  if (path === keepPath) return;
+  if (!path.startsWith(leagueId + '/' + season + '/')) return;
+  try {
+    const removed = await db.storage.from(BUCKET).remove([path]);
+    if (removed && removed.error) throw removed.error;
+  } catch (err) {
+    console.warn(
+      '[PodcastCron] the superseded MP3 ' + path + ' could not be removed; it is orphaned in ' +
+        'Storage but the league is serving the new episode.',
+      err,
+    );
+  }
 }
 
 /** The ESPN read, through the same boundary the article pipeline uses: a direct
@@ -789,7 +1038,8 @@ export async function runWeeklyPodcastCron(
   }
 
   const runId = String(input.run_id || `${season}-w${week}-podcast`);
-  const maxLeagues = maxLeaguesPerRun();
+  const maxLeagues = maxLeaguesPerRun(input.max_leagues);
+  const forced = !!input.force;
   const dryRun = !!input.dry_run;
   const scriptOnly = !!input.script_only;
   const format: PodcastScriptFormat = input.format === 'segments' ? 'segments' : 'news';
@@ -814,7 +1064,11 @@ export async function runWeeklyPodcastCron(
      not the league table. */
   const leagueIds = requestedLeague ? [requestedLeague] : allLeagueIds;
   const already = await leaguesAlreadyRecorded(db, season, week);
-  const pending = leagueIds.filter((id) => !already.has(id));
+  /* A forced run has nothing to skip: the rows the idempotency sweep would
+     have skipped are exactly the ones it was asked to replace. `already` is
+     still read, because it is what tells each league apart as a regeneration
+     rather than a first episode, and the summary reports the difference. */
+  const pending = forced ? leagueIds.slice() : leagueIds.filter((id) => !already.has(id));
 
   const summary: PodcastRunSummary = {
     season,
@@ -824,9 +1078,11 @@ export async function runWeeklyPodcastCron(
     leagues: leagueIds.length,
     league: requestedLeague || null,
     created: 0,
+    regenerated: 0,
     skipped: leagueIds.length - pending.length,
     failed: 0,
     not_attempted: 0,
+    forced,
     failed_by_reason: {},
     max_leagues: maxLeagues,
     dry_run: dryRun,
@@ -836,6 +1092,7 @@ export async function runWeeklyPodcastCron(
   };
 
   for (const id of already) {
+    if (forced) break;
     if (!leagueIds.includes(id)) continue;
     summary.results.push({
       league_id: id,
@@ -847,6 +1104,15 @@ export async function runWeeklyPodcastCron(
       audio_bytes: null,
       error_message: null,
     });
+  }
+
+  if (forced) {
+    const replacing = pending.filter((id) => already.has(id));
+    console.warn(
+      '[PodcastCron] FORCED RUN: ' + season + ' week ' + week + ', ' + pending.length +
+        ' league(s) in scope, ' + replacing.length + ' of which already hold an episode for the ' +
+        'week and will be regenerated over. Nothing is skipped for idempotency on this run.',
+    );
   }
 
   if (dryRun) {
@@ -877,21 +1143,13 @@ export async function runWeeklyPodcastCron(
       error_message: null,
     };
 
+    let claim: EpisodeClaim | null = null;
     try {
-      /* The primary key is the cross-instance mutex, exactly as it is on the
-         interactive path: an insert loser never reaches ElevenLabs. */
-      const claim = await db.from('podcast_episodes').insert({
-        league_id: leagueId,
-        season,
-        week,
-        status: 'generating',
-      });
-      if (claim.error) {
-        if (String(claim.error.code || '') !== '23505') throw claim.error;
-        console.warn(
-          '[PodcastCron] league ' + leagueId + ' week ' + week +
-            ' was claimed by another invocation between the sweep and the claim; skipping.',
-        );
+      /* The cross-instance mutex. An insert on the ordinary path, a guarded
+         status swap on a forced one; either way the loser of a race never
+         reaches ElevenLabs. */
+      claim = await claimEpisodeSlot(db, { league_id: leagueId, season, week, force: forced });
+      if (!claim) {
         result.status = 'skipped';
         summary.skipped += 1;
         summary.results.push(result);
@@ -914,13 +1172,21 @@ export async function runWeeklyPodcastCron(
       result.turns = outcome.turns;
 
       let audioUrl: string | null = null;
+      let audioPath: string | null = null;
       if (outcome.audio) {
-        const path = `${leagueId}/${season}/${week}.mp3`;
+        /* A first episode keeps the stable `<week>.mp3` name every existing row
+           and client already points at. A REGENERATION must not reuse it: that
+           object is cached at the CDN edge and in installed apps, so an upsert
+           over it can leave members playing the episode this run replaced. See
+           regeneratedAudioPath(). */
+        audioPath = claim.mode === 'regenerated'
+          ? regeneratedAudioPath(leagueId, season, week, outcome.audio)
+          : `${leagueId}/${season}/${week}.mp3`;
         const uploaded = await db.storage
           .from(BUCKET)
-          .upload(path, outcome.audio, { contentType: 'audio/mpeg', upsert: true });
+          .upload(audioPath, outcome.audio, { contentType: 'audio/mpeg', upsert: true });
         if (uploaded.error) throw uploaded.error;
-        audioUrl = db.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+        audioUrl = db.storage.from(BUCKET).getPublicUrl(audioPath).data.publicUrl;
         result.audio_bytes = outcome.audio.length;
       }
 
@@ -966,6 +1232,16 @@ export async function runWeeklyPodcastCron(
 
       result.status = 'created';
       summary.created += 1;
+      if (claim.mode === 'regenerated') {
+        summary.regenerated += 1;
+        result.regenerated = true;
+        /* Only once the replacement row is written. Until this line the league
+           was still being served its previous episode, and removing that object
+           any earlier would have been the outage this path exists to avoid. */
+        if (audioPath) {
+          await removeSupersededAudio(db, leagueId, season, claim.previous?.audio_url || null, audioPath);
+        }
+      }
     } catch (err) {
       const reason = classifyPodcastFailure(err);
       result.status = 'failed';
@@ -978,13 +1254,34 @@ export async function runWeeklyPodcastCron(
         err,
       );
 
-      /* Leave the claim as `failed` rather than deleting it. An ambiguous
-         provider or storage failure may already have been billed, and an
-         automatic retry next Tuesday would bill again. */
+      /* ---- A FORCED RUN PUTS BACK WHAT IT TOOK ----
+         The league had a playable episode a moment ago and this run failed to
+         replace it. Marking the row `failed` here would take that episode off
+         every member's feed to record a failure that changed nothing, so the
+         previous row goes back exactly as it was and the ledger carries the
+         failure instead. A first-time claim has nothing to restore and still
+         lands on `failed`: an ambiguous provider or storage failure may already
+         have been billed, and an automatic retry next Tuesday would bill
+         again. */
+      const restore = claim && claim.mode === 'regenerated' && claim.previous
+        ? {
+            status: claim.previous.status,
+            episode: claim.previous.episode,
+            audio_url: claim.previous.audio_url,
+            updated_at: new Date(now()).toISOString(),
+          }
+        : { status: 'failed', updated_at: new Date(now()).toISOString() };
+      if (restore.status !== 'failed') {
+        console.warn(
+          '[PodcastCron] restoring league ' + leagueId + ' week ' + week + ' to its previous "' +
+            restore.status + '" episode: the forced regeneration failed and the league keeps the ' +
+            'episode it already had.',
+        );
+      }
       try {
         const marked = await db
           .from('podcast_episodes')
-          .update({ status: 'failed', updated_at: new Date(now()).toISOString() })
+          .update(restore)
           .eq('league_id', leagueId)
           .eq('season', season)
           .eq('week', week)
@@ -1049,6 +1346,25 @@ function intParam(req: any, name: string): number | null {
  * `?allow_open_week=1` skips the completion check for a named week. It exists
  * for a deliberate mid-week rehearsal and for the case where the scoreboard read
  * itself is what is broken; nothing on the schedule passes it.
+ *
+ * ---- MANUALLY RE-RUNNING A WEEK ----
+ *
+ *   `?week=N&force=1`     regenerate over episodes that already exist for the
+ *                         week. REFUSED WITHOUT `?week=`, which is the whole
+ *                         guarantee: the Tuesday schedule names no week, so no
+ *                         schedule can ever reach this and quietly rewrite a
+ *                         league's episode. Pair it with `?league=` to bound
+ *                         the spend to one league.
+ *   `?max_leagues=N`      raise (or lower) the per-run league ceiling for this
+ *                         invocation only. The default of 5 is a spend ceiling
+ *                         sized for a schedule; a catch-up over 14 leagues
+ *                         needs to name its own.
+ *
+ * A word on `max_leagues` over HTTP: this route runs in a 60s function slot and
+ * stops starting leagues at 50s, so a large ceiling here still reports the
+ * remainder as `not_attempted` rather than running longer. The catch-up that
+ * actually finishes is the CLI — `scripts/generate-podcast.mjs --force-week=N`
+ * — which calls the same run function with no wall clock over it.
  */
 export default async function handler(req: any, res: any): Promise<void> {
   res.setHeader('Cache-Control', 'no-store');
@@ -1075,6 +1391,37 @@ export default async function handler(req: any, res: any): Promise<void> {
   const week = intParam(req, 'week');
   if (Number.isNaN(season) || Number.isNaN(week)) {
     res.status(400).json({ error: 'BAD_SCOPE', message: 'season and week must be whole numbers' });
+    return;
+  }
+
+  const maxLeagues = intParam(req, 'max_leagues');
+  if (Number.isNaN(maxLeagues) || (maxLeagues != null && maxLeagues < 1)) {
+    res.status(400).json({
+      error: 'BAD_SCOPE',
+      message: 'max_leagues must be a positive whole number',
+    });
+    return;
+  }
+
+  /* ---- FORCE REQUIRES A NAMED WEEK ----
+     This is the guard that keeps a regeneration switch off the schedule. The
+     Tuesday run posts no `week`, so it cannot satisfy this no matter what else
+     is in the query string, and a forced run is therefore always something a
+     person asked for about a week they named. Checked before auth-adjacent
+     work, the scoreboard read and the league sweep, so a malformed force costs
+     nothing. */
+  const force = flag(req, 'force');
+  if (force && week == null) {
+    console.warn(
+      '[PodcastCron] refused a forced run with no week named. force=1 rewrites episodes that ' +
+        'already exist, so it has to say which week it means.',
+    );
+    res.status(400).json({
+      error: 'FORCE_NEEDS_WEEK',
+      message:
+        'force=1 regenerates over episodes that already exist, so it requires an explicit ?week=. ' +
+        'The scheduled run names no week and can never force.',
+    });
     return;
   }
 
@@ -1136,6 +1483,8 @@ export default async function handler(req: any, res: any): Promise<void> {
         /* Optional. Omitted, the run sweeps every active league exactly as the
            Tuesday schedule does; named, it touches that league and no other. */
         league: queryParam(req, 'league').trim() || null,
+        force,
+        max_leagues: maxLeagues,
         /* The shared cron function slot is configured for 60s in vercel.json
            and is killed at it. Leave a margin so the summary survives. */
         budget_ms: 50000,
