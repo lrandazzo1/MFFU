@@ -75,19 +75,10 @@ export interface NewsPodcastScript {
     /** How many performances the body actually narrated. */
     performances: number;
 }
-/**
- * The week's news payload, straight out of `blog_articles`.
- *
- * This is the whole point of the 'news' format: no live box-score fetch. The
- * Tuesday article cron already read ESPN for this league-week, ran the outcome
- * math, and stored the evaluated starters in `tracked_players` alongside the
- * headline and the impact line. Reading that row is one Supabase select in
- * place of one external API call, and it cannot disagree with the article the
- * league is also reading, because it IS the article's data.
- *
- * Returns null when no row exists — a league whose article has not published
- * yet has no payload, which is an ordinary skip rather than a failure.
- */
+export declare function preferredNewsArticle<T extends {
+    article_type?: string | null;
+    published_at?: string | null;
+}>(rows: T[]): T | null;
 export declare function readNewsPayload(db: any, leagueId: string, season: number, week: number): Promise<NewsPayload | null>;
 /** ~60 seconds of synthesized speech. 140-160 words is the brief; the
  *  characters follow from it rather than being steered separately. */

@@ -464,6 +464,7 @@ function makeDb(options = {}) {
   const episodes = new Map(options.episodes || []);
   const runs = [];
   const uploads = new Map();
+  const removed = [];
 
   const episodeKey = (r) => `${r.league_id}:${r.season}:${r.week}`;
 
@@ -548,13 +549,28 @@ function makeDb(options = {}) {
       from() {
         return {
           async upload(path, bytes) { uploads.set(path, bytes); return { error: null }; },
-          getPublicUrl(path) { return { data: { publicUrl: 'https://example.test/' + path } }; },
+          /* The real shape, not a bare host and path: the cleanup that removes a
+             superseded MP3 reads the object path back out of the stored URL and
+             refuses anything that is not a Supabase public object URL, so a
+             simplified double here would make that cleanup untestable. */
+          getPublicUrl(path) {
+            return { data: { publicUrl:
+              'https://example.test/storage/v1/object/public/podcast-episodes/' + path } };
+          },
+          /* A regeneration uploads to a new, content-addressed path and then
+             removes the object it superseded. Record both so the check can
+             assert the old MP3 really does leave the bucket. */
+          async remove(paths) {
+            for (const path of paths) { uploads.delete(path); removed.push(path); }
+            return { error: null };
+          },
         };
       },
     },
     _episodes: episodes,
     _runs: runs,
     _uploads: uploads,
+    _removed: removed,
   };
 }
 
@@ -709,6 +725,228 @@ await (async () => {
       synthCalls > 0 && synthCalls <= podcast.MAX_EPISODE_LINES,
       'expected one league\u2019s worth of synthesis, got ' + synthCalls + ' calls',
     );
+  });
+
+  /* ------------------------------------------------------------------ *
+   * THE FORCED CATCH-UP RUN
+   *
+   * Idempotency is what makes the schedule safe, and it is also what left
+   * league 57155288 with no 2026 week 3 recap: the league already held a
+   * `ready` week 3 row — an injury-wire preview minted on the Sunday by the
+   * interactive path — so the Tuesday run reported it `skipped` and moved on.
+   * `force` is the way back that does not require deleting a live episode by
+   * hand first, so everything that makes it safe is asserted here.
+   * ------------------------------------------------------------------ */
+
+  synthCalls = 0;
+  const forceDb = makeDb({ leagues: ['100001', '100002'] });
+  let seeded;
+  await withEnv({ PODCAST_CRON_MAX_LEAGUES: '2', ELEVENLABS_API_KEY: 'k' }, async () => {
+    seeded = await cron.runWeeklyPodcastCron({ season: 2026, week: 2, run_id: 'seed' }, deps(forceDb));
+  });
+  const firstUrls = new Map([...forceDb._episodes.values()].map((r) => [r.league_id, r.audio_url]));
+
+  check('the seed run is an ordinary one: two first-time episodes, nothing regenerated', () => {
+    assert.equal(seeded.created, 2);
+    assert.equal(seeded.regenerated, 0, 'a first-time run must not report regenerations');
+    assert.equal(seeded.forced, false);
+    assert.deepEqual([...forceDb._uploads.keys()].sort(),
+      ['100001/2026/2.mp3', '100002/2026/2.mp3'],
+      'a first episode must keep the stable <week>.mp3 name every client already points at');
+  });
+
+  synthCalls = 0;
+  let unforced;
+  await withEnv({ PODCAST_CRON_MAX_LEAGUES: '2', ELEVENLABS_API_KEY: 'k' }, async () => {
+    unforced = await cron.runWeeklyPodcastCron({ season: 2026, week: 2, run_id: 'unforced' }, deps(forceDb));
+  });
+  check('without force, a week that is already recorded is still skipped in full', () => {
+    assert.equal(unforced.skipped, 2);
+    assert.equal(unforced.created, 0);
+    assert.equal(synthCalls, 0, 'the unforced re-run reached the voice provider');
+  });
+
+  synthCalls = 0;
+  let forcedRun;
+  await withEnv({ PODCAST_CRON_MAX_LEAGUES: '2', ELEVENLABS_API_KEY: 'k' }, async () => {
+    forcedRun = await cron.runWeeklyPodcastCron(
+      { season: 2026, week: 2, force: true, run_id: 'forced' }, deps(forceDb));
+  });
+
+  check('a forced run regenerates the leagues an unforced one skips', () => {
+    assert.equal(forcedRun.forced, true);
+    assert.equal(forcedRun.skipped, 0, 'a forced run has nothing to skip');
+    assert.equal(forcedRun.created, 2);
+    assert.equal(forcedRun.regenerated, 2);
+    assert.ok(forcedRun.results.every((r) => r.regenerated === true),
+      'each result should say it replaced an existing episode');
+    assert.ok(synthCalls > 0, 'a forced run did not reach the voice provider');
+  });
+
+  check('a regenerated MP3 lands on a new content-addressed path, never over the cached one', () => {
+    for (const row of forceDb._episodes.values()) {
+      assert.equal(row.status, 'ready');
+      assert.notEqual(row.audio_url, firstUrls.get(row.league_id),
+        'the row still points at the URL every client has cached');
+      assert.match(String(row.audio_url), /\/2-regenerated-[0-9a-f]{16}\.mp3$/);
+    }
+  });
+
+  check('the superseded MP3 is removed only after the replacement row is written', () => {
+    assert.deepEqual(forceDb._removed.sort(), ['100001/2026/2.mp3', '100002/2026/2.mp3']);
+    assert.equal(forceDb._uploads.size, 2, 'the bucket should hold one MP3 per league, not two');
+    for (const path of forceDb._uploads.keys()) assert.match(path, /-regenerated-/);
+  });
+
+  /* ---- force does not take a claim out from under a live invocation ---- */
+  synthCalls = 0;
+  const busyDb = makeDb({
+    leagues: ['100001'],
+    episodes: [['100001:2026:2', { league_id: '100001', season: 2026, week: 2, status: 'generating' }]],
+  });
+  let busy;
+  await withEnv({ PODCAST_CRON_MAX_LEAGUES: '2', ELEVENLABS_API_KEY: 'k' }, async () => {
+    busy = await cron.runWeeklyPodcastCron(
+      { season: 2026, week: 2, force: true, run_id: 'busy' }, deps(busyDb));
+  });
+  check('force refuses a league-week another invocation is mid-synthesis on', () => {
+    assert.equal(busy.created, 0);
+    assert.equal(busy.skipped, 1);
+    assert.equal(synthCalls, 0, 'force billed a second synthesis for one episode');
+    assert.equal(busyDb._episodes.get('100001:2026:2').status, 'generating',
+      'the live claim was overwritten');
+  });
+
+  /* ---- a forced run that fails leaves the league its old episode ---- */
+  synthCalls = 0;
+  const brokenDb = makeDb({ leagues: ['100001'] });
+  await withEnv({ PODCAST_CRON_MAX_LEAGUES: '2', ELEVENLABS_API_KEY: 'k' }, async () => {
+    await cron.runWeeklyPodcastCron({ season: 2026, week: 2, run_id: 'broken-seed' }, deps(brokenDb));
+  });
+  const survivor = { ...brokenDb._episodes.get('100001:2026:2') };
+  let brokenRun;
+  await withEnv({ PODCAST_CRON_MAX_LEAGUES: '2', ELEVENLABS_API_KEY: 'k' }, async () => {
+    brokenRun = await cron.runWeeklyPodcastCron(
+      { season: 2026, week: 2, force: true, run_id: 'broken' },
+      deps(brokenDb, { synthesize: async () => { throw new Error('ElevenLabs is down'); } }));
+  });
+  check('a failed regeneration restores the episode the league was already reading', () => {
+    assert.equal(brokenRun.failed, 1);
+    assert.equal(brokenRun.regenerated, 0);
+    const row = brokenDb._episodes.get('100001:2026:2');
+    assert.equal(row.status, 'ready', 'the league was left on a failed row with no playable episode');
+    assert.equal(row.audio_url, survivor.audio_url, 'the restored row lost its audio');
+    assert.deepEqual(row.episode, survivor.episode, 'the restored row lost its script');
+  });
+  check('the failed regeneration still lands in the spend ledger', () => {
+    const ledger = brokenDb._runs.filter((r) => r.run_id === 'broken');
+    assert.equal(ledger.length, 1);
+    assert.equal(ledger[0].status, 'failed');
+    assert.match(String(ledger[0].error_message), /ElevenLabs is down/);
+  });
+
+  /* ---- force is still bounded by --league ---- */
+  synthCalls = 0;
+  const scopedForceDb = makeDb({ leagues: ['100001', '100002'] });
+  await withEnv({ PODCAST_CRON_MAX_LEAGUES: '2', ELEVENLABS_API_KEY: 'k' }, async () => {
+    await cron.runWeeklyPodcastCron({ season: 2026, week: 2, run_id: 'scoped-seed' }, deps(scopedForceDb));
+  });
+  const untouched = { ...scopedForceDb._episodes.get('100002:2026:2') };
+  let scopedForce;
+  await withEnv({ PODCAST_CRON_MAX_LEAGUES: '2', ELEVENLABS_API_KEY: 'k' }, async () => {
+    scopedForce = await cron.runWeeklyPodcastCron(
+      { season: 2026, week: 2, force: true, league: '100001', run_id: 'scoped-force' },
+      deps(scopedForceDb));
+  });
+  check('a forced run scoped to one league leaves every other league alone', () => {
+    assert.equal(scopedForce.league, '100001');
+    assert.equal(scopedForce.leagues, 1);
+    assert.equal(scopedForce.regenerated, 1);
+    assert.deepEqual(scopedForceDb._episodes.get('100002:2026:2'), untouched,
+      'a scoped force rewrote a league that was not named');
+  });
+
+  /* ---- the per-run cap is overridable, and validated ---- */
+  const capDb = makeDb({ leagues: ['100001', '100002', '100003'] });
+  let raised;
+  await withEnv({ PODCAST_CRON_MAX_LEAGUES: '1', ELEVENLABS_API_KEY: 'k' }, async () => {
+    raised = await cron.runWeeklyPodcastCron(
+      { season: 2026, week: 2, max_leagues: 3, dry_run: true }, deps(capDb));
+  });
+  let capped;
+  await withEnv({ PODCAST_CRON_MAX_LEAGUES: '1', ELEVENLABS_API_KEY: 'k' }, async () => {
+    capped = await cron.runWeeklyPodcastCron({ season: 2026, week: 2, dry_run: true }, deps(capDb));
+  });
+  let badCap = null;
+  await withEnv({ ELEVENLABS_API_KEY: 'k' }, async () => {
+    try {
+      await cron.runWeeklyPodcastCron(
+        { season: 2026, week: 2, max_leagues: 0, dry_run: true }, deps(capDb));
+    } catch (err) { badCap = err; }
+  });
+  check('max_leagues raises the per-run ceiling for one run without touching the environment', () => {
+    assert.equal(capped.max_leagues, 1, 'the environment ceiling should still apply by default');
+    assert.equal(capped.not_attempted, 2);
+    assert.equal(raised.max_leagues, 3);
+    assert.equal(raised.not_attempted, 0, 'a raised ceiling should defer nothing');
+    assert.equal(process.env.PODCAST_CRON_MAX_LEAGUES, undefined,
+      'the override leaked into the process environment');
+  });
+  check('a max_leagues that is not a positive whole number is refused, not ignored', () => {
+    assert.ok(badCap, 'max_leagues=0 was accepted');
+    assert.equal(Number(badCap.status), 400);
+    assert.match(String(badCap.message), /positive whole number/);
+  });
+
+  /* ---- the HTTP guard that keeps force off the schedule ---- */
+  const httpRes = () => ({
+    code: 200, body: null,
+    setHeader() {},
+    status(code) { this.code = code; return this; },
+    json(body) { this.body = body; return this; },
+  });
+  let forceNoWeek, forceWithWeekPassedGuard, badCapHttp;
+  await withEnv({ CRON_SECRET: 'secret' }, async () => {
+    forceNoWeek = httpRes();
+    await cron.default(
+      { method: 'POST', headers: { authorization: 'Bearer secret' }, query: { force: '1' } },
+      forceNoWeek);
+    badCapHttp = httpRes();
+    await cron.default(
+      { method: 'POST', headers: { authorization: 'Bearer secret' },
+        query: { week: '3', max_leagues: 'lots' } },
+      badCapHttp);
+    /* With a week named the guard passes; the run then fails on the missing
+       Supabase configuration, which is all this assertion needs to see — it
+       proves the refusal above was the week guard and not force itself. */
+    forceWithWeekPassedGuard = httpRes();
+    await cron.default(
+      { method: 'POST', headers: { authorization: 'Bearer secret' },
+        query: { week: '3', force: '1', allow_open_week: '1' } },
+      forceWithWeekPassedGuard);
+  });
+  check('over HTTP, force without an explicit week is refused — so no schedule can ever force', () => {
+    assert.equal(forceNoWeek.code, 400);
+    assert.equal(forceNoWeek.body.error, 'FORCE_NEEDS_WEEK');
+    assert.match(String(forceNoWeek.body.message), /requires an explicit \?week=/);
+  });
+  check('force with a named week gets past the guard', () => {
+    assert.notEqual(forceWithWeekPassedGuard.body && forceWithWeekPassedGuard.body.error,
+      'FORCE_NEEDS_WEEK');
+  });
+  check('a malformed max_leagues is refused at the route', () => {
+    assert.equal(badCapHttp.code, 400);
+    assert.equal(badCapHttp.body.error, 'BAD_SCOPE');
+    assert.match(String(badCapHttp.body.message), /max_leagues/);
+  });
+
+  /* ---- the CLI flag that drives all of the above ---- */
+  const cli = readFileSync(join(root, 'scripts', 'generate-podcast.mjs'), 'utf8');
+  check('scripts/generate-podcast.mjs exposes --force-week and passes force into the run', () => {
+    assert.match(cli, /--force-week/, 'the CLI does not document --force-week');
+    assert.match(cli, /const force = forceWeekArg != null \|\| has\('force'\)/,
+      'the CLI does not derive force from --force-week');
+    assert.match(cli, /\n\s+force,\n/, 'the CLI never passes force into runWeeklyPodcastCron');
   });
 
   /* ---- dry run ---- */
@@ -1240,6 +1478,79 @@ check('no source of nondeterminism in the news script module', () => {
   assert.ok(!/Date\.now\s*\(/.test(src), 'Date.now()');
   assert.ok(!/\bfetch\s*\(/.test(src), 'a network call');
   assert.ok(!/require\s*\(/.test(src), 'a runtime require, which could reach a transport');
+});
+
+/* ------------------------------------------------------------------ *
+ * WHICH ARTICLE ROW A RECAP NARRATES
+ *
+ * A league-week holds up to three blog_articles rows. The read used to take
+ * `.limit(1)` with no ordering, so PostgREST handed back whichever row it
+ * reached first: in the 2026 week 3 data that was the FRIDAY PREVIEW for
+ * leagues 57155288 and 405485320, and the Monday sweat for three more. The
+ * Tuesday recap narrated a week that had not been played, and league
+ * 1915228840's run failed with "narrated nothing" because a preview's tracked
+ * starters have no resolved outcomes. The choice is explicit now.
+ * ------------------------------------------------------------------ */
+
+const articleRow = (article_type, published_at) => ({
+  article_type, published_at, headline: article_type, tracked_players: [{}],
+});
+
+check('a recap narrates the Tuesday verdict when the week has one', () => {
+  const chosen = news.preferredNewsArticle([
+    articleRow('friday_tnf_preview', '2026-09-25T20:17:34Z'),
+    articleRow('monday_sweat', '2026-09-28T21:20:42Z'),
+    articleRow('tuesday_verdict', '2026-09-29T14:25:36Z'),
+  ]);
+  assert.equal(chosen.article_type, 'tuesday_verdict');
+});
+
+check('the row order the database happens to return does not decide the episode', () => {
+  const rows = [
+    articleRow('tuesday_verdict', '2026-09-29T14:25:36Z'),
+    articleRow('monday_sweat', '2026-09-28T21:20:42Z'),
+    articleRow('friday_tnf_preview', '2026-09-25T20:17:34Z'),
+  ];
+  /* Every permutation of three rows. All six must agree, or the episode a
+     league hears depends on the query planner. */
+  const seen = new Set();
+  for (const a of [0, 1, 2]) for (const b of [0, 1, 2]) for (const c of [0, 1, 2]) {
+    if (new Set([a, b, c]).size !== 3) continue;
+    seen.add(news.preferredNewsArticle([rows[a], rows[b], rows[c]]).article_type);
+  }
+  assert.deepEqual([...seen], ['tuesday_verdict'], 'the choice depends on row order');
+});
+
+check('the Monday sweat is narrated when the Tuesday verdict has not published', () => {
+  const chosen = news.preferredNewsArticle([
+    articleRow('friday_tnf_preview', '2026-09-25T20:17:34Z'),
+    articleRow('monday_sweat', '2026-09-28T21:20:42Z'),
+  ]);
+  assert.equal(chosen.article_type, 'monday_sweat');
+});
+
+check('a preview is the last resort, never the pick over a recap', () => {
+  const onlyPreview = news.preferredNewsArticle([
+    articleRow('friday_tnf_preview', '2026-09-25T20:17:34Z'),
+  ]);
+  assert.equal(onlyPreview.article_type, 'friday_tnf_preview',
+    'a league with only a preview should still get an episode rather than nothing');
+  const withRecap = news.preferredNewsArticle([
+    articleRow('friday_tnf_preview', '2026-09-30T23:59:59Z'),
+    articleRow('tuesday_verdict', '2026-09-29T14:25:36Z'),
+  ]);
+  assert.equal(withRecap.article_type, 'tuesday_verdict',
+    'a later-published preview beat the recap; publication time must not outrank the type');
+});
+
+check('an untyped or unknown row still answers, and ties break on publication time', () => {
+  assert.equal(news.preferredNewsArticle([]), null);
+  assert.equal(news.preferredNewsArticle([articleRow(null, null)]).article_type, null);
+  const tie = news.preferredNewsArticle([
+    { ...articleRow('tuesday_verdict', '2026-09-29T14:00:00Z'), headline: 'older' },
+    { ...articleRow('tuesday_verdict', '2026-09-29T15:00:00Z'), headline: 'newer' },
+  ]);
+  assert.equal(tie.headline, 'newer');
 });
 
 check('vercel.json rewrites the requested public path into an existing slot', () => {

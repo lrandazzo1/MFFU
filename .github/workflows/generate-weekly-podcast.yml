@@ -132,6 +132,47 @@ on:
         options:
           - 'no'
           - 'yes'
+      # ---- REPLACING AN EPISODE A LEAGUE ALREADY HAS ----
+      #
+      # The sweep skips any league that already holds a `podcast_episodes` row
+      # for the week. That is what makes a retry free, and it is also what can
+      # leave a league with no recap at all: on 2026-09-29 league 57155288 held
+      # a `ready` week 3 row minted on the Sunday by the interactive Studio
+      # path — an injury-wire preview of a week that had not been played — so
+      # the Tuesday run reported it skipped and never recapped week 3.
+      #
+      # `force` lifts that skip. The route refuses it unless a week is also
+      # named, so the schedule cannot reach it: the schedule sends no week.
+      # `choice`, not `boolean`, and defaulting to 'no', for the same reason
+      # `mode` is — see above.
+      #
+      # It spends: one ElevenLabs call per dialogue turn per league. Name a
+      # league unless the whole sweep really is the intent, and rehearse with
+      # mode=dry_run first.
+      force:
+        description: Regenerate over episodes that already exist. Requires a week.
+        type: choice
+        default: 'no'
+        required: false
+        options:
+          - 'no'
+          - 'yes'
+      # ---- THE PER-RUN LEAGUE CEILING ----
+      #
+      # Blank leaves PODCAST_CRON_MAX_LEAGUES in force, which is 5 in the
+      # deployment and sized for a schedule. There are 14 active leagues, so a
+      # single sweep reaches five and reports the rest deferred — and on a
+      # WEEKLY schedule "the next run picks them up" means next Tuesday, for a
+      # different week. A catch-up has to be able to name its own ceiling.
+      #
+      # Note the route's own 50s budget still applies: over HTTP a large
+      # ceiling reports the remainder as deferred rather than running longer.
+      # The catch-up that finishes every league in one go is the runner-side
+      # one, .github/workflows/force-weekly-podcast.yml.
+      max_leagues:
+        description: Per-run league ceiling. Blank uses PODCAST_CRON_MAX_LEAGUES.
+        type: string
+        required: false
 
 permissions:
   contents: read
@@ -155,6 +196,11 @@ jobs:
           WEEK: ${{ inputs.week }}
           LEAGUE: ${{ inputs.league }}
           ALLOW_OPEN_WEEK: ${{ github.event_name == 'schedule' && 'no' || inputs.allow_open_week }}
+          # The schedule never forces and never raises the ceiling. Both are
+          # pinned here rather than left to the inputs, so a schedule cannot
+          # inherit a value from anywhere.
+          FORCE: ${{ github.event_name == 'schedule' && 'no' || inputs.force }}
+          MAX_LEAGUES: ${{ github.event_name == 'schedule' && '' || inputs.max_leagues }}
           # The schedule carries no inputs, so it names its own mode. Any manual
           # run uses what was chosen, and the shell below treats anything it
           # does not recognise as a dry run.
@@ -181,10 +227,25 @@ jobs:
           # Anything but an explicit "yes" leaves the completion gate in force.
           [ "${ALLOW_OPEN_WEEK:-no}" = "yes" ] && OPEN_WEEK=1 || OPEN_WEEK=0
 
-          url="${BASE_URL%/}/api/cron/generate-weekly-podcast?dry_run=${DRY_RUN}&script_only=${SCRIPT_ONLY}&allow_open_week=${OPEN_WEEK}"
+          # Same wildcard-is-safe rule as `mode`: only a literal "yes" forces.
+          [ "${FORCE:-no}" = "yes" ] && FORCE_RUN=1 || FORCE_RUN=0
+
+          # Caught here rather than by the route, so the run says which input
+          # is wrong instead of reporting a 400 from a URL nobody can see.
+          if [ "$FORCE_RUN" = "1" ] && [ -z "${WEEK:-}" ]; then
+            echo "::error title=force needs a week::force=yes regenerates over episodes that already exist, so it requires the week input. Nothing was requested."
+            exit 1
+          fi
+          if [ -n "${MAX_LEAGUES:-}" ] && ! echo "${MAX_LEAGUES}" | grep -Eq '^[1-9][0-9]*$'; then
+            echo "::error title=max_leagues is not a number::max_leagues must be a positive whole number; got '${MAX_LEAGUES}'. Nothing was requested."
+            exit 1
+          fi
+
+          url="${BASE_URL%/}/api/cron/generate-weekly-podcast?dry_run=${DRY_RUN}&script_only=${SCRIPT_ONLY}&allow_open_week=${OPEN_WEEK}&force=${FORCE_RUN}"
           [ -n "${SEASON:-}" ] && url="${url}&season=${SEASON}"
           [ -n "${WEEK:-}" ] && url="${url}&week=${WEEK}"
           [ -n "${LEAGUE:-}" ] && url="${url}&league=${LEAGUE}"
+          [ -n "${MAX_LEAGUES:-}" ] && url="${url}&max_leagues=${MAX_LEAGUES}"
 
           # The secret travels as a header, never in the URL, so it stays out of
           # access logs and out of this job's own echoed command line.
@@ -224,7 +285,17 @@ jobs:
             exit 1
           fi
 
+          # A run asked to force that reports forced=false means the flag did not
+          # survive the trip — the same class of failure as the dropped dry_run
+          # above, and this one silently leaves the stale episodes in place.
+          reported_force=$(jq -r '.forced // false' response.json)
+          if [ "$FORCE_RUN" = "1" ] && [ "$reported_force" != "true" ]; then
+            echo "::error title=Force was not honoured::A forced run was requested but the endpoint reported forced=$reported_force. The existing episodes were NOT replaced."
+            exit 1
+          fi
+
           created=$(jq -r '.created // 0' response.json)
+          regenerated=$(jq -r '.regenerated // 0' response.json)
           skipped=$(jq -r '.skipped // 0' response.json)
           failed=$(jq -r '.failed // 0' response.json)
           deferred=$(jq -r '.not_attempted // 0' response.json)
@@ -242,13 +313,16 @@ jobs:
               exit 1
             fi
           fi
-          echo "### Week $week: $created created, $skipped skipped, $failed failed, $deferred deferred" >> "$GITHUB_STEP_SUMMARY"
+          echo "### Week $week: $created created ($regenerated regenerated), $skipped skipped, $failed failed, $deferred deferred" >> "$GITHUB_STEP_SUMMARY"
 
-          # Leagues over the per-run cap are not lost — the next run finds no
-          # episode for them — but a run that defers every week means the cap is
-          # too low for the league count.
+          # A deferred league is not lost to a DAILY cron — the next run finds no
+          # episode for it. This cron is weekly, so "next run" is seven days out
+          # and recapping a different week: a deferred league gets no episode for
+          # THIS week unless someone runs the catch-up. Say that, rather than
+          # the reassuring version.
           if [ "$deferred" != "0" ]; then
-            echo "::warning title=Leagues deferred::$deferred league(s) were over PODCAST_CRON_MAX_LEAGUES and will be picked up next run."
+            echo "::warning title=Leagues deferred::$deferred league(s) were over the per-run ceiling of $(jq -r '.max_leagues // "?"' response.json). The next SCHEDULED run recaps the following week, so week $week will stay missing for them until a catch-up run: .github/workflows/force-weekly-podcast.yml, or re-dispatch this workflow with week=$week and max_leagues set above the league count."
+            echo "### $deferred league(s) deferred — week $week needs a catch-up run" >> "$GITHUB_STEP_SUMMARY"
           fi
 
           if [ "$failed" != "0" ]; then
