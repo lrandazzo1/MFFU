@@ -10467,23 +10467,31 @@ window.FSNLeagueArticles = (function(){
    GLOBAL SCOPE — ACTIVE LEAGUE ARTICLES (FSNSupabaseArticles)
 
    The league's live stories, straight off the `articles` rows in Supabase:
-   everything already published, newest first, with no week coordinate.
+   everything already published and past its publish time, newest first.
 
    ---- WHY IT EXISTS ALONGSIDE FSNLeagueArticles ----
 
    FSNLeagueArticles reads ONE week. That is correct and deliberate: an
    article is stored against an explicit league, season and week, so asking
    by those three coordinates puts a Week 3 story on the Week 3 view and
-   nowhere else. What it cannot do is answer "what has this league published
-   lately", and the answer to that is what a reader opening the News Desk
-   wants when the week on screen has nothing of its own yet. Three mornings a
-   week of publishing means most visits land on a week with no story.
+   nowhere else. This engine reads the same endpoint with the `active=1`
+   floor, which drops anything staged ahead of its publish time, so the two
+   together are a primary and a second source for the same week.
 
-   So this engine asks the same endpoint the other one does, with `active=1`
-   and no week: the league's current coverage, whatever week it belongs to.
-   The News Desk paints the week-scoped read when it has something and falls
-   back to this one otherwise, and the fallback is gated to the live view so a
-   historical week never gets today's copy painted into it.
+   ---- IT IS SCOPED BY WEEK TOO ----
+
+   It did not used to be. This feed asked for the league's latest coverage
+   with no week at all and left the week filter entirely to the renderer,
+   which is how a Week 3 Monday recap could reach a Week 4 screen the moment
+   anything upstream of that one filter went wrong. The week and the season
+   now ride in the query string, so the database does the filtering and a row
+   for another week is never sent to the phone. The renderer's filter stays,
+   as the second of two defences rather than the only one.
+
+   The one read that deliberately carries no week is the LEAGUE-WIDE read
+   (scopeOf with a league id alone). It exists to answer "has this league
+   published anything at all", and the renderer paints its rows only under a
+   LEAGUE-WIDE label — never under a week heading. See scopeOf() below.
 
    ---- WHY IT IS NOT A BROWSER SUPABASE CLIENT ----
 
@@ -10519,34 +10527,64 @@ window.FSNSupabaseArticles = (function(){
 
   const memory = Object.create(null);
   const listeners = [];
-  let lastLeagueId = '';
+  /* Every scope this session has asked for, by key, so a manual refresh
+     re-reads the week on screen AND the league-wide read behind it rather than
+     whichever of the two happened to be asked for last. */
+  const asked = Object.create(null);
 
   /* ---- 1. SCOPE ------------------------------------------------------- */
 
-  /* A league id and nothing else. There is no week to get wrong here, which
-     is the whole point of this feed, but the id is still validated to the
-     same shape the endpoint enforces so a malformed one fails here rather
-     than as a 400 the reader cannot act on. */
-  function scopeOf(leagueId){
+  /* TWO KINDS OF SCOPE, and the difference between them is the whole point of
+     this module.
+
+       WEEK-SCOPED   scopeOf(leagueId, week, season)
+         The read the News Desk paints from. The season and the week ride in
+         the query string, so the endpoint applies `.eq('season', ...)` and
+         `.eq('week', ...)` in the database and a row belonging to another week
+         never reaches the phone at all. The client-side filter in the renderer
+         stays as a second line of defence, but it is no longer the only one:
+         a feed ordered `published_at desc` across every week is exactly how a
+         week 3 recap ended up under a week 4 heading.
+
+         `include_global` is deliberately NOT sent on this read. League-wide
+         editorial carries the week it was written in, not the week on screen,
+         so it can never be a stand-in for one specific week.
+
+       LEAGUE-WIDE   scopeOf(leagueId)
+         No week, `include_global=1`. The endpoint answers with this league's
+         own rows when it has any and with league-wide editorial only when it
+         has none, so this read answers exactly one question: has this league
+         published anything at all? That is what keeps a league whose saved
+         ESPN connection has lapsed from staring at an empty section, and the
+         renderer paints it under a LEAGUE-WIDE label, never under a week.
+
+     The two are cached under different keys, so one can never be served in
+     place of the other. */
+  function scopeOf(leagueId, week, season){
     const league = String(leagueId == null ? '' : leagueId).trim();
     if(!league || !/^[A-Za-z0-9._-]{1,64}$/.test(league)) return null;
-    return { leagueId: league, key: league };
+    if(week == null && season == null){
+      return { leagueId: league, week: null, season: null, key: league };
+    }
+    const wk = Number(week);
+    const yr = Number(season);
+    if(!Number.isInteger(wk) || wk < 1 || wk > 18) return null;
+    if(!Number.isInteger(yr) || yr < 1990 || yr > 2100) return null;
+    return { leagueId: league, week: wk, season: yr, key: league + ':' + yr + ':' + wk };
   }
 
-  /* `include_global=1` asks the endpoint for this league's own stories AND
-     league-wide editorial, each row labelled with its scope. It is what lets a
-     league with no recaps of its own show something rather than nothing: the
-     pipeline publishes three mornings a week, and a league whose saved ESPN
-     connection has lapsed produces none at all until a member reconnects it.
-
-     It does not change what this feed shows when the league HAS coverage. The
-     renderer prefers league rows and only reaches for the global ones when
-     there are none, so the ordinary case is untouched. */
   function urlFor(scope){
-    return ENDPOINT +
+    const base = ENDPOINT +
       '?league_id=' + encodeURIComponent(scope.leagueId) +
-      '&active=1' +
-      '&include_global=1' +
+      '&active=1';
+    /* The league-wide read: no week, and league-wide editorial allowed in. */
+    if(scope.week == null){
+      return base + '&include_global=1&limit=' + MAX_ARTICLES;
+    }
+    /* The week read: one season, one week, this league only. */
+    return base +
+      '&season=' + encodeURIComponent(scope.season) +
+      '&week=' + encodeURIComponent(scope.week) +
       '&limit=' + MAX_ARTICLES;
   }
 
@@ -10556,6 +10594,10 @@ window.FSNSupabaseArticles = (function(){
     return Object.assign({
       status: 'idle',
       leagueId: scope ? scope.leagueId : '',
+      /* Null on the league-wide read, which is how a subscriber tells the two
+         kinds of snapshot apart without re-deriving the key. */
+      season: scope ? scope.season : null,
+      week: scope ? scope.week : null,
       articles: [],
       error: null,
       fetchedAt: 0,
@@ -10588,11 +10630,12 @@ window.FSNSupabaseArticles = (function(){
       if(!parsed || !Array.isArray(parsed.articles)) return null;
       const fetchedAt = Number(parsed.fetchedAt) || 0;
       if(!fetchedAt || Date.now() - fetchedAt > CACHE_TTL_MS) return null;
-      /* A payload cached under another league is a bug, not a variant. */
+      /* A payload cached under another league, season or week is a bug, not a
+         variant: the key carries all three. */
       if(parsed.key !== scope.key) return null;
       return { articles: parsed.articles, fetchedAt };
     }catch(err){
-      console.warn('[FSNSupabaseArticles] cached payload for league ' + scope.key +
+      console.warn('[FSNSupabaseArticles] cached payload for ' + scope.key +
         ' was unreadable and has been ignored', err);
       return null;
     }
@@ -10618,13 +10661,28 @@ window.FSNSupabaseArticles = (function(){
       throw Object.assign(new Error('Active article read failed (HTTP ' + status + ')'), { status });
     }
     const payload = await response.json();
-    /* A payload for another league is refused rather than painted. The
-       endpoint echoes what it filtered on, so this is checkable and it costs
-       one comparison. */
+    /* A payload for another league — or, on a week read, for another week — is
+       refused rather than painted. The endpoint echoes every coordinate it
+       filtered on, so this is checkable and it costs three comparisons. A
+       mismatch means a proxy, an edge cache or a stale deployment answered the
+       wrong question, and painting that answer is precisely the leak this feed
+       is scoped to prevent. */
     const answered = String((payload && payload.league_id) || '').trim();
     if(answered && answered !== scope.leagueId){
       throw new Error('Active article read answered for league ' + answered +
         ' when ' + scope.leagueId + ' was asked');
+    }
+    if(scope.week != null){
+      const answeredWeek = payload && payload.week == null ? null : Number(payload.week);
+      const answeredSeason = payload && payload.season == null ? null : Number(payload.season);
+      if(answeredWeek !== null && answeredWeek !== scope.week){
+        throw new Error('Active article read answered for week ' + answeredWeek +
+          ' when week ' + scope.week + ' was asked');
+      }
+      if(answeredSeason !== null && answeredSeason !== scope.season){
+        throw new Error('Active article read answered for season ' + answeredSeason +
+          ' when season ' + scope.season + ' was asked');
+      }
     }
     /* The three-tier resolution is the global one, so this feed and the
        week-scoped feed can never disagree about what an article is. */
@@ -10634,9 +10692,11 @@ window.FSNSupabaseArticles = (function(){
   /* ---- 5. PUBLIC SURFACE ---------------------------------------------- */
 
   /* What is known right now, without touching the network. The renderer calls
-     this on every repaint so a screen change repaints from memory instantly. */
-  function read(leagueId){
-    const scope = scopeOf(leagueId);
+     this on every repaint so a screen change repaints from memory instantly.
+     Called with a week and a season it answers the week read; called with a
+     league id alone it answers the league-wide one. */
+  function read(leagueId, week, season){
+    const scope = scopeOf(leagueId, week, season);
     if(!scope) return snapshot(null, { status: 'idle' });
     return memory[scope.key] || snapshot(scope, { status: 'idle' });
   }
@@ -10644,21 +10704,23 @@ window.FSNSupabaseArticles = (function(){
   /**
    * Fetch this league's active articles.
    *
-   *   FSNSupabaseArticles.fetch(leagueId)               cache when fresh
-   *   FSNSupabaseArticles.fetch(leagueId, {force:true}) always go to network
+   *   FSNSupabaseArticles.fetch(id)                       league-wide read
+   *   FSNSupabaseArticles.fetch(id, {week, season})       one week only
+   *   FSNSupabaseArticles.fetch(id, {force:true})         always go to network
    *
    * Something already in hand keeps painting while a refresh runs, so the
-   * section never blanks out mid-read; only a league with nothing at all
+   * section never blanks out mid-read; only a scope with nothing at all
    * shows the loading state.
    */
   async function fetchActive(leagueId, options){
     const opts = options || {};
-    const scope = scopeOf(leagueId);
+    const scope = scopeOf(leagueId, opts.week, opts.season);
     if(!scope){
-      console.warn('[FSNSupabaseArticles] refusing to read with no usable league id ("' + leagueId + '")');
+      console.warn('[FSNSupabaseArticles] refusing to read with an unusable scope ' +
+        '(league "' + leagueId + '", season ' + opts.season + ', week ' + opts.week + ')');
       return snapshot(null, { status: 'idle' });
     }
-    lastLeagueId = scope.leagueId;
+    asked[scope.key] = scope;
 
     const cached = readCache(scope);
     const current = memory[scope.key];
@@ -10691,13 +10753,13 @@ window.FSNSupabaseArticles = (function(){
          absent, so that is an expected-missing-data path. Anything else IS a
          fault and is logged as one. */
       if(Number(err && err.status) === 404){
-        console.warn('[FSNSupabaseArticles] no article endpoint on this deployment (HTTP 404) for league ' +
+        console.warn('[FSNSupabaseArticles] no article endpoint on this deployment (HTTP 404) for ' +
           scope.key + '; the active feed stays quiet.', err);
       }else if(fsnIsOfflineRead(err)){
-        console.warn('[FSNSupabaseArticles] the article endpoint could not be reached for league ' +
+        console.warn('[FSNSupabaseArticles] the article endpoint could not be reached for ' +
           scope.key + '; the active feed stays quiet.', err);
       }else{
-        console.error('[FSNSupabaseArticles] active read failed for league ' + scope.key, err);
+        console.error('[FSNSupabaseArticles] active read failed for ' + scope.key, err);
       }
       /* A cached copy outranks an error screen: the reader would rather see
          this morning's story than a failure they cannot act on. */
@@ -10711,10 +10773,16 @@ window.FSNSupabaseArticles = (function(){
     }
   }
 
-  /* Pull to refresh. Re-reads whichever league was last asked for. */
+  /* Pull to refresh. Re-reads every scope this session has asked for — the
+     week on screen and the league-wide read behind it — because the section
+     paints from whichever of the two answers, and refreshing one without the
+     other leaves the reader looking at a stale stand-in. */
   function refresh(){
-    if(!lastLeagueId) return Promise.resolve(snapshot(null, { status: 'idle' }));
-    return fetchActive(lastLeagueId, { force: true });
+    const scopes = Object.keys(asked).map(function(key){ return asked[key]; });
+    if(!scopes.length) return Promise.resolve(snapshot(null, { status: 'idle' }));
+    return Promise.all(scopes.map(function(scope){
+      return fetchActive(scope.leagueId, { force: true, week: scope.week, season: scope.season });
+    })).then(function(results){ return results[results.length - 1]; });
   }
 
   function subscribe(fn){
@@ -10730,7 +10798,7 @@ window.FSNSupabaseArticles = (function(){
      stories can never paint under another's name. */
   function clear(){
     Object.keys(memory).forEach(function(key){ delete memory[key]; });
-    lastLeagueId = '';
+    Object.keys(asked).forEach(function(key){ delete asked[key]; });
     try{
       const drop = [];
       for(let i = 0; i < window.localStorage.length; i++){
@@ -36966,13 +37034,14 @@ function lbWire(){
    something to infer. Both feeds are filtered through here before anything is
    painted.
 
-   The week-scoped feed already asks the endpoint for these coordinates, so
-   this is a second check on it. For the active feed it is the only one: that
-   read is deliberately not week-scoped (it answers "what has this league
-   published lately"), and without this filter it painted week 2's recap under
-   a week 1 header, which is the bug this exists to close. It is not season
-   scoped either, so the season is compared as well or a 2019 week 2 story
-   would match a 2026 week 2 view.
+   Both week reads now ask the endpoint for these coordinates, so this is the
+   second of two checks on each rather than the only one on either. It stays
+   because the endpoint is not the only thing between a row and the screen: a
+   payload cached under an older build, an edge cache answering the wrong
+   query, a proxy that drops a parameter. Without it the active feed painted
+   week 2's recap under a week 1 header, which is the bug this exists to
+   close. It is season scoped as well, or a 2019 week 2 story would match a
+   2026 week 2 view.
 
    A row with no season or week cannot be placed and is dropped. The pipeline
    writes both on every row and the columns are NOT NULL, so that is a
@@ -36990,9 +37059,18 @@ function lbLeagueOnly(articles){
 
 /* League-wide editorial to stand in when this league has none of its own.
 
+   Fed by the LEAGUE-WIDE read, which asks for no week at all. That is what
+   keeps this narrow: the endpoint answers that read with the league's own rows
+   whenever it has any, and with global rows only when it has none, so a global
+   row reaching this function already means "this league has published nothing
+   at all". A league that publishes every week and is simply between stories
+   never gets here — it gets its own week's placeholder instead.
+
    Deliberately NOT filtered to the week on screen. A global article carries
    the week it was written in, not the week this reader is looking at, so
-   requiring them to agree would make the fallback fire exactly never.
+   requiring them to agree would make the fallback fire exactly never. It is
+   painted under a LEAGUE-WIDE label and never under a week heading, which is
+   what keeps "not this league, not this week" from reading as either.
 
    The desk wire above this section paints from the same global corpus, so
    whatever it is showing right now is dropped here. Without that the same
@@ -37023,20 +37101,34 @@ function lbForViewedWeek(articles, season, week){
     Number(article && article.week) === Number(week));
 }
 
-/* ---- THE SECTION, FROM TWO FEEDS ----------------------------------------
+/* ---- THE SECTION, FROM THREE READS ---------------------------------------
 
-   The week on screen leads. When FSNLeagueArticles has stories for it, those
-   are the section, under a WEEK n label, and this is exactly what the section
-   did before the active feed existed.
+   THE WEEK ON SCREEN IS THE SECTION. Every story painted under a WEEK n
+   heading was stored against that league, that season and that week, was
+   asked for by those three coordinates, and was checked against them again
+   before it reached the DOM.
 
-   When it does not, and the reader is on the live view, FSNSupabaseArticles'
-   active read stands in under a LATEST label: the league's most recent
-   published coverage, whatever week it belongs to. The pipeline publishes
-   three mornings a week, so most visits land on a week with nothing of its
-   own, and hiding the section outright on those visits is what made the feed
-   look disconnected.
+     1. FSNLeagueArticles       this league, this season, this week
+     2. FSNSupabaseArticles     the same coordinates, with the `active=1`
+        (week scope)            publish-time floor: a second source for the
+                                same view, never a different view's content
+     3. FSNSupabaseArticles     no week at all. Its rows are painted ONLY
+        (league-wide scope)     under a LEAGUE-WIDE label, and the endpoint
+                                answers it with league-wide editorial only
+                                when this league has published nothing of its
+                                own — so it can never stand in for a week
 
-   Only one of the two ever paints, so no article can appear twice, and the
+   Read 2 used to carry no week and ask for the league's latest coverage
+   instead, leaving the week filter to this file alone. That is the leak this
+   section was reported for: one filter between a feed ordered
+   `published_at desc` across every week and a heading that names one week.
+   Both halves are scoped now, and the filter below is the second of two.
+
+   When the live week has nothing filed yet the section says so in its own
+   name — "Week 4 coverage begins Friday" — rather than showing week 3 or
+   disappearing. A finished week with nothing gives the slot back.
+
+   Only one of the reads ever paints, so no article can appear twice, and the
    label always says which one the reader is looking at.
 
    Everything below this section is the existing deterministic News Desk and
@@ -37059,9 +37151,59 @@ function lbViewScope(){
     leagueId,
     week,
     season,
+    /* The two week reads. Both ask the endpoint for this league, this season
+       and this week, so both are filtered in the database before anything
+       reaches the phone. */
     weekScope: FSNLeagueArticles.scopeOf(leagueId, week, season),
-    activeScope: FSNSupabaseArticles.scopeOf(leagueId),
+    activeScope: FSNSupabaseArticles.scopeOf(leagueId, week, season),
+    /* The league-wide read, which carries no week by design and is painted
+       only under a LEAGUE-WIDE label. It answers one question: has this
+       league published anything at all? */
+    leagueWideScope: FSNSupabaseArticles.scopeOf(leagueId),
   };
+}
+
+/* Is the reader looking at the week the league is actually playing, in the
+   season it is actually playing? Only there does "nothing published yet" mean
+   "not yet" rather than "never": a finished week that was never covered is not
+   waiting on anything, and an archive season is not either.
+
+   Guarded rather than assumed. currentLeagueWeek() reads the loaded payload
+   and can throw on a sparse one, and a throw here must not cost the section
+   its paint — it only costs the placeholder. */
+function lbOnLiveWeek(view){
+  try{
+    if(!view || !view.week || !view.season) return false;
+    if(Number(view.season) !== Number(uiActiveSeasonYear())) return false;
+    return Number(view.week) === Number(currentLeagueWeek());
+  }catch(err){
+    console.warn('[LeagueBlog] could not tell whether week ' + (view && view.week) +
+      ' is the live week; the week placeholder is skipped', err);
+    return false;
+  }
+}
+
+/* The next morning this league's pipeline files something.
+
+   The scheduled generator publishes on three days — the Friday TNF preview,
+   the Monday sweat and the Tuesday verdict — so "coverage begins <day>" is a
+   statement about a real cron, not a guess. A fantasy week opens on Tuesday,
+   which is why a freshly rolled week points at Friday first.
+
+   The reader's own local weekday, for the same reason the desk wire uses it:
+   a Monday-night reader in California is still on Monday, and UTC would have
+   rolled them into Tuesday's copy. */
+function lbNextDropLabel(){
+  let day = 2;
+  try{ day = new Date().getDay(); }
+  catch(err){
+    console.warn('[LeagueBlog] the local weekday was unreadable; the placeholder names no day', err);
+    return '';
+  }
+  if(day === 5) return 'later today';
+  if(day === 6 || day === 0) return 'Monday';
+  if(day === 1) return 'Tuesday';
+  return 'Friday';
 }
 
 /* One paint, from whatever both stores hold right now for whatever is on
@@ -37093,7 +37235,7 @@ function lbPaint(){
   };
 
   const view = lbViewScope();
-  if(!view.weekScope && !view.activeScope){ label(''); hide(); return; }
+  if(!view.weekScope && !view.activeScope && !view.leagueWideScope){ label(''); hide(); return; }
 
   /* A snapshot with its articles narrowed to the week on screen. The status is
      carried through untouched EXCEPT that a 'ready' whose articles were all
@@ -37112,9 +37254,15 @@ function lbPaint(){
   const weekSnap = view.weekScope
     ? forThisWeek(FSNLeagueArticles.read(view.leagueId, view.week, view.season))
     : idle;
-  const activeRaw = view.activeScope ? FSNSupabaseArticles.read(view.leagueId) : null;
-  const activeSnap = activeRaw
-    ? Object.assign(forThisWeek(activeRaw), { rawArticles: activeRaw.articles || [] })
+  /* The active read is week-scoped at the endpoint now, so this filter is the
+     second of two defences rather than the only one. */
+  const activeSnap = view.activeScope
+    ? forThisWeek(FSNSupabaseArticles.read(view.leagueId, view.week, view.season))
+    : idle;
+  /* The league-wide read. Never narrowed to the week on screen — it carries no
+     week by design — and never painted under a week heading. */
+  const leagueWideSnap = view.leagueWideScope
+    ? FSNSupabaseArticles.read(view.leagueId)
     : idle;
 
   /* Both snapshots have already been narrowed to the week on screen, so
@@ -37167,15 +37315,36 @@ function lbPaint(){
      it. And anything the desk wire above is already showing is dropped: the
      two surfaces sit on the same screen and read from the same global
      corpus, so without this the same story paints twice, once in each. */
-  const globals = lbGlobalFallback(activeSnap.rawArticles || []);
+  const globals = lbGlobalFallback(leagueWideSnap.articles || []);
   if(globals.length){
     show(globals, 'LEAGUE-WIDE', false);
     return;
   }
 
-  /* 6. Nothing published for this week from either feed, and no league-wide
-     story to stand in. Say nothing at all rather than occupying the screen
-     with an absence. */
+  /* 6. This league DOES publish, and this week's stories are not filed yet.
+
+     The section used to disappear here, which on the live week is the worst
+     of the three options: the reader who watched Week 3 fill up opens Week 4
+     on Tuesday and the League Blog is simply gone, with the desk wire above
+     it still carrying a dated banner. That is the shape the leak was reported
+     as — not a Week 3 story reprinted under a Week 4 heading, but a Week 4
+     screen that had no way of saying Week 4 had not started yet.
+
+     So the live week gets a placeholder that names itself and says when its
+     coverage lands, and it says so INSTEAD of standing another week's stories
+     in its place. A finished week that was never covered is not waiting on
+     anything, so it keeps the old behaviour and gives the slot back. */
+  if(lbOnLiveWeek(view)){
+    const when = lbNextDropLabel();
+    label('WEEK ' + view.week);
+    notice('Week ' + view.week + ' coverage begins' + (when ? ' ' + when : ' shortly') +
+      '. Nothing has been filed for this week yet \u2014 the timeline below is already covering it.');
+    return;
+  }
+
+  /* 7. A past week with nothing published and no league-wide story to stand
+     in. Say nothing at all rather than occupying the screen with an
+     absence. */
   label('');
   hide();
 }
@@ -37200,7 +37369,15 @@ function renderLeagueBlog(){
     });
     FSNSupabaseArticles.subscribe((snap)=>{
       const live = lbViewScope();
-      if(!live.activeScope || !snap || snap.leagueId !== live.activeScope.leagueId) return;
+      if(!snap || snap.leagueId !== live.leagueId) return;
+      /* Two kinds of snapshot arrive here. A week snapshot repaints only when
+         it is for the week on screen, so a late response for a week the reader
+         has navigated away from is dropped rather than repainting over what
+         they are looking at. The league-wide snapshot carries no week and
+         repaints whatever is on screen, because it only ever feeds the
+         LEAGUE-WIDE stand-in. */
+      if(snap.week != null &&
+         (Number(snap.week) !== Number(live.week) || Number(snap.season) !== Number(live.season))) return;
       lbPaint();
     });
   }
@@ -37214,12 +37391,27 @@ function renderLeagueBlog(){
         ' ' + view.season + ' week ' + view.week, err);
     });
   }
-  /* No season or week gate on the read itself: what makes its result safe to
-     paint is the filter in lbPaint(), not where the reader happens to be
-     standing. It is one cached request per league per freshness window. */
+  /* The active read, scoped to the same season and week the week-scoped read
+     asked for. It used to go out with no week at all and leave the filtering
+     to lbPaint(); the coordinates are in the query string now, so the endpoint
+     returns this week's rows and nothing else. */
   if(view.activeScope){
+    Promise.resolve(FSNSupabaseArticles.fetch(view.leagueId, {
+      season: view.season, week: view.week,
+    })).catch((err)=>{
+      console.error('[LeagueBlog] the active article load failed for league ' + view.leagueId +
+        ' ' + view.season + ' week ' + view.week, err);
+    });
+  }
+
+  /* The league-wide read, which carries no week on purpose. It is the only
+     source for the LEAGUE-WIDE stand-in, and the endpoint answers it with
+     global rows only when this league has published nothing of its own — so a
+     league that is simply between stories gets its week placeholder instead of
+     another week's copy. One cached request per league per freshness window. */
+  if(view.leagueWideScope){
     Promise.resolve(FSNSupabaseArticles.fetch(view.leagueId)).catch((err)=>{
-      console.error('[LeagueBlog] the active article load failed for league ' + view.leagueId, err);
+      console.error('[LeagueBlog] the league-wide article load failed for league ' + view.leagueId, err);
     });
   }
 }

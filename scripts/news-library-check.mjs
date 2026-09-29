@@ -252,9 +252,31 @@ async function readDesk(league, options) {
   await page.evaluate((data) => { window.LeagueData.setEspnData(data); window.__fsnRender(); }, league);
   await page.waitForTimeout(1000);
 
-  if ((await page.getAttribute('#profilePicker', 'data-open')) === 'true') {
-    await page.click('#profileGuest');
+  /* Three things sit between a fresh boot and the tab bar: the profile
+     chooser, the first-run walkthrough (opened on a 450ms timer, so a single
+     check races it) and the Setup takeover, which is fixed at z-index 85 while
+     the tab bar is at 60. Seeding LeagueData directly does not close Setup the
+     way connecting a league does, so clear all three the way a reader would. */
+  for (let attempt = 0; attempt < 12; attempt++) {
+    const open = await page.evaluate(() => ({
+      profile: (document.getElementById('profilePicker') || {}).dataset?.open === 'true',
+      ftu: (document.getElementById('ftuModal') || {}).dataset?.open === 'true',
+    }));
+    if (!open.profile && !open.ftu) {
+      await page.waitForTimeout(400);
+      const still = await page.evaluate(() => ({
+        profile: (document.getElementById('profilePicker') || {}).dataset?.open === 'true',
+        ftu: (document.getElementById('ftuModal') || {}).dataset?.open === 'true',
+      }));
+      if (!still.profile && !still.ftu) break;
+    }
+    if (open.profile) await page.click('#profileGuest');
+    else if (open.ftu) await page.click('#ftuSkip');
     await page.waitForTimeout(400);
+  }
+  if ((await page.getAttribute('.screen[data-screen="setup"]', 'data-active')) === 'true') {
+    await page.click('#setupClose');
+    await page.waitForTimeout(500);
   }
   await page.click('#tabBar .tab-btn[data-tab="news"]');
   await page.waitForTimeout(900);
