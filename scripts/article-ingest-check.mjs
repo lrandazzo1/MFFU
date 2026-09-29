@@ -73,11 +73,15 @@ const BLOG_PREFIX = '/content/generated/blog/';
 
 /* The engine routes on the reader's LOCAL calendar day, so the fixture dates
    are built from the same local clock the page will read. */
+function localDateKeyOf(date) {
+  const pad = (n) => (n < 10 ? '0' : '') + n;
+  return date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate());
+}
+
 function localDateKey(offsetDays) {
   const d = new Date();
   d.setDate(d.getDate() + (offsetDays || 0));
-  const pad = (n) => (n < 10 ? '0' : '') + n;
-  return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+  return localDateKeyOf(d);
 }
 
 /* One article per slot, all published today, so whatever day this check runs
@@ -131,8 +135,11 @@ const FIXTURE_POSTS = [
   },
 ];
 
-function fixturePayload() {
-  const today = localDateKey(0);
+/* The publish date is a parameter because section 5 pins the page clock to each
+   of the next seven days in turn. A fixture stamped with the real today is a
+   day-old post the moment the clock moves on. */
+function fixturePayload(dateKey) {
+  const today = dateKey || localDateKey(0);
   const posts = FIXTURE_POSTS.map((p) => ({
     title: p.title, slug: p.slug, publishDate: today, category: p.category,
     excerpt: p.title + ' for the app wire check.', author: 'FSN Desk', entityCount: p.entities.length,
@@ -157,8 +164,12 @@ function fixturePayload() {
    is asserted at the origin rather than only from inside the page. */
 function startServer(options) {
   const opts = options || {};
-  const payload = fixturePayload();
-  const state = { blogReads: [] };
+  let payload = fixturePayload();
+  const state = {
+    blogReads: [],
+    /* Re-serve the fixtures dated to the day the page clock is pinned to. */
+    publishOn(dateKey) { payload = fixturePayload(dateKey); },
+  };
   return new Promise((resolve) => {
     const server = createServer((req, res) => {
       const url = new URL(req.url, 'http://localhost');
@@ -302,6 +313,12 @@ const browser = await chromium.launch({ executablePath });
    answer for. Computed here rather than read back from the engine, so the
    assertions stay independent of the thing they are checking. */
 const WEEK_PLAN = ['pregame', 'recap', 'recap', 'waiver', 'roster', 'roster', 'open'];
+
+/* What the synthetic league below says it is: seasonId 2026, scoringPeriodId 2.
+   The article engine scopes its picks to this week, so the fixture dates and
+   the page clock are both built from it rather than from the real calendar. */
+const LEAGUE_SEASON = 2026;
+const LEAGUE_WEEK = 2;
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 async function openApp(base, articlesOrigin) {
@@ -490,7 +507,26 @@ try {
      calendar router is exercised end to end) AND come back with the article
      that slot publishes. The fixture manifest carries a post for every slot,
      so a day that settles empty means the read or the routing broke. */
-  const base = new Date();
+  /* The walk starts on the Tuesday that OPENS the league's own week, not on
+     whatever today happens to be. selectForSlot() gates on week as well as on
+     day, and postWeek() derives an article's week from its publishDate, so a
+     fixture dated to a real today that belongs to week 4 is filtered out by a
+     screen sitting on the synthetic league's week 2 — every day settles empty
+     and reads as a broken router when nothing is broken. A season week runs
+     Tuesday to Monday, so seven days from that Tuesday cover each weekday once
+     AND all belong to the league's week: the clock and the league week state
+     advance together, and the day router is what is under test again. The
+     Tuesday comes from the app's own calendar so the two cannot disagree. */
+  const base = new Date(await page.evaluate(({ season, week }) => {
+    const probe = new Date(season, 6, 1);
+    for (let i = 0; i < 260; i++) {
+      if (probe.getDay() === 2 && Number(window.nflRegularSeasonWeek(season, probe)) === week) {
+        return probe.getTime();
+      }
+      probe.setDate(probe.getDate() + 1);
+    }
+    throw new Error('no Tuesday opens week ' + week + ' of ' + season);
+  }, { season: LEAGUE_SEASON, week: LEAGUE_WEEK }));
   base.setHours(12, 0, 0, 0);
   for (let i = 0; i < 7; i++) {
     const when = new Date(base);
@@ -498,6 +534,10 @@ try {
     const day = when.getDay();
     const slotId = WEEK_PLAN[day];
     await page.clock.setFixedTime(when);
+    /* The fixtures are re-served dated to the pinned day: a post stamped with
+       the day the walk started is a day-old post by the second iteration, and
+       the freshness gate would drop it. */
+    liveServer.state.publishOn(localDateKeyOf(when));
     await page.evaluate(() => window.FSNArticles.refresh({ force: true }));
     await page.waitForTimeout(250);
     const row = await page.evaluate(() => {
@@ -519,7 +559,11 @@ try {
     else if (!row.readerUrl) fail(DAY_NAMES[day] + ': the engine published no reader URL for its post');
     else pass(DAY_NAMES[day] + ' -> ' + slotId + ' -> ' + row.slug);
   }
-  await page.clock.setFixedTime(new Date());
+  /* The desk below reads as a reader inside the league's own week does, so the
+     clock stays in that week rather than snapping back to a real today that
+     belongs to a different one. Tuesday is its recap day. */
+  await page.clock.setFixedTime(base);
+  liveServer.state.publishOn(localDateKeyOf(base));
 
   /* ---- 6. The News Desk carries the wire, matched to this roster -------- */
   await page.click('#tabBar .tab-btn[data-tab="news"]');

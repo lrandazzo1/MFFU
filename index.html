@@ -3996,11 +3996,19 @@ body.fsn-dd-lock{ overflow:hidden; }
 }
 .sv-close svg{ width:19px; height:19px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; }
 .sv-close:active{ background:#161c27; }
+/* position:relative WITHOUT a z-index, deliberately. A z-index here would make
+   the stage its own stacking context, and the .sv-cta inside it could then
+   never rise above the .sv-tap strips however high its own z-index went — the
+   two would be compared as stage-vs-strips, and the stage would lose. Leaving
+   it auto keeps the stage painting exactly where it did, below the strips and
+   below the head, while letting the one child that has to clear them do so.
+   The panel's own layers (.fraud-heat and friends) sit at 0 and 1 and stay
+   under the strips, which is what the tap zones want. */
 .sv-stage{
   flex:1; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch;
   overscroll-behavior:contain;
   padding:4px 18px calc(30px + env(safe-area-inset-bottom));
-  position:relative; z-index:3;
+  position:relative;
 }
 .sv-stage > *{ max-width:34rem; margin-left:auto; margin-right:auto; }
 /* Above .sv-stage on purpose: a tap zone the panel content can cover is a tap
@@ -4021,7 +4029,15 @@ body.fsn-dd-lock{ overflow:hidden; }
 }
 
 /* ---- story panel ---- */
-.sv-panel{ animation:svPanelIn .34s cubic-bezier(.2,.7,.3,1) both; }
+/* fill-mode BACKWARDS, not both. With `both` the panel keeps the final
+   keyframe applied for good, and a retained transform computes to the identity
+   matrix rather than to none — which is still a transform, so the panel stays a
+   stacking context forever. That trapped .sv-cta's z-index inside the panel,
+   where it could never rise above the .sv-tap strips outside it, and the one
+   button the panel exists for answered a tap with "previous story". Backwards
+   gives the same entrance and then hands the panel back to its own styles,
+   where transform really is none. */
+.sv-panel{ animation:svPanelIn .34s cubic-bezier(.2,.7,.3,1) backwards; }
 @keyframes svPanelIn{ from{ opacity:0; transform:translateY(14px) scale(.985); } to{ opacity:1; transform:none; } }
 .sv-kicker{
   font-size:9.5px; font-weight:700; letter-spacing:.2em; text-transform:uppercase;

@@ -34,12 +34,19 @@
    previews that quote it in prose, which are deterministic article generators
    and therefore off-limits to change (CLAUDE.md rule 2).
 
+   The story reel draws that same lean on its matchup panel, labelled as this
+   app's own number, and is allowed too — by function name rather than by block,
+   because the reel shares the UI block with the matchup board this check exists
+   to keep clean.
+
    That split is easy to undo by accident: re-adding a probability readout to a
    matchup card is a one-line call to an engine that is still exported and still
    works. Nothing would fail. So this check pins the split by LOCATION — the
-   model may be referenced from the block that defines it and from the News Desk
-   block, and nowhere else, including the static markup where the onboarding
-   slide lives.
+   model may be referenced from the block that defines it, from the News Desk
+   block and from the story reel's own builders, and nowhere else, including the
+   static markup where the onboarding slide lives. The removed readout's own
+   identifiers stay banned everywhere outside the owner blocks, the reel
+   included: the reel may quote the model, not rebuild the bar.
 
    Both halves are string-level checks over the real files. Neither can produce
    a false alarm for correct code: a new model added to the Analytics tab moves
@@ -226,22 +233,70 @@ if (newsBlock === -1) {
 
 const PROB = /win\s*probability|winProbability|matchupWinProbBar|mu-winprob|ftu-m-prob/i;
 
+/* The readout itself, as opposed to a reference to the model. These are the
+   identifiers of the matchup-card bar and the onboarding slide that were taken
+   out: nothing outside the two owner blocks may carry them, the story reel
+   included. */
+const READOUT = /matchupWinProbBar|mu-winprob|ftu-m-prob/i;
+
+/* The story reel draws the model's lean on its matchup panel — the same
+   quotation the News Desk makes in prose, and labelled on screen as this app's
+   own number rather than an ESPN one. It is allowed by LOCATION like the other
+   two, but by function name rather than by block: the reel shares the UI block
+   with the matchup board this check exists to keep clean, so naming the reel's
+   own builders grants the reel and nothing else in that block. Add a name here
+   only for a function that is genuinely part of the reel. */
+const REEL_FUNCTIONS = ['buildStoryReel', 'storyPreviewPanel'];
+
+/* The [first, last] line spans, 0-based within the block body, of the named
+   top-level functions. This file declares them at column zero and closes them
+   with a bare `}`, which is what the scan keys on. */
+function reelSpans(body) {
+  const lines = body.split('\n');
+  const spans = [];
+  REEL_FUNCTIONS.forEach((name) => {
+    const open = lines.findIndex((line) => line.startsWith('function ' + name + '('));
+    if (open === -1) return;
+    const close = lines.findIndex((line, i) => i > open && line === '}');
+    if (close !== -1) spans.push({ name, open, close });
+  });
+  return spans;
+}
+
 if (ownerBlock !== -1 && newsBlock !== -1) {
+  const found = new Set();
   blocks.forEach((block, i) => {
     if (i === ownerBlock || i === newsBlock) return;
     const lines = block.body.split('\n');
+    const spans = reelSpans(block.body);
+    spans.forEach((span) => found.add(span.name));
+    const inReel = (n) => spans.some((span) => n >= span.open && n <= span.close);
     const offenders = [];
     lines.forEach((line, n) => {
-      if (PROB.test(line)) offenders.push('index.html:' + (block.startLine + n));
+      if (!PROB.test(line)) return;
+      /* Inside the reel the model may be quoted, but the removed readout may
+         not be rebuilt there either. */
+      if (inReel(n) && !READOUT.test(line)) return;
+      offenders.push('index.html:' + (block.startLine + n));
     });
     if (offenders.length) {
       fail('script block starting at index.html:' + block.startLine + ' references win probability at ' +
         offenders.join(', ') + '. The readout was removed from the UI on purpose; only the ' +
-        'FSNIntel block (which defines the model) and the News Desk block (which quotes it in ' +
-        'article prose) may mention it.');
+        'FSNIntel block (which defines the model), the News Desk block (which quotes it in ' +
+        'article prose) and the story reel builders (' + REEL_FUNCTIONS.join(', ') + ', which ' +
+        'draw the same lean on a story panel) may mention it.');
     }
   });
-  if (!failed) pass('no script block outside FSNIntel and the News Desk references it');
+  /* A reel function that has been renamed away would silently stop being the
+     allowance it is written to be, so say so rather than letting the grant
+     drift off the code it was written for. */
+  REEL_FUNCTIONS.filter((name) => !found.has(name)).forEach((name) => {
+    fail('no script block declares ' + name + '() at top level, so the story reel allowance no ' +
+      'longer points at the reel. Update REEL_FUNCTIONS to the reel\'s current builders.');
+  });
+  if (!failed) {
+    pass('no script block outside FSNIntel, the News Desk and the story reel builders references it');
+  }
 }
 
 /* The static markup is where the onboarding walkthrough slide and the matchup
