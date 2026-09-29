@@ -127,6 +127,30 @@ export declare function normalizeDay(value: unknown): ArticleDay;
  */
 export declare function activeLeagueIds(db: any, season: number): Promise<string[]>;
 /**
+ * The same leagues, in a start position that moves with the week.
+ *
+ * The list arrives sorted by league id and the run walks it in order, so before
+ * this the run started at the lowest id EVERY week. That is invisible while the
+ * time budget holds and systematically unfair the moment it does not: the run
+ * stops starting leagues at 50s, so the same tail leagues were skipped week
+ * after week, and the comment promising the next run would pick them up is not
+ * true on a weekly cadence — the next run of that day resolves a different week.
+ * A league at the end of the alphabet could go a season without a Monday recap
+ * while nothing anywhere reported a failure, because being not-attempted is not
+ * a failure.
+ *
+ * Rotating by the week number is round-robin: week N starts at index N mod n,
+ * so the league that went first this week goes last in n weeks' time and every
+ * league takes its turn at the front. Deterministic, like everything else in
+ * this pipeline — no clock, no randomness — so the same week always produces the
+ * same order and a re-run covers the same leagues in the same sequence.
+ *
+ * It does not create capacity. A run that can only reach half its leagues still
+ * only reaches half; it reaches a DIFFERENT half each week, and `force_rerun`
+ * remains how a specific miss is repaired.
+ */
+export declare function rotateForWeek(leagueIds: string[], week: number): string[];
+/**
  * The leagues that already hold this week's article of this type.
  *
  * One query for the whole run rather than one per league: the fan-out is the

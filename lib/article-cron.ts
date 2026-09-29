@@ -210,6 +210,36 @@ export async function activeLeagueIds(db: any, season: number): Promise<string[]
 }
 
 /**
+ * The same leagues, in a start position that moves with the week.
+ *
+ * The list arrives sorted by league id and the run walks it in order, so before
+ * this the run started at the lowest id EVERY week. That is invisible while the
+ * time budget holds and systematically unfair the moment it does not: the run
+ * stops starting leagues at 50s, so the same tail leagues were skipped week
+ * after week, and the comment promising the next run would pick them up is not
+ * true on a weekly cadence — the next run of that day resolves a different week.
+ * A league at the end of the alphabet could go a season without a Monday recap
+ * while nothing anywhere reported a failure, because being not-attempted is not
+ * a failure.
+ *
+ * Rotating by the week number is round-robin: week N starts at index N mod n,
+ * so the league that went first this week goes last in n weeks' time and every
+ * league takes its turn at the front. Deterministic, like everything else in
+ * this pipeline — no clock, no randomness — so the same week always produces the
+ * same order and a re-run covers the same leagues in the same sequence.
+ *
+ * It does not create capacity. A run that can only reach half its leagues still
+ * only reaches half; it reaches a DIFFERENT half each week, and `force_rerun`
+ * remains how a specific miss is repaired.
+ */
+export function rotateForWeek(leagueIds: string[], week: number): string[] {
+  const count = leagueIds.length;
+  if (count < 2) return leagueIds.slice();
+  const offset = ((Math.trunc(week) % count) + count) % count;
+  return leagueIds.slice(offset).concat(leagueIds.slice(0, offset));
+}
+
+/**
  * The leagues that already hold this week's article of this type.
  *
  * One query for the whole run rather than one per league: the fan-out is the
@@ -398,7 +428,12 @@ export async function runArticleCron(
   if (!db) throw fail('Blog article storage is not configured', 503);
 
   const forceRerun = !!input.force_rerun;
-  const leagueIds = await (dependencies.listLeagues || activeLeagueIds)(db, season);
+  /* Rotated, not shuffled: the order is still a function of the week alone, so
+     two runs of the same week agree with each other. See rotateForWeek. */
+  const leagueIds = rotateForWeek(
+    await (dependencies.listLeagues || activeLeagueIds)(db, season),
+    week,
+  );
   const published = await leaguesAlreadyPublished(db, { season, week, article_type: articleType });
 
   /* Only read on a forced run. A normal morning never needs the audit trail to
@@ -435,7 +470,8 @@ export async function runArticleCron(
       console.warn(
         '[ArticleCron] time budget spent after ' + index + ' of ' + leagueIds.length +
           ' leagues on ' + runId + '; the remaining ' + summary.not_attempted +
-          ' are left for the next run, which will still find no article for them',
+          ' are left for the next run, which will still find no article for them ' +
+          '(and, because the queue rotates by week, starts from a different league)',
         new Error('BUDGET_EXHAUSTED'),
       );
       break;

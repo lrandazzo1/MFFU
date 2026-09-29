@@ -77,13 +77,46 @@ function supabaseEnvStatus() {
   };
 }
 
+/* ---- ONE STORAGE READ'S TIME BUDGET ----
+   The same ceiling api/espn.js puts on an ESPN read, for the same reason. This
+   client is what resolveStoredLeagueAccess below uses to look up a league's
+   encrypted cookie envelope, and the scheduled article run reaches it
+   in-process, once per league, through the relay. `runArticleCron` checks its
+   50s budget BETWEEN leagues and never inside one, so a lookup that hangs is
+   not one slow league: the invocation is killed at its maxDuration with no
+   summary and no audit rows, and every league behind it in the queue silently
+   loses its article. A ceiling turns that into one league's honest STORAGE_ERROR.
+
+   15s to match the relay, so a league's worst case stays inside the run's
+   per-league margin. PostgREST answers a keyed read in milliseconds; nothing
+   legitimate here takes fifteen seconds. */
+const SUPABASE_READ_TIMEOUT_MS = 15000;
+
 function getSupabase() {
   const env = supabaseEnvStatus();
   if (!env.ok) return null;
   if (!supabaseClient) {
     supabaseClient = createClient(env.url, env.key, {
       auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
-      global: { headers: { 'X-Client-Info': 'mffu-vercel-league-storage' } },
+      global: {
+        headers: { 'X-Client-Info': 'mffu-vercel-league-storage' },
+        /* An abort surfaces as a rejected fetch, which every caller in this file
+           already handles: the read throws, the catch logs the real error and
+           answers STORAGE_ERROR, which the relay reports as retryable. Nothing
+           degrades to an anonymous read or a silent null because of it.
+
+           A caller's own signal is combined with the ceiling rather than
+           replaced by it, so `.abortSignal()` on a query still aborts early AND
+           the ceiling still applies — taking whichever fires first. */
+        fetch: (url, options) => {
+          const ceiling = AbortSignal.timeout(SUPABASE_READ_TIMEOUT_MS);
+          const caller = options && options.signal;
+          return fetch(url, {
+            ...options,
+            signal: caller ? AbortSignal.any([caller, ceiling]) : ceiling,
+          });
+        },
+      },
     });
   }
   return supabaseClient;
