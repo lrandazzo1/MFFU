@@ -93,6 +93,7 @@ const generator = require(join(root, 'lib/dist/article-generator.js'));
 const podcast = require(join(root, 'lib/dist/generate-podcast.js'));
 const news = require(join(root, 'lib/dist/podcast-news-script.js'));
 const speech = require(join(root, 'lib/dist/sanitize-podcast-script.js'));
+const weekCompleteLib = require(join(root, 'lib/dist/week-complete.js'));
 
 /* ==========================================================================
    0. The schema the shared read depends on
@@ -597,22 +598,22 @@ await (async () => {
     try {
       await cron.runWeeklyPodcastCron({ season: 2026, week: 5 }, deps(db));
     } catch (err) { refused = err; }
-    check('week 5 is refused while the environment is locked to week 2', () => {
+    check('week 5 is refused while the environment is pinned to week 2', () => {
       assert.ok(refused, 'the run was not refused');
       assert.equal(Number(refused.status), 409);
-      assert.match(String(refused.message), /locked to week 2/);
+      assert.match(String(refused.message), /pinned to week 2/);
     });
     check('a refused week reaches neither the voice provider nor the database', () => {
-      assert.equal(synthCalls, 0, 'ElevenLabs was called for a locked week');
-      assert.equal(db._episodes.size, 0, 'a claim row was written for a locked week');
+      assert.equal(synthCalls, 0, 'ElevenLabs was called for a pinned-out week');
+      assert.equal(db._episodes.size, 0, 'a claim row was written for a pinned-out week');
     });
   });
 
-  /* ---- the default boundary is week 2 with nothing configured ---- */
+  /* ---- nothing configured means no pin at all ---- */
   await withEnv({ ELEVENLABS_API_KEY: 'k' }, async () => {
-    check('the boundary defaults to week 2 with PODCAST_TARGET_WEEK unset', () => {
-      assert.deepEqual(cron.targetWeekSetting(), { value: '2', week: cron.DEFAULT_TARGET_WEEK });
-      assert.equal(cron.DEFAULT_TARGET_WEEK, 2);
+    check('an unset PODCAST_TARGET_WEEK pins nothing, so the run recaps the week that just ended', () => {
+      assert.deepEqual(cron.targetWeekSetting(), { value: 'any', week: null });
+      assert.equal(cron.DEFAULT_TARGET_WEEK, 'any');
     });
   });
   await withEnv({ PODCAST_TARGET_WEEK: 'any', ELEVENLABS_API_KEY: 'k' }, async () => {
@@ -621,8 +622,9 @@ await (async () => {
     });
   });
   await withEnv({ PODCAST_TARGET_WEEK: 'banana', ELEVENLABS_API_KEY: 'k' }, async () => {
-    check('a malformed PODCAST_TARGET_WEEK falls back to the week 2 boundary', () => {
-      assert.equal(cron.targetWeekSetting().week, 2);
+    check('a malformed PODCAST_TARGET_WEEK pins nothing rather than a week nobody chose', () => {
+      assert.equal(cron.targetWeekSetting().week, null);
+      assert.equal(cron.targetWeekSetting().value, 'any');
     });
   });
 
@@ -1272,11 +1274,134 @@ check('vercel.json stays inside the plan’s two cron slots', () => {
   );
 });
 
-check('the Tuesday schedule exists and fires at 10:00 UTC on a Tuesday', () => {
+check('the Tuesday schedule exists and fires on Tuesday morning UTC', () => {
   const workflow = readFileSync(join(root, '.github/workflows/generate-weekly-podcast.yml'), 'utf8');
-  assert.match(workflow, /cron:\s*'0 10 \* \* 2'/, 'the Tuesday 10:00 UTC schedule is missing');
+  const cron = (workflow.match(/cron:\s*'([^']+)'/) || [])[1] || '';
+  const [minute, hour, dom, month, dow] = cron.split(/\s+/);
+  assert.equal(dow, '2', 'the weekly recap must run on a Tuesday; the schedule says "' + cron + '"');
+  assert.equal(dom, '*', 'the schedule is pinned to a day of the month: "' + cron + '"');
+  assert.equal(month, '*', 'the schedule is pinned to a month: "' + cron + '"');
+  assert.equal(minute, '0', 'the schedule does not fire on the hour: "' + cron + '"');
+  /* Morning, and after the Monday night final: 05:00-11:00 UTC is midnight to
+     06:00 ET. Anything earlier is still Monday night football. */
+  const h = Number(hour);
+  assert.ok(Number.isInteger(h) && h >= 5 && h <= 11,
+    'the Tuesday run fires at ' + hour + ':00 UTC, which is not Tuesday morning after MNF');
+  /* And after the Tuesday ARTICLE run, which writes the blog_articles row this
+     episode narrates. Ahead of it, readNewsPayload() finds nothing and every
+     league is skipped — a silent no-op that costs a week to notice. */
+  const articles = readFileSync(join(root, '.github/workflows/generate-articles.yml'), 'utf8');
+  const articleTuesday = (articles.match(/cron:\s*'0 (\d+) \* \* 2'/) || [])[1];
+  assert.ok(articleTuesday != null, 'the article workflow has no Tuesday schedule to order against');
+  assert.ok(h > Number(articleTuesday),
+    'the podcast runs at ' + h + ':00 UTC but the Tuesday article it narrates runs at ' +
+      articleTuesday + ':00 UTC. Ahead of the article there is no payload and every league is skipped.');
   assert.match(workflow, /generate-weekly-podcast/, 'the workflow does not call the route');
   assert.match(workflow, /CRON_SECRET/, 'the workflow does not present CRON_SECRET');
+});
+
+/* ------------------------------------------------------------------ *
+ * THE WEEK A SCHEDULED RUN RECAPS
+ *
+ * The schedule sends no week, so the route works out which week just ended and
+ * refuses to narrate one that is still being played. Both halves are asserted
+ * against stubs — no scoreboard is contacted.
+ * ------------------------------------------------------------------ */
+
+const weekStatus = (games, completed) => ({ games, completed, complete: games > 0 && completed === games });
+const completionStub = (byWeek) => async ({ season, week }) => {
+  const entry = byWeek[week];
+  if (!entry) return { season, week, ...weekStatus(0, 0) };
+  return { season, week, ...entry };
+};
+/* check() is synchronous, so every resolution is awaited out here and only the
+   assertions live inside it — the same shape the run sections above use. */
+const settle = async (fn) => {
+  try { return { value: await fn() }; }
+  catch (err) { return { err }; }
+};
+
+const liveWeekDone = await settle(() => cron.resolveRecapWeek({ season: 2026 }, {
+  fetchLiveWeek: async () => ({ seasonYear: 2026, week: 5 }),
+  weekCompletion: completionStub({ 5: weekStatus(14, 14), 4: weekStatus(14, 14) }),
+}));
+const afterRollover = await settle(() => cron.resolveRecapWeek({ season: 2026 }, {
+  fetchLiveWeek: async () => ({ seasonYear: 2026, week: 6 }),
+  weekCompletion: completionStub({ 6: weekStatus(14, 0), 5: weekStatus(14, 14) }),
+}));
+const stillPlaying = await settle(() => cron.resolveRecapWeek({ season: 2026 }, {
+  fetchLiveWeek: async () => ({ seasonYear: 2026, week: 5 }),
+  weekCompletion: completionStub({ 5: weekStatus(14, 13), 4: weekStatus(14, 13) }),
+}));
+const noGames = await settle(() => cron.resolveRecapWeek({ season: 2026 }, {
+  fetchLiveWeek: async () => ({ seasonYear: 2026, week: 5 }),
+  weekCompletion: completionStub({}),
+}));
+const noFeed = await settle(() => cron.resolveRecapWeek({ season: 2026 }, {
+  fetchLiveWeek: async () => { throw new Error('FEED_HTTP_503'); },
+  weekCompletion: completionStub({ 5: weekStatus(14, 14) }),
+}));
+const namedClosed = await settle(() => cron.assertWeekComplete({ season: 2026, week: 2 }, {
+  weekCompletion: completionStub({ 2: weekStatus(13, 13) }),
+}));
+const namedOpen = await settle(() => cron.assertWeekComplete({ season: 2026, week: 2 }, {
+  weekCompletion: completionStub({ 2: weekStatus(13, 11) }),
+}));
+
+check('the live week is recapped once every one of its games is final', () => {
+  assert.equal(liveWeekDone.err, undefined);
+  assert.equal(liveWeekDone.value.week, 5);
+  assert.equal(liveWeekDone.value.source, 'live_week');
+  assert.equal(liveWeekDone.value.completion.complete, true);
+});
+
+check('a run that lands after ESPN rolls over recaps the week behind the live one', () => {
+  assert.equal(afterRollover.err, undefined);
+  assert.equal(afterRollover.value.week, 5);
+  assert.equal(afterRollover.value.source, 'previous_week');
+});
+
+check('a week still being played is refused with a 409, not narrated half-done', () => {
+  assert.ok(stillPlaying.err, 'an open week resolved to a target week');
+  assert.equal(stillPlaying.err.status, 409);
+  assert.match(stillPlaying.err.message, /completed week/i);
+});
+
+check('a week the scoreboard reports no games for is not treated as finished', () => {
+  assert.ok(noGames.err, 'a week with no games resolved as complete');
+  assert.equal(noGames.err.status, 409);
+});
+
+check('a scoreboard that cannot be read stops the run instead of guessing a week', () => {
+  assert.ok(noFeed.err, 'a broken scoreboard still produced a week');
+  assert.equal(noFeed.err.status, 503);
+});
+
+check('a named week is checked for completion too, and an open one is refused', () => {
+  assert.equal(namedClosed.err, undefined);
+  assert.equal(namedClosed.value.complete, true);
+  assert.ok(namedOpen.err, 'an open named week was allowed to generate');
+  assert.equal(namedOpen.err.status, 409);
+  assert.match(namedOpen.err.message, /still being played/i);
+});
+
+check('completion is counted off the scoreboard document, in both shapes ESPN ships', () => {
+  const complete = weekCompleteLib.parseWeekCompletion({
+    events: [
+      { status: { type: { completed: true } } },
+      { competitions: [{ status: { type: { state: 'post' } } }] },
+    ],
+  });
+  assert.deepEqual(complete, { games: 2, completed: 2 });
+  const open = weekCompleteLib.parseWeekCompletion({
+    events: [
+      { status: { type: { completed: true } } },
+      { status: { type: { state: 'in', completed: false } } },
+      { status: { type: { state: 'pre', completed: false } } },
+    ],
+  });
+  assert.deepEqual(open, { games: 3, completed: 1 });
+  assert.deepEqual(weekCompleteLib.parseWeekCompletion({}), { games: 0, completed: 0 });
 });
 
 check('a manual dispatch defaults to a dry run, and only the schedule is live', () => {

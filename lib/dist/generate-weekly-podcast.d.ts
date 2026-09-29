@@ -22,28 +22,38 @@
  * ---- WHAT ONE RUN DOES ----
  *
  *   1. Refuses any caller without `CRON_SECRET`.
- *   2. Refuses any week other than `PODCAST_TARGET_WEEK` (default 2) before
- *      spending anything. See the testing boundary below.
- *   3. Sweeps `public.leagues` for the season's active leagues.
- *   4. Skips every league that already holds a `podcast_episodes` row for the
+ *   2. Works out which week just ended and refuses to go on until that week's
+ *      box scores are closed, before spending anything. See "WHICH WEEK A
+ *      SCHEDULED RUN RECAPS" on the HTTP handler below.
+ *   3. Refuses any week other than `PODCAST_TARGET_WEEK` when that variable
+ *      pins one. Unset — the normal case — pins nothing. See the boundary
+ *      below.
+ *   4. Sweeps `public.leagues` for the season's active leagues.
+ *   5. Skips every league that already holds a `podcast_episodes` row for the
  *      week, so a retry or a double fire costs nothing and no member ever has
  *      an episode change under them.
- *   5. For each remaining league, up to the per-run cap: one ESPN read, the
+ *   6. For each remaining league, up to the per-run cap: one ESPN read, the
  *      four-segment script, ElevenLabs synthesis, an MP3 into Supabase
  *      Storage, and a `podcast_episodes` row.
- *   6. Writes one `podcast_episode_runs` ledger row per league attempt,
+ *   7. Writes one `podcast_episode_runs` ledger row per league attempt,
  *      whether it succeeded or not.
  *
  * One league's failure never stops the others — the same contract
  * `lib/article-cron.ts` holds.
  *
- * ---- THE TESTING BOUNDARY ----
+ * ---- THE OPTIONAL WEEK PIN ----
  *
- * `PODCAST_TARGET_WEEK` defaults to 2 and the run refuses anything else. The
- * check is the FIRST thing that happens after auth, before the league sweep,
- * before any ESPN read and long before ElevenLabs, so a misfire on the wrong
- * week cannot spend a cent. Widen it by setting the variable in the Vercel
- * project; `PODCAST_TARGET_WEEK=any` lifts the lock entirely.
+ * `PODCAST_TARGET_WEEK` is unset in the deployment and that means `'any'`: the
+ * run recaps whatever week just ended. Set it to a number to pin every run to
+ * that one week — a rehearsal lever — and the run then refuses anything else.
+ * That check is the FIRST thing that happens after auth, before the league
+ * sweep, before any ESPN read and long before ElevenLabs, so a misfire on the
+ * wrong week cannot spend a cent.
+ *
+ * It defaulted to week 2 while the four-segment pipeline was being tested, and
+ * because the variable is not set in the deployment that default WAS the
+ * behaviour: every Tuesday run could only ever produce week 2. The guard that
+ * replaced it is the completion gate, which needs no human to move it.
  *
  * ---- THE SPEND CEILING ----
  *
@@ -54,9 +64,10 @@
  * turn count and byte size so the bill is attributable after the fact. Leagues
  * over the cap are not lost: the next run finds no episode for them.
  */
-import { type WeeklyPodcastScript } from './podcast-script';
 import { type PodcastCue } from './build-podcast-audio';
+import { type WeeklyPodcastScript } from './podcast-script';
 import { readNewsPayload, type NewsPayload } from './podcast-news-script';
+import { type WeekCompletion } from './week-complete';
 export { readNewsPayload };
 export type PodcastRunStatus = 'created' | 'skipped' | 'failed';
 export type PodcastFailureReason = 'ESPN_AUTH' | 'NO_MATCHUP_DATA' | 'EMPTY_SCRIPT' | 'TTS' | 'STORAGE' | 'TIMEOUT' | 'OTHER';
@@ -165,22 +176,96 @@ export interface PodcastRunDependencies {
     synthesize?: (text: string, voiceId: string) => Promise<Buffer>;
     now?: () => number;
 }
-export declare const DEFAULT_TARGET_WEEK = 2;
+/** What `PODCAST_TARGET_WEEK` means when it is not set: no pin at all. The run
+ *  resolves the week that just ended and recaps that.
+ *
+ *  This used to default to week 2 — a testing boundary that refused every other
+ *  week before spending anything. It is not the guard any more, and leaving it
+ *  as the default meant a Tuesday run could only ever produce week 2: the
+ *  variable is not set in the deployment, so the default WAS the behaviour.
+ *  What protects the spend now is stricter and does not need a human to move it
+ *  every week — the week has to be finished (`resolveRecapWeek()` /
+ *  `assertWeekComplete()`), a league that already holds a row for the week is
+ *  skipped, `PODCAST_CRON_MAX_LEAGUES` bounds the fan-out, and every attempt
+ *  lands in `podcast_episode_runs`. Setting the variable to a number still pins
+ *  the run to that week for a rehearsal. */
+export declare const DEFAULT_TARGET_WEEK = "any";
 export declare const DEFAULT_MAX_LEAGUES = 5;
 /** A league whose week produced fewer than this many real segments is not
  *  worth synthesizing: an episode of four "nothing to report" rooms costs the
  *  same as a real one. */
 export declare const MIN_POPULATED_SEGMENTS = 1;
 /**
- * The week this environment is allowed to generate, or `'any'`.
+ * The week this environment is pinned to, or `'any'` for no pin.
  *
- * Returns the raw configured string alongside the number so the summary can
- * report what the boundary actually was rather than what the default is.
+ * Unset — which is how the deployment runs — means `'any'`: the run resolves the
+ * week that just ended. A number pins it to that week, for a rehearsal or a
+ * backfill. Returns the raw configured string alongside the number so the
+ * summary can report what the setting actually was.
  */
 export declare function targetWeekSetting(): {
     value: string;
     week: number | null;
 };
+/** Why this week, and what the scoreboard said about it. */
+export interface RecapWeekResolution {
+    season: number;
+    week: number;
+    /** The week the NFL scoreboard currently reports as the live one. */
+    live_week: number | null;
+    /** `live_week` when that week's games are already in the books, otherwise the
+     *  week before it — the one ESPN has just rolled off. */
+    source: 'live_week' | 'previous_week';
+    completion: WeekCompletion;
+}
+export interface RecapWeekDependencies {
+    /** The season and week the scoreboard currently reports. Defaults to one
+     *  schedule-feed pull, which is one outbound request per weekly run. */
+    fetchLiveWeek?: () => Promise<{
+        seasonYear: number | null;
+        week: number | null;
+    }>;
+    /** Whether every game of a week has finished. Defaults to one scoreboard read
+     *  per candidate week. */
+    weekCompletion?: (input: {
+        season: number;
+        week: number;
+    }) => Promise<WeekCompletion>;
+}
+/**
+ * THE JUST-COMPLETED WEEK.
+ *
+ * The Tuesday schedule fires in the morning, hours after the Monday night
+ * final, and the week it must recap is the week that just ended — never the one
+ * about to start. Two candidates, in this order:
+ *
+ *   1. The week the scoreboard currently calls live. On Tuesday morning ESPN is
+ *      still reporting the week whose games just played (the same behaviour the
+ *      Tuesday blog article relies on), so this is the normal answer.
+ *   2. The week before it, for the run that lands after ESPN has already rolled
+ *      over: the live week's games are all in the future, so it cannot be
+ *      recapped and the week behind it is the finished one.
+ *
+ * Whichever is taken has to be COMPLETE — every game of it finished. A week that
+ * is still being played is not a failure and not something to generate half of:
+ * the caller turns it into a 409, which the schedule reports as a skip, and the
+ * next run finds the same leagues with no episode and picks them up.
+ */
+export declare function resolveRecapWeek(input: {
+    season?: number | null;
+}, deps?: RecapWeekDependencies): Promise<RecapWeekResolution>;
+/**
+ * The gate for a week that was NAMED rather than resolved — an explicit
+ * `?week=`, or the week `PODCAST_TARGET_WEEK` pins this environment to.
+ *
+ * Same rule, one read: a week whose games are still being played is refused with
+ * a 409 before the league sweep, so a schedule that fires early skips instead of
+ * narrating a half-played slate.
+ */
+export declare function assertWeekComplete(input: {
+    season: number;
+    week: number;
+}, deps?: RecapWeekDependencies): Promise<WeekCompletion>;
 export declare function maxLeaguesPerRun(): number;
 export declare function podcastDatabase(): any;
 /**
@@ -220,5 +305,23 @@ export declare function runWeeklyPodcastCron(input: PodcastRunInput, dependencie
 /**
  * `POST /api/cron/generate-weekly-podcast` (GET accepted, so a Vercel cron —
  * which can only issue GET — works unchanged).
+ *
+ * ---- WHICH WEEK A SCHEDULED RUN RECAPS ----
+ *
+ * The schedule carries no `?week=`, and the answer is the week that just ended.
+ * Three sources, in precedence order, all of which end at a week whose games
+ * are finished:
+ *
+ *   `?week=N`                  an explicit backfill. Taken as asked, then
+ *                              checked for completion like any other week.
+ *   PODCAST_TARGET_WEEK=N      the variable pins this environment to one week;
+ *                              that week is used and checked.
+ *   unset, or =any             the default. resolveRecapWeek() asks the NFL
+ *                              scoreboard: the live week if its games are in
+ *                              the books, otherwise the week behind it.
+ *
+ * `?allow_open_week=1` skips the completion check for a named week. It exists
+ * for a deliberate mid-week rehearsal and for the case where the scoreboard read
+ * itself is what is broken; nothing on the schedule passes it.
  */
 export default function handler(req: any, res: any): Promise<void>;

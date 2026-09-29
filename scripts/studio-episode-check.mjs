@@ -629,6 +629,117 @@ try {
   else fail('exception leaked to league 778899 week ' + view.week + ' (disabled=' +
     view.buttonDisabled + ', note="' + view.noteText + '")');
 
+  /* ======================================================================
+     7. THE LIVE WEEK, STILL BEING PLAYED
+
+     The recap is a Tuesday-morning artefact: it narrates a finished week, and
+     the scheduled run will not build one until every Sunday and Monday night box
+     score is closed. So the button must not offer to mint one mid-week either —
+     from Wednesday through Monday night it stands disabled, saying when it
+     unlocks, and a past week's finished episode still plays beside it.
+     ====================================================================== */
+
+  /* The same league, with the LIVE week's matchups left undecided: no winner and
+     no roster detail, which is what an in-progress slate looks like. Weeks 1-4
+     stay final, so week 4 is a genuinely closed week with an episode. */
+  const openWeekPayload = () => {
+    const payload = syntheticLeague();
+    payload.schedule = payload.schedule.map((game) => (
+      game.matchupPeriodId === 5 ? { ...game, winner: 'UNDECIDED' } : game
+    ));
+    return payload;
+  };
+
+  await page.unroute('**/api/generate-podcast*');
+  const week4Requests = [];
+  await page.route('**/api/generate-podcast*', async (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    week4Requests.push({ method: request.method(), week: url.searchParams.get('week') });
+    const body = url.searchParams.get('week') === '4'
+      ? episodePayload(4)
+      : { status: 'missing' };
+    await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
+  });
+
+  const seed = async (payload) => {
+    await page.evaluate((args) => {
+      document.getElementById('leagueIdInput').value = String(args.id);
+      try { window.localStorage.setItem('fsn.league.token.v1:' + args.id, args.token); }
+      catch (err) { /* private mode */ }
+      window.LeagueData.setEspnData(args.payload);
+      window.__fsnRender();
+    }, { id: LEAGUE_ID, token: SHARE_TOKEN, payload });
+    await page.waitForTimeout(700);
+  };
+
+  /* Move to the live week FIRST, then seed. selectWeek() ends in
+     syncWeekPayload(), which re-applies that week from the app's own week cache
+     — the all-final league every earlier scenario walked — so a payload seeded
+     before the jump is replaced a tick later and the screen under assertion is
+     not the one that was seeded. */
+  await openStudio();
+  await jumpToCurrentWeek();
+  await page.waitForTimeout(900);
+  await seed(openWeekPayload());
+  await page.waitForTimeout(600);
+  view = await studio();
+  if (view.week === '5') pass('open week: the scrubber is on the live week 5');
+  else fail('open week: expected week 5, the scrubber says "' + view.week + '"');
+  if (view.buttonDisabled) pass('open week: GENERATE is disabled while the week is still being played');
+  else fail('open week: GENERATE is still enabled over a half-played week');
+  if (!view.buttonHidden) pass('open week: the button is disabled rather than hidden');
+  else fail('open week: the button vanished instead of saying when it unlocks');
+  if (/weekly recap unlocks tuesday after mnf/i.test(view.buttonLabel))
+    pass('open week: the button says when it unlocks: "' + view.buttonLabel + '"');
+  else fail('open week: the button reads "' + view.buttonLabel + '"');
+  if (!view.noteHidden && /unlocks tuesday morning/i.test(view.noteText))
+    pass('open week: the note explains the rule: "' + view.noteText + '"');
+  else fail('open week: the note is ' + (view.noteHidden ? 'hidden' : '"' + view.noteText + '"'));
+  if (view.noteText !== LOCK_MESSAGE)
+    pass('open week: an open week is not reported as history');
+  else fail('open week: the note calls the live week a historical one');
+
+  /* Tapping it anyway must change nothing and cost nothing. */
+  const postsBefore = week4Requests.filter((r) => r.method === 'POST').length;
+  await page.evaluate(() => document.getElementById('studioGenerate').click());
+  await page.waitForTimeout(600);
+  if (week4Requests.filter((r) => r.method === 'POST').length === postsBefore)
+    pass('open week: a tap on the disabled button posts nothing');
+  else fail('open week: a mid-week tap reached the generation endpoint');
+
+  /* ---- a past week still PLAYS its episode, and generates nothing ---- */
+  await stepWeek(-1);
+  await page.waitForTimeout(16000);
+  view = await studio();
+  if (view.week === '4') pass('open week: stepped back to the completed week 4');
+  else fail('open week: expected week 4, the scrubber says "' + view.week + '"');
+  if (view.audioSrc === AUDIO_URL) pass('open week: week 4 still plays the episode its league generated');
+  else fail('open week: week 4 player src is "' + view.audioSrc + '"');
+  if (!view.playDisabled) pass('open week: the play button is enabled for the stored week 4 episode');
+  else fail('open week: the stored week 4 episode cannot be played');
+  if (!week4Requests.some((r) => r.method === 'POST'))
+    pass('open week: replaying a past week re-triggered no generation');
+  else fail('open week: selecting a past week POSTed to the generation endpoint');
+
+  /* ---- and the moment the week closes, the button is offered again ---- */
+  await jumpToCurrentWeek();
+  await page.waitForTimeout(900);
+  await seed(syntheticLeague());
+  await page.waitForTimeout(600);
+  view = await studio();
+  if (view.week === '5') pass('closed week: back on the live week 5');
+  else fail('closed week: expected week 5, the scrubber says "' + view.week + '"');
+  if (!view.buttonDisabled && !view.buttonHidden)
+    pass('closed week: GENERATE is offered once every box score for the week is final');
+  else fail('closed week: GENERATE is still ' + (view.buttonHidden ? 'hidden' : 'disabled') +
+    ' after the week closed');
+  if (view.buttonLabel === 'GENERATE WEEKLY RECAP')
+    pass('closed week: the button is back to "GENERATE WEEKLY RECAP"');
+  else fail('closed week: the button reads "' + view.buttonLabel + '"');
+  if (view.noteHidden) pass('closed week: no lock note over a generatable week');
+  else fail('closed week: the note still reads "' + view.noteText + '"');
+
   /* ---- nothing threw, and nothing degraded into a snag ------------------- */
   const snag = await page.evaluate(() =>
     /hit a snag/i.test(document.querySelector('.screen[data-screen="studio"]').innerText));
