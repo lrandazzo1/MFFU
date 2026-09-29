@@ -710,6 +710,12 @@ try {
     { ...ARTICLE, slug: 'week-2-recap', week: 2, headline: 'Week 2 Matchup Recap' },
     { ...ARTICLE, slug: 'week-3-recap', week: 3, headline: 'Week 3 Matchup Recap' },
   ];
+  /* The placeholder fixture may have cached an empty Week 4 response above.
+     Clear that test-only cache before changing the server's published rows. */
+  await page.evaluate(() => {
+    window.FSNLeagueArticles.clear();
+    window.FSNSupabaseArticles.clear();
+  });
   for (const [selected, expected, excluded] of [
     ['3', 'Week 2 Matchup Recap', 'Week 3 Matchup Recap'],
     ['4', 'Week 3 Matchup Recap', 'Week 2 Matchup Recap'],
