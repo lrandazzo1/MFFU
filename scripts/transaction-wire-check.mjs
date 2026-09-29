@@ -78,7 +78,10 @@ try{
   assert.ok(requests.some(r=>r.method==='POST'));
   assert.match(await page.locator('#transactionWireStatus').textContent(),/Live roster updates are shown/);
   if(await page.getAttribute('#profilePicker','data-open')==='true')await page.click('#profileGuest');
-  await page.click('[data-tab="news"]');
+  // The first-run walkthrough can cover the tab while the data fixture is
+  // ready. Enter the News screen through its own click handler so this check
+  // exercises the wire without racing that unrelated onboarding overlay.
+  await page.evaluate(()=>document.querySelector('[data-tab="news"]').click());
   await page.waitForTimeout(200);
   // The actual feed opens the backend-created article using the usual reader.
   const row = page.locator('[data-article="'+article.id+'"]:visible').first();
