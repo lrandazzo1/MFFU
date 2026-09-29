@@ -13,6 +13,12 @@
         note "Historical weeks and past seasons cannot generate new podcasts.",
         while the CURRENT week is still generatable.
 
+        Every week coordinate here is the week the episode RECAPS, which is the
+        week before the one on screen: the recap is filed the morning after the
+        Monday night final, so it anchors the following week's feed exactly as
+        tuesday_verdict does. The scrubber on week 5 therefore looks up week 4,
+        and the lock reads week 4's slate. See studioRecapWeek() in index.html.
+
      2. SHARED EPISODE RETRIEVAL — the invite-link / second-device path. The
         lookup must survive a league context that is still arriving (no share
         token yet at mount), adopt the returned audio_url and script the moment
@@ -336,7 +342,7 @@ try {
   /* ======================================================================
      2. CLOUD SYNC RESOLVES — the token lands, the episode must follow
      ====================================================================== */
-  reply = { status: 200, body: episodePayload(5) };
+  reply = { status: 200, body: episodePayload(4) };
   await page.evaluate(([league, token]) => {
     window.localStorage.setItem('fsn.league.token.v1:' + league, token);
   }, [LEAGUE_ID, SHARE_TOKEN]);
@@ -360,9 +366,9 @@ try {
   else fail('the player src is "' + view.audioSrc + '", expected the returned audio_url');
   if (!view.playDisabled) pass('the play button is enabled once the shared audio resolves');
   else fail('the play button stayed disabled over a ready shared episode');
-  if (view.title === 'WEEK 5 RECAP') pass('the hero shows the shared episode title');
+  if (view.title === 'WEEK 4 RECAP') pass('the hero shows the shared episode title');
   else fail('the hero title is "' + view.title + '"');
-  if (/Alpha closed out week 5/.test(view.feed) && /Delta has answers/.test(view.feed))
+  if (/Alpha closed out week 4/.test(view.feed) && /Delta has answers/.test(view.feed))
     pass('the returned script is rendered in the read-along feed');
   else fail('the returned script did not reach the feed');
   if (!/NO EPISODE YET/.test(view.feed)) pass('"NO EPISODE YET" is gone once the episode resolves');
@@ -387,9 +393,10 @@ try {
     pass('the completed-week note reads exactly: ' + LOCK_MESSAGE);
   else fail('the completed-week note is ' + (view.noteHidden ? 'hidden' : '"' + view.noteText + '"'));
 
-  /* A locked week still has to RETRIEVE its league's episode. */
+  /* A locked week still has to RETRIEVE its league's episode — week 3's, which
+     is what week 4's feed carries. */
   const before = requests.length;
-  reply = { status: 200, body: episodePayload(4) };
+  reply = { status: 200, body: episodePayload(3) };
   await page.waitForTimeout(16000);
   view = await studio();
   if (requests.length > before) pass('a completed week still polls for its shared episode');
@@ -460,7 +467,8 @@ try {
 
   /* Re-seed as the exception league. The payload keeps week 5 as the live week,
      so weeks 1-4 are closed history and week 2 is a genuinely locked week for
-     every league but this one. */
+     every league but this one. Week 2's recap lives on the WEEK 3 feed, so that
+     is the screen the exception has to open. */
   const asLeague = async (id) => {
     const payload = syntheticLeague();
     payload.id = Number(id);
@@ -511,13 +519,13 @@ try {
   await openStudio();
   await page.waitForTimeout(800);
 
-  /* Walk back from the live week to week 2. */
-  for (let i = 0; i < 3; i += 1) { await stepWeek(-1); await page.waitForTimeout(350); }
+  /* Walk back from the live week to the week 3 feed, which recaps week 2. */
+  for (let i = 0; i < 2; i += 1) { await stepWeek(-1); await page.waitForTimeout(350); }
   await page.waitForTimeout(900);
   view = await studio();
 
-  if (view.week === '2') pass('exception: stepped the test league to week 2');
-  else fail('exception: expected week 2, the scrubber says "' + view.week + '"');
+  if (view.week === '3') pass("exception: stepped the test league to week 2's feed (week 3)");
+  else fail('exception: expected week 3, the scrubber says "' + view.week + '"');
 
   if (!view.buttonDisabled || view.buttonHidden)
     pass('exception: GENERATE is available for league ' + TEST_LEAGUE + ' on week 2');
@@ -613,51 +621,68 @@ try {
   await stepWeek(-1);
   await page.waitForTimeout(800);
   view = await studio();
-  if (view.week === '1' && view.buttonDisabled && view.noteText === LOCK_MESSAGE)
+  if (view.week === '2' && view.buttonDisabled && view.noteText === LOCK_MESSAGE)
     pass('exception is week-scoped: week 1 of the same league is still locked');
-  else fail('exception leaked to week ' + view.week + ' of the test league (disabled=' +
+  else fail('exception leaked to the week ' + view.week + ' feed of the test league (disabled=' +
     view.buttonDisabled + ', note="' + view.noteText + '")');
+
+  /* Week 1's feed has no completed slate behind it, so it says so in its own
+     words rather than calling week 1 a historical week. */
+  await stepWeek(-1);
+  await page.waitForTimeout(800);
+  view = await studio();
+  if (view.week === '1' && view.buttonDisabled && !view.noteHidden &&
+      /first episode arrives on the Week 2 feed/i.test(view.noteText))
+    pass("week 1's feed says the season's first recap lands on week 2");
+  else fail('week 1 feed: week=' + view.week + ', disabled=' + view.buttonDisabled +
+    ', note=' + (view.noteHidden ? '(hidden)' : '"' + view.noteText + '"'));
+  if (/first recap lands on week 2/i.test(view.buttonLabel))
+    pass("week 1's button says where the first recap lands: \"" + view.buttonLabel + '"');
+  else fail('week 1 button reads "' + view.buttonLabel + '"');
 
   await asLeague('778899');
   await openStudio();
   await page.waitForTimeout(500);
-  for (let i = 0; i < 3; i += 1) { await stepWeek(-1); await page.waitForTimeout(300); }
+  for (let i = 0; i < 2; i += 1) { await stepWeek(-1); await page.waitForTimeout(300); }
   await page.waitForTimeout(800);
   view = await studio();
-  if (view.week === '2' && view.buttonDisabled && view.noteText === LOCK_MESSAGE)
+  if (view.week === '3' && view.buttonDisabled && view.noteText === LOCK_MESSAGE)
     pass('exception is league-scoped: week 2 of another league is still locked');
-  else fail('exception leaked to league 778899 week ' + view.week + ' (disabled=' +
+  else fail("exception leaked to league 778899 on week 2's feed (week " + view.week + ', disabled=' +
     view.buttonDisabled + ', note="' + view.noteText + '")');
 
   /* ======================================================================
-     7. THE LIVE WEEK, STILL BEING PLAYED
+     7. THE RECAPPED WEEK, STILL BEING PLAYED
 
      The recap is a Tuesday-morning artefact: it narrates a finished week, and
      the scheduled run will not build one until every Sunday and Monday night box
-     score is closed. So the button must not offer to mint one mid-week either —
-     from Wednesday through Monday night it stands disabled, saying when it
-     unlocks, and a past week's finished episode still plays beside it.
+     score is closed. So the button must not offer to mint one while the week it
+     would recap is still open — it stands disabled, saying when it unlocks, and
+     an earlier week's finished episode still plays beside it.
+
+     On the anchored contract the week 5 feed recaps WEEK 4, so week 4 is the one
+     left open here. Week 3 stays final and holds the episode week 4's feed
+     carries.
      ====================================================================== */
 
-  /* The same league, with the LIVE week's matchups left undecided: no winner and
-     no roster detail, which is what an in-progress slate looks like. Weeks 1-4
-     stay final, so week 4 is a genuinely closed week with an episode. */
+  /* The same league with week 4's matchups left undecided: no winner and no
+     roster detail, which is what an in-progress slate looks like. */
   const openWeekPayload = () => {
     const payload = syntheticLeague();
     payload.schedule = payload.schedule.map((game) => (
-      game.matchupPeriodId === 5 ? { ...game, winner: 'UNDECIDED' } : game
+      game.matchupPeriodId === 4 ? { ...game, winner: 'UNDECIDED' } : game
     ));
     return payload;
   };
 
   await page.unroute('**/api/generate-podcast*');
-  const week4Requests = [];
+  const podcastRequests = [];
   await page.route('**/api/generate-podcast*', async (route) => {
     const request = route.request();
     const url = new URL(request.url());
-    week4Requests.push({ method: request.method(), week: url.searchParams.get('week') });
-    const body = url.searchParams.get('week') === '4'
-      ? episodePayload(4)
+    podcastRequests.push({ method: request.method(), week: url.searchParams.get('week') });
+    const body = url.searchParams.get('week') === '3'
+      ? episodePayload(3)
       : { status: 'missing' };
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) });
   });
@@ -686,7 +711,7 @@ try {
   view = await studio();
   if (view.week === '5') pass('open week: the scrubber is on the live week 5');
   else fail('open week: expected week 5, the scrubber says "' + view.week + '"');
-  if (view.buttonDisabled) pass('open week: GENERATE is disabled while the week is still being played');
+  if (view.buttonDisabled) pass('open week: GENERATE is disabled while the recapped week is still being played');
   else fail('open week: GENERATE is still enabled over a half-played week');
   if (!view.buttonHidden) pass('open week: the button is disabled rather than hidden');
   else fail('open week: the button vanished instead of saying when it unlocks');
@@ -700,25 +725,33 @@ try {
     pass('open week: an open week is not reported as history');
   else fail('open week: the note calls the live week a historical one');
 
+  /* The lookup asked for the RECAPPED week, not the week on screen. That is the
+     Tuesday-morning bug this contract exists to prevent: asking for week 5 while
+     the cron files week 4 answered `missing` over an episode the league had. */
+  if (podcastRequests.some((r) => r.week === '4'))
+    pass("open week: the week 5 feed looked up week 4's episode");
+  else fail('open week: no lookup for week 4; weeks asked for were ' +
+    JSON.stringify(podcastRequests.map((r) => r.week)));
+
   /* Tapping it anyway must change nothing and cost nothing. */
-  const postsBefore = week4Requests.filter((r) => r.method === 'POST').length;
+  const postsBefore = podcastRequests.filter((r) => r.method === 'POST').length;
   await page.evaluate(() => document.getElementById('studioGenerate').click());
   await page.waitForTimeout(600);
-  if (week4Requests.filter((r) => r.method === 'POST').length === postsBefore)
+  if (podcastRequests.filter((r) => r.method === 'POST').length === postsBefore)
     pass('open week: a tap on the disabled button posts nothing');
   else fail('open week: a mid-week tap reached the generation endpoint');
 
-  /* ---- a past week still PLAYS its episode, and generates nothing ---- */
+  /* ---- an earlier feed still PLAYS its episode, and generates nothing ---- */
   await stepWeek(-1);
   await page.waitForTimeout(16000);
   view = await studio();
-  if (view.week === '4') pass('open week: stepped back to the completed week 4');
+  if (view.week === '4') pass("open week: stepped back to week 3's feed (week 4)");
   else fail('open week: expected week 4, the scrubber says "' + view.week + '"');
-  if (view.audioSrc === AUDIO_URL) pass('open week: week 4 still plays the episode its league generated');
-  else fail('open week: week 4 player src is "' + view.audioSrc + '"');
-  if (!view.playDisabled) pass('open week: the play button is enabled for the stored week 4 episode');
-  else fail('open week: the stored week 4 episode cannot be played');
-  if (!week4Requests.some((r) => r.method === 'POST'))
+  if (view.audioSrc === AUDIO_URL) pass("open week: week 4's feed still plays week 3's episode");
+  else fail('open week: the week 4 feed player src is "' + view.audioSrc + '"');
+  if (!view.playDisabled) pass("open week: the play button is enabled for the stored week 3 episode");
+  else fail('open week: the stored week 3 episode cannot be played');
+  if (!podcastRequests.some((r) => r.method === 'POST'))
     pass('open week: replaying a past week re-triggered no generation');
   else fail('open week: selecting a past week POSTed to the generation endpoint');
 
@@ -731,7 +764,7 @@ try {
   if (view.week === '5') pass('closed week: back on the live week 5');
   else fail('closed week: expected week 5, the scrubber says "' + view.week + '"');
   if (!view.buttonDisabled && !view.buttonHidden)
-    pass('closed week: GENERATE is offered once every box score for the week is final');
+    pass('closed week: GENERATE is offered once every box score for the recapped week is final');
   else fail('closed week: GENERATE is still ' + (view.buttonHidden ? 'hidden' : 'disabled') +
     ' after the week closed');
   if (view.buttonLabel === 'GENERATE WEEKLY RECAP')
