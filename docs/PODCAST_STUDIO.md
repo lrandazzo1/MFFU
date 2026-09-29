@@ -49,7 +49,7 @@ Two pipelines now write episodes, and they do not overlap:
 
 | | Interactive | Scheduled |
 |---|---|---|
-| Trigger | A reader taps GENERATE in Studio, once the week has closed | Tuesday 09:00 UTC, every active league |
+| Trigger | A reader taps GENERATE in Studio, once the week has closed | Tuesday 10:25 UTC, every active league |
 | Script | `lib/podcast-news-script.ts`, authored server-side | `lib/podcast-news-script.ts`, authored server-side |
 | Auth | Per-league `x-league-token` | `CRON_SECRET` |
 | Public path | `POST /api/generate-podcast` | `POST /api/cron/generate-weekly-podcast` |
@@ -152,13 +152,39 @@ rather than defaulting open.
 
 ### Tuesday morning, and only once the week has closed
 
-The run is a Tuesday-morning artefact. `0 9 * * 2` (05:00 ET in season) puts it
-well after the Monday night final and one hour after the Tuesday **article**
+The run is a Tuesday-morning artefact. `25 10 * * 2` (06:25 ET in season) puts it
+well after the Monday night final and 145 minutes after the Tuesday **article**
 run, which is not a coincidence: the default `news` format narrates the
-`blog_articles` row that article writes, so a podcast run scheduled before
-`0 8 * * 2` finds no payload and skips every league, silently, every week.
-`scripts/podcast-segments-check.mjs` asserts the two schedules stay in that
-order.
+`blog_articles` row that article writes, so a podcast run that starts before
+`0 8 * * 2` has finished finds either no payload at all, or the **Monday** row —
+a preview of a week that has not been played — and idempotency then locks that
+wrong episode in for the whole week.
+
+The gap is not what orders the two. GitHub queues scheduled workflows and starts
+them late under load, per workflow and independently, so a nominal gap of any
+size can be consumed by a busy morning; it used to be one hour, both jobs sat on
+minute 0 (the most contended minute of the hour), and nothing checked the
+outcome. What orders them is the `article-gate` job in
+`.github/workflows/generate-weekly-podcast.yml`: it polls this repository's own
+workflow-runs API for the Tuesday `generate-articles` run and holds the podcast
+job until that run reaches `completed`, for up to an hour, before anything is
+POSTed. A manual dispatch skips the gate — a rehearsal or a catch-up names its
+own week. A *failed* article run does not stop the gate: that run exits non-zero
+when any single league throws, and the leagues it did write still deserve their
+episode.
+
+A league the article run did not cover fails `ARTICLE_NOT_READY`, which is the
+one failure reason that **releases its claim** instead of marking the row
+`failed`. It is raised before ESPN, before ElevenLabs and before Storage, so
+nothing was spent and there is no double-billing to prevent; leaving a `failed`
+row behind would make `leaguesAlreadyRecorded()` skip that league for the rest of
+the week, recoverable only by a forced catch-up that *does* re-bill. The run
+still counts it in `failed` and still exits non-zero.
+
+`scripts/podcast-segments-check.mjs` asserts all of it: the 90-minute minimum
+margin, that neither Tuesday job sits on minute 0, that the gate and its `needs:`
+wiring are intact, and that a missing payload leaves no row behind while a
+provider failure still does.
 
 The clock alone is not the guarantee, because a Monday night game can run long
 and a stat pass can land late. Before the league sweep, before any ESPN read and
@@ -292,7 +318,7 @@ Beyond the interactive path's variables:
 
 ## Why the schedule lives in GitHub Actions
 
-`.github/workflows/generate-weekly-podcast.yml`, `0 9 * * 2`. Three reasons,
+`.github/workflows/generate-weekly-podcast.yml`, `25 10 * * 2`. Three reasons,
 the same ones that put the league blog articles there:
 
 - Vercel cron jobs are always issued as `GET`; this schedule `POST`s.
@@ -307,10 +333,16 @@ On a paid plan, this is the equivalent `vercel.json` block:
 ```json
 {
   "crons": [
-    { "path": "/api/cron/generate-weekly-podcast", "schedule": "0 9 * * 2" }
+    { "path": "/api/cron/generate-weekly-podcast", "schedule": "25 10 * * 2" }
   ]
 }
 ```
+
+Note what that block gives up: a Vercel cron fires on the clock and cannot wait,
+so moving the schedule there drops the `article-gate` job and puts the ordering
+back on the nominal gap alone. The `ARTICLE_NOT_READY` claim release keeps the
+week recoverable either way, but the gate is what keeps the wrong episode from
+being minted in the first place.
 
 The route itself needs no change for that: it accepts `GET`, and Vercel attaches
 `Authorization: Bearer $CRON_SECRET` to its own scheduled invocations.

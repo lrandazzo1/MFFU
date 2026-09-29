@@ -70,7 +70,15 @@ import { readNewsPayload, type NewsPayload } from './podcast-news-script';
 import { type WeekCompletion } from './week-complete';
 export { readNewsPayload };
 export type PodcastRunStatus = 'created' | 'skipped' | 'failed';
-export type PodcastFailureReason = 'ESPN_AUTH' | 'NO_MATCHUP_DATA' | 'EMPTY_SCRIPT' | 'TTS' | 'STORAGE' | 'TIMEOUT' | 'OTHER';
+export type PodcastFailureReason = 'ESPN_AUTH'
+/** The article for this league-week has not published yet, so there is no
+ *  `blog_articles` payload to narrate. The only reason that costs NOTHING:
+ *  it is raised before ESPN, before ElevenLabs and before Storage, which is
+ *  what makes it the only one safe to retry automatically. See
+ *  RETRYABLE_PODCAST_FAILURES. */
+ | 'ARTICLE_NOT_READY' | 'NO_MATCHUP_DATA' | 'EMPTY_SCRIPT' | 'TTS' | 'STORAGE' | 'TIMEOUT' | 'OTHER';
+export declare const RETRYABLE_PODCAST_FAILURES: readonly PodcastFailureReason[];
+export declare function podcastFailureIsRetryable(reason: PodcastFailureReason | null | undefined): boolean;
 export interface PodcastLeagueResult {
     league_id: string;
     status: PodcastRunStatus;
