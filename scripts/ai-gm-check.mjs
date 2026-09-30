@@ -625,6 +625,35 @@ function checkMatchmaking() {
   if (!analysis.search.truncated) pass('the search completed inside its budget');
   else fail('the search truncated on a twelve-team fixture');
 
+  /* The defaults the whole time budget rests on, asserted rather than assumed.
+     A pool raised past what the deadline affords would start truncating real
+     boards, and the truncation notice is a worse product than a slightly
+     shallower search. */
+  if (gm.DEFAULT_TRADE_POOL_SIZE === 10 && gm.DEFAULT_SEARCH_DEADLINE_MS === 7000) {
+    pass('the tuning defaults are pool ' + gm.DEFAULT_TRADE_POOL_SIZE + ' under a ' +
+      gm.DEFAULT_SEARCH_DEADLINE_MS + 'ms deadline');
+  } else fail('the tuning defaults moved without the benchmark being revisited',
+    'pool ' + gm.DEFAULT_TRADE_POOL_SIZE + ' / ' + gm.DEFAULT_SEARCH_DEADLINE_MS + 'ms');
+  if (gm.findOffers(gm.normalize(fixtureLeague(), { week: 1 }),
+      gm.resolveMyTeam(gm.normalize(fixtureLeague(), { week: 1 }), '1', ''),
+      { deadlineMs: 0 }).poolSize === gm.DEFAULT_TRADE_POOL_SIZE) {
+    pass('findOffers actually applies that default when no depth is requested');
+  } else fail('findOffers does not use the exported pool default');
+
+  /* A realistic-shaped league must finish well inside the deadline, not merely
+     inside it — otherwise the first slow cold start truncates a real board. The
+     bound is deliberately loose (a shared CI runner is not a benchmark rig);
+     what it catches is an algorithmic regression, such as the solver cache being
+     keyed wrongly and no longer hitting. */
+  const timedStart = Date.now();
+  buildAnalysis({ deadlineMs: 0, poolSize: gm.DEFAULT_TRADE_POOL_SIZE });
+  const elapsed = Date.now() - timedStart;
+  if (elapsed < gm.DEFAULT_SEARCH_DEADLINE_MS / 2) {
+    pass('a full twelve-roster search finished in ' + elapsed + 'ms, well inside the ' +
+      gm.DEFAULT_SEARCH_DEADLINE_MS + 'ms budget');
+  } else fail('the search is too close to its deadline (' + elapsed + 'ms of ' +
+    gm.DEFAULT_SEARCH_DEADLINE_MS + 'ms) — the solver cache has most likely stopped hitting');
+
   if (analysis.trades.length) pass(analysis.trades.length + ' proposal(s) from ' +
     analysis.search.twoWayPositive + ' win-win packages (' + analysis.search.packagesConsidered +
     ' re-solved)');
