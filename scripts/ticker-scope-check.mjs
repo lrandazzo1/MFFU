@@ -513,24 +513,39 @@ try {
         shellGap: Math.round(parseFloat(getComputedStyle(shell).paddingBottom) || 0),
       };
     });
-    /* A screen whose content fits the viewport must not scroll at all. One that
-       does not fit may scroll until its last element clears the tab bar, and
-       not one pixel further: anything beyond that is bare --ink. */
-    const fits = bounds.contentBottom <= bounds.clientHeight;
-    if (fits) {
-      if (bounds.maxScroll === 0) pass(name + ': content fits the viewport and the screen does not scroll at all');
-      else fail(name + ': content fits the viewport but the screen still scrolls ' + bounds.maxScroll + 'px into dead space');
-    } else {
-      const overrun = bounds.maxScroll + bounds.clientHeight - bounds.contentBottom;
-      const slack = overrun - bounds.shellGap;
-      if (Math.abs(slack) <= 2) {
+    /* ONE rule for every screen: the page may scroll exactly far enough to lift
+       the last element clear of the fixed tab bar, and not one pixel further.
+       Anything beyond that clearance is bare --ink.
+
+       The document is always `contentBottom + shellGap` tall, so that clearance
+       is what the scroll range must equal — including when the content ends just
+       inside the viewport. This used to be split into two branches, and the
+       "content fits the viewport" one demanded maxScroll === 0, which is only
+       correct while the content also clears the tab bar. For a screen whose
+       content ends in the band between `clientHeight - shellGap` and
+       `clientHeight` the page MUST scroll the remaining few pixels, and the old
+       branch called that "dead space" and failed a correct layout.
+
+       That band is 72px wide and nothing pins a screen's height inside it, so
+       which side of it a screen lands on moved with the runner's font metrics:
+       the News screen measured 902px locally (handled by the other branch,
+       green) and 831px on CI's chromium-1243 (inside the band, red), on
+       identical markup — main and the branch under test produced byte-identical
+       geometry. Expressing the rule once removes the seam instead of
+       re-tuning it. */
+    const clearance = Math.max(0, bounds.contentBottom + bounds.shellGap - bounds.clientHeight);
+    const slack = bounds.maxScroll - clearance;
+    if (Math.abs(slack) <= 2) {
+      if (clearance === 0) {
+        pass(name + ': content clears the tab bar inside the viewport and the screen does not scroll at all');
+      } else {
         pass(name + ': scroll ends exactly where the content does, with only the ' + bounds.shellGap +
           'px tab-bar clearance below it');
-      } else if (slack > 2) {
-        fail(name + ': scroll runs ' + slack + 'px past the tab-bar clearance \u2014 dead space below the content');
-      } else {
-        fail(name + ': scroll stops ' + (-slack) + 'px short, leaving the last element under the tab bar');
       }
+    } else if (slack > 2) {
+      fail(name + ': scroll runs ' + slack + 'px past the tab-bar clearance \u2014 dead space below the content');
+    } else {
+      fail(name + ': scroll stops ' + (-slack) + 'px short, leaving the last element under the tab bar');
     }
   }
 
