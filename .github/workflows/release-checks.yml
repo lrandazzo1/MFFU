@@ -63,6 +63,31 @@ jobs:
           npm run check:scope
           npm run check:studio
 
+  ai-gm-beta:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Install test browser
+        run: |
+          npx playwright install --with-deps chromium
+          node --input-type=module -e "import { chromium } from 'playwright'; import { appendFileSync } from 'node:fs'; appendFileSync(process.env.GITHUB_ENV, 'FSN_CHROMIUM_PATH=' + chromium.executablePath() + '\n');"
+      # A named job as well as part of `verify`, so a regression in the private
+      # beta reads as "ai-gm-beta failed" rather than one line 40 steps into the
+      # full suite. check:functions is first because the failure it guards —
+      # a thirteenth file under api/ — takes production down at deploy time
+      # while the build stays green.
+      - name: Verify the AI GM beta gate, engine, budget and render
+        run: |
+          npm run check:functions
+          npm run check:scope
+          npm run check:aigm
+
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 20
