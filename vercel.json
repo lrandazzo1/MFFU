@@ -30,6 +30,10 @@
       "destination": "/api/cron/generate-articles?action=podcast-cron"
     },
     {
+      "source": "/api/ai-gm",
+      "destination": "/api/espn?action=ai-gm"
+    },
+    {
       "source": "/api/league-sync",
       "destination": "/api/league"
     },
@@ -70,6 +74,9 @@
     }
   ],
   "functions": {
+    "api/espn.js": {
+      "maxDuration": 60
+    },
     "api/cron/generate-articles.js": {
       "maxDuration": 60,
       "includeFiles": "{node_modules/ffmpeg-static/ffmpeg,assets/podcast-audio/**}"
