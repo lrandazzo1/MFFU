@@ -717,9 +717,13 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
   line-height:1.5; }
 .aigm-reasons li::before{ content:'›'; position:absolute; left:0; color:var(--gold); }
 .aigm-bid{ display:flex; flex-wrap:wrap; gap:6px; margin-top:9px; }
+/* max-width and overflow-wrap because the form chips now carry a player name
+   alongside three figures. `.aigm-bid` wraps BETWEEN chips, but a single chip
+   cannot wrap inside itself, so without these a long name makes one flex item
+   wider than the card and the desk scrolls sideways. */
 .aigm-chip{ padding:3px 8px; border-radius:6px; border:1px solid var(--line); background:#0a0f16;
   color:var(--off); font-family:'JetBrains Mono',monospace; font-size:9.5px; font-weight:700;
-  letter-spacing:.05em; }
+  letter-spacing:.05em; max-width:100%; overflow-wrap:anywhere; }
 .aigm-chip[data-tone="gold"]{ color:var(--gold); border-color:rgba(255,178,44,.35); background:rgba(255,178,44,.07); }
 .aigm-chip[data-tone="green"]{ color:var(--green); border-color:rgba(0,214,138,.32); background:rgba(0,214,138,.07); }
 .aigm-chip[data-tone="cyan"]{ color:var(--cyan); border-color:rgba(0,224,255,.32); background:rgba(0,224,255,.07); }
@@ -742,15 +746,30 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
   font-size:14px; font-weight:700; }
 .aigm-ledger-detail{ display:block; margin-top:1px; color:var(--dim); font-family:'JetBrains Mono',monospace;
   font-size:8.5px; }
-.aigm-copy{ width:100%; margin-top:10px; padding:10px; border-radius:9px; border:1px solid rgba(0,224,255,.34);
-  color:var(--cyan); background:rgba(0,224,255,.07); font-family:'Anton',sans-serif; font-size:12px;
-  letter-spacing:.05em; text-transform:uppercase; cursor:pointer; }
-.aigm-copy[data-state="done"]{ color:var(--green); border-color:rgba(0,214,138,.4); background:rgba(0,214,138,.08); }
-.aigm-copy[data-state="failed"]{ color:var(--red); border-color:rgba(255,77,88,.4); background:rgba(255,77,88,.08); }
-.aigm-copy:focus-visible{ outline:none; box-shadow:0 0 0 3px rgba(0,224,255,.16); }
-.aigm-pitch{ margin-top:8px; padding:9px 10px; border-radius:9px; border:1px solid rgba(255,255,255,.07);
-  background:#080c12; color:var(--dim); font-family:'JetBrains Mono',monospace; font-size:10px;
-  line-height:1.6; white-space:pre-wrap; max-height:150px; overflow-y:auto; overscroll-behavior:contain; }
+/* Watchlist rows: name, context, then ACTUAL / PROJ / gap in fixed numeric
+   columns. This replaced a prose paragraph per player, which said the same
+   three numbers and cost roughly four times the vertical space. */
+.aigm-watch{ margin-top:8px; }
+.aigm-watch-row{ display:grid; grid-template-columns:minmax(0,1fr) 42px 42px 46px;
+  grid-template-areas:'name act proj gap' 'meta act proj gap';
+  align-items:center; gap:0 6px; padding:6px 0; border-top:1px solid rgba(255,255,255,.06); }
+.aigm-watch-row:first-child{ border-top:none; }
+.aigm-watch-row[data-head="true"]{ padding:0 0 4px; border-top:none; }
+.aigm-watch-row[data-head="true"] .aigm-watch-name,
+.aigm-watch-row[data-head="true"] .aigm-watch-num,
+.aigm-watch-row[data-head="true"] .aigm-watch-gap{ color:#4d5769; font-family:'JetBrains Mono',monospace;
+  font-size:7.5px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; }
+.aigm-watch-name{ grid-area:name; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  color:#fff; font-size:11.5px; font-weight:600; }
+.aigm-watch-meta{ grid-area:meta; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  color:var(--dim); font-family:'JetBrains Mono',monospace; font-size:8.5px; letter-spacing:.04em; }
+.aigm-watch-num{ grid-area:act; text-align:right; color:var(--off);
+  font-family:'JetBrains Mono',monospace; font-size:11px; font-weight:700; }
+.aigm-watch-num[data-muted="true"]{ grid-area:proj; color:var(--dim); font-weight:400; }
+.aigm-watch-gap{ grid-area:gap; text-align:right; font-family:'JetBrains Mono',monospace;
+  font-size:11px; font-weight:700; }
+.aigm-watch-gap[data-tone="down"]{ color:var(--cyan); }
+.aigm-watch-gap[data-tone="up"]{ color:var(--gold); }
 
 .aigm-note{ margin:0; padding:11px 12px; border:1px dashed rgba(255,255,255,.12); border-radius:11px;
   color:var(--dim); font-size:11.5px; line-height:1.55; }
@@ -39951,20 +39970,6 @@ const state = {
 };
 
 /* ============================================================
-   THE PITCH REGISTER
-
-   The pitch text lives HERE, keyed by its index in the rendered board, and the
-   Copy Pitch button carries only that key. The obvious alternative — putting
-   the pitch in a data- attribute — is wrong, and the render check catches it:
-   LeagueData.esc() escapes &, < and > but NOT the double quote, because it is
-   built for element content rather than attribute context. A pitch containing a
-   quote would therefore close the attribute early and put the rest of the DM
-   into the markup as attributes. Newlines and quotes are exactly what this copy
-   is made of, so the text never goes near an attribute at all.
-============================================================ */
-const pitchRegister = new Map();
-
-/* ============================================================
    FORMATTING
 ============================================================ */
 function n1(value){
@@ -40180,10 +40185,7 @@ function renderTrades(analysis){
         : '')));
   }
 
-  /* The register is rebuilt from scratch on every render, so a key can never
-     outlive the board it belongs to and resolve to a previous league's pitch. */
-  pitchRegister.clear();
-  trades.forEach(function(trade, index){
+  trades.forEach(function(trade){
     parts.push('<div class="aigm-card">');
     parts.push('<div class="aigm-row"><div class="min-w-0">' +
       '<div class="aigm-name">' + esc(trade.targetTeam.name) + '</div>' +
@@ -40221,30 +40223,26 @@ function renderTrades(analysis){
       n1(trade.theirLineup.after) + '</span></div>' +
       '</div>');
 
-    const reasons = [];
-    (trade.buyLow || []).forEach(function(row){ if(row) reasons.push('BUY LOW · ' + row.reason); });
-    (trade.sellHigh || []).forEach(function(row){ if(row) reasons.push('SELL HIGH · ' + row.reason); });
-    if(!reasons.length){
-      reasons.push('Straight positional fit: re-solving both lineups with this package seated puts ' +
-        signed(trade.myLineup.gain) + ' pts/wk on your card and ' + signed(trade.theirLineup.gain) +
-        ' on theirs, which is why it is worth sending.');
-    }
-    if((trade.designations || []).length){
-      reasons.push('Designations in this deal: ' + trade.designations.join('; ') +
-        '. ESPN\'s weekly forecast already discounts them on both sides.');
-    }
-    parts.push('<ul class="aigm-reasons">' + reasons.map(function(r){
-      return '<li>' + esc(r) + '</li>';
-    }).join('') + '</ul>');
+    /* The form read, as numbers rather than sentences. A buy-low target is a
+       player whose results are under the forecast he was drafted on, and a
+       sell-high chip is one whose results are over it — so each is fully
+       expressed by actual-vs-forecast and the gap between them. This is what
+       the old prose paragraph said, in one line that does not push the next
+       proposal off the screen. */
+    const form = [];
+    (trade.buyLow || []).forEach(function(row){
+      if(!row) return;
+      form.push(chip(row.pos + ' ' + row.name + ' ' + n1(row.actualPpg) + ' vs ' +
+        n1(row.baselinePpg) + ' proj · -' + n1(row.shortfall) + '/g', 'cyan'));
+    });
+    (trade.sellHigh || []).forEach(function(row){
+      if(!row) return;
+      form.push(chip(row.pos + ' ' + row.name + ' ' + n1(row.actualPpg) + ' vs ' +
+        n1(row.baselinePpg) + ' proj · +' + n1(row.surplus) + '/g', 'gold'));
+    });
+    (trade.designations || []).forEach(function(flag){ form.push(chip(flag, 'red')); });
+    if(form.length) parts.push('<div class="aigm-bid">' + form.join('') + '</div>');
 
-    /* Only the register key goes in the attribute. The clipboard then carries
-       the exact text the server wrote — every newline and every quote — rather
-       than whatever an attribute round-trip made of it. */
-    const pitchKey = 'p' + index;
-    pitchRegister.set(pitchKey, String(trade.pitch == null ? '' : trade.pitch));
-    parts.push('<button type="button" class="aigm-copy" data-aigm-copy="' + pitchKey +
-      '" data-state="idle">COPY PITCH</button>');
-    parts.push('<div class="aigm-pitch">' + esc(trade.pitch) + '</div>');
     parts.push('</div>');
   });
 
@@ -40265,6 +40263,28 @@ function renderWatchlist(analysis){
   const sellHigh = analysis.sellHigh || [];
   if(!buyLow.length && !sellHigh.length) return '';
 
+  /* One row per player, all figures. A buy-low target is someone whose results
+     sit under the forecast he was drafted on; a sell-high chip is someone whose
+     results sit over it. Both are fully described by ACTUAL, PROJ and the gap,
+     so the row shows those three columns rather than a sentence saying the same
+     thing at four times the height. */
+  function row(name, meta, actual, proj, gap, tone){
+    return '<div class="aigm-watch-row">' +
+      '<span class="aigm-watch-name">' + esc(name) + '</span>' +
+      '<span class="aigm-watch-meta">' + esc(meta) + '</span>' +
+      '<span class="aigm-watch-num">' + n1(actual) + '</span>' +
+      '<span class="aigm-watch-num" data-muted="true">' + n1(proj) + '</span>' +
+      '<span class="aigm-watch-gap" data-tone="' + esc(tone) + '">' + gap + '</span>' +
+      '</div>';
+  }
+  const head = '<div class="aigm-watch-row" data-head="true">' +
+    '<span class="aigm-watch-name">Player</span>' +
+    '<span class="aigm-watch-meta"></span>' +
+    '<span class="aigm-watch-num">Act</span>' +
+    '<span class="aigm-watch-num">Proj</span>' +
+    '<span class="aigm-watch-gap">/g</span>' +
+    '</div>';
+
   const parts = [];
   parts.push('<div class="aigm-section">');
   parts.push(sectionHead('Watchlist', buyLow.length + ' buy low · ' + sellHigh.length + ' sell high'));
@@ -40272,19 +40292,21 @@ function renderWatchlist(analysis){
   if(buyLow.length){
     parts.push('<div class="aigm-card">');
     parts.push('<div class="aigm-name" style="font-size:12.5px">Buy Low targets</div>');
-    parts.push('<ul class="aigm-reasons">' + buyLow.map(function(row){
-      return '<li><b style="color:#fff">' + esc(row.name) + '</b> (' + esc(row.pos) + ', ' +
-        esc(row.teamName) + ' ' + esc(row.teamRecord) + ') — ' + esc(row.reason) + '</li>';
-    }).join('') + '</ul>');
+    parts.push('<div class="aigm-watch">' + head + buyLow.map(function(r){
+      return row(r.name,
+        [r.pos, r.proTeam, r.teamName, r.teamRecord].filter(Boolean).join(' · '),
+        r.actualPpg, r.baselinePpg, '-' + n1(r.shortfall), 'down');
+    }).join('') + '</div>');
     parts.push('</div>');
   }
   if(sellHigh.length){
     parts.push('<div class="aigm-card">');
     parts.push('<div class="aigm-name" style="font-size:12.5px">Sell High chips</div>');
-    parts.push('<ul class="aigm-reasons">' + sellHigh.map(function(row){
-      return '<li><b style="color:#fff">' + esc(row.name) + '</b> (' + esc(row.pos) + ', ' +
-        esc(row.role) + ') — ' + esc(row.reason) + '</li>';
-    }).join('') + '</ul>');
+    parts.push('<div class="aigm-watch">' + head + sellHigh.map(function(r){
+      return row(r.name,
+        [r.pos, r.proTeam, r.role].filter(Boolean).join(' · '),
+        r.actualPpg, r.baselinePpg, '+' + n1(r.surplus), 'up');
+    }).join('') + '</div>');
     parts.push('</div>');
   }
   parts.push('</div>');
@@ -40297,8 +40319,7 @@ function renderFooterNote(analysis){
     'Every delta above is the change in each team\'s OPTIMAL starting lineup against ESPN\'s own ' +
     'week ' + analysis.league.week + ' projections, so it assumes both managers set their best ' +
     'lineup. ' + (search.packagesConsidered || 0) + ' packages were re-solved across ' +
-    (search.rostersAnalyzed || 0) + ' opposing rosters. Nothing here is sent anywhere — copy a ' +
-    'pitch and send it yourself.') + '</div>';
+    (search.rostersAnalyzed || 0) + ' opposing rosters. Nothing here is sent anywhere.') + '</div>';
 }
 
 function renderAnalysis(analysis){
@@ -40375,75 +40396,6 @@ function paint(){
   }
   setSubtitle(analysis.league.name + ' · season ' + analysis.league.season + ' · week ' +
     analysis.league.week + ' · ' + analysis.league.teamCount + ' teams');
-}
-
-/* ============================================================
-   COPY PITCH
-
-   Two transports because one of them is unavailable in exactly the place this
-   feature is used most. navigator.clipboard.writeText needs a secure context
-   AND, in an iOS WKWebView, a user gesture that has not yet been awaited
-   across — so the legacy execCommand path is the fallback, not the other way
-   round. A failure says so on the button rather than pretending it copied.
-============================================================ */
-async function copyText(text){
-  const value = String(text == null ? '' : text);
-  if(!value) return false;
-
-  if(navigator.clipboard && typeof navigator.clipboard.writeText === 'function'){
-    try{
-      await navigator.clipboard.writeText(value);
-      return true;
-    }catch(err){
-      console.warn('[AI GM] navigator.clipboard.writeText was refused; falling back to the ' +
-        'execCommand path.', err);
-    }
-  }
-
-  let area = null;
-  try{
-    area = document.createElement('textarea');
-    area.value = value;
-    area.setAttribute('readonly', 'readonly');
-    area.style.position = 'fixed';
-    area.style.top = '-1000px';
-    area.style.opacity = '0';
-    document.body.appendChild(area);
-    area.select();
-    area.setSelectionRange(0, value.length);
-    const copied = document.execCommand('copy');
-    if(!copied){
-      console.error('[AI GM] document.execCommand("copy") returned false; the pitch was not copied.',
-        new Error('AI_GM_CLIPBOARD_REFUSED'));
-    }
-    return !!copied;
-  }catch(err){
-    console.error('[AI GM] Copying the pitch to the clipboard failed on both transports.', err);
-    return false;
-  }finally{
-    if(area && area.parentNode) area.parentNode.removeChild(area);
-  }
-}
-
-async function handleCopy(button){
-  const key = button.getAttribute('data-aigm-copy') || '';
-  const text = pitchRegister.get(key);
-  if(text == null){
-    console.error('[AI GM] The Copy Pitch button carried key "' + key + '", which is not in the ' +
-      'pitch register. The board was most likely re-rendered under the tap.',
-      new Error('AI_GM_PITCH_KEY_MISSING'));
-    button.setAttribute('data-state', 'failed');
-    button.textContent = 'COPY FAILED — RE-ANALYZE AND RETRY';
-    return;
-  }
-  const copied = await copyText(text);
-  button.setAttribute('data-state', copied ? 'done' : 'failed');
-  button.textContent = copied ? 'COPIED TO CLIPBOARD' : 'COPY FAILED — SELECT THE TEXT BELOW';
-  setTimeout(function(){
-    if(!button.isConnected) return;
-    button.setAttribute('data-state', 'idle');
-    button.textContent = 'COPY PITCH';
-  }, 2600);
 }
 
 /* ============================================================
@@ -40714,15 +40666,6 @@ function wire(){
     modal.addEventListener('click', function(event){
       if(event.target === modal) close();
     });
-    modal.addEventListener('click', function(event){
-      const button = event.target && event.target.closest
-        ? event.target.closest('[data-aigm-copy]')
-        : null;
-      if(!button) return;
-      handleCopy(button).catch(function(err){
-        console.error('[AI GM] The Copy Pitch handler rejected.', err);
-      });
-    });
   }
 
   if(!window.__aiGmKeyWired){
@@ -40780,7 +40723,6 @@ return {
   wire: wire,
   paint: paint,
   requestUrl: requestUrl,
-  copyText: copyText,
   /* Exported for scripts/ai-gm-check.mjs, which drives every renderer against a
      fixture in a real browser with no network. A renderer nobody can call in
      isolation is a renderer nobody can test. */
