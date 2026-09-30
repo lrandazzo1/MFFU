@@ -27,7 +27,7 @@
 
      4. RENDER      index.html in Chromium: the entry card's league gate, the
                     modal, every renderer driven against the fixture analysis,
-                    the Copy Pitch clipboard, and zero tagged console errors.
+                    that no pitch copy survives, and zero tagged console errors.
 
    Exit code 0 means clean.
 ============================================================================ */
@@ -612,10 +612,10 @@ function checkModels() {
 }
 
 /* ============================================================================
-   PASS 1c — MATCHMAKING, PITCHES AND DETERMINISM
+   PASS 1c — MATCHMAKING, PITCH REMOVAL AND DETERMINISM
 ============================================================================ */
 function checkMatchmaking() {
-  console.log('\n[ai-gm-check] 1c/4  trade matchmaking, pitch coherence, determinism\n');
+  console.log('\n[ai-gm-check] 1c/4  trade matchmaking, pitch removal, determinism\n');
 
   const analysis = buildAnalysis();
 
@@ -718,50 +718,48 @@ function checkMatchmaking() {
   if (strict.trades.every((t) => t.theirLineup.gain >= 8)) pass('a raised partner floor is honoured exactly');
   else fail('partner floor not honoured');
 
-  /* ---- pitch coherence ---- */
-  const pitchless = analysis.trades.filter((t) => !t.pitch || t.pitch.length < 80);
-  if (!pitchless.length) pass('every proposal carries a ready-to-send pitch');
-  else fail('missing pitch', pitchless.length + ' proposal(s)');
+  /* ---- the pitch generator is GONE, and must stay gone ----
+     These are removal guards. The feature shipped with a deterministic DM
+     generator and a Copy Pitch button; both were removed because the card is
+     meant to read as numbers. A guard that only checked the UI would let the
+     generator creep back in on the server and ship an unused pitch string in
+     every response, so the payload, the exports and the source are all checked. */
+  const withPitch = analysis.trades.filter((t) => 'pitch' in t);
+  if (!withPitch.length) pass('no proposal carries a pitch field');
+  else fail('the analysis still emits pitch copy', withPitch.length + ' proposal(s)');
 
-  const misnamed = analysis.trades.filter((t) =>
-    !t.give.every((p) => t.pitch.includes(p.name)) ||
-    !t.receive.every((p) => t.pitch.includes(p.name)));
-  if (!misnamed.length) pass('every pitch names every player actually in the deal');
-  else fail('pitch omits a player in the deal');
-
-  const wrongMath = analysis.trades.filter((t) =>
-    !t.pitch.includes('+' + t.myLineup.gain.toFixed(1)) ||
-    !t.pitch.includes('+' + t.theirLineup.gain.toFixed(1)));
-  if (!wrongMath.length) pass('every pitch quotes the same two deltas the card shows');
-  else fail('a pitch quotes a delta the card does not');
-
-  /* The bug this assertion is the headstone for: the first draft of this copy
-     called one position both "where I am long" and "where my lineup has the
-     hole", in consecutive sentences, because it was generated from the package's
-     positions rather than the roster's facts. */
-  const state = gm.normalize(fixtureLeague(), { week: 1, byeWeeks: fixtureByes });
-  const me = gm.resolveMyTeam(state, '1', '');
-  const solve = gm.lineupSolver(state.slotIds);
-  const myRead = gm.teamRead(me, state.slotIds, state.benchmarks, solve);
-  const offers = gm.findOffers(state, me, Object.assign({}, baseOptions));
-  let coherent = true;
-  let starterCalledSpare = '';
-  for (const offer of offers.offers) {
-    const spare = gm.honestSurplus(offer.give, myRead);
-    const holes = gm.solvedNeeds(offer.receive, myRead);
-    for (const p of spare) {
-      if (holes.includes(p.pos)) coherent = false;
-      if (myRead.starters.has(p.id)) starterCalledSpare = p.name;
-    }
+  for (const name of ['buildPitch', 'honestSurplus', 'solvedNeeds', 'playerLabel', 'listNames']) {
+    if (!(name in gm)) continue;
+    fail('lib/ai-gm.js still exports the pitch helper ' + name);
   }
-  if (coherent) pass('no pitch calls one position both a surplus and a hole');
-  else fail('pitch coherence', 'a position was claimed as both');
-  if (!starterCalledSpare) pass('no starter is described to a rival as bench depth');
-  else fail('pitch accuracy', starterCalledSpare + ' starts but is pitched as spare');
+  pass('none of the pitch-copy helpers are exported any more');
 
-  /* An injury designation must be disclosed in the copy; a buy-low read must
-     not be. "I think your guy is underpriced" is the sentence that ends the
-     conversation. */
+  /* packagePositions outlived the pitch because the bye-week desk reads it. */
+  if (typeof gm.packagePositions === 'function' &&
+      gm.packagePositions([{ pos: 'RB' }, { pos: 'WR' }, { pos: 'RB' }]).join(',') === 'RB,WR') {
+    pass('packagePositions survives for the bye desk and still de-duplicates');
+  } else fail('packagePositions was removed or broken; the bye-week desk reads it');
+
+  /* The buy-low / sell-high rows must carry NUMBERS, not a sentence — that is
+     what the card renders now, and the prose field is what was deleted. */
+  const buyLowRows = analysis.buyLow || [];
+  const sellHighRows = analysis.sellHigh || [];
+  const prose = buyLowRows.concat(sellHighRows).filter((r) => 'reason' in r);
+  if (!prose.length) pass('no buy-low / sell-high row carries a generated sentence');
+  else fail('a generated reason sentence survived', prose.length + ' row(s)');
+
+  const numeric = buyLowRows.every((r) =>
+    Number.isFinite(r.actualPpg) && Number.isFinite(r.baselinePpg) &&
+    Number.isFinite(r.shortfall) && Number.isFinite(r.games)) &&
+    sellHighRows.every((r) =>
+      Number.isFinite(r.actualPpg) && Number.isFinite(r.baselinePpg) &&
+      Number.isFinite(r.surplus) && Number.isFinite(r.games));
+  if (numeric && (buyLowRows.length || sellHighRows.length)) {
+    pass('every watchlist row carries actual, forecast and the gap as numbers');
+  } else fail('a watchlist row is missing the numbers the card renders',
+    JSON.stringify(buyLowRows.concat(sellHighRows).slice(0, 1)));
+
+  /* Injury designations are facts on the card, not copy, so they stay. */
   const hurtLeague = fixtureLeague();
   hurtLeague.teams[1].roster.entries[2].playerPoolEntry.player.injuryStatus = 'QUESTIONABLE';
   const hurt = gm.analyze({
@@ -769,14 +767,20 @@ function checkMatchmaking() {
     freeAgents: gm.freeAgentsFrom(fixturePool(), 1, fixtureByes),
     byeWeeks: fixtureByes,
   }, baseOptions);
-  const withFlag = hurt.trades.filter((t) => t.designations.length);
-  if (!withFlag.length || withFlag.every((t) => t.designations.every((d) =>
-    t.pitch.includes(d.split(' — ')[0])))) {
-    pass('an injury designation in a deal is disclosed in the pitch');
-  } else fail('a designation was hidden from the pitch');
-  const leaky = analysis.trades.filter((t) => /buy low|underperform|underpriced|slump/i.test(t.pitch));
-  if (!leaky.length) pass('no pitch tells the other manager his player is a buy-low target');
-  else fail('the pitch leaks the buy-low read', JSON.stringify(leaky.map((t) => t.id)));
+  if (hurt.trades.every((t) => Array.isArray(t.designations))) {
+    pass('injury designations still travel with every proposal');
+  } else fail('designations were lost with the pitch');
+
+  /* No prose field anywhere in a proposal. Anything long and sentence-shaped is
+     the generator growing back under another name. */
+  const sentences = [];
+  for (const trade of analysis.trades) {
+    for (const [key, value] of Object.entries(trade)) {
+      if (typeof value === 'string' && value.length > 120) sentences.push(key);
+    }
+  }
+  if (!sentences.length) pass('no proposal field holds a long prose string');
+  else fail('a proposal carries prose copy', sentences.join(', '));
 
   /* ---- determinism ---- */
   const a = JSON.stringify(buildAnalysis());
@@ -795,7 +799,7 @@ function checkMatchmaking() {
   if (scoringStart > 0 && scoringEnd > scoringStart) pass('the scoring region was located in the source');
   else fail('could not locate the scoring region to check it');
   const clockHits = scoring.match(/Math\.random|new Date\(/g) || [];
-  if (!clockHits.length) pass('no Math.random or new Date in the scoring, matchmaking or pitch paths');
+  if (!clockHits.length) pass('no Math.random or new Date in the scoring or matchmaking paths');
   else fail('determinism contract', clockHits.join(', ') + ' found in a scoring path');
   /* Every Date.now in the scoring region must belong to makeDeadline — the one
      permitted clock read, and a safety valve rather than an input to any score.
@@ -812,6 +816,8 @@ function checkMatchmaking() {
 
   /* The deadline must be a safety valve that REPORTS itself, never a silent
      truncation. Zero budget means the very first opponent trips it. */
+  const state = gm.normalize(fixtureLeague(), { week: 1, byeWeeks: fixtureByes });
+  const me = gm.resolveMyTeam(state, '1', '');
   const starved = gm.findOffers(state, me, Object.assign({}, baseOptions, { deadlineMs: 1e-9 }));
   if (starved.truncated && starved.rostersAnalyzed < starved.rostersTotal) {
     pass('an exhausted budget reports truncation and how far it got');
@@ -1234,7 +1240,7 @@ function checkBudget() {
   const modalStart = html.indexOf('id="aiGmModal"');
   const modalEnd = html.indexOf('</div>\n\n<!--', modalStart);
   const modalMarkup = html.slice(modalStart, modalEnd > 0 ? modalEnd : modalStart + 2000);
-  if (!/aigm-card|data-aigm-copy/.test(modalMarkup)) {
+  if (!/aigm-card|aigm-swap-side/.test(modalMarkup)) {
     pass('the modal ships empty — no roster or proposal exists in the static file');
   } else fail('the modal markup carries pre-rendered content');
 
@@ -1371,15 +1377,6 @@ async function checkRender() {
 
   await page.addInitScript(() => {
     try { window.localStorage.setItem('hasCompletedOnboarding', 'true'); } catch (err) { /* private mode */ }
-    /* Grant the clipboard path a stub so the Copy Pitch assertion is about OUR
-       code rather than about headless Chromium's permission model. */
-    window.__aiGmClipboard = [];
-    Object.defineProperty(navigator, 'clipboard', {
-      configurable: true,
-      get() {
-        return { writeText: (text) => { window.__aiGmClipboard.push(text); return Promise.resolve(); } };
-      },
-    });
   });
 
   try {
@@ -1536,10 +1533,25 @@ async function checkRender() {
         html: body.innerHTML,
         text: body.textContent,
         copyButtons: body.querySelectorAll('[data-aigm-copy]').length,
+        copyClass: body.querySelectorAll('.aigm-copy').length,
+        pitchBlocks: body.querySelectorAll('.aigm-pitch').length,
         cards: body.querySelectorAll('.aigm-card').length,
         sections: Array.from(body.querySelectorAll('.aigm-section-head h3')).map((h) => h.textContent),
         subtitle: document.getElementById('aiGmSubtitle').textContent,
         busy: body.getAttribute('aria-busy'),
+        /* Every trade card's own height and its longest run of prose, so the
+           "numbers, not copy" claim is measured rather than asserted. */
+        tradeCards: Array.from(body.querySelectorAll('.aigm-card')).filter(
+          (c) => c.querySelector('.aigm-swap')).map((c) => ({
+            height: Math.round(c.getBoundingClientRect().height),
+            longestText: Math.max(0, ...Array.from(c.querySelectorAll('*'))
+              .filter((el) => !el.children.length)
+              .map((el) => (el.textContent || '').trim().length)),
+          })),
+        watchRows: body.querySelectorAll('.aigm-watch-row').length,
+        /* The desk must never scroll sideways: the form chips carry player names
+           now, and a chip cannot wrap inside itself. */
+        overflowsX: body.scrollWidth > body.clientWidth + 1,
       };
     }, analysis);
 
@@ -1553,9 +1565,67 @@ async function checkRender() {
     if (rendered.sections.includes('Your Roster')) pass('section rendered: Your Roster');
     else fail('missing section', 'Your Roster');
 
-    if (rendered.copyButtons === analysis.trades.length) {
-      pass('every proposal has its own Copy Pitch button (' + rendered.copyButtons + ')');
-    } else fail('copy buttons', rendered.copyButtons + ' for ' + analysis.trades.length + ' proposals');
+    /* ---- the pitch UI is gone ---- */
+    if (!rendered.copyButtons && !rendered.copyClass && !rendered.pitchBlocks) {
+      pass('no Copy Pitch button and no pitch transcript anywhere in the rendered desk');
+    } else fail('the pitch UI is still rendered', JSON.stringify({
+      copyButtons: rendered.copyButtons, copyClass: rendered.copyClass,
+      pitchBlocks: rendered.pitchBlocks,
+    }));
+    if (!/COPY PITCH|ready to send|quick trade idea/i.test(rendered.text)) {
+      pass('none of the pitch copy survives in the rendered text');
+    } else fail('pitch copy is still on screen');
+
+    /* ---- the card is numbers, not copy ----
+       Every leaf element in a trade card is a label, a name or a figure, so none
+       of them should hold a sentence. 60 characters is generous for
+       "Gamma Wide (WR KC) · 14.0 proj" and far under the 200+ the old prose
+       bullets ran to. */
+    const wordy = rendered.tradeCards.filter((c) => c.longestText > 60);
+    if (rendered.tradeCards.length && !wordy.length) {
+      pass(rendered.tradeCards.length + ' trade cards carry no text run over 60 chars ' +
+        '(longest ' + Math.max(...rendered.tradeCards.map((c) => c.longestText)) + ')');
+    } else fail('a trade card still holds a prose run', JSON.stringify(wordy));
+
+    /* And the vertical cost is bounded. Measured on this fixture at 414px wide,
+       before and after the pitch removal:
+
+                     tallest card   typical card   whole board
+         before          694px          560px         3686px
+         after           402px          294px         2582px
+
+       440px is the guard: it clears the tallest card (402px, the one carrying
+       both a BUY LOW and a SELL HIGH chip) with room for a longer team name,
+       and it trips long before anything resembling the old layout — the pitch
+       transcript alone was 158px and its button another 46px. */
+    const TRADE_CARD_MAX_PX = 440;
+    const tall = rendered.tradeCards.filter((c) => c.height > TRADE_CARD_MAX_PX);
+    if (rendered.tradeCards.length && !tall.length) {
+      pass('every trade card fits in ' + TRADE_CARD_MAX_PX + 'px (tallest ' +
+        Math.max(...rendered.tradeCards.map((c) => c.height)) + 'px, was 694px with the pitch)');
+    } else fail('a trade card is taller than ' + TRADE_CARD_MAX_PX + 'px', JSON.stringify(tall));
+
+    if (rendered.watchRows > 0) pass('the watchlist renders ' + rendered.watchRows + ' numeric rows');
+    else fail('the watchlist rendered no rows from a fixture that has both lists');
+
+    if (!rendered.overflowsX) pass('the desk does not scroll sideways at 414px');
+    else fail('the desk overflows horizontally — a chip is wider than the card');
+
+    /* And with a pathologically long name, which is what would actually break it. */
+    const longName = JSON.parse(JSON.stringify(analysis));
+    if (longName.trades[0].sellHigh && longName.trades[0].sellHigh[0]) {
+      longName.trades[0].sellHigh[0].name = 'Bartholomew Fitzgerald-Montgomery III';
+    }
+    longName.trades[0].give[0].name = 'Bartholomew Fitzgerald-Montgomery III';
+    const wide = await page.evaluate((fixture) => {
+      window.FSNAiGm.__setAnalysis(fixture);
+      const body = document.getElementById('aiGmBody');
+      return { overflowsX: body.scrollWidth > body.clientWidth + 1, scrollWidth: body.scrollWidth,
+        clientWidth: body.clientWidth };
+    }, longName);
+    if (!wide.overflowsX) pass('a 38-character player name still does not make the desk scroll sideways');
+    else fail('a long player name overflows the desk', JSON.stringify(wide));
+    await page.evaluate((fixture) => window.FSNAiGm.__setAnalysis(fixture), analysis);
 
     if (!/hit a snag/i.test(rendered.text)) pass('no "hit a snag" text in the rendered desk');
     else fail('the desk rendered a snag message');
@@ -1576,81 +1646,45 @@ async function checkRender() {
     if (rendered.busy === 'false') pass('aria-busy is cleared once the board is painted');
     else fail('aria-busy', rendered.busy);
 
-    /* Escaping. A player name carrying markup must render as text, and the copy
-       payload must survive the attribute round-trip byte for byte. */
+    /* Escaping. A player name carrying markup must render as text, never as
+       markup. Still worth its own assertion with the pitch gone: every trade
+       card now renders names and positions straight into chips and swap rows. */
     const injected = JSON.parse(JSON.stringify(analysis));
     injected.trades[0].targetTeam.name = '<img src=x onerror="window.__aiGmXss=1">';
-    injected.trades[0].pitch = 'Line one\n\n"quoted" & <b>bold</b>\nLine four';
+    injected.trades[0].give[0].name = '<script>window.__aiGmXss=2<\/script>';
+    if (injected.buyLow[0]) injected.buyLow[0].name = '"><img src=x onerror="window.__aiGmXss=3">';
     const escaped = await page.evaluate((fixture) => {
       window.__aiGmXss = 0;
       window.FSNAiGm.__setAnalysis(fixture);
       const body = document.getElementById('aiGmBody');
-      const button = body.querySelector('[data-aigm-copy]');
       return {
         xss: window.__aiGmXss,
         images: body.querySelectorAll('img').length,
-        nameText: body.querySelector('.aigm-name') ? body.querySelector('.aigm-name').textContent : '',
-        copyPayload: button ? button.getAttribute('data-aigm-copy') : '',
-        copiedText: (function () {
-          window.__aiGmClipboard.length = 0;
-          if (button) button.click();
-          return window.__aiGmClipboard[0];
+        scripts: body.querySelectorAll('script').length,
+        /* The trade card's own name, not the first .aigm-name on the board —
+           that one is the Your Roster header and carries nothing injected. */
+        nameText: (function () {
+          const card = Array.from(body.querySelectorAll('.aigm-card'))
+            .find((c) => c.querySelector('.aigm-swap'));
+          const el = card && card.querySelector('.aigm-name');
+          return el ? el.textContent : '';
+        }()),
+        swapText: (function () {
+          const side = body.querySelector('.aigm-swap-side[data-dir="out"]');
+          return side ? side.textContent : '';
         }()),
       };
     }, injected);
-    if (!escaped.xss && escaped.images === 0) pass('a player or team name carrying markup is escaped, not executed');
-    else fail('markup in the analysis reached the DOM as markup', JSON.stringify(escaped));
-    /* The pitch must never be IN the attribute — LeagueData.esc() does not
-       escape the double quote, so a quoted pitch would close it early. The
-       attribute carries a register key; the text is looked up. */
-    if (escaped.copyPayload && !escaped.copyPayload.includes('\n') &&
-        !escaped.copyPayload.includes('"') && escaped.copyPayload.length < 12) {
-      pass('the Copy Pitch button carries only a register key, never the pitch text');
-    } else fail('the pitch text is being embedded in an attribute',
-      JSON.stringify(escaped.copyPayload).slice(0, 120));
-    if (escaped.copiedText === injected.trades[0].pitch) {
-      pass('the register resolves that key to the pitch byte for byte — newlines and quotes intact');
-    } else fail('the register mangled the pitch', JSON.stringify(escaped.copiedText).slice(0, 160));
+    if (!escaped.xss && escaped.images === 0 && escaped.scripts === 0) {
+      pass('markup in a team, player or watchlist name is escaped, not executed');
+    } else fail('markup in the analysis reached the DOM as markup', JSON.stringify(escaped));
+    if (escaped.nameText.includes('<img')) pass('the escaped team name renders as visible text');
+    else fail('the injected team name did not render as text', escaped.nameText.slice(0, 60));
+    if (escaped.swapText.includes('<script')) pass('an injected player name renders as text in the swap row');
+    else fail('the injected player name did not render as text', escaped.swapText.slice(0, 60));
 
-    /* ---- Copy Pitch ---- */
-    await page.evaluate((fixture) => {
-      /* The escaping probe above copied once to prove the register resolves;
-         reset the recorder so this assertion counts only its own click. */
-      window.__aiGmClipboard.length = 0;
-      window.FSNAiGm.__setAnalysis(fixture);
-    }, analysis);
-    await page.click('#aiGmBody [data-aigm-copy]');
-    await page.waitForTimeout(150);
-    const clip = await page.evaluate(() => ({
-      copied: window.__aiGmClipboard.slice(),
-      state: document.querySelector('#aiGmBody [data-aigm-copy]').getAttribute('data-state'),
-      label: document.querySelector('#aiGmBody [data-aigm-copy]').textContent,
-    }));
-    if (clip.copied.length === 1 && clip.copied[0] === analysis.trades[0].pitch) {
-      pass('Copy Pitch puts the exact server-written pitch on the clipboard');
-    } else fail('clipboard payload', JSON.stringify(clip.copied).slice(0, 160));
-    if (clip.state === 'done' && /COPIED/i.test(clip.label)) pass('the button confirms the copy to the reader');
-    else fail('copy confirmation', clip.state + ' / ' + clip.label);
-
-    /* A refused clipboard must say so rather than pretend. */
-    const refusedCopy = await page.evaluate(async () => {
-      const real = navigator.clipboard.writeText;
-      Object.defineProperty(navigator, 'clipboard', {
-        configurable: true,
-        get() { return { writeText: () => Promise.reject(new Error('denied')) }; },
-      });
-      document.execCommand = () => false;
-      const button = document.querySelector('#aiGmBody [data-aigm-copy]');
-      button.click();
-      await new Promise((r) => setTimeout(r, 120));
-      const state = button.getAttribute('data-state');
-      const label = button.textContent;
-      void real;
-      return { state, label };
-    });
-    if (refusedCopy.state === 'failed' && /FAILED/i.test(refusedCopy.label)) {
-      pass('a refused clipboard reports the failure instead of claiming success');
-    } else fail('clipboard failure handling', JSON.stringify(refusedCopy));
+    /* Repaint the clean fixture for the assertions below. */
+    await page.evaluate((fixture) => window.FSNAiGm.__setAnalysis(fixture), analysis);
 
     /* ---- Re-analyze: no league served, so it must fail LOUDLY and honestly ---- */
     const reanalyzed = await page.evaluate(async () => {
@@ -1725,7 +1759,7 @@ async function checkRender() {
     /* The intentional-failure assertions above log on purpose; anything OTHER
        than those is a real regression. */
     const unexpected = consoleErrors.filter((text) =>
-      !/AI_GM_REQUEST_FAILED|AI_GM_CLIPBOARD_REFUSED|\/api\/ai-gm|not deployed|clipboard/i.test(text));
+      !/AI_GM_REQUEST_FAILED|\/api\/ai-gm|not deployed/i.test(text));
     if (!unexpected.length) pass('zero unexpected tagged console errors');
     else {
       fail(unexpected.length + ' unexpected tagged console error(s)');
