@@ -369,7 +369,59 @@ function leagueContextFromTarget(target) {
   };
 }
 
+/* ============================================================
+   ADDITIVE DISPATCH — /api/ai-gm  (rewritten onto this route)
+
+   `api/` is at 12 of the 12 Serverless Functions this plan allows, and a
+   thirteenth FILE fails the DEPLOY at patchBuild rather than the build. So the
+   AI GM beta's handler lives in lib/ai-gm.js and is reached through
+   `/api/ai-gm` -> `/api/espn?action=ai-gm` in vercel.json, exactly as
+   /api/notifications-register, /api/transaction-wire-dispatch,
+   /api/auth/yahoo/callback and /api/blog/articles/publish already are.
+
+   Deliberately the FIRST statement in the handler and an unconditional early
+   return: every existing code path below is reached only when `action` is
+   absent, so the relay's behaviour for every /api/espn?url=… read this app has
+   ever made is byte-for-byte unchanged.
+
+   resolveStoredLeagueAccess is passed IN rather than required inside lib/, so
+   the library never reaches back into api/ and the handler can be driven by a
+   self-test with a stub resolver and no Supabase.
+============================================================ */
+function requestedAction(req) {
+  const q = req && req.query ? req.query.action : undefined;
+  const value = Array.isArray(q) ? q[0] : q;
+  if (value != null && String(value).trim()) return String(value).trim().toLowerCase();
+  if (req && req.url) {
+    try {
+      return String(new URL(req.url, 'http://localhost').searchParams.get('action') || '')
+        .trim().toLowerCase();
+    } catch (error) {
+      /* A req.url this cannot parse is not an action request; the relay's own
+         url-parameter recovery below reports anything genuinely malformed. */
+      console.warn('[api/espn] Could not parse req.url while looking for an ?action= dispatch.', error);
+    }
+  }
+  return '';
+}
+
 module.exports = async function handler(req, res) {
+  if (requestedAction(req) === 'ai-gm') {
+    try {
+      const aiGm = require('../lib/ai-gm');
+      return await aiGm.handle(req, res, {
+        resolveStoredLeagueAccess: resolveStoredLeagueAccess,
+      });
+    } catch (error) {
+      console.error('[api/espn] The AI GM dispatch threw before it could answer.', error);
+      if (res.headersSent) return undefined;
+      return res.status(500).json({
+        error: 'The AI GM beta could not be reached.',
+        code: 'AI_GM_DISPATCH_FAILED',
+      });
+    }
+  }
+
   applyCorsHeaders(res);
 
   // Answer CORS preflight immediately.

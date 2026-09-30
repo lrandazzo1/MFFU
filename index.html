@@ -641,6 +641,140 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
 .fsn-info-pillar-desc code{ color:var(--off); font-family:'JetBrains Mono',monospace; font-size:10.5px;
   background:rgba(255,255,255,.05); padding:1px 4px; border-radius:4px; }
 
+/* ============================================================
+   AI GM BETA  —  private to the leagues on the server-side
+   allowlist (lib/ai-gm.js). The entry card in Setup ships
+   hidden and is only ever unhidden by the gate in the AI GM
+   script block; nothing here is visible to another league.
+============================================================ */
+.aigm-cta{ border-color:rgba(255,178,44,.34);
+  background:
+    radial-gradient(120% 160% at 0% 0%,rgba(255,178,44,.14),transparent 60%),
+    linear-gradient(160deg,#241c10,#0c1119 74%); }
+.aigm-cta:focus-visible{ border-color:var(--gold); box-shadow:0 0 0 3px rgba(255,178,44,.16); }
+.aigm-cta .onboard-cta-icon{ background:linear-gradient(120deg,var(--gold),#c78400); color:#1c1203;
+  box-shadow:0 6px 18px -8px rgba(255,178,44,.6); font-size:15px; }
+.aigm-cta .onboard-cta-arrow{ color:var(--gold); }
+.aigm-cta-badge{ flex:none; margin-left:6px; padding:2px 6px; border-radius:5px; border:1px solid rgba(255,178,44,.4);
+  color:var(--gold); background:rgba(255,178,44,.08); font-family:'JetBrains Mono',monospace;
+  font-size:7.5px; font-weight:700; letter-spacing:.12em; }
+
+#aiGmModal{ position:fixed; inset:0; z-index:132; display:none; align-items:flex-start; justify-content:center;
+  padding:0; background:rgba(3,6,10,.82); backdrop-filter:blur(4px); }
+#aiGmModal[data-open="true"]{ display:flex; animation:fsnInfoFade .18s ease both; }
+.aigm-panel{ width:100%; max-width:520px; max-height:100dvh; display:flex; flex-direction:column;
+  border:1px solid var(--line); background:linear-gradient(170deg,#101722,#070b11);
+  box-shadow:0 24px 60px rgba(0,0,0,.6); }
+@media (min-width:560px){
+  #aiGmModal{ align-items:center; padding:20px; }
+  .aigm-panel{ max-height:92vh; border-radius:16px; }
+}
+.aigm-head{ flex:none; display:flex; align-items:flex-start; justify-content:space-between; gap:12px;
+  padding:calc(14px + env(safe-area-inset-top)) 16px 13px; background:linear-gradient(160deg,#1a1a26,#0c111a);
+  border-bottom:1px solid var(--line); }
+.aigm-kicker{ display:flex; align-items:center; gap:7px; margin-bottom:4px; color:var(--gold);
+  font-family:'JetBrains Mono',monospace; font-size:8.5px; font-weight:700; letter-spacing:.16em;
+  text-transform:uppercase; }
+.aigm-title{ color:#fff; font-family:'Oswald',sans-serif; font-size:18px; font-weight:700; letter-spacing:.02em; }
+.aigm-sub{ margin-top:3px; color:var(--dim); font-size:10.5px; line-height:1.45; }
+.aigm-body{ flex:1 1 auto; min-height:0; overflow-y:auto; overscroll-behavior:contain;
+  padding:14px 16px calc(18px + env(safe-area-inset-bottom)); -webkit-overflow-scrolling:touch; }
+.aigm-foot{ flex:none; display:flex; gap:8px; align-items:center;
+  padding:10px 16px calc(10px + env(safe-area-inset-bottom));
+  border-top:1px solid var(--line); background:#0a0f16; }
+.aigm-refresh{ flex:1 1 auto; display:flex; align-items:center; justify-content:center; gap:8px;
+  padding:12px; border-radius:11px; border:1px solid rgba(255,178,44,.38); color:var(--gold);
+  background:rgba(255,178,44,.08); font-family:'Anton',sans-serif; font-size:13px; letter-spacing:.05em;
+  text-transform:uppercase; cursor:pointer; }
+.aigm-refresh:disabled{ opacity:.55; cursor:default; }
+.aigm-refresh:focus-visible{ outline:none; box-shadow:0 0 0 3px rgba(255,178,44,.18); }
+
+.aigm-section{ margin-top:16px; }
+.aigm-section:first-child{ margin-top:0; }
+.aigm-section-head{ display:flex; align-items:baseline; gap:9px; margin-bottom:9px;
+  padding-bottom:7px; border-bottom:1px solid rgba(255,255,255,.07); }
+.aigm-section-head h3{ color:#fff; font-family:'Anton',sans-serif; font-size:14px; letter-spacing:.04em;
+  text-transform:uppercase; }
+.aigm-section-count{ color:var(--dim); font-family:'JetBrains Mono',monospace; font-size:9.5px; font-weight:700; }
+
+.aigm-card{ margin-bottom:9px; padding:11px 12px; border:1px solid var(--line); border-radius:12px;
+  background:linear-gradient(160deg,#0f1520,#0a0e15); }
+.aigm-card:last-child{ margin-bottom:0; }
+.aigm-row{ display:flex; align-items:flex-start; justify-content:space-between; gap:10px; }
+.aigm-rank{ flex:none; width:24px; height:24px; border-radius:7px; display:flex; align-items:center;
+  justify-content:center; background:rgba(255,178,44,.12); border:1px solid rgba(255,178,44,.3);
+  color:var(--gold); font-family:'JetBrains Mono',monospace; font-size:10.5px; font-weight:700; }
+.aigm-name{ color:#fff; font-family:'Oswald',sans-serif; font-size:14.5px; font-weight:600; line-height:1.2; }
+.aigm-meta{ margin-top:2px; color:var(--dim); font-family:'JetBrains Mono',monospace; font-size:9.5px;
+  letter-spacing:.04em; }
+.aigm-delta{ flex:none; text-align:right; color:var(--green); font-family:'JetBrains Mono',monospace;
+  font-size:13px; font-weight:700; }
+.aigm-delta-label{ display:block; color:#4d5769; font-size:7.5px; font-weight:700; letter-spacing:.1em;
+  text-transform:uppercase; }
+.aigm-delta[data-flat="true"]{ color:var(--dim); }
+.aigm-reasons{ margin:8px 0 0; padding:0; list-style:none; }
+.aigm-reasons li{ position:relative; padding-left:11px; margin-top:4px; color:var(--dim); font-size:11px;
+  line-height:1.5; }
+.aigm-reasons li::before{ content:'›'; position:absolute; left:0; color:var(--gold); }
+.aigm-bid{ display:flex; flex-wrap:wrap; gap:6px; margin-top:9px; }
+.aigm-chip{ padding:3px 8px; border-radius:6px; border:1px solid var(--line); background:#0a0f16;
+  color:var(--off); font-family:'JetBrains Mono',monospace; font-size:9.5px; font-weight:700;
+  letter-spacing:.05em; }
+.aigm-chip[data-tone="gold"]{ color:var(--gold); border-color:rgba(255,178,44,.35); background:rgba(255,178,44,.07); }
+.aigm-chip[data-tone="green"]{ color:var(--green); border-color:rgba(0,214,138,.32); background:rgba(0,214,138,.07); }
+.aigm-chip[data-tone="cyan"]{ color:var(--cyan); border-color:rgba(0,224,255,.32); background:rgba(0,224,255,.07); }
+.aigm-chip[data-tone="red"]{ color:var(--red); border-color:rgba(255,77,88,.32); background:rgba(255,77,88,.07); }
+
+.aigm-swap{ display:grid; grid-template-columns:1fr; gap:7px; margin-top:10px; }
+.aigm-swap-side{ padding:8px 10px; border-radius:9px; border:1px solid rgba(255,255,255,.07); background:#0b1018; }
+.aigm-swap-side[data-dir="out"]{ border-left:2px solid var(--red); }
+.aigm-swap-side[data-dir="in"]{ border-left:2px solid var(--green); }
+.aigm-swap-label{ display:block; margin-bottom:3px; color:#4d5769; font-family:'JetBrains Mono',monospace;
+  font-size:7.5px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; }
+.aigm-swap-player{ color:var(--off); font-size:11.5px; line-height:1.5; }
+.aigm-swap-player b{ color:#fff; font-weight:600; }
+.aigm-ledger{ display:flex; gap:8px; margin-top:10px; }
+.aigm-ledger-cell{ flex:1 1 0; padding:8px 9px; border-radius:9px; border:1px solid rgba(255,255,255,.07);
+  background:#0b1018; text-align:center; }
+.aigm-ledger-who{ display:block; color:#4d5769; font-family:'JetBrains Mono',monospace; font-size:7.5px;
+  font-weight:700; letter-spacing:.1em; text-transform:uppercase; }
+.aigm-ledger-val{ display:block; margin-top:2px; color:var(--green); font-family:'JetBrains Mono',monospace;
+  font-size:14px; font-weight:700; }
+.aigm-ledger-detail{ display:block; margin-top:1px; color:var(--dim); font-family:'JetBrains Mono',monospace;
+  font-size:8.5px; }
+.aigm-copy{ width:100%; margin-top:10px; padding:10px; border-radius:9px; border:1px solid rgba(0,224,255,.34);
+  color:var(--cyan); background:rgba(0,224,255,.07); font-family:'Anton',sans-serif; font-size:12px;
+  letter-spacing:.05em; text-transform:uppercase; cursor:pointer; }
+.aigm-copy[data-state="done"]{ color:var(--green); border-color:rgba(0,214,138,.4); background:rgba(0,214,138,.08); }
+.aigm-copy[data-state="failed"]{ color:var(--red); border-color:rgba(255,77,88,.4); background:rgba(255,77,88,.08); }
+.aigm-copy:focus-visible{ outline:none; box-shadow:0 0 0 3px rgba(0,224,255,.16); }
+.aigm-pitch{ margin-top:8px; padding:9px 10px; border-radius:9px; border:1px solid rgba(255,255,255,.07);
+  background:#080c12; color:var(--dim); font-family:'JetBrains Mono',monospace; font-size:10px;
+  line-height:1.6; white-space:pre-wrap; max-height:150px; overflow-y:auto; overscroll-behavior:contain; }
+
+.aigm-note{ margin:0; padding:11px 12px; border:1px dashed rgba(255,255,255,.12); border-radius:11px;
+  color:var(--dim); font-size:11.5px; line-height:1.55; }
+.aigm-note[data-tone="error"]{ border-color:rgba(255,77,88,.4); color:#ffb3b8;
+  background:rgba(255,77,88,.05); border-style:solid; }
+.aigm-lineup{ display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:5px; margin-top:9px; }
+.aigm-lineup-cell{ display:flex; align-items:baseline; gap:6px; padding:5px 7px; border-radius:7px;
+  background:#0b1018; border:1px solid rgba(255,255,255,.05); }
+.aigm-lineup-slot{ flex:none; width:38px; color:var(--gold); font-family:'JetBrains Mono',monospace;
+  font-size:8.5px; font-weight:700; letter-spacing:.06em; }
+.aigm-lineup-name{ flex:1 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  color:var(--off); font-size:10.5px; }
+.aigm-lineup-pts{ flex:none; color:var(--dim); font-family:'JetBrains Mono',monospace; font-size:9.5px; }
+.aigm-pos-grid{ display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:6px; margin-top:9px; }
+.aigm-pos-cell{ padding:7px 6px; border-radius:9px; background:#0b1018; border:1px solid rgba(255,255,255,.06);
+  text-align:center; }
+.aigm-pos-name{ display:block; color:#fff; font-family:'Anton',sans-serif; font-size:12px; letter-spacing:.04em; }
+.aigm-pos-need{ display:block; margin-top:2px; font-family:'JetBrains Mono',monospace; font-size:11px;
+  font-weight:700; color:var(--red); }
+.aigm-pos-need[data-need="none"]{ color:var(--green); }
+.aigm-pos-detail{ display:block; margin-top:1px; color:#4d5769; font-family:'JetBrains Mono',monospace;
+  font-size:8px; letter-spacing:.04em; }
+.aigm-spinner-row{ display:flex; align-items:center; gap:9px; color:var(--dim); font-size:11.5px; }
+
 /* ---------- SCREENS ---------- */
 .screen{ display:none; animation:screenIn .22s ease both; }
 .screen > header{ position:relative; z-index:2; }
@@ -4748,6 +4882,25 @@ body.fsn-dd-lock{ overflow:hidden; }
         <span class="onboard-cta-arrow" aria-hidden="true">→</span>
       </button>
 
+      <!-- ============================================================
+           BETA AI GM — ENTRY POINT  (private)
+
+           Ships hidden, with `hidden` AND aria-hidden set. The ONLY thing that
+           ever unhides it is the league gate in the AI GM script block, which
+           asks lib/ai-gm.js's allowlist through the same id the server enforces.
+           A reader in any other league never sees this card, and the server
+           refuses the route regardless — the visual gate is a courtesy, not the
+           boundary.
+      ============================================================ -->
+      <button id="aiGmOpenBtn" type="button" class="onboard-cta aigm-cta" hidden aria-hidden="true">
+        <span class="onboard-cta-icon" aria-hidden="true">GM</span>
+        <span class="onboard-cta-text">
+          <span class="onboard-cta-title">Beta AI GM<span class="aigm-cta-badge">PRIVATE</span></span>
+          <span class="onboard-cta-sub" id="aiGmOpenSub">Trade evaluator &amp; waiver assistant · Live rosters, projections &amp; injuries</span>
+        </span>
+        <span class="onboard-cta-arrow" aria-hidden="true">→</span>
+      </button>
+
       <div class="card p-4">
         <div class="section-head"><span class="bar" style="background:var(--green)"></span><h2>Saved Leagues</h2></div>
         <div class="league-switcher">
@@ -5218,6 +5371,33 @@ body.fsn-dd-lock{ overflow:hidden; }
         </div>
         <p class="fsn-info-pillar-desc">Managerial efficiency — the share of your optimal lineup you actually started (<code>Optimal Start %</code>). When the platform doesn't expose bench points (a common ESPN export limit), this pillar safely falls back to normalized Schedule Hardship / Strength of Schedule instead.</p>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     BETA AI GM — the in-app test surface  (private)
+
+     Empty in the markup on purpose. Every row is rendered by the AI GM script
+     block from the /api/ai-gm response, so nothing about a roster or a trade
+     partner exists in the static file a non-member can download.
+============================================================ -->
+<div id="aiGmModal" data-open="false" role="dialog" aria-modal="true" aria-labelledby="aiGmTitle" aria-hidden="true">
+  <div class="aigm-panel">
+    <div class="aigm-head">
+      <div class="min-w-0">
+        <span class="aigm-kicker">AI GM<span class="aigm-cta-badge">BETA</span></span>
+        <h2 class="aigm-title" id="aiGmTitle">General Manager Desk</h2>
+        <p class="aigm-sub" id="aiGmSubtitle">Reading your league from ESPN…</p>
+      </div>
+      <button type="button" class="fsn-info-close" id="aiGmClose" aria-label="Close the AI GM desk">×</button>
+    </div>
+    <div class="aigm-body" id="aiGmBody" aria-live="polite" aria-busy="false"></div>
+    <div class="aigm-foot">
+      <button type="button" class="aigm-refresh" id="aiGmRefresh">
+        <span class="spinner hidden" id="aiGmRefreshSpinner"></span>
+        <span id="aiGmRefreshLabel">RE-ANALYZE LEAGUE</span>
+      </button>
     </div>
   </div>
 </div>
@@ -38813,7 +38993,11 @@ $('setupClose').addEventListener('click', ()=>{
 });
 document.addEventListener('keydown', e=>{
   if(ui.screen !== 'setup') return;
-  if(document.querySelector('#onboardModal[data-open="true"],#ftuModal[data-open="true"],#profilePicker[data-open="true"],#reader[data-open="true"]')) return;
+  /* Escape belongs to the TOPMOST layer. Every dialog that can be open over
+     Setup is listed here, #aiGmModal included: without it, one Escape closed
+     the AI GM desk AND the Setup screen underneath it in the same keystroke,
+     dropping the reader back on Home from two layers deep. */
+  if(document.querySelector('#onboardModal[data-open="true"],#ftuModal[data-open="true"],#profilePicker[data-open="true"],#reader[data-open="true"],#aiGmModal[data-open="true"]')) return;
   if(e.key === 'Escape'){
     $('setupClose').click();
   }else if(e.key === 'Tab'){
@@ -39684,6 +39868,948 @@ FSNBridge.register({
    so a smoke test can seed LeagueData directly and repaint. */
 window.__fsnRender = renderAll;
 
+})();
+</script>
+
+<script>
+/* ============================================================================
+   AI GM BETA — PRIVATE IN-APP TEST SURFACE
+
+   Its own top-level <script> block, per the Global Scope Rule: this is a
+   seventh independent closure that can see the globals block 1 publishes
+   (LeagueData, selectedLeagueId, FSNNet, FSNApi, FSNStore, FSNBridge,
+   leagueShareHeaders) and nothing private to blocks 2–6. It reaches the UI layer
+   only through FSNBridge, and it registers its own two entry points there so the
+   Setup screen in block 6 can open the desk without either block importing the
+   other.
+
+   It also binds its own two DOM listeners (the Setup entry card, the modal
+   close/refresh), which is why block 6 needed no edit at all: the markup is
+   static, this block owns it, and a failure here can only ever degrade this
+   modal.
+
+   WHAT IS AND IS NOT DONE HERE
+   ----------------------------
+   Every number on the screen is computed SERVER-SIDE by lib/ai-gm.js behind
+   /api/ai-gm, because that is where the league's stored espn_s2 / SWID pair can
+   be read and where ESPN's fantasy filter can actually be sent. This block
+   fetches that analysis and renders it. It contains no lineup math, no
+   projection parsing and no trade scoring — one copy of that math, tested once,
+   in one place.
+
+   THE GATE
+   --------
+   The card and the desk are visible only while the active league is on the
+   allowlist. That check is duplicated here purely so a reader in another league
+   is never shown an entry point that would 403; the ENFORCED gate is the one in
+   lib/ai-gm.js, server-side, which no client can talk past.
+============================================================================ */
+window.FSNAiGm = (function(){
+'use strict';
+
+const esc = (s)=> LeagueData.esc(s);
+const $ = (id)=> document.getElementById(id);
+
+/* ============================================================
+   THE ALLOWLIST
+
+   Mirrors AI_GM_ALLOWED_LEAGUE_IDS in lib/ai-gm.js. scripts/ai-gm-check.mjs
+   asserts the two lists are identical, so they cannot drift: a league added on
+   the server but not here would have a working endpoint and no way in, and a
+   league added here but not there would show a card that 403s.
+============================================================ */
+const ALLOWED_LEAGUE_IDS = ['57155288'];
+
+function normalizeLeagueId(value){
+  const id = String(value == null ? '' : value).trim();
+  return /^\d{1,20}$/.test(id) ? id : '';
+}
+
+function isEnabledFor(leagueId){
+  const id = normalizeLeagueId(leagueId);
+  return !!id && ALLOWED_LEAGUE_IDS.indexOf(id) !== -1;
+}
+
+/* The desk is ESPN-only: the analysis is built from ESPN roster, projection and
+   ownership fields that a Sleeper or Yahoo payload does not carry. A saved
+   Sleeper league that happened to share the numeric id would otherwise open a
+   desk that could only fail. */
+function isEnabledNow(){
+  return isEnabledFor(selectedLeagueId()) && String(LeagueData.activeProvider) === 'espn';
+}
+
+/* ============================================================
+   STATE
+============================================================ */
+const state = {
+  loading: false,
+  analysis: null,
+  error: '',
+  /* The league the analysis in hand belongs to. A league switch while the desk
+     is closed must not leave last league's board behind the card. */
+  scope: '',
+};
+
+/* ============================================================
+   THE PITCH REGISTER
+
+   The pitch text lives HERE, keyed by its index in the rendered board, and the
+   Copy Pitch button carries only that key. The obvious alternative — putting
+   the pitch in a data- attribute — is wrong, and the render check catches it:
+   LeagueData.esc() escapes &, < and > but NOT the double quote, because it is
+   built for element content rather than attribute context. A pitch containing a
+   quote would therefore close the attribute early and put the rest of the DM
+   into the markup as attributes. Newlines and quotes are exactly what this copy
+   is made of, so the text never goes near an attribute at all.
+============================================================ */
+const pitchRegister = new Map();
+
+/* ============================================================
+   FORMATTING
+============================================================ */
+function n1(value){
+  return (Math.round((Number(value) || 0) * 10) / 10).toFixed(1);
+}
+
+function signed(value){
+  const n = Number(value) || 0;
+  return (n >= 0 ? '+' : '') + n1(n);
+}
+
+function playerLine(p){
+  if(!p) return '<span class="aigm-swap-player">(empty slot — no eligible player rostered)</span>';
+  const tag = [p.pos, p.proTeam].filter(Boolean).join(' ');
+  const flags = [];
+  if(p.injury && p.injury !== 'ACTIVE' && p.injury !== 'NORMAL') flags.push(esc(p.injury));
+  if(p.byeWeek) flags.push('BYE ' + esc(String(p.byeWeek)));
+  return '<span class="aigm-swap-player"><b>' + esc(p.name) + '</b>' +
+    (tag ? ' <span style="color:var(--dim)">' + esc(tag) + '</span>' : '') +
+    ' · ' + (p.hasProjection === false ? 'no forecast' : n1(p.projection) + ' proj') +
+    (flags.length ? ' · <span style="color:var(--gold)">' + flags.join(' · ') + '</span>' : '') +
+    '</span>';
+}
+
+function chip(text, tone){
+  return '<span class="aigm-chip"' + (tone ? ' data-tone="' + esc(tone) + '"' : '') + '>' +
+    esc(text) + '</span>';
+}
+
+function note(text, tone){
+  return '<p class="aigm-note"' + (tone ? ' data-tone="' + esc(tone) + '"' : '') + '>' +
+    esc(text) + '</p>';
+}
+
+function sectionHead(title, count){
+  return '<div class="aigm-section-head"><h3>' + esc(title) + '</h3>' +
+    (count ? '<span class="aigm-section-count">' + esc(count) + '</span>' : '') + '</div>';
+}
+
+/* ============================================================
+   RENDERERS
+
+   Each one takes the analysis object and returns a string. They are exported on
+   window.FSNAiGm so the render check can drive them against a fixture without a
+   network, a league, or a modal — the UI's own unit tests.
+============================================================ */
+
+/* My roster, as the desk reads it: the optimal lineup and the four positional
+   headroom numbers every recommendation below is derived from. Shown first
+   because a reader who disagrees with the read will disagree with the advice,
+   and should be able to see why immediately. */
+function renderMyTeam(analysis){
+  const me = analysis.myTeam;
+  const league = analysis.league;
+  const parts = [];
+
+  parts.push('<div class="aigm-section">');
+  parts.push(sectionHead('Your Roster', n1(me.projectedLineup) + ' proj pts'));
+  parts.push('<div class="aigm-card">');
+  parts.push('<div class="aigm-row"><div class="min-w-0">' +
+    '<div class="aigm-name">' + esc(me.name) + '</div>' +
+    '<div class="aigm-meta">' + esc(me.record || 'no record yet') + ' · ' + esc(me.owner) +
+    (me.playoffSeed ? ' · SEED ' + esc(String(me.playoffSeed)) : '') + '</div>' +
+    '</div><div class="aigm-delta"><span class="aigm-delta-label">Optimal</span>' +
+    n1(me.projectedLineup) + '</div></div>');
+
+  parts.push('<div class="aigm-lineup">');
+  (me.lineup || []).forEach(function(row){
+    parts.push('<div class="aigm-lineup-cell">' +
+      '<span class="aigm-lineup-slot">' + esc(row.slot) + '</span>' +
+      '<span class="aigm-lineup-name">' + (row.player ? esc(row.player.name) : '—') + '</span>' +
+      '<span class="aigm-lineup-pts">' + (row.player ? n1(row.player.projection) : '0.0') + '</span>' +
+      '</div>');
+  });
+  parts.push('</div>');
+
+  /* NEED is the honest number: what a median league starter at that position
+     would add to this lineup. 0.0 means the spot is already above the league's
+     middle — not that the position is empty. */
+  parts.push('<div class="aigm-pos-grid">');
+  (me.positions || []).forEach(function(row){
+    parts.push('<div class="aigm-pos-cell">' +
+      '<span class="aigm-pos-name">' + esc(row.pos) + '</span>' +
+      '<span class="aigm-pos-need" data-need="' + (row.needValue > 0.05 ? 'gap' : 'none') + '">' +
+      (row.needValue > 0.05 ? '+' + n1(row.needValue) : 'SET') + '</span>' +
+      '<span class="aigm-pos-detail">' + esc(String(row.starting)) + '/' + esc(String(row.rostered)) +
+      ' · med ' + n1(row.leagueMedian) + '</span>' +
+      '</div>');
+  });
+  parts.push('</div>');
+
+  parts.push('<ul class="aigm-reasons">');
+  parts.push('<li>NEED is what a median league starter at that position would add to this lineup. ' +
+    'SET means the spot is already at or above the league middle.</li>');
+  parts.push('<li>Lineup solved against this league\'s own slots: ' +
+    esc((league.lineup || []).map(function(s){ return s.count + ' ' + s.slot; }).join(' · ')) +
+    (league.lineupFromSettings ? '' : ' (ESPN did not return readable slot counts — standard template used)') +
+    '</li>');
+  parts.push('</ul>');
+  parts.push('</div></div>');
+  return parts.join('');
+}
+
+/* The waiver board. Rank is by what the claim is worth to MY optimal lineup,
+   which is why a 0.0 row can still be above a higher-projected player: the
+   higher-projected one does not crack the lineup. */
+function renderWaivers(analysis){
+  const waivers = analysis.waivers || {};
+  const board = waivers.board || [];
+  const ctx = waivers.context || {};
+  const parts = [];
+
+  parts.push('<div class="aigm-section">');
+  parts.push(sectionHead('Recommended Waiver Claims', board.length
+    ? board.length + ' of ' + (waivers.poolSize || 0) + ' available'
+    : 'none'));
+
+  const context = [];
+  if(ctx.usesFab){
+    context.push(chip('FAB ' + (ctx.fabRemaining == null ? '—' : '$' + ctx.fabRemaining + ' left'), 'gold'));
+    if(ctx.fabBudget != null) context.push(chip('budget $' + ctx.fabBudget));
+  } else if(ctx.waiverRank != null){
+    context.push(chip('priority #' + ctx.waiverRank, 'gold'));
+  }
+  if(ctx.openRosterSpots != null){
+    context.push(chip(ctx.openRosterSpots + ' open spot' + (ctx.openRosterSpots === 1 ? '' : 's'),
+      ctx.openRosterSpots > 0 ? 'green' : 'red'));
+  }
+  if(ctx.urgency != null) context.push(chip('urgency ' + Math.round(ctx.urgency) + '%'));
+  (ctx.byeExposure || []).forEach(function(row){
+    context.push(chip('wk ' + row.week + ' bye: ' + row.positions.join('/'), 'cyan'));
+  });
+  if(context.length) parts.push('<div class="aigm-bid">' + context.join('') + '</div>');
+
+  if(waivers.error){
+    parts.push(note('The waiver pool could not be read from ESPN, so this board is empty. ' +
+      waivers.error, 'error'));
+  } else if(!board.length){
+    parts.push(note('Nothing on the wire would change this lineup, and no position on the roster ' +
+      'is below the league median. That is a board worth leaving alone.'));
+  }
+
+  board.forEach(function(row){
+    parts.push('<div class="aigm-card">');
+    parts.push('<div class="aigm-row">' +
+      '<span class="aigm-rank">' + esc(String(row.rank)) + '</span>' +
+      '<div class="min-w-0" style="flex:1 1 auto">' +
+      '<div class="aigm-name">' + esc(row.name) + '</div>' +
+      '<div class="aigm-meta">' + esc([row.pos, row.proTeam].filter(Boolean).join(' ')) +
+      ' · ' + (row.hasProjection ? n1(row.projection) + ' proj' : 'no forecast') +
+      (row.percentOwned == null ? '' : ' · ' + Math.round(row.percentOwned) + '% owned') +
+      (row.byeWeek ? ' · BYE ' + esc(String(row.byeWeek)) : '') + '</div>' +
+      '</div>' +
+      '<div class="aigm-delta" data-flat="' + (row.lineupGain > 0.05 ? 'false' : 'true') + '">' +
+      '<span class="aigm-delta-label">Δ pts/wk</span>' + signed(row.lineupGain) + '</div>' +
+      '</div>');
+
+    const bids = [];
+    if(row.fab){
+      bids.push(chip(row.fab.speculative
+        ? 'min bid $' + row.fab.amount
+        : 'bid $' + row.fab.amount + (row.fab.pct ? ' (' + row.fab.pct + '% of remaining)' : ''),
+        row.fab.speculative ? null : 'gold'));
+    }
+    if(row.priority){
+      bids.push(chip(row.priority.spend ? 'spend the claim' : 'hold the claim',
+        row.priority.spend ? 'gold' : null));
+    }
+    if(row.fillsNeed) bids.push(chip('fills ' + row.pos + ' need', 'cyan'));
+    if(row.injury && row.injury !== 'ACTIVE' && row.injury !== 'NORMAL') {
+      bids.push(chip(row.injury, 'red'));
+    }
+    if(bids.length) parts.push('<div class="aigm-bid">' + bids.join('') + '</div>');
+
+    const reasons = (row.reasons || []).slice();
+    if(row.priority && row.priority.note) reasons.push(row.priority.note);
+    if(reasons.length){
+      parts.push('<ul class="aigm-reasons">' + reasons.map(function(r){
+        return '<li>' + esc(r) + '</li>';
+      }).join('') + '</ul>');
+    }
+    parts.push('</div>');
+  });
+
+  if(ctx.byeWeeksUnavailable){
+    parts.push(note('ESPN did not return pro-team bye weeks for this season, so nothing above ' +
+      'accounts for byes.'));
+  }
+  parts.push('</div>');
+  return parts.join('');
+}
+
+/* The trade board. Every package on it raised BOTH optimal lineups when the
+   server re-solved them, which is the only claim being made — and the win-win
+   ledger says so in both directions rather than only mine. */
+function renderTrades(analysis){
+  const trades = analysis.trades || [];
+  const search = analysis.search || {};
+  const parts = [];
+
+  parts.push('<div class="aigm-section">');
+  parts.push(sectionHead('Targeted Trade Proposals', trades.length
+    ? trades.length + ' of ' + (search.twoWayPositive || 0) + ' win-win'
+    : 'none'));
+
+  if(!trades.length){
+    parts.push(note('No package of two-or-fewer players raises both lineups right now. That usually ' +
+      'means this roster is already shaped for its own lineup, or ESPN has not posted week ' +
+      esc(String(analysis.league.week)) + ' projections yet. ' +
+      (search.packagesConsidered
+        ? search.packagesConsidered + ' packages were re-solved across ' +
+          (search.rostersAnalyzed || 0) + ' rosters.'
+        : '')));
+  }
+
+  /* The register is rebuilt from scratch on every render, so a key can never
+     outlive the board it belongs to and resolve to a previous league's pitch. */
+  pitchRegister.clear();
+  trades.forEach(function(trade, index){
+    parts.push('<div class="aigm-card">');
+    parts.push('<div class="aigm-row"><div class="min-w-0">' +
+      '<div class="aigm-name">' + esc(trade.targetTeam.name) + '</div>' +
+      '<div class="aigm-meta">' + esc(trade.targetTeam.record || 'no record') + ' · ' +
+      esc(trade.targetTeam.owner) + ' · ' + esc(trade.shape) + '</div>' +
+      '</div><div class="aigm-delta"><span class="aigm-delta-label">You</span>' +
+      signed(trade.myLineup.gain) + '</div></div>');
+
+    parts.push('<div class="aigm-bid">' +
+      (trade.tags || []).map(function(tag){
+        return chip(tag, tag === 'BUY LOW' ? 'cyan' : tag === 'SELL HIGH' ? 'gold' : null);
+      }).join('') +
+      (trade.theirRead && trade.theirRead.biggestDeficit
+        ? chip('their hole: ' + trade.theirRead.biggestDeficit + ' +' + n1(trade.theirRead.deficitValue))
+        : '') +
+      '</div>');
+
+    parts.push('<div class="aigm-swap">' +
+      '<div class="aigm-swap-side" data-dir="out"><span class="aigm-swap-label">You send</span>' +
+      (trade.give || []).map(playerLine).join('<br>') + '</div>' +
+      '<div class="aigm-swap-side" data-dir="in"><span class="aigm-swap-label">You get</span>' +
+      (trade.receive || []).map(playerLine).join('<br>') + '</div>' +
+      '</div>');
+
+    /* Both sides of the ledger, side by side. A proposal that only shows my own
+       gain is a proposal I cannot judge the acceptance odds of. */
+    parts.push('<div class="aigm-ledger">' +
+      '<div class="aigm-ledger-cell"><span class="aigm-ledger-who">Your lineup</span>' +
+      '<span class="aigm-ledger-val">' + signed(trade.myLineup.gain) + '</span>' +
+      '<span class="aigm-ledger-detail">' + n1(trade.myLineup.before) + ' → ' +
+      n1(trade.myLineup.after) + '</span></div>' +
+      '<div class="aigm-ledger-cell"><span class="aigm-ledger-who">Their lineup</span>' +
+      '<span class="aigm-ledger-val">' + signed(trade.theirLineup.gain) + '</span>' +
+      '<span class="aigm-ledger-detail">' + n1(trade.theirLineup.before) + ' → ' +
+      n1(trade.theirLineup.after) + '</span></div>' +
+      '</div>');
+
+    const reasons = [];
+    (trade.buyLow || []).forEach(function(row){ if(row) reasons.push('BUY LOW · ' + row.reason); });
+    (trade.sellHigh || []).forEach(function(row){ if(row) reasons.push('SELL HIGH · ' + row.reason); });
+    if(!reasons.length){
+      reasons.push('Straight positional fit: re-solving both lineups with this package seated puts ' +
+        signed(trade.myLineup.gain) + ' pts/wk on your card and ' + signed(trade.theirLineup.gain) +
+        ' on theirs, which is why it is worth sending.');
+    }
+    if((trade.designations || []).length){
+      reasons.push('Designations in this deal: ' + trade.designations.join('; ') +
+        '. ESPN\'s weekly forecast already discounts them on both sides.');
+    }
+    parts.push('<ul class="aigm-reasons">' + reasons.map(function(r){
+      return '<li>' + esc(r) + '</li>';
+    }).join('') + '</ul>');
+
+    /* Only the register key goes in the attribute. The clipboard then carries
+       the exact text the server wrote — every newline and every quote — rather
+       than whatever an attribute round-trip made of it. */
+    const pitchKey = 'p' + index;
+    pitchRegister.set(pitchKey, String(trade.pitch == null ? '' : trade.pitch));
+    parts.push('<button type="button" class="aigm-copy" data-aigm-copy="' + pitchKey +
+      '" data-state="idle">COPY PITCH</button>');
+    parts.push('<div class="aigm-pitch">' + esc(trade.pitch) + '</div>');
+    parts.push('</div>');
+  });
+
+  if(search.truncated){
+    parts.push(note('The search hit its time budget after ' + (search.rostersAnalyzed || 0) + ' of ' +
+      (search.rostersTotal || 0) + ' opposing rosters. Everything above is real; there may be more ' +
+      'on the rosters it did not reach. Re-analyze to try again.'));
+  }
+  parts.push('</div>');
+  return parts.join('');
+}
+
+/* Buy-low and sell-high candidates that did NOT make a win-win package. Kept
+   visible because they are the watchlist: a target whose price has not yet moved
+   far enough to clear the two-way test is the one to ask about anyway. */
+function renderWatchlist(analysis){
+  const buyLow = analysis.buyLow || [];
+  const sellHigh = analysis.sellHigh || [];
+  if(!buyLow.length && !sellHigh.length) return '';
+
+  const parts = [];
+  parts.push('<div class="aigm-section">');
+  parts.push(sectionHead('Watchlist', buyLow.length + ' buy low · ' + sellHigh.length + ' sell high'));
+
+  if(buyLow.length){
+    parts.push('<div class="aigm-card">');
+    parts.push('<div class="aigm-name" style="font-size:12.5px">Buy Low targets</div>');
+    parts.push('<ul class="aigm-reasons">' + buyLow.map(function(row){
+      return '<li><b style="color:#fff">' + esc(row.name) + '</b> (' + esc(row.pos) + ', ' +
+        esc(row.teamName) + ' ' + esc(row.teamRecord) + ') — ' + esc(row.reason) + '</li>';
+    }).join('') + '</ul>');
+    parts.push('</div>');
+  }
+  if(sellHigh.length){
+    parts.push('<div class="aigm-card">');
+    parts.push('<div class="aigm-name" style="font-size:12.5px">Sell High chips</div>');
+    parts.push('<ul class="aigm-reasons">' + sellHigh.map(function(row){
+      return '<li><b style="color:#fff">' + esc(row.name) + '</b> (' + esc(row.pos) + ', ' +
+        esc(row.role) + ') — ' + esc(row.reason) + '</li>';
+    }).join('') + '</ul>');
+    parts.push('</div>');
+  }
+  parts.push('</div>');
+  return parts.join('');
+}
+
+function renderFooterNote(analysis){
+  const search = analysis.search || {};
+  return '<div class="aigm-section">' + note(
+    'Every delta above is the change in each team\'s OPTIMAL starting lineup against ESPN\'s own ' +
+    'week ' + analysis.league.week + ' projections, so it assumes both managers set their best ' +
+    'lineup. ' + (search.packagesConsidered || 0) + ' packages were re-solved across ' +
+    (search.rostersAnalyzed || 0) + ' opposing rosters. Nothing here is sent anywhere — copy a ' +
+    'pitch and send it yourself.') + '</div>';
+}
+
+function renderAnalysis(analysis){
+  return renderMyTeam(analysis) +
+    renderWaivers(analysis) +
+    renderTrades(analysis) +
+    renderWatchlist(analysis) +
+    renderFooterNote(analysis);
+}
+
+/* ============================================================
+   PAINT
+============================================================ */
+function setSubtitle(text){
+  const el = $('aiGmSubtitle');
+  if(el) el.textContent = text;
+}
+
+function setBusy(busy){
+  const body = $('aiGmBody');
+  if(body) body.setAttribute('aria-busy', String(!!busy));
+  const btn = $('aiGmRefresh');
+  if(btn) btn.disabled = !!busy;
+  const spinner = $('aiGmRefreshSpinner');
+  if(spinner) spinner.classList.toggle('hidden', !busy);
+  const label = $('aiGmRefreshLabel');
+  if(label) label.textContent = busy ? 'ANALYZING…' : 'RE-ANALYZE LEAGUE';
+}
+
+function paint(){
+  const body = $('aiGmBody');
+  if(!body) return;
+
+  if(state.loading && !state.analysis){
+    body.innerHTML = '<div class="aigm-section"><div class="aigm-card">' +
+      '<div class="aigm-spinner-row"><span class="spinner"></span>' +
+      '<span>Reading live rosters, projections and injury designations from ESPN, then ' +
+      're-solving all twelve optimal lineups…</span></div></div></div>';
+    setSubtitle('Analyzing…');
+    return;
+  }
+
+  if(state.error && !state.analysis){
+    body.innerHTML = '<div class="aigm-section">' + note(state.error, 'error') + '</div>';
+    setSubtitle('Could not analyze this league');
+    return;
+  }
+
+  if(!state.analysis){
+    body.innerHTML = '<div class="aigm-section">' +
+      note('Press Re-analyze League to read the live league and build the board.') + '</div>';
+    setSubtitle('Ready');
+    return;
+  }
+
+  const analysis = state.analysis;
+  /* A stale error alongside a good board is worth keeping visible — a waiver
+     read that failed on the retry should not silently vanish behind last run's
+     successful board. */
+  const stale = state.error
+    ? '<div class="aigm-section">' + note('Last refresh failed: ' + state.error, 'error') + '</div>'
+    : '';
+  try{
+    body.innerHTML = stale + renderAnalysis(analysis);
+  }catch(err){
+    console.error('[AI GM] Rendering the analysis for league ' + String(analysis.league &&
+      analysis.league.id) + ' week ' + String(analysis.league && analysis.league.week) +
+      ' threw; showing the reason rather than a blank desk.', err);
+    body.innerHTML = '<div class="aigm-section">' + note('The board could not be drawn: ' +
+      String(err && err.message ? err.message : err) + '. The analysis itself completed — ' +
+      'this is a rendering fault, and the console carries the stack.', 'error') + '</div>';
+    setSubtitle('Render failed');
+    return;
+  }
+  setSubtitle(analysis.league.name + ' · season ' + analysis.league.season + ' · week ' +
+    analysis.league.week + ' · ' + analysis.league.teamCount + ' teams');
+}
+
+/* ============================================================
+   COPY PITCH
+
+   Two transports because one of them is unavailable in exactly the place this
+   feature is used most. navigator.clipboard.writeText needs a secure context
+   AND, in an iOS WKWebView, a user gesture that has not yet been awaited
+   across — so the legacy execCommand path is the fallback, not the other way
+   round. A failure says so on the button rather than pretending it copied.
+============================================================ */
+async function copyText(text){
+  const value = String(text == null ? '' : text);
+  if(!value) return false;
+
+  if(navigator.clipboard && typeof navigator.clipboard.writeText === 'function'){
+    try{
+      await navigator.clipboard.writeText(value);
+      return true;
+    }catch(err){
+      console.warn('[AI GM] navigator.clipboard.writeText was refused; falling back to the ' +
+        'execCommand path.', err);
+    }
+  }
+
+  let area = null;
+  try{
+    area = document.createElement('textarea');
+    area.value = value;
+    area.setAttribute('readonly', 'readonly');
+    area.style.position = 'fixed';
+    area.style.top = '-1000px';
+    area.style.opacity = '0';
+    document.body.appendChild(area);
+    area.select();
+    area.setSelectionRange(0, value.length);
+    const copied = document.execCommand('copy');
+    if(!copied){
+      console.error('[AI GM] document.execCommand("copy") returned false; the pitch was not copied.',
+        new Error('AI_GM_CLIPBOARD_REFUSED'));
+    }
+    return !!copied;
+  }catch(err){
+    console.error('[AI GM] Copying the pitch to the clipboard failed on both transports.', err);
+    return false;
+  }finally{
+    if(area && area.parentNode) area.parentNode.removeChild(area);
+  }
+}
+
+async function handleCopy(button){
+  const key = button.getAttribute('data-aigm-copy') || '';
+  const text = pitchRegister.get(key);
+  if(text == null){
+    console.error('[AI GM] The Copy Pitch button carried key "' + key + '", which is not in the ' +
+      'pitch register. The board was most likely re-rendered under the tap.',
+      new Error('AI_GM_PITCH_KEY_MISSING'));
+    button.setAttribute('data-state', 'failed');
+    button.textContent = 'COPY FAILED — RE-ANALYZE AND RETRY';
+    return;
+  }
+  const copied = await copyText(text);
+  button.setAttribute('data-state', copied ? 'done' : 'failed');
+  button.textContent = copied ? 'COPIED TO CLIPBOARD' : 'COPY FAILED — SELECT THE TEXT BELOW';
+  setTimeout(function(){
+    if(!button.isConnected) return;
+    button.setAttribute('data-state', 'idle');
+    button.textContent = 'COPY PITCH';
+  }, 2600);
+}
+
+/* ============================================================
+   THE ANALYSIS REQUEST
+
+   /api/ai-gm, which vercel.json rewrites onto /api/espn?action=ai-gm. The share
+   token goes with it through leagueShareHeaders() — exactly the header every
+   other private read in this app sends — because that token is what authorises
+   the server to replay this league's STORED espn_s2 / SWID pair. No credential
+   is ever read, prompted for or transmitted from this block.
+============================================================ */
+function requestUrl(leagueId){
+  const params = new URLSearchParams();
+  params.set('league', leagueId);
+
+  const season = Number(LeagueData.meta && LeagueData.meta.season) ||
+    Number(LeagueData.espnData && LeagueData.espnData.seasonId) || 0;
+  if(season > 0) params.set('season', String(season));
+
+  /* The week the app is showing, so the board and the matchup screen agree
+     about which projections are being read. A missing week lets the server use
+     the league's own scoringPeriodId, which is the right fallback. */
+  const week = Number(LeagueData.meta && LeagueData.meta.week) ||
+    Number(FSNBridge.call('currentLeagueWeek') || 0) || 0;
+  if(week > 0) params.set('week', String(week));
+
+  return '/api/ai-gm?' + params.toString();
+}
+
+/* Turn a failed response into one sentence a beta tester can act on. The
+   endpoint answers a structured { error, code } for every refusal it knows
+   about, and that sentence is always better than the status. */
+async function readError(response, leagueId){
+  let payload = null;
+  try{
+    payload = await response.json();
+  }catch(err){
+    console.warn('[AI GM] The /api/ai-gm error body for league ' + leagueId +
+      ' was not JSON (HTTP ' + response.status + ').', err);
+  }
+  if(payload && payload.error) return String(payload.error);
+  if(response.status === 403){
+    return 'The AI GM beta is not enabled for this league.';
+  }
+  if(response.status === 404){
+    return 'The /api/ai-gm route is not deployed on this build. It is served by api/espn.js ' +
+      'behind the vercel.json rewrite — confirm the deployment carries both.';
+  }
+  return 'The AI GM desk could not be reached (HTTP ' + response.status + ').';
+}
+
+async function analyze(options){
+  const opts = options || {};
+  const leagueId = normalizeLeagueId(selectedLeagueId());
+
+  if(!isEnabledNow()){
+    console.warn('[AI GM] analyze() was called while the desk is not enabled for the active ' +
+      'league (' + (leagueId || '(none)') + ', provider ' + String(LeagueData.activeProvider) +
+      '). Refusing rather than calling an endpoint that will 403.');
+    state.error = 'The AI GM beta is not enabled for the league currently open.';
+    state.analysis = null;
+    paint();
+    return null;
+  }
+
+  if(state.loading) return null;
+  state.loading = true;
+  state.error = '';
+  if(opts.reset) state.analysis = null;
+  setBusy(true);
+  paint();
+
+  let response;
+  try{
+    response = await FSNNet.fetch(requestUrl(leagueId), {
+      method:'GET',
+      headers: Object.assign({ Accept:'application/json' }, leagueShareHeaders(leagueId)),
+    }, { timeoutMs:55000, label:'/api/ai-gm league ' + leagueId });
+  }catch(err){
+    console.error('[AI GM] The /api/ai-gm request did not complete for league ' + leagueId + '.', err);
+    state.error = FSNNet.isTimeout(err)
+      ? 'The analysis did not come back in time. Re-solving twelve rosters is the slowest thing ' +
+        'this app does — try again, and if it keeps timing out the league read itself is stalling.'
+      : 'Could not reach the AI GM desk (' + String(err && err.message ? err.message : err) + ').';
+    state.loading = false;
+    setBusy(false);
+    paint();
+    return null;
+  }
+
+  if(!response.ok){
+    state.error = await readError(response, leagueId);
+    console.error('[AI GM] /api/ai-gm answered HTTP ' + response.status + ' for league ' + leagueId +
+      ': ' + state.error, new Error('AI_GM_REQUEST_FAILED:' + response.status));
+    state.loading = false;
+    setBusy(false);
+    paint();
+    return null;
+  }
+
+  let analysis = null;
+  try{
+    analysis = await response.json();
+  }catch(err){
+    console.error('[AI GM] /api/ai-gm answered 200 with a body that is not JSON for league ' +
+      leagueId + '.', err);
+    state.error = 'The AI GM desk answered with something that is not JSON.';
+    state.loading = false;
+    setBusy(false);
+    paint();
+    return null;
+  }
+
+  if(!analysis || !analysis.league || !analysis.myTeam){
+    console.error('[AI GM] The analysis for league ' + leagueId + ' came back without a league or ' +
+      'a team object; refusing to render a half payload.',
+      new Error('AI_GM_MALFORMED_ANALYSIS'));
+    state.error = 'The AI GM desk returned an incomplete analysis.';
+    state.loading = false;
+    setBusy(false);
+    paint();
+    return null;
+  }
+
+  state.analysis = analysis;
+  state.scope = LeagueData.scopeToken();
+  state.error = '';
+  state.loading = false;
+  setBusy(false);
+  paint();
+  return analysis;
+}
+
+/* ============================================================
+   OPEN / CLOSE
+============================================================ */
+let returnFocus = null;
+
+function open(){
+  const modal = $('aiGmModal');
+  if(!modal){
+    console.error('[AI GM] The #aiGmModal element is missing from the document, so the desk cannot ' +
+      'be opened.', new Error('AI_GM_MODAL_MISSING'));
+    return;
+  }
+  if(!isEnabledNow()){
+    console.warn('[AI GM] open() was refused: the desk is not enabled for league ' +
+      String(selectedLeagueId() || '(none)') + ' on provider ' + String(LeagueData.activeProvider) + '.');
+    return;
+  }
+
+  /* Where to send focus back to on close. document.activeElement is the right
+     answer for a real tap, but NOT a reliable one: a programmatic .click() does
+     not move focus in Chromium, and some webviews leave <body> focused after a
+     touch. Either way the honest destination is the control that leads here, so
+     the entry card is the fallback rather than <body> — which would drop the
+     reader at the top of the document with no idea where the desk went. */
+  const active = document.activeElement;
+  returnFocus = (active && active !== document.body && typeof active.focus === 'function')
+    ? active
+    : $('aiGmOpenBtn');
+  modal.dataset.open = 'true';
+  modal.setAttribute('aria-hidden', 'false');
+  paint();
+  const close = $('aiGmClose');
+  if(close) close.focus();
+
+  /* Analyse on first open, and on any open whose board belongs to a different
+     league than the one now selected. Re-opening the same league's desk reuses
+     the board already in hand — the reader asked to look at it again, not to
+     spend another twelve-roster solve. */
+  if(!state.analysis || state.scope !== LeagueData.scopeToken()){
+    analyze({ reset:true });
+  }
+}
+
+function close(){
+  const modal = $('aiGmModal');
+  if(!modal) return;
+  modal.dataset.open = 'false';
+  modal.setAttribute('aria-hidden', 'true');
+  /* Never focus a hidden element: the entry card is hidden the moment the
+     active league leaves the allowlist, and .focus() on it would silently do
+     nothing and leave the reader's focus stranded inside a closed dialog. */
+  if(returnFocus && typeof returnFocus.focus === 'function' && returnFocus.isConnected &&
+     !returnFocus.hidden && returnFocus.getClientRects().length){
+    returnFocus.focus();
+  }
+  returnFocus = null;
+}
+
+function isOpen(){
+  const modal = $('aiGmModal');
+  return !!(modal && modal.dataset.open === 'true');
+}
+
+/* ============================================================
+   THE GATE, APPLIED TO THE DOM
+
+   Runs on every LeagueData publish — which is every league switch, every fetch
+   and every archive hydration — so the card appears the moment the allowlisted
+   league becomes active and disappears the moment it stops being. `hidden` AND
+   aria-hidden, because a card that is only visually hidden is still in the tab
+   order and still read out.
+============================================================ */
+function syncGate(){
+  const card = $('aiGmOpenBtn');
+  if(!card) return false;
+  const enabled = isEnabledNow();
+  card.hidden = !enabled;
+  card.setAttribute('aria-hidden', String(!enabled));
+
+  /* A board for a league that is no longer active is worse than no board: every
+     name on it belongs to somebody else's roster. Drop it on a scope change,
+     REPAINT so the stale rows actually leave the document, and only then decide
+     whether to close or re-analyse.
+
+     The repaint is not cosmetic and the render check asserts it: close() hides
+     the modal without touching its contents, so dropping state.analysis alone
+     left the previous league's rosters and trade partners sitting in the DOM of
+     a hidden dialog — readable in devtools, and back on screen for an instant
+     the next time the desk opened. */
+  const scope = LeagueData.scopeToken();
+  if(state.analysis && state.scope && state.scope !== scope){
+    state.analysis = null;
+    state.error = '';
+    state.scope = '';
+    paint();
+    if(isOpen()){
+      if(enabled) analyze({ reset:true });
+      else close();
+    }
+  }
+  if(!enabled && isOpen()) close();
+  return enabled;
+}
+
+/* ============================================================
+   WIRING
+
+   This block owns its own listeners. Delegated on the modal so a Copy Pitch
+   button that does not exist until a render has run still works, and so no
+   listener is ever added twice on a repaint.
+============================================================ */
+function wire(){
+  const card = $('aiGmOpenBtn');
+  if(card && !card.dataset.aigmWired){
+    card.dataset.aigmWired = '1';
+    card.addEventListener('click', function(){ open(); });
+  }
+
+  const closeBtn = $('aiGmClose');
+  if(closeBtn && !closeBtn.dataset.aigmWired){
+    closeBtn.dataset.aigmWired = '1';
+    closeBtn.addEventListener('click', close);
+  }
+
+  const refresh = $('aiGmRefresh');
+  if(refresh && !refresh.dataset.aigmWired){
+    refresh.dataset.aigmWired = '1';
+    refresh.addEventListener('click', function(){ analyze({ reset:true }); });
+  }
+
+  const modal = $('aiGmModal');
+  if(modal && !modal.dataset.aigmWired){
+    modal.dataset.aigmWired = '1';
+    /* Tap the backdrop to dismiss, exactly like every other sheet in this app. */
+    modal.addEventListener('click', function(event){
+      if(event.target === modal) close();
+    });
+    modal.addEventListener('click', function(event){
+      const button = event.target && event.target.closest
+        ? event.target.closest('[data-aigm-copy]')
+        : null;
+      if(!button) return;
+      handleCopy(button).catch(function(err){
+        console.error('[AI GM] The Copy Pitch handler rejected.', err);
+      });
+    });
+  }
+
+  if(!window.__aiGmKeyWired){
+    window.__aiGmKeyWired = true;
+    document.addEventListener('keydown', function(event){
+      if(event.key === 'Escape' && isOpen()) close();
+    });
+  }
+}
+
+/* Boot. Wiring is idempotent and runs both now and after the document is ready,
+   because this block is inline and may parse before or after the elements it
+   binds depending on where it lands in the file. */
+function boot(){
+  try{
+    wire();
+    syncGate();
+  }catch(err){
+    console.error('[AI GM] Boot failed; the desk will not be reachable this session.', err);
+  }
+}
+
+if(document.readyState === 'loading'){
+  document.addEventListener('DOMContentLoaded', boot);
+} else {
+  boot();
+}
+
+/* Every publish re-evaluates the gate. Wrapped, because a throw here would take
+   down every other subscriber on the same publish — including the renderers. */
+LeagueData.subscribe(function(){
+  try{ syncGate(); }
+  catch(err){ console.error('[AI GM] The league gate could not be re-evaluated on publish.', err); }
+});
+
+/* The UI layer in block 6 can open the desk without knowing anything about this
+   closure, and this block can be reached from any other block the same way. */
+FSNBridge.register({
+  openAiGm: open,
+  closeAiGm: close,
+  syncAiGmGate: syncGate,
+  aiGmEnabled: isEnabledNow,
+});
+
+return {
+  ALLOWED_LEAGUE_IDS: ALLOWED_LEAGUE_IDS,
+  normalizeLeagueId: normalizeLeagueId,
+  isEnabledFor: isEnabledFor,
+  isEnabledNow: isEnabledNow,
+  open: open,
+  close: close,
+  isOpen: isOpen,
+  analyze: analyze,
+  syncGate: syncGate,
+  wire: wire,
+  paint: paint,
+  requestUrl: requestUrl,
+  copyText: copyText,
+  /* Exported for scripts/ai-gm-check.mjs, which drives every renderer against a
+     fixture in a real browser with no network. A renderer nobody can call in
+     isolation is a renderer nobody can test. */
+  render: {
+    analysis: renderAnalysis,
+    myTeam: renderMyTeam,
+    waivers: renderWaivers,
+    trades: renderTrades,
+    watchlist: renderWatchlist,
+  },
+  /* Read-only view of the state the renderers paint from. */
+  state: function(){
+    return {
+      loading: state.loading,
+      error: state.error,
+      scope: state.scope,
+      hasAnalysis: !!state.analysis,
+    };
+  },
+  /* Test seam: seat a fixture analysis and paint it without a network. Guarded
+     to the allowlisted-league case only in the sense that it never fetches — it
+     is how the render check asserts the board draws. */
+  __setAnalysis: function(analysis){
+    state.analysis = analysis || null;
+    state.error = '';
+    state.scope = LeagueData.scopeToken();
+    paint();
+  },
+};
 })();
 </script>
 
