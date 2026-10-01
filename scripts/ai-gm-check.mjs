@@ -50,6 +50,7 @@ const fail = (msg, detail) => {
   failures++;
   console.log('  FAIL  ' + msg + (detail ? ' — ' + detail : ''));
 };
+const round1 = (v) => Math.round((Number(v) || 0) * 10) / 10;
 const near = (a, b, tol) => Math.abs(Number(a) - Number(b)) < (tol == null ? 1e-9 : tol);
 
 const gm = require('../lib/ai-gm.js');
@@ -822,6 +823,333 @@ function checkMatchmaking() {
   if (starved.truncated && starved.rostersAnalyzed < starved.rostersTotal) {
     pass('an exhausted budget reports truncation and how far it got');
   } else fail('the search budget does not report truncation');
+}
+
+/* ============================================================================
+   PASS 1d — THREE-TEAM PATHWAYS
+
+   Fixtures engineered so the answer is known in advance:
+
+     me (1)   a spare WR on the bench and a replacement-level RB2 — needs an RB.
+     B  (2)   RB-rich with a spare RB, a TE hole, and NO use for a WR, so it
+              refuses my WR for its RB straight up. The direct trade fails.
+     A  (3)   a WR hole and a spare TE — exactly what B is missing.
+     C  (4)   flat filler that should only ever appear as a weak route.
+
+   So   me ──WR──▶ A ──TE──▶ B ──RB──▶ me   is a win-win-win that no 2-team
+   trade can reach. The BLOCKBUSTER variant makes my WR a starter instead of a
+   bench piece, so the first leg alone costs me points.
+============================================================================ */
+function cycleLeague(variant) {
+  nextPlayerId = 5000;
+  const blockbuster = variant === 'blockbuster';
+  const bWantsWr = variant === 'b-wants-wr';
+  const t = (id, name, rec, entries) => ({
+    id: id, name: name, abbrev: name.replace(/[^A-Z]/g, '').slice(0, 4) || ('T' + id),
+    primaryOwner: '{P' + id + '}', owners: ['{P' + id + '}'],
+    record: { overall: rec }, roster: { entries: entries },
+  });
+  return {
+    id: 57155288, seasonId: 2026, scoringPeriodId: 1,
+    settings: { name: 'Cycle League', rosterSettings: { lineupSlotCounts: { 0: 1, 2: 2, 4: 2, 6: 1, 23: 1, 20: 6 } } },
+    members: [],
+    teams: [
+      t(1, 'Me Team', { wins: 2, losses: 4, ties: 0 }, blockbuster ? [
+        QB('M QB', 20, 0), RB('M RB1', 16, 2), RB('M RB2', 3, 2),
+        WR('M WR1', 18, 4), WR('M WR2', 16, 4), WR('M Flex WR', 13, 23), TE('M TE', 9, 6),
+      ] : [
+        QB('M QB', 20, 0), RB('M RB1', 16, 2), RB('M RB2', 3, 2),
+        WR('M WR1', 18, 4), WR('M WR2', 16, 4), WR('M WR3', 14, 23), TE('M TE', 9, 6),
+        WR('M Spare WR', 13, 20),
+      ]),
+      t(2, 'RB Rich', { wins: 3, losses: 3, ties: 0 }, [
+        QB('B QB', 18, 0), RB('B RB1', 17, 2), RB('B RB2', 15, 2), RB('B Spare RB', 14, 20),
+        WR('B WR1', 17, 4), bWantsWr ? WR('B WR2', 2, 4) : WR('B WR2', 16, 4),
+        WR('B Flex', 15, 23), TE('B TE', 2, 6),
+      ]),
+      t(3, 'TE Rich', { wins: 1, losses: 5, ties: 0 }, [
+        QB('A QB', 17, 0), RB('A RB1', 15, 2), RB('A RB2', 14, 2), WR('A WR1', 16, 4), WR('A WR2', 3, 4),
+        RB('A Flex', 12, 23), TE('A TE', 12, 6), TE('A Spare TE', 11, 20),
+      ]),
+      t(4, 'Flat', { wins: 3, losses: 3, ties: 0 }, [
+        QB('C QB', 10, 0), RB('C RB1', 8, 2), RB('C RB2', 8, 2), WR('C WR1', 8, 4), WR('C WR2', 8, 4),
+        WR('C Flex', 8, 23), TE('C TE', 8, 6),
+      ]),
+    ],
+  };
+}
+
+/* Brute force over the full cycle space, with no gate of any kind. The engine's
+   gates are claimed to be lossless; this is the claim's referee. */
+function pathwayOracle(state, me, minPartnerGain, poolSize) {
+  const solve = gm.lineupSolver(state.slotIds);
+  const gain = (team, out, inn) => solve(gm.applySwap(team.players, [out], [inn])) - solve(team.players);
+  const opponents = state.teams.filter((t) => t.id !== me.id);
+  const pool = (team) => gm.tradeablePool(team, poolSize);
+  const keys = [];
+  for (const X of pool(me)) {
+    for (const B of opponents) {
+      for (const Z of pool(B)) {
+        if (gain(me, X, Z) < 0.05) continue;
+        if (gain(B, Z, X) >= minPartnerGain) continue;
+        for (const A of opponents) {
+          if (A.id === B.id) continue;
+          for (const Y of pool(A)) {
+            if (gain(A, Y, X) >= minPartnerGain && gain(B, Z, Y) >= minPartnerGain) {
+              keys.push([X.id, A.id, Y.id, B.id, Z.id].join('|'));
+            }
+          }
+        }
+      }
+    }
+  }
+  return keys.sort();
+}
+
+function checkPathways() {
+  console.log('\n[ai-gm-check] 1d/4  three-team pathways\n');
+
+  const POOL = 10;
+  const FLOOR = 0.5;
+  const all = { pathwayLimit: 9999, pathwayDeadlineMs: 0, minPartnerGain: FLOOR, pathwayPoolSize: POOL };
+
+  const pState = gm.normalize(cycleLeague('pathway'), { week: 1 });
+  const pMe = gm.resolveMyTeam(pState, '1', '');
+  const pRun = gm.findPathways(pState, pMe, all);
+  const bState = gm.normalize(cycleLeague('blockbuster'), { week: 1 });
+  const bMe = gm.resolveMyTeam(bState, '1', '');
+  const bRun = gm.findPathways(bState, bMe, all);
+
+  /* ---- the known cycle is found ---- */
+  const known = pRun.pathways.find((p) =>
+    p.give.name === 'M Spare WR' && p.teamA.name === 'TE Rich' && p.broker.name === 'A Spare TE' &&
+    p.teamB.name === 'RB Rich' && p.target.name === 'B Spare RB');
+  if (known) pass('the engineered cycle is found: spare WR -> TE Rich, spare TE -> RB Rich, spare RB -> me');
+  else fail('the known 3-cycle was not found', pRun.pathways.length + ' cycle(s) returned');
+  if (known && known.kind === 'PATHWAY' && known.interimGain >= 0) {
+    pass('a bench WR for a TE that starts for me is a safe PATHWAY (after step 1 ' +
+      known.interimGain.toFixed(1) + ')');
+  } else fail('the known cycle is misclassified', known && known.kind);
+
+  /* ---- THE requirement: every participant net-positive ---- */
+  const everyRun = pRun.pathways.concat(bRun.pathways);
+  const notWinWinWin = everyRun.filter((p) =>
+    !(p.myGain > 0) || !(p.aGain > 0) || !(p.bGain > 0) ||
+    p.myGain < 0.05 || p.aGain < FLOOR || p.bGain < FLOOR);
+  if (everyRun.length && !notWinWinWin.length) {
+    pass('all ' + everyRun.length + ' cycles raise ALL THREE lineups, each partner by at least ' + FLOOR);
+  } else fail('a cycle leaves a participant flat or worse', JSON.stringify(notWinWinWin.slice(0, 2).map(
+    (p) => [p.myGain, p.aGain, p.bGain])));
+
+  /* Recompute every team's delta from scratch — the engine's arithmetic is not
+     taken on trust. */
+  const solveP = gm.lineupSolver(pState.slotIds);
+  const recompute = (state, solve, team, out, inn) =>
+    solve(gm.applySwap(team.players, [out], [inn])) - solve(team.players);
+  const drift = pRun.pathways.filter((p) =>
+    Math.abs(recompute(pState, solveP, p.me, p.give, p.target) - p.myGain) > 1e-9 ||
+    Math.abs(recompute(pState, solveP, p.teamA, p.broker, p.give) - p.aGain) > 1e-9 ||
+    Math.abs(recompute(pState, solveP, p.teamB, p.target, p.broker) - p.bGain) > 1e-9);
+  if (!drift.length) pass('every team\'s delta matches an independent re-solve of its final roster');
+  else fail('engine deltas disagree with an independent re-solve', drift.length + ' cycle(s)');
+
+  const badLedger = everyRun.filter((p) =>
+    Math.abs((p.myAfter - p.myBefore) - p.myGain) > 1e-9 ||
+    Math.abs((p.aAfter - p.aBefore) - p.aGain) > 1e-9 ||
+    Math.abs((p.bAfter - p.bBefore) - p.bGain) > 1e-9);
+  if (!badLedger.length) pass('all three ledgers reconcile: after − before = the stated delta');
+  else fail('a pathway ledger does not reconcile', badLedger.length + ' cycle(s)');
+
+  /* ---- the cycle's shape ---- */
+  const malformed = everyRun.filter((p) => {
+    const ids = new Set([p.me.id, p.teamA.id, p.teamB.id]);
+    return ids.size !== 3 ||
+      !p.me.players.some((x) => x.id === p.give.id) ||
+      !p.teamA.players.some((x) => x.id === p.broker.id) ||
+      !p.teamB.players.some((x) => x.id === p.target.id);
+  });
+  if (!malformed.length) pass('every cycle spans three distinct teams, each piece starting on its own roster');
+  else fail('a malformed cycle', malformed.length + ' cycle(s)');
+
+  /* ---- value on the table: the direct swap must be refused ---- */
+  const directOk = everyRun.filter((p) => p.directGainForB >= FLOOR);
+  if (!directOk.length) {
+    pass('every cycle routes around a direct swap the target team refuses (B delta < ' + FLOOR + ')');
+  } else fail('a cycle duplicates a direct 2-team deal', directOk.length + ' cycle(s)');
+
+  /* And the converse, checked generically rather than on one hand-picked pair:
+     independently find every (X, Z) whose DIRECT swap is win-win, and require
+     that none of them was brokered — those belong to the 2-team board.
+
+     (An earlier version asserted one specific pair in this fixture was directly
+     available. It is not: dropping B's WR2 to 2 pushes B's RBs into its FLEX, so
+     its "spare" RB is a starter and B scores -1 taking my WR13 for it. The engine
+     was right to broker that pair; the assertion was wrong. Hence the generic
+     form, which cannot be fooled by a fixture that is subtler than intended.) */
+  const wState = gm.normalize(cycleLeague('b-wants-wr'), { week: 1 });
+  const wMe = gm.resolveMyTeam(wState, '1', '');
+  const wRun = gm.findPathways(wState, wMe, all);
+  const solveW = gm.lineupSolver(wState.slotIds);
+  const directPairs = new Set();
+  for (const X of gm.tradeablePool(wMe, POOL)) {
+    for (const B of wState.teams.filter((t) => t.id !== wMe.id)) {
+      for (const Z of gm.tradeablePool(B, POOL)) {
+        if (recompute(wState, solveW, wMe, X, Z) < 0.05) continue;
+        if (recompute(wState, solveW, B, Z, X) >= FLOOR) directPairs.add(X.id + '|' + Z.id);
+      }
+    }
+  }
+  const brokered = wRun.pathways.filter((p) => directPairs.has(p.give.id + '|' + p.target.id));
+  if (directPairs.size > 0 && !brokered.length) {
+    pass('none of the ' + directPairs.size + ' directly-tradeable pairs was brokered into a 3-way — ' +
+      'they are left to the 2-team board');
+  } else fail('a directly-available swap was brokered anyway', JSON.stringify({
+    directPairs: directPairs.size, brokered: brokered.length }));
+  if (directPairs.size === wRun.stats.pairsDirectlyAvailable) {
+    pass('the engine\'s own count of directly-available pairs matches the independent count (' +
+      directPairs.size + ')');
+  } else fail('the engine miscounts directly-available pairs',
+    wRun.stats.pairsDirectlyAvailable + ' vs ' + directPairs.size);
+
+  /* ---- PATHWAY vs BLOCKBUSTER ---- */
+  const solveB = gm.lineupSolver(bState.slotIds);
+  const misKinded = everyRun.filter((p) => {
+    const state = pRun.pathways.indexOf(p) !== -1 ? pState : bState;
+    const solve = pRun.pathways.indexOf(p) !== -1 ? solveP : solveB;
+    const interim = recompute(state, solve, p.me, p.give, p.broker);
+    return Math.abs(interim - p.interimGain) > 1e-9 ||
+      (p.kind === 'PATHWAY') !== (interim >= -1e-9);
+  });
+  if (!misKinded.length) {
+    pass('PATHWAY exactly when step 1 alone leaves me no worse; BLOCKBUSTER otherwise');
+  } else fail('a cycle is labelled against its own interim', misKinded.length + ' cycle(s)');
+
+  const kinds = new Set(everyRun.map((p) => p.kind));
+  if (kinds.has('PATHWAY') && kinds.has('BLOCKBUSTER')) pass('both kinds are produced across the fixtures');
+  else fail('only one kind was ever produced', [...kinds].join(','));
+  const starterOut = bRun.pathways.filter((p) => p.give.name === 'M Flex WR');
+  if (starterOut.length && starterOut.every((p) => p.kind === 'BLOCKBUSTER')) {
+    pass('sending a starting WR makes every route a BLOCKBUSTER — step 1 alone costs me the flex');
+  } else fail('a starter-out route was not a blockbuster', JSON.stringify(starterOut.map((p) => p.kind)));
+
+  /* ---- lossless pruning ---- */
+  for (const [label, state, me, run] of [['pathway', pState, pMe, pRun], ['blockbuster', bState, bMe, bRun],
+    ['b-wants-wr', wState, wMe, wRun]]) {
+    const engine = run.pathways.map((p) => [p.give.id, p.teamA.id, p.broker.id, p.teamB.id, p.target.id].join('|')).sort();
+    const oracle = pathwayOracle(state, me, FLOOR, POOL);
+    if (engine.length === oracle.length && engine.every((k, i) => k === oracle[i])) {
+      pass('the gates are lossless on the ' + label + ' fixture: engine and brute force agree on all ' +
+        oracle.length + ' cycles');
+    } else fail('pruning discarded or invented a cycle on the ' + label + ' fixture',
+      'engine ' + engine.length + ' vs oracle ' + oracle.length);
+  }
+
+  /* The property every gate stands on: removing a player can never raise an
+     optimal lineup, so gain(T, -out +in) <= gain(T, +in). Checked exhaustively
+     across the fixture rather than assumed. */
+  let violations = 0;
+  let samples = 0;
+  for (const team of pState.teams) {
+    const others = pState.teams.filter((t) => t.id !== team.id);
+    for (const out of gm.tradeablePool(team, POOL)) {
+      for (const other of others) {
+        for (const inn of gm.tradeablePool(other, POOL)) {
+          samples++;
+          const swap = solveP(gm.applySwap(team.players, [out], [inn]));
+          const add = solveP(team.players.concat([inn]));
+          if (swap > add + 1e-9) violations++;
+        }
+      }
+    }
+  }
+  if (!violations) pass('monotonicity holds on all ' + samples + ' swaps: −out +in never beats +in alone');
+  else fail('monotonicity violated — the gates are unsound', violations + ' of ' + samples);
+
+  /* ---- ranking, dedupe, limit ---- */
+  const shown = gm.findPathways(pState, pMe, { pathwayDeadlineMs: 0, minPartnerGain: FLOOR, pathwayPoolSize: POOL });
+  let ordered = true;
+  for (let i = 1; i < shown.pathways.length; i++) {
+    if (shown.pathways[i].myGain > shown.pathways[i - 1].myGain + 1e-9) ordered = false;
+  }
+  if (ordered) pass('pathways are ordered by my own gain, best first');
+  else fail('pathway ranking');
+  if (shown.pathways.length <= gm.DEFAULT_PATHWAY_POOL_SIZE && shown.pathways.length <= 4) {
+    pass('output is limited to the top ' + shown.pathways.length + ' of ' + shown.survivors + ' cycles');
+  } else fail('the pathway limit was not applied', String(shown.pathways.length));
+  const targets = shown.pathways.map((p) => p.target.id);
+  const distinctTargets = new Set(pRun.pathways.map((p) => p.target.id)).size;
+  if (new Set(targets).size === Math.min(targets.length, distinctTargets)) {
+    pass('shown pathways land distinct targets before repeating one');
+  } else fail('pathway dedupe', targets.join(','));
+
+  /* ---- determinism ---- */
+  const once = JSON.stringify(gm.findPathways(pState, pMe, all).pathways.map((p) =>
+    [p.give.id, p.broker.id, p.target.id, p.myGain, p.aGain, p.bGain, p.kind]));
+  const twice = JSON.stringify(gm.findPathways(pState, pMe, all).pathways.map((p) =>
+    [p.give.id, p.broker.id, p.target.id, p.myGain, p.aGain, p.bGain, p.kind]));
+  if (once === twice) pass('two pathway searches over the same payload are identical');
+  else fail('pathway determinism');
+
+  /* ---- bounds, reported rather than silent ---- */
+  const budgeted = gm.findPathways(pState, pMe, Object.assign({}, all, { pathwayCheckBudget: 3 }));
+  if (budgeted.truncated && budgeted.truncatedBy === 'budget' && budgeted.stats.cycleChecks === 3) {
+    pass('an exhausted check budget stops at exactly the budget and says so');
+  } else fail('the check budget is not enforced or not reported', JSON.stringify({
+    truncated: budgeted.truncated, by: budgeted.truncatedBy, checks: budgeted.stats.cycleChecks }));
+  if (budgeted.pathways.every((p) => p.myGain >= 0.05 && p.aGain >= FLOOR && p.bGain >= FLOOR)) {
+    pass('a truncated search still returns only valid win-win-win cycles');
+  } else fail('truncation returned an invalid cycle');
+  const starved = gm.findPathways(pState, pMe, Object.assign({}, all, { pathwayDeadlineMs: 1e-9 }));
+  if (starved.truncated && starved.truncatedBy === 'deadline') pass('an exhausted deadline is reported as such');
+  else fail('the pathway deadline is not reported', JSON.stringify({ t: starved.truncated, by: starved.truncatedBy }));
+
+  /* ---- through analyze(), on the twelve-team fixture ---- */
+  const analysis = buildAnalysis();
+  if (Array.isArray(analysis.pathways) && analysis.search3 && analysis.search3.stats) {
+    pass('analyze() returns ' + analysis.pathways.length + ' pathways and the search stats');
+  } else fail('analyze() is missing pathways or search3');
+  const shapeOk = analysis.pathways.every((p) =>
+    p.me && p.a && p.b && p.give && p.broker && p.target && p.teamA && p.teamB &&
+    (p.kind === 'PATHWAY' || p.kind === 'BLOCKBUSTER') && typeof p.hasTwoTeamAlternative === 'boolean');
+  if (shapeOk) pass('every pathway in the payload carries all three ledgers, the pieces and the kind');
+  else fail('a pathway payload is malformed');
+  if (analysis.pathways.every((p) => p.me.gain > 0 && p.a.gain > 0 && p.b.gain > 0)) {
+    pass('the payload\'s rounded ledgers still show three positive deltas');
+  } else fail('a rounded pathway delta reads as zero or negative');
+  const longProse = [];
+  for (const p of analysis.pathways) {
+    for (const [k, v] of Object.entries(p)) if (typeof v === 'string' && v.length > 120) longProse.push(k);
+  }
+  if (!longProse.length) pass('no pathway field holds prose — the card is numbers, like the 2-team one');
+  else fail('a pathway carries prose', longProse.join(','));
+  const s3 = analysis.search3;
+  if (!s3.truncated && s3.stats.cycleChecks < gm.DEFAULT_PATHWAY_CHECK_BUDGET / 10) {
+    pass('the twelve-team fixture finished in ' + s3.stats.cycleChecks + ' checks, under a tenth of the budget');
+  } else fail('the pathway search is too close to its budget', JSON.stringify(s3.stats));
+  const twoTeamGain = analysis.search3.bestTwoTeamGain;
+  const upliftsHonest = analysis.pathways.every((p) =>
+    Math.abs(p.upliftVsBestTwoTeam - round1(p.me.gain - twoTeamGain)) < 0.11 &&
+    p.beatsBestTwoTeam === (p.upliftVsBestTwoTeam > 0.05));
+  if (upliftsHonest) pass('every pathway reports its uplift against the best 2-team deal honestly');
+  else fail('a pathway misreports its comparison to the 2-team board');
+
+  /* When the 2-team board is empty a pathway is the only win-win going, and says
+     so. The cycle league has no direct deal for the RB at all. */
+  const lonely = gm.analyze({ league: cycleLeague('pathway'), freeAgents: [], byeWeeks: {} },
+    Object.assign({}, baseOptions, { minPartnerGain: FLOOR }));
+  if (lonely.pathways.length && lonely.pathways.every((p) => p.hasTwoTeamAlternative === !!lonely.trades.length)) {
+    pass('hasTwoTeamAlternative tracks whether the 2-team board has anything (' + lonely.trades.length +
+      ' direct deal(s) here)');
+  } else fail('hasTwoTeamAlternative does not track the 2-team board');
+
+  /* Realistic scale: twelve teams of sixteen. */
+  const t0 = Date.now();
+  const big = gm.analyze({ league: fixtureLeague(), freeAgents: [], byeWeeks: {} },
+    Object.assign({}, baseOptions, { pathwayDeadlineMs: 0 }));
+  const ms = Date.now() - t0;
+  if (ms < gm.DEFAULT_PATHWAY_DEADLINE_MS / 2) {
+    pass('full analysis with the 3-team search finished in ' + ms + 'ms (' + big.search3.found + ' cycles)');
+  } else fail('the 3-team search is too slow for the request budget', ms + 'ms');
 }
 
 /* ============================================================================
@@ -1627,6 +1955,213 @@ async function checkRender() {
     else fail('a long player name overflows the desk', JSON.stringify(wide));
     await page.evaluate((fixture) => window.FSNAiGm.__setAnalysis(fixture), analysis);
 
+    /* ==== 3-TEAM PATHWAYS: the toggle and the cards ==== */
+    const blockAnalysis = gm.analyze({ league: cycleLeague('blockbuster'), freeAgents: [], byeWeeks: {} },
+      Object.assign({}, baseOptions, { minPartnerGain: 0.5 }));
+    const pathAnalysis = gm.analyze({ league: cycleLeague('pathway'), freeAgents: [], byeWeeks: {} },
+      Object.assign({}, baseOptions, { minPartnerGain: 0.5 }));
+
+    const toggle = await page.evaluate((fixture) => {
+      window.FSNAiGm.__setAnalysis(fixture);
+      const group = document.querySelector('#aiGmBody .aigm-toggle');
+      const btns = group ? Array.from(group.querySelectorAll('[data-aigm-view]')) : [];
+      return {
+        role: group && group.getAttribute('role'),
+        label: group && group.getAttribute('aria-label'),
+        views: btns.map((b) => b.getAttribute('data-aigm-view')),
+        pressed: btns.map((b) => b.getAttribute('aria-pressed')),
+        text: btns.map((b) => b.textContent.replace(/\s+/g, ' ').trim()),
+        twoCards: document.querySelectorAll('#aiGmBody .aigm-swap').length,
+        pathCards: document.querySelectorAll('#aiGmBody .aigm-path').length,
+      };
+    }, analysis);
+    if (toggle.role === 'group' && toggle.views.join(',') === '2,3') {
+      pass('a "Trade type" toggle offers 2-Team and 3-Team Pathways');
+    } else fail('the trade-type toggle is missing or malformed', JSON.stringify(toggle));
+    if (toggle.text[0] === '2-Team ' + analysis.trades.length &&
+        toggle.text[1] === '3-Team Pathways ' + analysis.pathways.length) {
+      pass('each toggle button carries its count (' + toggle.text.join(' | ') + ')');
+    } else fail('toggle counts disagree with the payload', JSON.stringify(toggle.text));
+    if (toggle.pressed.join(',') === 'true,false' && toggle.twoCards > 0 && !toggle.pathCards) {
+      pass('with 2-team deals on the board the 2-Team view is the default');
+    } else fail('the default view is wrong', JSON.stringify(toggle));
+
+    /* Flip to 3-team with a real click, the way a reader does. */
+    await page.click('#aiGmBody [data-aigm-view="3"]');
+    await page.waitForTimeout(80);
+    const flipped = await page.evaluate(() => {
+      const body = document.getElementById('aiGmBody');
+      const btns = Array.from(body.querySelectorAll('[data-aigm-view]'));
+      return {
+        pressed: btns.map((b) => b.getAttribute('aria-pressed')),
+        focused: document.activeElement && document.activeElement.getAttribute('data-aigm-view'),
+        twoCards: body.querySelectorAll('.aigm-swap').length,
+        pathCards: body.querySelectorAll('.aigm-path').length,
+        tradeView: window.FSNAiGm.state().tradeView,
+        head: (body.querySelectorAll('.aigm-section-head .aigm-section-count')[2] || {}).textContent,
+        overflowsX: body.scrollWidth > body.clientWidth + 1,
+      };
+    });
+    if (flipped.pressed.join(',') === 'false,true' && flipped.pathCards === analysis.pathways.length &&
+        !flipped.twoCards && flipped.tradeView === '3') {
+      pass('clicking 3-Team Pathways swaps in ' + flipped.pathCards + ' pathway cards and drops the 2-team ones');
+    } else fail('the toggle did not switch views', JSON.stringify(flipped));
+    if (flipped.focused === '3') pass('keyboard focus lands back on the toggle after the repaint');
+    else fail('focus was lost when the view switched', String(flipped.focused));
+    if (/win-win-win/.test(flipped.head || '')) pass('the section count reads win-win-win in the 3-team view');
+    else fail('the 3-team section count', String(flipped.head));
+    if (!flipped.overflowsX) pass('the 3-team view does not scroll sideways at 414px');
+    else fail('the 3-team view overflows horizontally');
+
+    /* ---- the PATHWAY card: STEP 1 / STEP 2 / FINAL ---- */
+    const firstPath = analysis.pathways.find((p) => p.kind === 'PATHWAY');
+    const pathCard = await page.evaluate(() => {
+      const card = document.querySelector('#aiGmBody .aigm-path[data-kind="PATHWAY"]');
+      if (!card) return null;
+      return {
+        tags: Array.from(card.querySelectorAll('.aigm-step-tag')).map((e) => e.textContent),
+        who: Array.from(card.querySelectorAll('.aigm-step-who')).map((e) => e.textContent),
+        nets: Array.from(card.querySelectorAll('.aigm-step-net')).map((e) => e.textContent),
+        verbs: Array.from(card.querySelectorAll('.aigm-step-verb')).map((e) => e.textContent),
+        name: (card.querySelector('.aigm-name') || {}).textContent,
+        text: card.textContent,
+      };
+    });
+    if (pathCard && pathCard.tags.join(',') === 'STEP 1,STEP 2,FINAL') {
+      pass('a PATHWAY card lays out STEP 1, STEP 2 and FINAL');
+    } else fail('the PATHWAY card is not step-by-step', JSON.stringify(pathCard && pathCard.tags));
+    if (pathCard && firstPath &&
+        pathCard.who[0] === 'Deal with ' + firstPath.teamA.name &&
+        pathCard.who[1] === 'Deal with ' + firstPath.teamB.name &&
+        pathCard.verbs.join(',') === 'Send,Get,Flip,Get') {
+      pass('step 1 deals with Team A (send / get), step 2 with Team B (flip / get)');
+    } else fail('the PATHWAY steps are not the spec\'s shape', JSON.stringify(pathCard));
+    if (pathCard && firstPath &&
+        pathCard.nets[0].endsWith('+' + firstPath.a.gain.toFixed(1)) &&
+        pathCard.nets[1].endsWith('+' + firstPath.b.gain.toFixed(1)) &&
+        pathCard.nets[2] === '+' + firstPath.me.gain.toFixed(1)) {
+      pass('each step shows its partner\'s own net, and FINAL shows mine (' + pathCard.nets.join(' / ') + ')');
+    } else fail('a step net disagrees with the payload', JSON.stringify(pathCard && pathCard.nets));
+    if (pathCard && firstPath && pathCard.name === firstPath.give.name + ' → ' + firstPath.target.name) {
+      pass('the header states the net move: ' + pathCard.name);
+    } else fail('the pathway header', pathCard && pathCard.name);
+    if (pathCard && /after step 1 \+/.test(pathCard.text) && /refused/.test(pathCard.text)) {
+      pass('a PATHWAY card proves it is safe (after step 1) and shows the refused direct swap');
+    } else fail('the PATHWAY card is missing its justification chips');
+
+    /* ---- the BLOCKBUSTER card: one row per manager ---- */
+    const bb = blockAnalysis.pathways.find((p) => p.kind === 'BLOCKBUSTER');
+    const bbCard = await page.evaluate((fixture) => {
+      window.FSNAiGm.__setAnalysis(fixture);
+      const card = document.querySelector('#aiGmBody .aigm-path[data-kind="BLOCKBUSTER"]');
+      if (!card) return null;
+      return {
+        tags: Array.from(card.querySelectorAll('.aigm-step-tag')).map((e) => e.textContent),
+        nets: Array.from(card.querySelectorAll('.aigm-step-net')).map((e) => e.textContent),
+        text: card.textContent,
+        height: Math.round(card.getBoundingClientRect().height),
+      };
+    }, blockAnalysis);
+    if (bb && bbCard && bbCard.tags.length === 4 && bbCard.tags[0] === 'YOU' && bbCard.tags[3] === 'FINAL') {
+      pass('a BLOCKBUSTER card shows one row per manager — You, Team A, Team B — then FINAL');
+    } else fail('the BLOCKBUSTER card is not per-manager', JSON.stringify(bbCard && bbCard.tags));
+    if (bb && bbCard && bbCard.nets[0] === '+' + bb.me.gain.toFixed(1) &&
+        bbCard.nets[1] === '+' + bb.a.gain.toFixed(1) && bbCard.nets[2] === '+' + bb.b.gain.toFixed(1)) {
+      pass('all three managers\' nets are on the card and all positive (' + bbCard.nets.slice(0, 3).join(' / ') + ')');
+    } else fail('a blockbuster net disagrees with the payload', JSON.stringify(bbCard && bbCard.nets));
+    if (bbCard && /step 1 alone -/.test(bbCard.text) && /agree all 3/.test(bbCard.text)) {
+      pass('a BLOCKBUSTER card shows why: step 1 alone costs me, so all three must agree first');
+    } else fail('the BLOCKBUSTER card does not explain its execution');
+
+    /* ---- density: the same numbers-not-copy budget the 2-team cards keep ---- */
+    const density = await page.evaluate((fixtures) => {
+      const out = [];
+      for (const fx of fixtures) {
+        window.FSNAiGm.__setAnalysis(fx);
+        document.querySelectorAll('#aiGmBody .aigm-path').forEach((c) => {
+          out.push({
+            kind: c.dataset.kind,
+            height: Math.round(c.getBoundingClientRect().height),
+            longest: Math.max(0, ...Array.from(c.querySelectorAll('*')).filter((e) => !e.children.length)
+              .map((e) => (e.textContent || '').trim().length)),
+          });
+        });
+      }
+      return out;
+    }, [blockAnalysis, analysis]);
+    const tallPath = density.filter((c) => c.height > 440);
+    const wordyPath = density.filter((c) => c.longest > 60);
+    if (density.length && !tallPath.length) {
+      pass('every pathway card fits in 440px (PATHWAY ' +
+        Math.max(0, ...density.filter((c) => c.kind === 'PATHWAY').map((c) => c.height)) + 'px, BLOCKBUSTER ' +
+        Math.max(0, ...density.filter((c) => c.kind === 'BLOCKBUSTER').map((c) => c.height)) + 'px)');
+    } else fail('a pathway card is taller than 440px', JSON.stringify(tallPath));
+    if (density.length && !wordyPath.length) {
+      pass('no pathway card holds a text run over 60 chars (longest ' +
+        Math.max(...density.map((c) => c.longest)) + ')');
+    } else fail('a pathway card holds prose', JSON.stringify(wordyPath));
+
+    /* ---- the view follows the board until the reader picks one ---- */
+    const auto = await page.evaluate((fixture) => {
+      window.LeagueData.setMeta('leagueId', '99999999');
+      window.LeagueData.publish();
+      window.LeagueData.setMeta('leagueId', '57155288');
+      window.LeagueData.publish();
+      const reset = window.FSNAiGm.state().tradeView;
+      window.FSNAiGm.__setAnalysis(fixture);
+      const btns = Array.from(document.querySelectorAll('#aiGmBody [data-aigm-view]'));
+      return {
+        reset: reset,
+        pressed: btns.map((b) => b.getAttribute('aria-pressed')),
+        pathCards: document.querySelectorAll('#aiGmBody .aigm-path').length,
+        onlyRoute: /no 2-team deal exists/.test(document.getElementById('aiGmBody').textContent),
+      };
+    }, Object.assign({}, pathAnalysis, {
+      trades: [],
+      pathways: pathAnalysis.pathways.map((p) => Object.assign({}, p, { hasTwoTeamAlternative: false })),
+    }));
+    if (auto.reset === null) pass('switching league resets the chosen trade view');
+    else fail('the trade view survived a league switch', String(auto.reset));
+    if (auto.pressed.join(',') === 'false,true' && auto.pathCards > 0) {
+      pass('with no 2-team deal but 3-team routes available, the desk opens on 3-Team Pathways');
+    } else fail('the view does not follow an empty 2-team board', JSON.stringify(auto));
+    if (auto.onlyRoute) pass('a pathway with no 2-team alternative says it is the only win-win going');
+    else fail('the only-route case is not called out');
+
+    /* ---- empty, and escaped ---- */
+    const empty = await page.evaluate((fixture) => {
+      window.FSNAiGm.__setAnalysis(fixture);
+      document.querySelector('#aiGmBody [data-aigm-view="3"]').click();
+      const body = document.getElementById('aiGmBody');
+      return { cards: body.querySelectorAll('.aigm-path').length, text: body.textContent };
+    }, Object.assign({}, analysis, { pathways: [] }));
+    if (!empty.cards && /No three-team route helps all three lineups/.test(empty.text)) {
+      pass('an empty 3-team view says why rather than rendering nothing');
+    } else fail('the empty 3-team state', JSON.stringify(empty).slice(0, 120));
+
+    const evil = JSON.parse(JSON.stringify(blockAnalysis));
+    evil.pathways[0].teamA.name = '<img src=x onerror="window.__aiGmXss=4">';
+    evil.pathways[0].target.name = '<script>window.__aiGmXss=5<\/script>';
+    const escaped3 = await page.evaluate((fixture) => {
+      window.__aiGmXss = 0;
+      window.FSNAiGm.__setAnalysis(fixture);
+      document.querySelector('#aiGmBody [data-aigm-view="3"]').click();
+      const body = document.getElementById('aiGmBody');
+      return { xss: window.__aiGmXss, images: body.querySelectorAll('img').length,
+        scripts: body.querySelectorAll('script').length,
+        shown: /<img src=x/.test(body.textContent) && /<script>/.test(body.textContent) };
+    }, evil);
+    if (!escaped3.xss && !escaped3.images && !escaped3.scripts && escaped3.shown) {
+      pass('markup in a pathway team or player name renders as text, not markup');
+    } else fail('a pathway name reached the DOM as markup', JSON.stringify(escaped3));
+
+    /* Back to the 2-team view and the standard fixture for what follows. */
+    await page.evaluate((fixture) => {
+      window.FSNAiGm.__setAnalysis(fixture);
+      const two = document.querySelector('#aiGmBody [data-aigm-view="2"]');
+      if (two) two.click();
+    }, analysis);
+
     if (!/hit a snag/i.test(rendered.text)) pass('no "hit a snag" text in the rendered desk');
     else fail('the desk rendered a snag message');
 
@@ -1779,6 +2314,7 @@ console.log('[ai-gm-check] AI GM beta — engine, handler, budget' + (noBrowser 
 checkEngine();
 checkModels();
 checkMatchmaking();
+checkPathways();
 await checkHandler();
 checkBudget();
 if (noBrowser) console.log('\n[ai-gm-check] render pass skipped (--no-browser)');
