@@ -746,6 +746,39 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
   font-size:14px; font-weight:700; }
 .aigm-ledger-detail{ display:block; margin-top:1px; color:var(--dim); font-family:'JetBrains Mono',monospace;
   font-size:8.5px; }
+/* Trade-type toggle: 2-Team proposals vs 3-Team Pathways. A segmented control
+   rather than tabs — both views are one section of one board. */
+.aigm-toggle{ display:flex; gap:4px; margin:0 0 10px; padding:3px; border:1px solid var(--line);
+  border-radius:10px; background:#0a0f16; }
+.aigm-toggle-btn{ flex:1 1 0; min-width:0; padding:8px 6px; border:0; border-radius:7px;
+  background:transparent; color:var(--dim); font-family:'JetBrains Mono',monospace; font-size:9.5px;
+  font-weight:700; letter-spacing:.08em; text-transform:uppercase; cursor:pointer; }
+.aigm-toggle-btn[aria-pressed="true"]{ background:rgba(255,178,44,.12); color:var(--gold); }
+.aigm-toggle-btn:focus-visible{ outline:none; box-shadow:0 0 0 2px rgba(255,178,44,.35); }
+.aigm-toggle-count{ opacity:.7; }
+
+/* Pathway cards: numbered legs, each carrying its partner's own net. */
+.aigm-path-meta{ display:flex; align-items:center; gap:7px; margin-top:4px; min-width:0; }
+.aigm-path-meta .aigm-meta{ margin-top:0; min-width:0; overflow:hidden; text-overflow:ellipsis;
+  white-space:nowrap; }
+.aigm-path-meta .aigm-chip{ flex:none; padding:2px 6px; font-size:8.5px; }
+.aigm-steps{ display:grid; gap:6px; margin-top:10px; }
+.aigm-step{ padding:7px 9px; border-radius:9px; background:#0b1018;
+  border:1px solid rgba(255,255,255,.06); }
+.aigm-step-top{ display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:baseline;
+  gap:8px; }
+.aigm-step-tag{ color:var(--gold); font-family:'JetBrains Mono',monospace; font-size:8px;
+  font-weight:700; letter-spacing:.1em; }
+.aigm-step-who{ min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  color:var(--off); font-size:11px; font-weight:600; }
+.aigm-step-net{ color:var(--green); font-family:'JetBrains Mono',monospace; font-size:11.5px;
+  font-weight:700; white-space:nowrap; }
+.aigm-step-line{ display:flex; align-items:baseline; gap:7px; margin-top:3px; min-width:0; }
+.aigm-step-verb{ flex:none; width:30px; color:#4d5769; font-family:'JetBrains Mono',monospace;
+  font-size:7.5px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; }
+.aigm-step-final{ background:rgba(0,214,138,.06); border-color:rgba(0,214,138,.22); }
+.aigm-step-final .aigm-step-net{ font-size:13px; }
+
 /* Watchlist rows: name, context, then ACTUAL / PROJ / gap in fixed numeric
    columns. This replaced a prose paragraph per player, which said the same
    three numbers and cost roughly four times the vertical space. */
@@ -39967,6 +40000,8 @@ const state = {
   /* The league the analysis in hand belongs to. A league switch while the desk
      is closed must not leave last league's board behind the card. */
   scope: '',
+  /* '2' | '3' once the reader picks a trade view; null follows the board. */
+  tradeView: null,
 };
 
 /* ============================================================
@@ -40162,18 +40197,42 @@ function renderWaivers(analysis){
   return parts.join('');
 }
 
-/* The trade board. Every package on it raised BOTH optimal lineups when the
-   server re-solved them, which is the only claim being made — and the win-win
-   ledger says so in both directions rather than only mine. */
-function renderTrades(analysis){
+/* ============================================================
+   THE TRADE BOARD — two views of one section
+
+   2-TEAM     every package raised BOTH optimal lineups when the server
+              re-solved them, and the ledger says so in both directions.
+   3-TEAM     every cycle raised ALL THREE lineups, and routes around a direct
+              swap the target team refuses — the value a 2-team search leaves on
+              the table. See lib/ai-gm.js section 8b.
+
+   The view is remembered for the session. Until the reader picks one, it
+   follows the board: 2-team when there is a 2-team deal, 3-team when the
+   only win-wins on offer need a third manager.
+============================================================ */
+function activeTradeView(analysis){
+  if(state.tradeView === '2' || state.tradeView === '3') return state.tradeView;
+  const two = (analysis.trades || []).length;
+  const three = (analysis.pathways || []).length;
+  return (!two && three) ? '3' : '2';
+}
+
+function renderTradeToggle(analysis, view){
+  const two = (analysis.trades || []).length;
+  const three = (analysis.pathways || []).length;
+  function btn(value, label, count){
+    return '<button type="button" class="aigm-toggle-btn" data-aigm-view="' + value + '" ' +
+      'aria-pressed="' + String(view === value) + '">' + esc(label) +
+      ' <span class="aigm-toggle-count">' + esc(String(count)) + '</span></button>';
+  }
+  return '<div class="aigm-toggle" role="group" aria-label="Trade type">' +
+    btn('2', '2-Team', two) + btn('3', '3-Team Pathways', three) + '</div>';
+}
+
+function renderTwoTeamCards(analysis){
   const trades = analysis.trades || [];
   const search = analysis.search || {};
   const parts = [];
-
-  parts.push('<div class="aigm-section">');
-  parts.push(sectionHead('Targeted Trade Proposals', trades.length
-    ? trades.length + ' of ' + (search.twoWayPositive || 0) + ' win-win'
-    : 'none'));
 
   if(!trades.length){
     parts.push(note('No package of two-or-fewer players raises both lineups right now. That usually ' +
@@ -40251,6 +40310,149 @@ function renderTrades(analysis){
       (search.rostersTotal || 0) + ' opposing rosters. Everything above is real; there may be more ' +
       'on the rosters it did not reach. Re-analyze to try again.'));
   }
+  return parts.join('');
+}
+
+/* One leg of a pathway: a numbered step against one partner, with that
+   partner's own net — the figure that decides whether they say yes. */
+function pathwayStep(tag, who, net, lines){
+  return '<div class="aigm-step">' +
+    '<div class="aigm-step-top">' +
+      '<span class="aigm-step-tag">' + esc(tag) + '</span>' +
+      '<span class="aigm-step-who">' + esc(who) + '</span>' +
+      '<span class="aigm-step-net">' + net + '</span>' +
+    '</div>' +
+    lines.map(function(line){
+      return '<div class="aigm-step-line"><span class="aigm-step-verb">' + esc(line[0]) + '</span>' +
+        line[1] + '</div>';
+    }).join('') +
+    '</div>';
+}
+
+function nameOnly(p){
+  return p ? '<span class="aigm-swap-player"><b>' + esc(p.name) + '</b></span>' : '';
+}
+
+function renderPathwayCard(p){
+  const parts = [];
+  const kindTone = p.kind === 'PATHWAY' ? 'green' : 'gold';
+  parts.push('<div class="aigm-card aigm-path" data-kind="' + esc(p.kind) + '">');
+
+  /* Header: the net player move and my net. Everything below it is how. */
+  /* The kind badge rides on the "via" line rather than taking a row of its own:
+     a row per card is ~28px, and these cards are measured. */
+  parts.push('<div class="aigm-row"><div class="min-w-0">' +
+    '<div class="aigm-name">' + esc(p.give.name) + ' → ' + esc(p.target.name) + '</div>' +
+    '<div class="aigm-path-meta">' + chip(p.kind, kindTone) +
+    '<span class="aigm-meta">via ' + esc(p.teamA.name) + ' · ' + esc(p.teamB.name) + '</span></div>' +
+    '</div><div class="aigm-delta"><span class="aigm-delta-label">You</span>' +
+    signed(p.me.gain) + '</div></div>');
+
+  parts.push('<div class="aigm-steps">');
+  if(p.kind === 'PATHWAY'){
+    /* Sequential: two ordinary trades, made in order, each acceptable to its
+       partner on its own. */
+    parts.push(pathwayStep('STEP 1', 'Deal with ' + p.teamA.name,
+      esc(p.teamA.abbrev || 'A') + ' ' + signed(p.a.gain), [
+        ['Send', playerLine(p.give)],
+        ['Get', playerLine(p.broker)],
+      ]));
+    parts.push(pathwayStep('STEP 2', 'Deal with ' + p.teamB.name,
+      esc(p.teamB.abbrev || 'B') + ' ' + signed(p.b.gain), [
+        ['Flip', nameOnly(p.broker)],
+        ['Get', playerLine(p.target)],
+      ]));
+  } else {
+    /* Simultaneous: one row per manager — what each sends, what each gets, and
+       each one's net. All three rows must be positive, and they are. */
+    parts.push(pathwayStep('YOU', 'send ' + p.give.name, signed(p.me.gain), [
+      ['Get', playerLine(p.target)],
+    ]));
+    parts.push(pathwayStep(p.teamA.abbrev || 'A', p.teamA.name, signed(p.a.gain), [
+      ['Send', playerLine(p.broker)],
+      ['Get', nameOnly(p.give)],
+    ]));
+    parts.push(pathwayStep(p.teamB.abbrev || 'B', p.teamB.name, signed(p.b.gain), [
+      ['Send', nameOnly(p.target)],
+      ['Get', nameOnly(p.broker)],
+    ]));
+  }
+  parts.push('<div class="aigm-step aigm-step-final"><div class="aigm-step-top">' +
+    '<span class="aigm-step-tag">FINAL</span>' +
+    '<span class="aigm-step-who">You ' + n1(p.me.before) + ' → ' + n1(p.me.after) + '</span>' +
+    '<span class="aigm-step-net">' + signed(p.me.gain) + '</span>' +
+    '</div></div>');
+  parts.push('</div>');
+
+  /* The three facts that justify the route, as figures. */
+  const facts = [];
+  /* Kept short enough to pack two to a line: three chips that each wrap alone
+     cost a blockbuster card ~90px, which is the vertical waste the card exists
+     to avoid. */
+  facts.push(p.kind === 'PATHWAY'
+    ? chip('after step 1 ' + signed(p.interimGain), 'green')
+    : chip('step 1 alone ' + signed(p.interimGain) + ' · agree all 3', 'red'));
+  facts.push(chip(p.give.pos + '↔' + p.target.pos + ' refused · ' +
+    (p.teamB.abbrev || 'B') + ' ' + signed(p.directGainForB)));
+  /* Always answer "is this worth a third manager?" — not only when the answer
+     is yes. Against an empty 2-team board the route is the only win-win going. */
+  if(p.hasTwoTeamAlternative === false){
+    facts.push(chip('no 2-team deal exists', 'cyan'));
+  } else if(p.beatsBestTwoTeam){
+    facts.push(chip('beats 2-team ' + signed(p.upliftVsBestTwoTeam), 'cyan'));
+  } else {
+    facts.push(chip('vs 2-team ' + signed(p.upliftVsBestTwoTeam)));
+  }
+  (p.designations || []).forEach(function(flag){ facts.push(chip(flag, 'red')); });
+  parts.push('<div class="aigm-bid">' + facts.join('') + '</div>');
+
+  parts.push('</div>');
+  return parts.join('');
+}
+
+function renderPathwayCards(analysis){
+  const pathways = analysis.pathways || [];
+  const s3 = analysis.search3 || {};
+  const stats = s3.stats || {};
+  const parts = [];
+
+  if(!pathways.length){
+    parts.push(note('No three-team route helps all three lineups right now. Every cycle that ' +
+      'would lift yours either costs one partner points or is available as a straight swap, ' +
+      'which the 2-Team view already shows. ' +
+      (stats.cycleChecks ? stats.cycleChecks + ' routes were re-solved.' : '')));
+  }
+  pathways.forEach(function(p){ parts.push(renderPathwayCard(p)); });
+
+  if(pathways.length){
+    /* One line of execution guidance for the whole view, not one per card. */
+    parts.push(note('PATHWAY: the first trade already leaves your lineup no worse, so it can be ' +
+      'made today. BLOCKBUSTER: the first trade alone costs you points — ESPN trades are two-team, ' +
+      'so get all three managers to agree before either is submitted.'));
+  }
+  if(s3.truncated){
+    parts.push(note('The 3-team search stopped at its ' + (s3.truncatedBy === 'budget'
+      ? 'check budget' : 'time budget') + ' after ' + (stats.cycleChecks || 0) + ' routes. It ' +
+      'spends that budget on the strongest positional matches first, so what is above is the best ' +
+      'of what it reached. Re-analyze to try again.'));
+  }
+  return parts.join('');
+}
+
+function renderTrades(analysis, viewOverride){
+  const view = viewOverride === '2' || viewOverride === '3' ? viewOverride : activeTradeView(analysis);
+  const trades = analysis.trades || [];
+  const pathways = analysis.pathways || [];
+  const search = analysis.search || {};
+  const s3 = analysis.search3 || {};
+  const parts = [];
+
+  parts.push('<div class="aigm-section">');
+  parts.push(sectionHead('Targeted Trade Proposals', view === '3'
+    ? (pathways.length ? pathways.length + ' of ' + (s3.found || 0) + ' win-win-win' : 'none')
+    : (trades.length ? trades.length + ' of ' + (search.twoWayPositive || 0) + ' win-win' : 'none')));
+  parts.push(renderTradeToggle(analysis, view));
+  parts.push(view === '3' ? renderPathwayCards(analysis) : renderTwoTeamCards(analysis));
   parts.push('</div>');
   return parts.join('');
 }
@@ -40623,6 +40825,7 @@ function syncGate(){
     state.analysis = null;
     state.error = '';
     state.scope = '';
+    state.tradeView = null;
     paint();
     if(isOpen()){
       if(enabled) analyze({ reset:true });
@@ -40665,6 +40868,22 @@ function wire(){
     /* Tap the backdrop to dismiss, exactly like every other sheet in this app. */
     modal.addEventListener('click', function(event){
       if(event.target === modal) close();
+    });
+    /* The trade-type toggle. Delegated, because the buttons are re-rendered on
+       every paint and a per-button listener would be lost with them. */
+    modal.addEventListener('click', function(event){
+      const button = event.target && event.target.closest
+        ? event.target.closest('[data-aigm-view]')
+        : null;
+      if(!button) return;
+      const view = button.getAttribute('data-aigm-view');
+      if(view !== '2' && view !== '3') return;
+      state.tradeView = view;
+      paint();
+      /* The repaint replaced the button that had focus. Put keyboard focus back
+         on its replacement so a toggle does not drop the reader to the top. */
+      const again = $('aiGmBody') && $('aiGmBody').querySelector('[data-aigm-view="' + view + '"]');
+      if(again) again.focus();
     });
   }
 
@@ -40731,6 +40950,8 @@ return {
     myTeam: renderMyTeam,
     waivers: renderWaivers,
     trades: renderTrades,
+    pathways: renderPathwayCards,
+    pathwayCard: renderPathwayCard,
     watchlist: renderWatchlist,
   },
   /* Read-only view of the state the renderers paint from. */
@@ -40740,6 +40961,7 @@ return {
       error: state.error,
       scope: state.scope,
       hasAnalysis: !!state.analysis,
+      tradeView: state.tradeView,
     };
   },
   /* Test seam: seat a fixture analysis and paint it without a network. Guarded
