@@ -1,7 +1,43 @@
 {
-  "generatedAt": "2026-09-29T18:26:53.544Z",
-  "count": 10,
+  "generatedAt": "2026-10-02T00:14:59.771Z",
+  "count": 11,
   "posts": [
+    {
+      "title": "Thursday Night Kickoff Preview: Week 4 Slate",
+      "slug": "2026-10-01-thursday-night-kickoff-preview-week-4-slate",
+      "publishDate": "2026-10-01",
+      "category": "Matchup Preview",
+      "excerpt": "Week 4 opens Thursday night. The games that have not been played yet, the players the platform is claiming ahead of them, and the designations worth checking before your lineup locks.",
+      "author": "FSN Desk",
+      "entityCount": 5,
+      "tracked_players": [
+        {
+          "name": "Konata Mumpfield",
+          "position": "WR",
+          "sleeperPlayerId": "12718"
+        },
+        {
+          "name": "Alvin Kamara",
+          "position": "RB",
+          "sleeperPlayerId": "4035"
+        },
+        {
+          "name": "Isaiah Davis",
+          "position": "RB",
+          "sleeperPlayerId": "11571"
+        },
+        {
+          "name": "Cleveland Browns",
+          "position": "DEF",
+          "sleeperPlayerId": "CLE"
+        },
+        {
+          "name": "Tyler Higbee",
+          "position": "TE",
+          "sleeperPlayerId": "3271"
+        }
+      ]
+    },
     {
       "title": "Tuesday Morning Final Recap: Week 3 Winners & Losers",
       "slug": "2026-09-29-tuesday-morning-final-recap-week-3-winners-losers",
