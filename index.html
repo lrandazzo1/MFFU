@@ -691,7 +691,7 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
 
 .aigm-section{ margin-top:16px; }
 .aigm-section:first-child{ margin-top:0; }
-.aigm-section-head{ display:flex; align-items:baseline; gap:9px; margin-bottom:9px;
+.aigm-section-head{ display:flex; flex-wrap:wrap; align-items:baseline; gap:9px; margin-bottom:9px;
   padding-bottom:7px; border-bottom:1px solid rgba(255,255,255,.07); }
 .aigm-section-head h3{ color:#fff; font-family:'Anton',sans-serif; font-size:14px; letter-spacing:.04em;
   text-transform:uppercase; }
@@ -776,6 +776,8 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
 .aigm-step-line{ display:flex; align-items:baseline; gap:7px; margin-top:3px; min-width:0; }
 .aigm-step-verb{ flex:none; width:30px; color:#4d5769; font-family:'JetBrains Mono',monospace;
   font-size:7.5px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; }
+.aigm-step-net[data-tone="loss"],.aigm-path .aigm-delta[data-tone="loss"]{ color:var(--red); }
+.aigm-step-net[data-tone="neutral"],.aigm-path .aigm-delta[data-tone="neutral"]{ color:var(--dim); }
 .aigm-step-final{ background:rgba(0,214,138,.06); border-color:rgba(0,214,138,.22); }
 .aigm-step-final .aigm-step-net{ font-size:13px; }
 
@@ -40316,11 +40318,12 @@ function renderTwoTeamCards(analysis){
 /* One leg of a pathway: a numbered step against one partner, with that
    partner's own net — the figure that decides whether they say yes. */
 function pathwayStep(tag, who, net, lines){
+  const tone = /(?:^|\s)-\d/.test(net) ? 'loss' : /(?:^|\s)\+0\.0$/.test(net) ? 'neutral' : 'gain';
   return '<div class="aigm-step">' +
     '<div class="aigm-step-top">' +
       '<span class="aigm-step-tag">' + esc(tag) + '</span>' +
       '<span class="aigm-step-who">' + esc(who) + '</span>' +
-      '<span class="aigm-step-net">' + net + '</span>' +
+      '<span class="aigm-step-net" data-tone="' + tone + '">' + net + '</span>' +
     '</div>' +
     lines.map(function(line){
       return '<div class="aigm-step-line"><span class="aigm-step-verb">' + esc(line[0]) + '</span>' +
@@ -40345,43 +40348,39 @@ function renderPathwayCard(p){
     '<div class="aigm-name">' + esc(p.give.name) + ' → ' + esc(p.target.name) + '</div>' +
     '<div class="aigm-path-meta">' + chip(p.kind, kindTone) +
     '<span class="aigm-meta">via ' + esc(p.teamA.name) + ' · ' + esc(p.teamB.name) + '</span></div>' +
-    '</div><div class="aigm-delta"><span class="aigm-delta-label">You</span>' +
+    '</div><div class="aigm-delta" data-tone="' + (p.me.gain < 0 ? 'loss' : p.me.gain === 0 ? 'neutral' : 'gain') + '"><span class="aigm-delta-label">You</span>' +
     signed(p.me.gain) + '</div></div>');
 
   parts.push('<div class="aigm-steps">');
-  if(p.kind === 'PATHWAY'){
-    /* Sequential: two ordinary trades, made in order, each acceptable to its
-       partner on its own. */
-    parts.push(pathwayStep('STEP 1', 'Deal with ' + p.teamA.name,
-      esc(p.teamA.abbrev || 'A') + ' ' + signed(p.a.gain), [
-        ['Send', playerLine(p.give)],
-        ['Get', playerLine(p.broker)],
-      ]));
-    parts.push(pathwayStep('STEP 2', 'Deal with ' + p.teamB.name,
-      esc(p.teamB.abbrev || 'B') + ' ' + signed(p.b.gain), [
-        ['Flip', nameOnly(p.broker)],
-        ['Get', playerLine(p.target)],
-      ]));
-  } else {
-    /* Simultaneous: one row per manager — what each sends, what each gets, and
-       each one's net. All three rows must be positive, and they are. */
-    parts.push(pathwayStep('YOU', 'send ' + p.give.name, signed(p.me.gain), [
+  /* Both executions use the same two linked ESPN exchanges. */
+  parts.push(pathwayStep('STEP 1', 'Deal with ' + p.teamA.name,
+    esc(p.teamA.abbrev || 'A') + ' ' + signed(p.a.gain), [
+      ['Send', playerLine(p.give)],
+      ['Get', playerLine(p.broker)],
+    ]));
+  if(p.benefits && p.benefits.a){
+    parts.push(note(p.teamA.name + ' ' + p.benefits.a.reasons.join(' · ')));
+  }
+  parts.push(pathwayStep('STEP 2', 'Deal with ' + p.teamB.name,
+    esc(p.teamB.abbrev || 'B') + ' ' + signed(p.b.gain), [
+      ['Send', nameOnly(p.broker)],
       ['Get', playerLine(p.target)],
     ]));
-    parts.push(pathwayStep(p.teamA.abbrev || 'A', p.teamA.name, signed(p.a.gain), [
-      ['Send', playerLine(p.broker)],
-      ['Get', nameOnly(p.give)],
-    ]));
-    parts.push(pathwayStep(p.teamB.abbrev || 'B', p.teamB.name, signed(p.b.gain), [
-      ['Send', nameOnly(p.target)],
-      ['Get', nameOnly(p.broker)],
-    ]));
+  if(p.benefits && p.benefits.b){
+    parts.push(note(p.teamB.name + ' ' + p.benefits.b.reasons.join(' · ')));
   }
   parts.push('<div class="aigm-step aigm-step-final"><div class="aigm-step-top">' +
     '<span class="aigm-step-tag">FINAL</span>' +
-    '<span class="aigm-step-who">You ' + n1(p.me.before) + ' → ' + n1(p.me.after) + '</span>' +
-    '<span class="aigm-step-net">' + signed(p.me.gain) + '</span>' +
+    '<span class="aigm-step-who">Final Roster Impact ' + n1(p.me.before) + ' → ' + n1(p.me.after) + '</span>' +
+    '<span class="aigm-step-net" data-tone="' + (p.me.gain < 0 ? 'loss' : p.me.gain === 0 ? 'neutral' : 'gain') + '">' + signed(p.me.gain) + '</span>' +
     '</div></div>');
+  if(p.benefits && p.benefits.me){
+    parts.push(note('You ' + p.benefits.me.reasons.map(function(reason){
+      return reason.replace(/^(fills|gains|clears|upgrades) /, function(verb){
+        return verb.slice(0, -2) + ' ';
+      });
+    }).join(' · ')));
+  }
   parts.push('</div>');
 
   /* The three facts that justify the route, as figures. */
@@ -40417,9 +40416,8 @@ function renderPathwayCards(analysis){
   const parts = [];
 
   if(!pathways.length){
-    parts.push(note('No three-team route helps all three lineups right now. Every cycle that ' +
-      'would lift yours either costs one partner points or is available as a straight swap, ' +
-      'which the 2-Team view already shows. ' +
+    parts.push(note('No three-team route meets the roster-fit and market-value checks right now. ' +
+      'Neutral or small weekly losses qualify only when useful depth or a positional hole is addressed. ' +
       (stats.cycleChecks ? stats.cycleChecks + ' routes were re-solved.' : '')));
   }
   pathways.forEach(function(p){ parts.push(renderPathwayCard(p)); });
@@ -40427,8 +40425,9 @@ function renderPathwayCards(analysis){
   if(pathways.length){
     /* One line of execution guidance for the whole view, not one per card. */
     parts.push(note('PATHWAY: the first trade already leaves your lineup no worse, so it can be ' +
-      'made today. BLOCKBUSTER: the first trade alone costs you points — ESPN trades are two-team, ' +
-      'so get all three managers to agree before either is submitted.'));
+      'made after both partners confirm. BLOCKBUSTER: the first trade alone costs you points. ' +
+      'Get all three managers to agree before either ESPN trade is submitted. ' +
+      'Weekly losses are capped at 2 points and 5% of the lineup, and must address a roster need.'));
   }
   if(s3.truncated){
     parts.push(note('The 3-team search stopped at its ' + (s3.truncatedBy === 'budget'
@@ -40444,13 +40443,13 @@ function renderTrades(analysis, viewOverride){
   const trades = analysis.trades || [];
   const pathways = analysis.pathways || [];
   const search = analysis.search || {};
-  const s3 = analysis.search3 || {};
   const parts = [];
 
   parts.push('<div class="aigm-section">');
   parts.push(sectionHead('Targeted Trade Proposals', view === '3'
-    ? (pathways.length ? pathways.length + ' of ' + (s3.found || 0) + ' win-win-win' : 'none')
-    : (trades.length ? trades.length + ' of ' + (search.twoWayPositive || 0) + ' win-win' : 'none')));
+    ? 'Showing Top ' + pathways.length + ' 3-Team Blockbusters'
+    : 'Showing Top ' + trades.length + ' Trade Proposals (' +
+      (search.packagesConsidered || 0) + ' Evaluated)'));
   parts.push(renderTradeToggle(analysis, view));
   parts.push(view === '3' ? renderPathwayCards(analysis) : renderTwoTeamCards(analysis));
   parts.push('</div>');
