@@ -1,7 +1,43 @@
 {
-  "generatedAt": "2026-10-02T00:14:59.771Z",
-  "count": 11,
+  "generatedAt": "2026-10-02T18:42:41.898Z",
+  "count": 12,
   "posts": [
+    {
+      "title": "Friday Morning Recap & Weekend Preview: Week 4",
+      "slug": "2026-10-02-friday-morning-recap-weekend-preview-week-4",
+      "publishDate": "2026-10-02",
+      "category": "Analysis",
+      "excerpt": "Thursday night is final and the weekend is not. The Thursday result, the games still to come, and the add counts that moved in the twenty four hours between them.",
+      "author": "FSN Desk",
+      "entityCount": 5,
+      "tracked_players": [
+        {
+          "name": "Isaiah Davis",
+          "position": "RB",
+          "sleeperPlayerId": "11571"
+        },
+        {
+          "name": "Alvin Kamara",
+          "position": "RB",
+          "sleeperPlayerId": "4035"
+        },
+        {
+          "name": "Konata Mumpfield",
+          "position": "WR",
+          "sleeperPlayerId": "12718"
+        },
+        {
+          "name": "Darren Waller",
+          "position": "TE",
+          "sleeperPlayerId": "2505"
+        },
+        {
+          "name": "Tyler Higbee",
+          "position": "TE",
+          "sleeperPlayerId": "3271"
+        }
+      ]
+    },
     {
       "title": "Thursday Night Kickoff Preview: Week 4 Slate",
       "slug": "2026-10-01-thursday-night-kickoff-preview-week-4-slate",
