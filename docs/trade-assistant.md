@@ -154,29 +154,47 @@ This tool only reads. It sends nothing to ESPN, posts nothing, and writes
 nothing outside the file you name with `--out` or `--dump`. Copy a pitch into
 ESPN chat or a DM yourself.
 
-## In-app AI GM Beta: three-team roster fit
+## In-app AI GM Beta: linked two-team trades
 
-`lib/ai-gm.js` powers the in-app desk. Its three-team search prioritizes
-positional holes and usable depth before weekly points. A team can accept a
-neutral or negative delta only when it receives a useful starter or its first
-viable backup and sends a player from positional surplus. A viable player has
-at least 75% of the league's median projection at that position. No deal can
-reduce existing viable coverage below the league's required starter count.
-Weekly losses are capped at the smaller of 2 points and 5% of the lineup.
+`lib/ai-gm.js` uses one validator for the 2-Team board and each leg of a
+3-Team route. Step 1 must stand alone. Step 2 is valued against the actual
+roster after Step 1. Either failed leg rejects the whole route. Each leg can
+send and receive one or two players; retained broker assets and additional
+original players appear in the final roster ledger. Unequal packages must fit
+the roster capacity without an unmodeled drop.
 
-Every one-for-one exchange, including the intermediate player held after
-Step 1, must pass tier protection. Tiers use ESPN draft pedigree, season
-forecast, established production and starter usage; weekly projections are a
-fallback when season data is absent. Elite assets require elite or comparable
-high-value returns. Streamers cannot become a bridge to an elite asset.
-These are conservative roster heuristics, not a promise of manager acceptance.
+Both sides must meet market-value and roster checks. The dated
+`lib/data/trade-market-2026.json` snapshot uses [FantasyCalc redraft trade
+values](https://fantasycalc.com/trade-value-chart) for 12-team, 1QB PPR in 2026.
+`npm run refresh:trade-market` validates and replaces it; scoring does not
+make a network request or use weekly points as prices. Missing chart identities
+can use ESPN draft rank on the same market scale, with that source disclosed.
+Missing prices or unsupported season/scoring formats fail closed. An explicit
+market override can supply a different format.
 
-Both card types show Step 1 with Team A, Step 2 with Team B, and Final Roster
-Impact, with a reason for each manager. A negative intermediate delta still
-requires agreement from all three managers before submission. The 2-Team
-header reports the actual total packages evaluated, rather than the count of
-positive packages. The 3-Team header reports the number of displayed routes.
+Package totals must match within 15%. Top-ten RB/WR assets, the chart's top-two
+QBs, Josh Allen, Lamar Jackson and Saquon Barkley receive elite protection.
+Elite involvement always requires a multi-player package, even for elite-for-
+elite exchanges. A non-elite return must include two meaningful assets, each
+at least 20% of the elite asset's value and within the top 100 market ranks,
+and total at least 110% of its value. Cheap filler cannot bypass the rule.
+Rice, Cook and Jones cannot serve as an elite singleton return, regardless of
+chart or projection overrides.
 
-`npm run check:aigm` covers neutral and negative depth trades, loss limits,
-elite protection, exhaustive search agreement, deterministic ordering,
-handler access controls, and mobile card rendering.
+Positional holes and depth drive route ranking. A neutral or negative delta
+qualifies only when the roster sends viable surplus to fill an understaffed
+starter position. Ordinary backup depth alone cannot excuse a loss. The loss
+cap is the smaller of 1.5 points and 2% of the lineup. No deal may reduce
+existing viable coverage below the required starter count. Viability requires
+at least 75% of the league median projection and an available injury status.
+These are market and roster heuristics, not guaranteed manager acceptance.
+
+Cards show every player in Step 1, Step 2 and Final Roster Impact, each leg's
+market totals and your isolated delta, plus why each partner agrees. Negative
+deltas use loss styling. All managers should agree before submitting either
+trade, particularly when the independently valid first leg has a small loss.
+The headers report actual evaluated packages and displayed routes.
+
+`npm run check:aigm` covers isolated leg rejection, actual bridge ownership,
+market/elite packaging, scarcity and loss caps, package ledgers, deterministic
+ordering, handler access controls, and mobile card rendering.

@@ -774,6 +774,11 @@ html.overlay-open, body.overlay-open{ overflow:hidden !important; }
 .aigm-step-net{ color:var(--green); font-family:'JetBrains Mono',monospace; font-size:11.5px;
   font-weight:700; white-space:nowrap; }
 .aigm-step-line{ display:flex; align-items:baseline; gap:7px; margin-top:3px; min-width:0; }
+.aigm-step-pieces{ min-width:0; flex:1; }
+.aigm-step-pieces .aigm-swap-player{ display:block; }
+.aigm-step-value{ margin-top:5px; color:var(--dim); font-family:'JetBrains Mono',monospace; font-size:8.5px; }
+.aigm-ledger-val[data-tone="loss"],.aigm-delta[data-tone="loss"]{ color:var(--red); }
+.aigm-ledger-val[data-tone="neutral"],.aigm-delta[data-tone="neutral"]{ color:var(--dim); }
 .aigm-step-verb{ flex:none; width:30px; color:#4d5769; font-family:'JetBrains Mono',monospace;
   font-size:7.5px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; }
 .aigm-step-net[data-tone="loss"],.aigm-path .aigm-delta[data-tone="loss"]{ color:var(--red); }
@@ -40237,7 +40242,7 @@ function renderTwoTeamCards(analysis){
   const parts = [];
 
   if(!trades.length){
-    parts.push(note('No package of two-or-fewer players raises both lineups right now. That usually ' +
+    parts.push(note('No package of two-or-fewer players passes both roster and market-value checks right now. That usually ' +
       'means this roster is already shaped for its own lineup, or ESPN has not posted week ' +
       esc(String(analysis.league.week)) + ' projections yet. ' +
       (search.packagesConsidered
@@ -40252,7 +40257,7 @@ function renderTwoTeamCards(analysis){
       '<div class="aigm-name">' + esc(trade.targetTeam.name) + '</div>' +
       '<div class="aigm-meta">' + esc(trade.targetTeam.record || 'no record') + ' · ' +
       esc(trade.targetTeam.owner) + ' · ' + esc(trade.shape) + '</div>' +
-      '</div><div class="aigm-delta"><span class="aigm-delta-label">You</span>' +
+      '</div><div class="aigm-delta" data-tone="' + deltaTone(trade.myLineup.gain) + '"><span class="aigm-delta-label">You</span>' +
       signed(trade.myLineup.gain) + '</div></div>');
 
     parts.push('<div class="aigm-bid">' +
@@ -40275,11 +40280,11 @@ function renderTwoTeamCards(analysis){
        gain is a proposal I cannot judge the acceptance odds of. */
     parts.push('<div class="aigm-ledger">' +
       '<div class="aigm-ledger-cell"><span class="aigm-ledger-who">Your lineup</span>' +
-      '<span class="aigm-ledger-val">' + signed(trade.myLineup.gain) + '</span>' +
+      '<span class="aigm-ledger-val" data-tone="' + deltaTone(trade.myLineup.gain) + '">' + signed(trade.myLineup.gain) + '</span>' +
       '<span class="aigm-ledger-detail">' + n1(trade.myLineup.before) + ' → ' +
       n1(trade.myLineup.after) + '</span></div>' +
       '<div class="aigm-ledger-cell"><span class="aigm-ledger-who">Their lineup</span>' +
-      '<span class="aigm-ledger-val">' + signed(trade.theirLineup.gain) + '</span>' +
+      '<span class="aigm-ledger-val" data-tone="' + deltaTone(trade.theirLineup.gain) + '">' + signed(trade.theirLineup.gain) + '</span>' +
       '<span class="aigm-ledger-detail">' + n1(trade.theirLineup.before) + ' → ' +
       n1(trade.theirLineup.after) + '</span></div>' +
       '</div>');
@@ -40319,7 +40324,7 @@ function renderTwoTeamCards(analysis){
    partner's own net — the figure that decides whether they say yes. */
 function pathwayStep(tag, who, net, lines){
   const tone = /(?:^|\s)-\d/.test(net) ? 'loss' : /(?:^|\s)\+0\.0$/.test(net) ? 'neutral' : 'gain';
-  return '<div class="aigm-step">' +
+  return '<div class="aigm-step' + (tag === 'FINAL' ? ' aigm-step-final' : '') + '">' +
     '<div class="aigm-step-top">' +
       '<span class="aigm-step-tag">' + esc(tag) + '</span>' +
       '<span class="aigm-step-who">' + esc(who) + '</span>' +
@@ -40336,76 +40341,71 @@ function nameOnly(p){
   return p ? '<span class="aigm-swap-player"><b>' + esc(p.name) + '</b></span>' : '';
 }
 
+function pathwayPieces(p, key, fallback){
+  return p[key] && p[key].length ? p[key] : [fallback];
+}
+function piecesLine(players, compact){
+  return '<span class="aigm-step-pieces">' + players.map(compact ? nameOnly : playerLine).join('') + '</span>';
+}
+function deltaTone(value){ return value < 0 ? 'loss' : value === 0 ? 'neutral' : 'gain'; }
+function pathwayTitle(p){
+  const give = pathwayPieces(p, 'netGivePackage', p.give);
+  const receive = pathwayPieces(p, 'netReceivePackage', p.target);
+  return give.length === 1 && receive.length === 1 ? give[0].name + ' → ' + receive[0].name
+    : 'Roster exchange: ' + give.length + ' for ' + receive.length;
+}
+function legValue(step){
+  if(!step || !step.market) return '';
+  return '<div class="aigm-step-value">' + esc(step.shape) + ' · You ' + signed(step.myGain) +
+    ' · Market value ' + esc(String(Math.round(step.market.giveValue))) + ' ↔ ' +
+    esc(String(Math.round(step.market.receiveValue))) +
+    ((step.market.giveMarkets || []).concat(step.market.receiveMarkets || []).some(function(m){ return m.source === 'ESPN draft-rank fallback'; })
+      ? ' · draft-rank estimate' : '') + '</div>';
+}
 function renderPathwayCard(p){
   const parts = [];
-  const kindTone = p.kind === 'PATHWAY' ? 'green' : 'gold';
+  const give = pathwayPieces(p, 'givePackage', p.give);
+  const broker = pathwayPieces(p, 'brokerPackage', p.broker);
+  const secondGive = pathwayPieces(p, 'step2GivePackage', p.broker);
+  const target = pathwayPieces(p, 'targetPackage', p.target);
+  const netGive = pathwayPieces(p, 'netGivePackage', p.give);
+  const netReceive = pathwayPieces(p, 'netReceivePackage', p.target);
+  const steps = p.steps || [];
   parts.push('<div class="aigm-card aigm-path" data-kind="' + esc(p.kind) + '">');
-
-  /* Header: the net player move and my net. Everything below it is how. */
-  /* The kind badge rides on the "via" line rather than taking a row of its own:
-     a row per card is ~28px, and these cards are measured. */
   parts.push('<div class="aigm-row"><div class="min-w-0">' +
-    '<div class="aigm-name">' + esc(p.give.name) + ' → ' + esc(p.target.name) + '</div>' +
-    '<div class="aigm-path-meta">' + chip(p.kind, kindTone) +
+    '<div class="aigm-name">' + esc(pathwayTitle(p)) + '</div>' +
+    '<div class="aigm-path-meta">' + chip(p.kind, p.kind === 'PATHWAY' ? 'green' : 'gold') +
     '<span class="aigm-meta">via ' + esc(p.teamA.name) + ' · ' + esc(p.teamB.name) + '</span></div>' +
-    '</div><div class="aigm-delta" data-tone="' + (p.me.gain < 0 ? 'loss' : p.me.gain === 0 ? 'neutral' : 'gain') + '"><span class="aigm-delta-label">You</span>' +
+    '</div><div class="aigm-delta" data-tone="' + deltaTone(p.me.gain) + '"><span class="aigm-delta-label">You</span>' +
     signed(p.me.gain) + '</div></div>');
-
   parts.push('<div class="aigm-steps">');
-  /* Both executions use the same two linked ESPN exchanges. */
   parts.push(pathwayStep('STEP 1', 'Deal with ' + p.teamA.name,
     esc(p.teamA.abbrev || 'A') + ' ' + signed(p.a.gain), [
-      ['Send', playerLine(p.give)],
-      ['Get', playerLine(p.broker)],
+      ['Send', piecesLine(give)], ['Get', piecesLine(broker)],
     ]));
-  if(p.benefits && p.benefits.a){
-    parts.push(note(p.teamA.name + ' ' + p.benefits.a.reasons.join(' · ')));
-  }
+  parts.push(legValue(steps[0]));
+  if(p.benefits && p.benefits.a) parts.push(note(p.teamA.name + ' ' + p.benefits.a.reasons.join(' · ')));
   parts.push(pathwayStep('STEP 2', 'Deal with ' + p.teamB.name,
     esc(p.teamB.abbrev || 'B') + ' ' + signed(p.b.gain), [
-      ['Send', nameOnly(p.broker)],
-      ['Get', playerLine(p.target)],
+      ['Send', piecesLine(secondGive)], ['Get', piecesLine(target)],
     ]));
-  if(p.benefits && p.benefits.b){
-    parts.push(note(p.teamB.name + ' ' + p.benefits.b.reasons.join(' · ')));
-  }
-  parts.push('<div class="aigm-step aigm-step-final"><div class="aigm-step-top">' +
-    '<span class="aigm-step-tag">FINAL</span>' +
-    '<span class="aigm-step-who">Final Roster Impact ' + n1(p.me.before) + ' → ' + n1(p.me.after) + '</span>' +
-    '<span class="aigm-step-net" data-tone="' + (p.me.gain < 0 ? 'loss' : p.me.gain === 0 ? 'neutral' : 'gain') + '">' + signed(p.me.gain) + '</span>' +
-    '</div></div>');
+  parts.push(legValue(steps[1]));
+  if(p.benefits && p.benefits.b) parts.push(note(p.teamB.name + ' ' + p.benefits.b.reasons.join(' · ')));
+  parts.push(pathwayStep('FINAL', 'Final Roster Impact ' + n1(p.me.before) + ' → ' + n1(p.me.after),
+    signed(p.me.gain), [['Send', piecesLine(netGive, true)], ['Keep', piecesLine(netReceive, true)]]));
   if(p.benefits && p.benefits.me){
     parts.push(note('You ' + p.benefits.me.reasons.map(function(reason){
-      return reason.replace(/^(fills|gains|clears|upgrades) /, function(verb){
-        return verb.slice(0, -2) + ' ';
-      });
+      return reason.replace(/^(fills|gains|clears|upgrades) /, function(verb){ return verb.slice(0, -2) + ' '; });
     }).join(' · ')));
   }
   parts.push('</div>');
-
-  /* The three facts that justify the route, as figures. */
-  const facts = [];
-  /* Kept short enough to pack two to a line: three chips that each wrap alone
-     cost a blockbuster card ~90px, which is the vertical waste the card exists
-     to avoid. */
-  facts.push(p.kind === 'PATHWAY'
-    ? chip('after step 1 ' + signed(p.interimGain), 'green')
-    : chip('step 1 alone ' + signed(p.interimGain) + ' · agree all 3', 'red'));
-  facts.push(chip(p.give.pos + '↔' + p.target.pos + ' refused · ' +
-    (p.teamB.abbrev || 'B') + ' ' + signed(p.directGainForB)));
-  /* Always answer "is this worth a third manager?" — not only when the answer
-     is yes. Against an empty 2-team board the route is the only win-win going. */
-  if(p.hasTwoTeamAlternative === false){
-    facts.push(chip('no 2-team deal exists', 'cyan'));
-  } else if(p.beatsBestTwoTeam){
-    facts.push(chip('beats 2-team ' + signed(p.upliftVsBestTwoTeam), 'cyan'));
-  } else {
-    facts.push(chip('vs 2-team ' + signed(p.upliftVsBestTwoTeam)));
-  }
+  const facts = [chip('Both trades pass value + roster checks', 'cyan'),
+    chip('after step 1 ' + signed(p.interimGain), p.interimGain < 0 ? 'red' : 'green')];
+  if(p.hasTwoTeamAlternative === false) facts.push(chip('no 2-team deal exists', 'cyan'));
+  else facts.push(chip((p.beatsBestTwoTeam ? 'beats 2-team ' : 'vs 2-team ') + signed(p.upliftVsBestTwoTeam),
+    p.beatsBestTwoTeam ? 'cyan' : null));
   (p.designations || []).forEach(function(flag){ facts.push(chip(flag, 'red')); });
-  parts.push('<div class="aigm-bid">' + facts.join('') + '</div>');
-
-  parts.push('</div>');
+  parts.push('<div class="aigm-bid">' + facts.join('') + '</div></div>');
   return parts.join('');
 }
 
@@ -40417,7 +40417,7 @@ function renderPathwayCards(analysis){
 
   if(!pathways.length){
     parts.push(note('No three-team route meets the roster-fit and market-value checks right now. ' +
-      'Neutral or small weekly losses qualify only when useful depth or a positional hole is addressed. ' +
+      'Both linked trades must pass independently. Small weekly losses qualify only when surplus fills severe positional scarcity. ' +
       (stats.cycleChecks ? stats.cycleChecks + ' routes were re-solved.' : '')));
   }
   pathways.forEach(function(p){ parts.push(renderPathwayCard(p)); });
@@ -40427,7 +40427,7 @@ function renderPathwayCards(analysis){
     parts.push(note('PATHWAY: the first trade already leaves your lineup no worse, so it can be ' +
       'made after both partners confirm. BLOCKBUSTER: the first trade alone costs you points. ' +
       'Get all three managers to agree before either ESPN trade is submitted. ' +
-      'Weekly losses are capped at 2 points and 5% of the lineup, and must address a roster need.'));
+      'Both trades pass independently. Weekly losses are capped at 1.5 points and 2% of the lineup, and require surplus to fill severe positional scarcity.'));
   }
   if(s3.truncated){
     parts.push(note('The 3-team search stopped at its ' + (s3.truncatedBy === 'budget'
@@ -40451,6 +40451,7 @@ function renderTrades(analysis, viewOverride){
     : 'Showing Top ' + trades.length + ' Trade Proposals (' +
       (search.packagesConsidered || 0) + ' Evaluated)'));
   parts.push(renderTradeToggle(analysis, view));
+  if(analysis.market) parts.push(note('Market: ' + analysis.market.source + ' · ' + String(analysis.market.asOf || '').slice(0, 10)));
   parts.push(view === '3' ? renderPathwayCards(analysis) : renderTwoTeamCards(analysis));
   parts.push('</div>');
   return parts.join('');
