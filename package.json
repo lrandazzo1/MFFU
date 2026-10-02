@@ -21,6 +21,7 @@
     "trade": "node scripts/trade-assistant.mjs",
     "check:trade": "node scripts/trade-assistant.mjs --self-test",
     "check:aigm": "node scripts/ai-gm-check.mjs",
+    "refresh:trade-market": "node scripts/refresh-trade-market.mjs",
     "check:matchup-previews": "node scripts/matchup-preview-guard-check.mjs",
     "check:render": "node scripts/render-check.mjs",
     "check:storyreel": "node scripts/story-reel-check.mjs",

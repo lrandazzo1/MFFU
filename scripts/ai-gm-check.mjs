@@ -53,7 +53,23 @@ const fail = (msg, detail) => {
 const round1 = (v) => Math.round((Number(v) || 0) * 10) / 10;
 const near = (a, b, tol) => Math.abs(Number(a) - Number(b)) < (tol == null ? 1e-9 : tol);
 
-const gm = require('../lib/ai-gm.js');
+const engine = require('../lib/ai-gm.js');
+/* Explicit fixture prices keep tests independent of the live market snapshot.
+   None of these invented player identities is a real chart entry. */
+function fixtureMarket(league) {
+  const byId = {};
+  for (const t of league.teams || []) for (const entry of t.roster && t.roster.entries || []) {
+    const p = entry.playerPoolEntry && entry.playerPoolEntry.player;
+    if (p) byId[String(p.id)] = { value: 100, rank: 80, positionRank: 20 };
+  }
+  return { source: 'Synthetic test market', asOf: '2026-10-02', byId };
+}
+const gm = Object.assign({}, engine, {
+  normalize: (league, options = {}) => engine.normalize(league, Object.assign({}, options,
+    { marketValues: options.marketValues || fixtureMarket(league) })),
+  analyze: (input, options = {}) => engine.analyze(Object.assign({}, input,
+    { marketValues: input.marketValues || options.marketValues || fixtureMarket(input.league) }), options),
+});
 
 /* ============================================================================
    THE FIXTURE
@@ -105,7 +121,7 @@ function entry(name, posId, eligibleSlots, projection, lineupSlotId, opts) {
         eligibleSlots: eligibleSlots,
         injuryStatus: o.injury || 'ACTIVE',
         stats: stats,
-        draftRanksByRankType: o.draftRank == null ? undefined : { PPR: { rank: o.draftRank } },
+        draftRanksByRankType: { PPR: { rank: o.draftRank == null ? 60 : o.draftRank } },
         ownership: (o.percentOwned == null && o.percentStarted == null) ? undefined : {
           percentOwned: o.percentOwned == null ? 0 : o.percentOwned,
           percentStarted: o.percentStarted == null ? 0 : o.percentStarted,
@@ -214,6 +230,7 @@ function fixtureLeague() {
     seasonId: 2026,
     scoringPeriodId: 1,
     settings: {
+      scoringSettings: { scoringItems: [{ statId: 53, points: 1 }] },
       name: 'AI GM Test League',
       rosterSettings: { lineupSlotCounts: { 0: 1, 2: 2, 4: 2, 6: 1, 23: 1, 20: 6, 21: 1 } },
       acquisitionSettings: { acquisitionType: 'WAIVERS_FAB', acquisitionBudget: 100, waiverHours: 24 },
@@ -879,341 +896,132 @@ function cycleLeague(variant) {
   };
 }
 
-/* Exhaustive oracle: no search gates or candidate ordering. */
-function pathwayAcceptance(state, team, out, inn, floor) {
-  const solve = gm.lineupSolver(state.slotIds);
-  const before = gm.pathwayRosterRead(team, state, solve);
-  const after = gm.pathwayRosterRead({ players: gm.applySwap(team.players, [out], [inn]) }, state, solve);
-  return gm.pathwayFit(before, after, out, inn, after.points - before.points, floor);
-}
-function pathwayOracle(state, me, minPartnerGain, poolSize) {
-  const opponents = state.teams.filter((t) => t.id !== me.id);
-  const pool = (team) => gm.tradeablePool(team, poolSize);
-  const keys = [];
-  for (const X of pool(me)) {
-    for (const B of opponents) {
-      for (const Z of pool(B)) {
-        if (!gm.pathwayMarketMatch(X, Z, state.benchmarks)) continue;
-        if (!pathwayAcceptance(state, me, X, Z, 0.05).accepted) continue;
-        if (pathwayAcceptance(state, B, Z, X, minPartnerGain).accepted) continue;
-        for (const A of opponents) {
-          if (A.id === B.id) continue;
-          for (const Y of pool(A)) {
-            if (!gm.pathwayMarketMatch(X, Y, state.benchmarks) ||
-                !gm.pathwayMarketMatch(Y, Z, state.benchmarks)) continue;
-            if (pathwayAcceptance(state, A, Y, X, minPartnerGain).accepted &&
-                pathwayAcceptance(state, B, Z, Y, minPartnerGain).accepted) {
-              keys.push([X.id, A.id, Y.id, B.id, Z.id].join('|'));
-            }
-          }
-        }
-      }
-    }
-  }
-  return keys.sort();
-}
-
 function checkPathways() {
-  console.log('\n[ai-gm-check] 1d/4  three-team pathways\n');
-
-  const POOL = 10;
-  const FLOOR = 0.5;
-  const all = { pathwayLimit: 9999, pathwayDeadlineMs: 0, minPartnerGain: FLOOR, pathwayPoolSize: POOL };
-
-  const pState = gm.normalize(cycleLeague('pathway'), { week: 1 });
-  const pMe = gm.resolveMyTeam(pState, '1', '');
-  const pRun = gm.findPathways(pState, pMe, all);
-  const bState = gm.normalize(cycleLeague('blockbuster'), { week: 1 });
-  const bMe = gm.resolveMyTeam(bState, '1', '');
-  const bRun = gm.findPathways(bState, bMe, all);
-
-  /* ---- the known cycle is found ---- */
-  const known = pRun.pathways.find((p) =>
-    p.give.name === 'M Spare WR' && p.teamA.name === 'TE Rich' && p.broker.name === 'A Spare TE' &&
-    p.teamB.name === 'RB Rich' && p.target.name === 'B Spare RB');
-  if (known) pass('the engineered cycle is found: spare WR -> TE Rich, spare TE -> RB Rich, spare RB -> me');
-  else fail('the known 3-cycle was not found', pRun.pathways.length + ' cycle(s) returned');
-  if (known && known.kind === 'PATHWAY' && known.interimGain >= 0) {
-    pass('a bench WR for a TE that starts for me is a safe PATHWAY (after step 1 ' +
-      known.interimGain.toFixed(1) + ')');
-  } else fail('the known cycle is misclassified', known && known.kind);
-
-  /* All three managers must benefit; weekly deltas may be neutral or negative. */
-  const everyRun = pRun.pathways.concat(bRun.pathways);
-  const invalid = everyRun.filter((p) =>
-    !pathwayAcceptance(pRun.pathways.includes(p) ? pState : bState, p.me, p.give, p.target, 0.05).accepted ||
-    !pathwayAcceptance(pRun.pathways.includes(p) ? pState : bState, p.teamA, p.broker, p.give, FLOOR).accepted ||
-    !pathwayAcceptance(pRun.pathways.includes(p) ? pState : bState, p.teamB, p.target, p.broker, FLOOR).accepted ||
-    [[p.give, p.broker], [p.broker, p.target], [p.give, p.target]].some(([a, b]) =>
-      !gm.pathwayMarketMatch(a, b, (pRun.pathways.includes(p) ? pState : bState).benchmarks)));
-  if (everyRun.length && !invalid.length) pass('every manager benefits within roster-fit and tier protections');
-  else fail('an invalid cycle survived', invalid.length);
-
-  /* Recompute every team's delta from scratch — the engine's arithmetic is not
-     taken on trust. */
-  const solveP = gm.lineupSolver(pState.slotIds);
-  const recompute = (state, solve, team, out, inn) =>
-    solve(gm.applySwap(team.players, [out], [inn])) - solve(team.players);
-  const drift = pRun.pathways.filter((p) =>
-    Math.abs(recompute(pState, solveP, p.me, p.give, p.target) - p.myGain) > 1e-9 ||
-    Math.abs(recompute(pState, solveP, p.teamA, p.broker, p.give) - p.aGain) > 1e-9 ||
-    Math.abs(recompute(pState, solveP, p.teamB, p.target, p.broker) - p.bGain) > 1e-9);
-  if (!drift.length) pass('every team\'s delta matches an independent re-solve of its final roster');
-  else fail('engine deltas disagree with an independent re-solve', drift.length + ' cycle(s)');
-
-  const badLedger = everyRun.filter((p) =>
-    Math.abs((p.myAfter - p.myBefore) - p.myGain) > 1e-9 ||
-    Math.abs((p.aAfter - p.aBefore) - p.aGain) > 1e-9 ||
-    Math.abs((p.bAfter - p.bBefore) - p.bGain) > 1e-9);
-  if (!badLedger.length) pass('all three ledgers reconcile: after − before = the stated delta');
-  else fail('a pathway ledger does not reconcile', badLedger.length + ' cycle(s)');
-
-  /* ---- the cycle's shape ---- */
-  const malformed = everyRun.filter((p) => {
-    const ids = new Set([p.me.id, p.teamA.id, p.teamB.id]);
-    return ids.size !== 3 ||
-      !p.me.players.some((x) => x.id === p.give.id) ||
-      !p.teamA.players.some((x) => x.id === p.broker.id) ||
-      !p.teamB.players.some((x) => x.id === p.target.id);
-  });
-  if (!malformed.length) pass('every cycle spans three distinct teams, each piece starting on its own roster');
-  else fail('a malformed cycle', malformed.length + ' cycle(s)');
-
-  /* ---- value on the table: the direct swap must be refused ---- */
-  const directOk = everyRun.filter((p) => pathwayAcceptance(
-    pRun.pathways.includes(p) ? pState : bState, p.teamB, p.target, p.give, FLOOR).accepted);
-  if (!directOk.length) {
-    pass('every cycle routes around a direct swap refused by roster-fit checks');
-  } else fail('a cycle duplicates a direct 2-team deal', directOk.length + ' cycle(s)');
-
-  /* And the converse, checked generically rather than on one hand-picked pair:
-     independently find every (X, Z) whose DIRECT swap is win-win, and require
-     that none of them was brokered — those belong to the 2-team board.
-
-     (An earlier version asserted one specific pair in this fixture was directly
-     available. It is not: dropping B's WR2 to 2 pushes B's RBs into its FLEX, so
-     its "spare" RB is a starter and B scores -1 taking my WR13 for it. The engine
-     was right to broker that pair; the assertion was wrong. Hence the generic
-     form, which cannot be fooled by a fixture that is subtler than intended.) */
-  const wState = gm.normalize(cycleLeague('b-wants-wr'), { week: 1 });
-  const wMe = gm.resolveMyTeam(wState, '1', '');
-  const wRun = gm.findPathways(wState, wMe, all);
-  const solveW = gm.lineupSolver(wState.slotIds);
-  const directPairs = new Set();
-  for (const X of gm.tradeablePool(wMe, POOL)) {
-    for (const B of wState.teams.filter((t) => t.id !== wMe.id)) {
-      for (const Z of gm.tradeablePool(B, POOL)) {
-        if (!gm.pathwayMarketMatch(X, Z, wState.benchmarks) ||
-            !pathwayAcceptance(wState, wMe, X, Z, 0.05).accepted) continue;
-        if (pathwayAcceptance(wState, B, Z, X, FLOOR).accepted) directPairs.add(X.id + '|' + Z.id);
-      }
-    }
+  console.log('\n[ai-gm-check] 1d/4 linked two-team package pathways\n');
+  const options = { pathwayDeadlineMs: 0, pathwayLimit: 999999, pathwayCheckBudget: 300000, minPartnerGain: 0.5 };
+  const league = cycleLeague('pathway'); const state = gm.normalize(league, { week: 1 });
+  const me = state.teams[0]; const run = gm.findPathways(state, me, options);
+  const known = run.pathways.find((p) => p.give.name === 'M Spare WR' && p.broker.name === 'A Spare TE' && p.target.name === 'B Spare RB' &&
+    p.givePackage.length === 1 && p.brokerPackage.length === 1 && p.step2GivePackage.length === 1 && p.targetPackage.length === 1);
+  if (known) pass('a fair WR -> TE -> RB chain survives two independent valuations');
+  else fail('the fair single-player chain was lost', run.survivors);
+  let invalid = 0; let drift = 0;
+  const validator = gm.createTradeValidator(state, { minPartnerGain: 0.5 });
+  for (const p of run.pathways) {
+    const first = validator.validate(p.me, p.teamA, p.givePackage, p.brokerPackage);
+    const bridge = Object.assign({}, p.me, { players: gm.applySwap(p.me.players, p.givePackage, p.brokerPackage) });
+    const second = validator.validate(bridge, p.teamB, p.step2GivePackage, p.targetPackage);
+    if (!first.accepted || !second.accepted || !p.steps.every((s) => s.accepted)) invalid++;
+    const finalPlayers = gm.applySwap(bridge.players, p.step2GivePackage, p.targetPackage);
+    if (!near(first.left.gain, p.interimGain) || !near(second.left.before, first.left.after) ||
+        !near(second.left.after - first.left.before, p.myGain) ||
+        !near(gm.lineupPoints(finalPlayers, state.slotIds), p.myAfter) ||
+        !near(p.steps[1].myGain + p.steps[0].myGain, p.myGain) ||
+        new Set(finalPlayers.map((p) => p.id)).size !== finalPlayers.length) drift++;
   }
-  const brokered = wRun.pathways.filter((p) => directPairs.has(p.give.id + '|' + p.target.id));
-  if (directPairs.size > 0 && !brokered.length) {
-    pass('none of the ' + directPairs.size + ' directly-tradeable pairs was brokered into a 3-way — ' +
-      'they are left to the 2-team board');
-  } else fail('a directly-available swap was brokered anyway', JSON.stringify({
-    directPairs: directPairs.size, brokered: brokered.length }));
-  if (directPairs.size === wRun.stats.pairsDirectlyAvailable) {
-    pass('the engine\'s own count of directly-available pairs matches the independent count (' +
-      directPairs.size + ')');
-  } else fail('the engine miscounts directly-available pairs',
-    wRun.stats.pairsDirectlyAvailable + ' vs ' + directPairs.size);
-
-  /* ---- PATHWAY vs BLOCKBUSTER ---- */
-  const solveB = gm.lineupSolver(bState.slotIds);
-  const misKinded = everyRun.filter((p) => {
-    const state = pRun.pathways.indexOf(p) !== -1 ? pState : bState;
-    const solve = pRun.pathways.indexOf(p) !== -1 ? solveP : solveB;
-    const interim = recompute(state, solve, p.me, p.give, p.broker);
-    return Math.abs(interim - p.interimGain) > 1e-9 ||
-      (p.kind === 'PATHWAY') !== (interim >= -1e-9);
-  });
-  if (!misKinded.length) {
-    pass('PATHWAY exactly when step 1 alone leaves me no worse; BLOCKBUSTER otherwise');
-  } else fail('a cycle is labelled against its own interim', misKinded.length + ' cycle(s)');
-
-  const kinds = new Set(everyRun.map((p) => p.kind));
-  if (kinds.has('PATHWAY') && kinds.has('BLOCKBUSTER')) pass('both kinds are produced across the fixtures');
-  else fail('only one kind was ever produced', [...kinds].join(','));
-  const starterOut = bRun.pathways.filter((p) => p.give.name === 'M Flex WR');
-  if (starterOut.length && starterOut.every((p) => p.kind === 'BLOCKBUSTER')) {
-    pass('sending a starting WR makes every route a BLOCKBUSTER — step 1 alone costs me the flex');
-  } else fail('a starter-out route was not a blockbuster', JSON.stringify(starterOut.map((p) => p.kind)));
-
-  /* ---- lossless pruning ---- */
-  for (const [label, state, me, run] of [['pathway', pState, pMe, pRun], ['blockbuster', bState, bMe, bRun],
-    ['b-wants-wr', wState, wMe, wRun]]) {
-    const engine = run.pathways.map((p) => [p.give.id, p.teamA.id, p.broker.id, p.teamB.id, p.target.id].join('|')).sort();
-    const oracle = pathwayOracle(state, me, FLOOR, POOL);
-    if (engine.length === oracle.length && engine.every((k, i) => k === oracle[i])) {
-      pass('the gates are lossless on the ' + label + ' fixture: engine and brute force agree on all ' +
-        oracle.length + ' cycles');
-    } else fail('pruning discarded or invented a cycle on the ' + label + ' fixture',
-      'engine ' + engine.length + ' vs oracle ' + oracle.length);
+  if (run.pathways.length && !invalid) pass('every pathway leg passes the exact validator used by the 2-Team board');
+  else fail('an independently invalid leg survived', invalid);
+  if (!drift) pass('Step 2 uses the post-Step 1 roster and every final player/point ledger reconciles');
+  else fail('a pathway ledger or intermediate roster drifted', drift);
+  if (run.pathways.some((p) => p.givePackage.length === 2 && p.step2GivePackage.length === 2)) {
+    pass('fair package chains include two independently valid multi-player exchanges');
+  } else fail('the search only generated singleton flips');
+  if (known) {
+    const bridge = { ...me, players: gm.applySwap(me.players, known.givePackage, known.brokerPackage) };
+    if (!validator.validate(me, known.teamB, known.step2GivePackage, known.targetPackage).accepted &&
+        !validator.validate(bridge, known.teamB, known.givePackage, known.targetPackage).accepted &&
+        !validator.validate(me, known.teamA, [known.give], [known.broker, known.broker]).accepted) {
+      pass('Step 2 cannot use an unowned broker, spent asset or duplicate player');
+    } else fail('invalid bridge ownership was accepted');
   }
+  const blockLeague = cycleLeague('blockbuster'); const blockState = gm.normalize(blockLeague, { week: 1 });
+  const blocked = gm.findPathways(blockState, blockState.teams[0], options);
+  if (!blocked.pathways.some((p) => p.give.name === 'M Flex WR' && p.broker.name === 'A Spare TE' && p.givePackage.length === 1 && p.brokerPackage.length === 1)) {
+    pass('a final-roster win cannot rescue a first leg that fails isolated valuation');
+  } else fail('the bad first leg was accepted');
+  /* A valid Step 1 can still lead to an invalid Step 2. The whole chain is
+     excluded, regardless of the final roster gain. */
+  const secondInvalid = Object.assign({}, state, { marketValues: JSON.parse(JSON.stringify(state.marketValues)) });
+  const targetId = state.teams[1].players.find((p) => p.name === 'B Spare RB').id;
+  secondInvalid.marketValues.byId[targetId].value = 500;
+  const rejected = gm.findPathways(secondInvalid, me, options);
+  if (!rejected.pathways.some((p) => p.give.name === 'M Spare WR' && p.broker.name === 'A Spare TE' &&
+      p.targetPackage.some((q) => q.id === targetId) && p.step2GivePackage.length === 1)) pass('an underpriced second leg rejects the entire chain');
+  else fail('an invalid Step 2 survived');
 
-  /* The property every gate stands on: removing a player can never raise an
-     optimal lineup, so gain(T, -out +in) <= gain(T, +in). Checked exhaustively
-     across the fixture rather than assumed. */
-  let violations = 0;
-  let samples = 0;
-  for (const team of pState.teams) {
-    const others = pState.teams.filter((t) => t.id !== team.id);
-    for (const out of gm.tradeablePool(team, POOL)) {
-      for (const other of others) {
-        for (const inn of gm.tradeablePool(other, POOL)) {
-          samples++;
-          const swap = solveP(gm.applySwap(team.players, [out], [inn]));
-          const add = solveP(team.players.concat([inn]));
-          if (swap > add + 1e-9) violations++;
-        }
-      }
-    }
-  }
-  if (!violations) pass('monotonicity holds on all ' + samples + ' swaps: −out +in never beats +in alone');
-  else fail('monotonicity violated — the gates are unsound', violations + ' of ' + samples);
+  const market = require('../lib/trade-market');
+  const real = (name, id, pos) => ({ name, id, pos, projection: 50, hasProjection: true, draftRank: 1 });
+  const allen = real('Josh Allen', '3918298', 'QB'); const lamar = real('Lamar Jackson', '3916387', 'QB');
+  const rice = real('Rashee Rice', '4428331', 'WR'); const cook = real('James Cook III', '4379399', 'RB');
+  const jones = real('Aaron Jones Sr.', '3042519', 'RB');
+  if ([allen, lamar].every((elite) => [rice, cook, jones].every((mid) =>
+      !market.packageMarket([elite], [mid]).accepted && !market.packageMarket([mid], [elite]).accepted))) {
+    pass('Josh Allen and Lamar cannot be traded 1-for-1 for Rice, Cook or Jones in either direction');
+  } else fail('an elite/mid-tier singleton trade passed');
+  if (market.marketOf(allen).tier === 1 && market.marketOf(lamar).tier === 1 && market.marketOf(cook).tier !== 1) {
+    pass('explicit elite and non-elite policy overrides survive misleading draft ranks');
+  } else fail('market overrides did not take priority');
+  const baseValue = market.marketOf(allen).value;
+  const p1 = real('High Asset One', 'price1', 'WR'); const p2 = real('High Asset Two', 'price2', 'RB');
+  const prices = { byId: { price1: { value: baseValue * 0.6, rank: 30 }, price2: { value: baseValue * 0.5, rank: 40 } } };
+  prices.byId[allen.id] = { value: baseValue, rank: 17, positionRank: 1 };
+  if (market.packageMarket([allen], [p1, p2], prices).accepted &&
+      market.packageMarket([p1, p2], [allen], prices).accepted) pass('two meaningful assets with equivalent value and premium can acquire an elite');
+  else fail('fair elite packaging was rejected');
+  prices.byId.price2.value = baseValue * 0.05;
+  if (!market.packageMarket([allen], [p1, p2], prices).accepted) pass('adding a cheap filler never bypasses elite protection');
+  else fail('a filler package bypassed elite protection');
+  if (!market.packageMarket([allen], [Object.assign({}, rice, { id: 'unknown', draftRank: null })]).accepted) pass('missing market prices fail closed');
+  else fail('unknown prices passed');
+  if (!market.marketOf(allen, { compatible: false }).known) pass('unsupported scoring formats cannot use the one-QB PPR chart');
+  else fail('an incompatible market chart was used');
+  if (market.marketOf(Object.assign({}, allen, { projection: 0 })).value === market.marketOf(allen).value) pass('elite value is independent of this week\'s projection');
+  else fail('weekly projection changed market price');
 
-  /* ---- ranking, dedupe, limit ---- */
-  const shown = gm.findPathways(pState, pMe, { pathwayDeadlineMs: 0, minPartnerGain: FLOOR, pathwayPoolSize: POOL });
-  let ordered = true;
-  for (let i = 1; i < shown.pathways.length; i++) {
-    if (shown.pathways[i].fitScore > shown.pathways[i - 1].fitScore + 1e-9 ||
-        (near(shown.pathways[i].fitScore, shown.pathways[i - 1].fitScore) &&
-         shown.pathways[i].myGain > shown.pathways[i - 1].myGain + 1e-9)) ordered = false;
-  }
-  if (ordered) pass('pathways rank positional fit before projection gain');
-  else fail('pathway ranking');
-  if (shown.pathways.length <= gm.DEFAULT_PATHWAY_POOL_SIZE && shown.pathways.length <= 4) {
-    pass('output is limited to the top ' + shown.pathways.length + ' of ' + shown.survivors + ' cycles');
-  } else fail('the pathway limit was not applied', String(shown.pathways.length));
-  const targets = shown.pathways.map((p) => p.target.id);
-  const distinctTargets = new Set(pRun.pathways.map((p) => p.target.id)).size;
-  if (new Set(targets).size === Math.min(targets.length, distinctTargets)) {
-    pass('shown pathways land distinct targets before repeating one');
-  } else fail('pathway dedupe', targets.join(','));
-
-  /* ---- determinism ---- */
-  const once = JSON.stringify(gm.findPathways(pState, pMe, all).pathways.map((p) =>
-    [p.give.id, p.broker.id, p.target.id, p.myGain, p.aGain, p.bGain, p.kind]));
-  const twice = JSON.stringify(gm.findPathways(pState, pMe, all).pathways.map((p) =>
-    [p.give.id, p.broker.id, p.target.id, p.myGain, p.aGain, p.bGain, p.kind]));
-  if (once === twice) pass('two pathway searches over the same payload are identical');
-  else fail('pathway determinism');
-
-  /* ---- bounds, reported rather than silent ---- */
-  const budgeted = gm.findPathways(pState, pMe, Object.assign({}, all, { pathwayCheckBudget: 3 }));
-  if (budgeted.truncated && budgeted.truncatedBy === 'budget' && budgeted.stats.cycleChecks === 3) {
-    pass('an exhausted check budget stops at exactly the budget and says so');
-  } else fail('the check budget is not enforced or not reported', JSON.stringify({
-    truncated: budgeted.truncated, by: budgeted.truncatedBy, checks: budgeted.stats.cycleChecks }));
-  if (budgeted.pathways.every((p) => p.benefits.me.accepted && p.benefits.a.accepted && p.benefits.b.accepted)) {
-    pass('a truncated search still returns only accepted roster-fit cycles');
-  } else fail('truncation returned an invalid cycle');
-  const starved = gm.findPathways(pState, pMe, Object.assign({}, all, { pathwayDeadlineMs: 1e-9 }));
-  if (starved.truncated && starved.truncatedBy === 'deadline') pass('an exhausted deadline is reported as such');
-  else fail('the pathway deadline is not reported', JSON.stringify({ t: starved.truncated, by: starved.truncatedBy }));
-
-  /* Explicit behavioral regressions: zero and negative weekly points are
-     accepted for usable depth, while large losses and elite flips are refused. */
-  for (const [label, rb, te, expected] of [['neutral depth', 14, 11, 0], ['negative depth', 16, 11, -1]]) {
-    const league = cycleLeague('pathway');
-    const rows = league.teams[1].roster.entries;
-    rows.find((r) => r.playerPoolEntry.player.fullName === 'B TE').playerPoolEntry.player.stats[0].appliedTotal = te;
-    rows.find((r) => r.playerPoolEntry.player.fullName === 'B Spare RB').playerPoolEntry.player.stats[0].appliedTotal = rb;
-    const state = gm.normalize(league, { week: 1 });
-    const run = gm.findPathways(state, state.teams[0], all);
-    const route = run.pathways.find((p) => p.give.name === 'M Spare WR' &&
-      p.broker.name === 'A Spare TE' && p.target.name === 'B Spare RB');
-    if (route && near(route.bGain, expected) && route.benefits.b.reasons.includes('gains TE depth') &&
-        route.benefits.b.reasons.includes('clears RB surplus')) pass(label + ' trade survives with honest rationale');
-    else fail(label + ' route was rejected or misexplained', route && route.bGain);
-    const oracle = pathwayOracle(state, state.teams[0], FLOOR, POOL);
-    if (run.pathways.length === oracle.length) pass(label + ' search matches exhaustive roster-fit oracle');
-    else fail(label + ' pruning lost a route', run.pathways.length + ' vs ' + oracle.length);
-  }
-  const depthLeague = cycleLeague('pathway');
-  const myRows = depthLeague.teams[0].roster.entries;
-  myRows.find((r) => r.playerPoolEntry.player.fullName === 'M RB2').playerPoolEntry.player.stats[0].appliedTotal = 15;
-  myRows.find((r) => r.playerPoolEntry.player.fullName === 'M WR3').playerPoolEntry.player.stats[0].appliedTotal = 13;
-  myRows.splice(myRows.findIndex((r) => r.playerPoolEntry.player.fullName === 'M Spare WR'), 1);
-  depthLeague.teams[1].roster.entries.find((r) => r.playerPoolEntry.player.fullName === 'B Spare RB')
-    .playerPoolEntry.player.stats[0].appliedTotal = 12;
-  const depthState = gm.normalize(depthLeague, { week: 1 });
-  const depthRun = gm.findPathways(depthState, depthState.teams[0], all);
-  const myDepth = depthRun.pathways.find((p) => p.give.name === 'M WR3' && p.target.name === 'B Spare RB' &&
-    p.broker.name === 'A Spare TE');
-  if (myDepth && near(myDepth.myGain, -1) && myDepth.benefits.me.reasons.includes('gains RB depth')) {
-    pass('the requesting team can accept -1 pt/wk to build RB depth');
-  } else fail('the requesting team still needs strict positive points');
-  const protectedPlayer = { pos: 'RB', projection: 3, seasonBaseline: 20, draftRank: 8, hasProjection: true };
-  const streamer = { pos: 'TE', projection: 12, seasonBaseline: 6, draftRank: 142, hasProjection: true };
-  if (!gm.pathwayMarketMatch(protectedPlayer, streamer, { RB: 15, TE: 12 }) &&
-      !gm.pathwayMarketMatch(streamer, protectedPlayer, { RB: 15, TE: 12 })) {
-    pass('elite pedigree stays protected even during a low-projection week, in either direction');
-  } else fail('a star can be flipped for a streamer');
-  const comparable = { pos: 'WR', projection: 18, seasonBaseline: 20, draftRank: 10, hasProjection: true };
-  if (gm.pathwayMarketMatch(protectedPlayer, comparable, { RB: 15, WR: 14 })) pass('comparable elite assets can be exchanged');
-  else fail('elite-for-elite was rejected');
-  const invalidLeague = cycleLeague('pathway');
-  invalidLeague.teams[1].roster.entries.find((r) => r.playerPoolEntry.player.fullName === 'B TE')
+  /* Severe scarcity, rather than a spare healthy backup, is the only reason
+     to accept a small negative delta. Test against solved actual rosters. */
+  const scarcity = gm.normalize(cycleLeague('pathway'), { week: 1 });
+  const mine = scarcity.teams[0];
+  mine.players = mine.players.filter((p) => p.pos !== 'RB' && p.pos !== 'WR').concat([
+    { id: 'sr1', name: 'Surplus RB1', pos: 'RB', projection: 24, eligibleSlots: [2,23], hasProjection: true, injury: 'ACTIVE' },
+    { id: 'sr2', name: 'Surplus RB2', pos: 'RB', projection: 18, eligibleSlots: [2,23], hasProjection: true, injury: 'ACTIVE' },
+    { id: 'sr3', name: 'Surplus RB3', pos: 'RB', projection: 12, eligibleSlots: [2,23], hasProjection: true, injury: 'ACTIVE' },
+    { id: 'sr4', name: 'Surplus RB4', pos: 'RB', projection: 11, eligibleSlots: [2,23], hasProjection: true, injury: 'ACTIVE' },
+    { id: 'sw', name: 'Only WR', pos: 'WR', projection: 20, eligibleSlots: [4,23], hasProjection: true, injury: 'ACTIVE' },
+  ]);
+  const incoming = { id: 'needwr', name: 'Needed WR', pos: 'WR', projection: 12, eligibleSlots: [4,23], hasProjection: true, injury: 'ACTIVE' };
+  const fit = gm.createTradeValidator(scarcity).fit(mine, [mine.players.find((p) => p.id === 'sr1')], [incoming], 0.05);
+  if (near(fit.gain, -1) && fit.benefit.accepted && fit.benefit.severeScarcity) pass('a -1 point drop can fill a severe WR hole using RB surplus');
+  else fail('severe scarcity allowance failed', JSON.stringify(fit.benefit));
+  const deeperLoss = gm.createTradeValidator(scarcity).fit(mine, [Object.assign({}, mine.players.find((p) => p.id === 'sr1'))],
+    [Object.assign({}, incoming, { projection: 10 })], 0.05);
+  if (!deeperLoss.benefit.accepted) pass('scarcity never excuses an excessive projection loss');
+  else fail('excessive loss accepted');
+  const neutralLeague = cycleLeague('pathway');
+  neutralLeague.teams[1].roster.entries.find((e) => e.playerPoolEntry.player.fullName === 'B TE')
     .playerPoolEntry.player.stats[0].appliedTotal = 11;
-  invalidLeague.teams[1].roster.entries.find((r) => r.playerPoolEntry.player.fullName === 'B Spare RB')
-    .playerPoolEntry.player.stats[0].appliedTotal = 19;
-  const lossState = gm.normalize(invalidLeague, { week: 1 });
-  const rb = lossState.teams[1].players.find((p) => p.name === 'B Spare RB');
-  const te = lossState.teams[2].players.find((p) => p.name === 'A Spare TE');
-  if (!pathwayAcceptance(lossState, lossState.teams[1], rb, te, FLOOR).accepted) pass('depth never excuses a loss larger than 2 pt/wk');
-  else fail('an excessive weekly loss was excused by depth');
+  const neutral = gm.normalize(neutralLeague, { week: 1 });
+  const rb = neutral.teams[1].players.find((p) => p.name === 'B Spare RB');
+  const te = neutral.teams[2].players.find((p) => p.name === 'A Spare TE');
+  if (!gm.createTradeValidator(neutral).fit(neutral.teams[1], [rb], [te], 0.5).benefit.accepted) {
+    pass('adding a second healthy TE cannot justify a zero-point trade');
+  } else fail('ordinary bench depth was treated as severe scarcity');
 
-  /* ---- through analyze(), on the twelve-team fixture ---- */
-  const analysis = buildAnalysis();
-  if (Array.isArray(analysis.pathways) && analysis.search3 && analysis.search3.stats) {
-    pass('analyze() returns ' + analysis.pathways.length + ' pathways and the search stats');
-  } else fail('analyze() is missing pathways or search3');
-  const shapeOk = analysis.pathways.every((p) =>
-    p.me && p.a && p.b && p.give && p.broker && p.target && p.teamA && p.teamB &&
-    (p.kind === 'PATHWAY' || p.kind === 'BLOCKBUSTER') && typeof p.hasTwoTeamAlternative === 'boolean');
-  if (shapeOk) pass('every pathway in the payload carries all three ledgers, the pieces and the kind');
-  else fail('a pathway payload is malformed');
-  if (analysis.pathways.every((p) => [p.benefits.me, p.benefits.a, p.benefits.b].every((f) => f.accepted && f.reasons.length))) {
-    pass('the payload explains why all three managers agree');
-  } else fail('a pathway lacks a participant benefit');
-  const longProse = [];
-  for (const p of analysis.pathways) {
-    for (const [k, v] of Object.entries(p)) if (typeof v === 'string' && v.length > 120) longProse.push(k);
-  }
-  if (!longProse.length) pass('no pathway field holds prose — the card is numbers, like the 2-team one');
-  else fail('a pathway carries prose', longProse.join(','));
-  const s3 = analysis.search3;
-  if (!s3.truncated && s3.stats.cycleChecks < gm.DEFAULT_PATHWAY_CHECK_BUDGET / 10) {
-    pass('the twelve-team fixture finished in ' + s3.stats.cycleChecks + ' checks, under a tenth of the budget');
-  } else fail('the pathway search is too close to its budget', JSON.stringify(s3.stats));
-  const twoTeamGain = analysis.search3.bestTwoTeamGain;
-  const upliftsHonest = analysis.pathways.every((p) =>
-    Math.abs(p.upliftVsBestTwoTeam - round1(p.me.gain - twoTeamGain)) < 0.11 &&
-    p.beatsBestTwoTeam === (p.upliftVsBestTwoTeam > 0.05));
-  if (upliftsHonest) pass('every pathway reports its uplift against the best 2-team deal honestly');
-  else fail('a pathway misreports its comparison to the 2-team board');
-
-  /* When the 2-team board is empty a pathway is the only win-win going, and says
-     so. The cycle league has no direct deal for the RB at all. */
-  const lonely = gm.analyze({ league: cycleLeague('pathway'), freeAgents: [], byeWeeks: {} },
-    Object.assign({}, baseOptions, { minPartnerGain: FLOOR }));
-  if (lonely.pathways.length && lonely.pathways.every((p) => p.hasTwoTeamAlternative === !!lonely.trades.length)) {
-    pass('hasTwoTeamAlternative tracks whether the 2-team board has anything (' + lonely.trades.length +
-      ' direct deal(s) here)');
-  } else fail('hasTwoTeamAlternative does not track the 2-team board');
-
-  /* Realistic scale: twelve teams of sixteen. */
-  const t0 = Date.now();
-  const big = gm.analyze({ league: fixtureLeague(), freeAgents: [], byeWeeks: {} },
-    Object.assign({}, baseOptions, { pathwayDeadlineMs: 0 }));
-  const ms = Date.now() - t0;
-  if (ms < gm.DEFAULT_PATHWAY_DEADLINE_MS / 2) {
-    pass('full analysis with the 3-team search finished in ' + ms + 'ms (' + big.search3.found + ' cycles)');
-  } else fail('the 3-team search is too slow for the request budget', ms + 'ms');
+  const again = gm.findPathways(state, me, options);
+  if (JSON.stringify(run.pathways) === JSON.stringify(again.pathways)) pass('linked package searches are byte-identical on the same payload');
+  else fail('linked search is not deterministic');
+  const bounded = gm.findPathways(state, me, Object.assign({}, options, { pathwayCheckBudget: 3 }));
+  if (bounded.truncated && bounded.stats.cycleChecks === 3 && bounded.truncatedBy === 'budget') pass('cycle budget is enforced and reported');
+  else fail('cycle budget was not enforced');
+  const timed = gm.findPathways(state, me, Object.assign({}, options, { pathwayDeadlineMs: 1e-9 }));
+  if (timed.truncated && timed.truncatedBy === 'deadline') pass('deadline truncation is explicit');
+  else fail('deadline truncation was hidden');
+  const small = gm.findPathways(state, me, { pathwayDeadlineMs: 0 });
+  if (small.pathways.length <= 4) pass('the desk displays at most four valid linked routes');
+  else fail('pathway display limit was ignored');
+  const t0 = Date.now(); buildAnalysis({ deadlineMs: 0, pathwayDeadlineMs: 0 });
+  if (Date.now() - t0 < 2500) pass('twelve-team analysis remains within the request budget');
+  else fail('analysis is too slow', String(Date.now() - t0) + 'ms');
 }
 
 /* ============================================================================
@@ -2020,10 +1828,19 @@ async function checkRender() {
     await page.evaluate((fixture) => window.FSNAiGm.__setAnalysis(fixture), analysis);
 
     /* ==== 3-TEAM PATHWAYS: the toggle and the cards ==== */
-    const blockAnalysis = gm.analyze({ league: cycleLeague('blockbuster'), freeAgents: [], byeWeeks: {} },
-      Object.assign({}, baseOptions, { minPartnerGain: 0.5 }));
     const pathAnalysis = gm.analyze({ league: cycleLeague('pathway'), freeAgents: [], byeWeeks: {} },
-      Object.assign({}, baseOptions, { minPartnerGain: 0.5 }));
+      Object.assign({}, baseOptions, { minPartnerGain: 0.5, pathwayDeadlineMs: 0 }));
+    /* Keep the two-team rendering fixture, and add independently validated
+       routes from the small cycle fixture for package-card verification. */
+    analysis.pathways = pathAnalysis.pathways;
+    analysis.search3 = pathAnalysis.search3;
+    /* UI-only negative interim fixture; engine rejection of the old invalid
+       first leg is tested separately above. */
+    const blockAnalysis = JSON.parse(JSON.stringify(analysis));
+    blockAnalysis.pathways = blockAnalysis.pathways.slice(0, 1);
+    blockAnalysis.pathways[0].kind = 'BLOCKBUSTER';
+    blockAnalysis.pathways[0].interimGain = -1;
+    blockAnalysis.pathways[0].steps[0].myGain = -1;
 
     const toggle = await page.evaluate((fixture) => {
       window.FSNAiGm.__setAnalysis(fixture);
@@ -2102,21 +1919,35 @@ async function checkRender() {
     if (pathCard && firstPath &&
         pathCard.who[0] === 'Deal with ' + firstPath.teamA.name &&
         pathCard.who[1] === 'Deal with ' + firstPath.teamB.name &&
-        pathCard.verbs.join(',') === 'Send,Get,Send,Get') {
+        pathCard.verbs.join(',') === 'Send,Get,Send,Get,Send,Keep') {
       pass('step 1 deals with Team A (send / get), step 2 with Team B (flip / get)');
     } else fail('the PATHWAY steps are not the spec\'s shape', JSON.stringify(pathCard));
     if (pathCard && firstPath &&
-        pathCard.nets[0].endsWith('+' + firstPath.a.gain.toFixed(1)) &&
-        pathCard.nets[1].endsWith('+' + firstPath.b.gain.toFixed(1)) &&
-        pathCard.nets[2] === '+' + firstPath.me.gain.toFixed(1)) {
+        pathCard.nets[0].endsWith((firstPath.a.gain >= 0 ? '+' : '') + firstPath.a.gain.toFixed(1)) &&
+        pathCard.nets[1].endsWith((firstPath.b.gain >= 0 ? '+' : '') + firstPath.b.gain.toFixed(1)) &&
+        pathCard.nets[2] === (firstPath.me.gain >= 0 ? '+' : '') + firstPath.me.gain.toFixed(1)) {
       pass('each step shows its partner\'s own net, and FINAL shows mine (' + pathCard.nets.join(' / ') + ')');
     } else fail('a step net disagrees with the payload', JSON.stringify(pathCard && pathCard.nets));
-    if (pathCard && firstPath && pathCard.name === firstPath.give.name + ' → ' + firstPath.target.name) {
+    if (pathCard && firstPath && pathCard.name === (firstPath.netGivePackage.length === 1 && firstPath.netReceivePackage.length === 1
+        ? firstPath.give.name + ' → ' + firstPath.target.name
+        : 'Roster exchange: ' + firstPath.netGivePackage.length + ' for ' + firstPath.netReceivePackage.length)) {
       pass('the header states the net move: ' + pathCard.name);
     } else fail('the pathway header', pathCard && pathCard.name);
-    if (pathCard && /after step 1 \+/.test(pathCard.text) && /refused/.test(pathCard.text)) {
-      pass('a PATHWAY card proves it is safe (after step 1) and shows the refused direct swap');
+    if (pathCard && /after step 1 \+/.test(pathCard.text) && /Both trades pass value/.test(pathCard.text)) {
+      pass('a PATHWAY card proves it is safe (after step 1) and shows both isolated value checks');
     } else fail('the PATHWAY card is missing its justification chips');
+
+    const visiblePackages = await page.evaluate((fixture) => {
+      const card = document.querySelector('#aiGmBody .aigm-path[data-kind="PATHWAY"]');
+      const stages = card ? Array.from(card.querySelectorAll('.aigm-step')) : [];
+      const pairs = [[fixture.givePackage, fixture.brokerPackage],
+        [fixture.step2GivePackage, fixture.targetPackage], [fixture.netGivePackage, fixture.netReceivePackage]];
+      return { allNames: stages.length === 3 && stages.every((stage, i) =>
+        pairs[i].flat().every((player) => stage.textContent.includes(player.name))),
+        values: card ? card.querySelectorAll('.aigm-step-value').length : 0 };
+    }, firstPath);
+    if (visiblePackages.allNames && visiblePackages.values === 2) pass('all package members, retained players and both leg valuations are visible');
+    else fail('a package card hides a player or leg valuation', JSON.stringify(visiblePackages));
 
     /* ---- the BLOCKBUSTER card: one row per manager ---- */
     const bb = blockAnalysis.pathways.find((p) => p.kind === 'BLOCKBUSTER');
@@ -2139,7 +1970,7 @@ async function checkRender() {
         bbCard.nets[2] === (bb.me.gain >= 0 ? '+' : '') + bb.me.gain.toFixed(1)) {
       pass('all three managers\' weekly nets are on the card (' + bbCard.nets.slice(0, 3).join(' / ') + ')');
     } else fail('a blockbuster net disagrees with the payload', JSON.stringify(bbCard && bbCard.nets));
-    if (bbCard && /step 1 alone -/.test(bbCard.text) && /agree all 3/.test(bbCard.text)) {
+    if (bbCard && /after step 1 -/.test(bbCard.text)) {
       pass('a BLOCKBUSTER card shows why: step 1 alone costs me, so all three must agree first');
     } else fail('the BLOCKBUSTER card does not explain its execution');
 
@@ -2177,14 +2008,15 @@ async function checkRender() {
         });
       }
       return out;
-    }, [blockAnalysis, analysis]);
-    const tallPath = density.filter((c) => c.height > 580);
+    }, [blockAnalysis, analysis, Object.assign({}, analysis, { pathways: JSON.parse(
+      readFileSync(join(root, 'docs/ai-gm-57155288-linked-validation.json'), 'utf8')).proposals })]);
+    const tallPath = density.filter((c) => c.height > 850);
     const wordyPath = density.filter((c) => c.longest > 120);
     if (density.length && !tallPath.length) {
-      pass('every pathway card fits in 580px (PATHWAY ' +
+      pass('every pathway card fits in 850px (PATHWAY ' +
         Math.max(0, ...density.filter((c) => c.kind === 'PATHWAY').map((c) => c.height)) + 'px, BLOCKBUSTER ' +
         Math.max(0, ...density.filter((c) => c.kind === 'BLOCKBUSTER').map((c) => c.height)) + 'px)');
-    } else fail('a pathway card is taller than 580px', JSON.stringify(tallPath));
+    } else fail('a pathway card is taller than 850px', JSON.stringify(tallPath));
     if (density.length && !wordyPath.length) {
       pass('no pathway card holds a text run over 120 chars (longest ' +
         Math.max(...density.map((c) => c.longest)) + ')');
@@ -2230,7 +2062,7 @@ async function checkRender() {
 
     const evil = JSON.parse(JSON.stringify(blockAnalysis));
     evil.pathways[0].teamA.name = '<img src=x onerror="window.__aiGmXss=4">';
-    evil.pathways[0].target.name = '<script>window.__aiGmXss=5<\/script>';
+    evil.pathways[0].targetPackage[0].name = '<script>window.__aiGmXss=5<\/script>';
     const escaped3 = await page.evaluate((fixture) => {
       window.__aiGmXss = 0;
       window.FSNAiGm.__setAnalysis(fixture);

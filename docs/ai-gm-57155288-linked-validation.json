@@ -1,0 +1,1728 @@
+{
+  "leagueId": 57155288,
+  "season": 2026,
+  "week": 4,
+  "teamId": 1,
+  "teamName": "The Jamokez",
+  "market": {
+    "source": "FantasyCalc redraft trade values",
+    "asOf": "2026-10-02T01:39:14.105457+00:00",
+    "format": {
+      "numQbs": 1,
+      "numTeams": 12,
+      "ppr": 1
+    },
+    "elitePackagingRequired": true
+  },
+  "validatedRoutes": 138,
+  "search": {
+    "found": 138,
+    "truncated": false,
+    "truncatedBy": "",
+    "poolSize": 10,
+    "checkBudget": 300000,
+    "bestTwoTeamGain": 2.8,
+    "stats": {
+      "step1Checks": 33275,
+      "step1Accepted": 30,
+      "cycleChecks": 295900,
+      "step2Rejected": 295736,
+      "finalRejected": 26,
+      "pairsDirectlyAvailable": 0
+    }
+  },
+  "truncated": false,
+  "proposals": [
+    {
+      "id": "3917315,4595348|5|12483,4685472|14|4379399,5083076|12483,4361370",
+      "kind": "PATHWAY",
+      "fitScore": 15.1,
+      "benefits": {
+        "me": {
+          "accepted": true,
+          "score": 6.780299645528125,
+          "reasons": [
+            "fills RB hole",
+            "fills TE hole",
+            "clears QB surplus",
+            "clears WR surplus"
+          ],
+          "maxLoss": 1.5,
+          "severeScarcity": false
+        },
+        "a": {
+          "accepted": true,
+          "score": 3.597440298671539,
+          "reasons": [
+            "fills QB hole"
+          ],
+          "maxLoss": 1.5,
+          "severeScarcity": false
+        },
+        "b": {
+          "accepted": true,
+          "score": 4.745152261447014,
+          "reasons": [
+            "gains WR depth",
+            "fills QB hole",
+            "clears RB surplus",
+            "clears TE surplus"
+          ],
+          "maxLoss": 1.5,
+          "severeScarcity": true
+        }
+      },
+      "teamA": {
+        "id": "5",
+        "name": "Marvins Squad",
+        "abbrev": "ATTA",
+        "owner": "Mazen Atta (@ESPNfan66922482)",
+        "record": "0-3",
+        "logo": "https://www.si.com/.image/ar_1:1%2Cc_fill%2Ccs_srgb%2Cfl_progressive%2Cq_auto:good%2Cw_1200/MTY4MTI3NDc1OTM0NjM1Mjgx/tunsil-gas-mask-bongjpg.jpg"
+      },
+      "teamB": {
+        "id": "14",
+        "name": "Snits   Steelers",
+        "abbrev": "SV",
+        "owner": "Jack Sanita (@Degenerate Snit)",
+        "record": "1-2",
+        "logo": "https://g.espncdn.com/lm-static/logo-packs/ffl/MickeyAndDonald-Disney/Disney-04.svg"
+      },
+      "give": {
+        "id": "3917315",
+        "name": "Kyler Murray",
+        "pos": "QB",
+        "proTeam": "MIN",
+        "projection": 19.7,
+        "hasProjection": true,
+        "injury": "ACTIVE",
+        "byeWeek": null,
+        "actualPpg": 10.7,
+        "seasonBaseline": 18.8,
+        "draftRank": 149,
+        "percentStarted": 28.1
+      },
+      "broker": {
+        "id": "12483",
+        "name": "Matthew Stafford",
+        "pos": "QB",
+        "proTeam": "LAR",
+        "projection": 16.8,
+        "hasProjection": true,
+        "injury": "ACTIVE",
+        "byeWeek": null,
+        "actualPpg": 22.3,
+        "seasonBaseline": 16.9,
+        "draftRank": 137,
+        "percentStarted": 41.6
+      },
+      "target": {
+        "id": "4379399",
+        "name": "James Cook III",
+        "pos": "RB",
+        "proTeam": "BUF",
+        "projection": 18.3,
+        "hasProjection": true,
+        "injury": "ACTIVE",
+        "byeWeek": null,
+        "actualPpg": 21.4,
+        "seasonBaseline": 16.5,
+        "draftRank": 9,
+        "percentStarted": 98.7
+      },
+      "givePackage": [
+        {
+          "id": "3917315",
+          "name": "Kyler Murray",
+          "pos": "QB",
+          "proTeam": "MIN",
+          "projection": 19.7,
+          "hasProjection": true,
+          "injury": "ACTIVE",
+          "byeWeek": null,
+          "actualPpg": 10.7,
+          "seasonBaseline": 18.8,
+          "draftRank": 149,
+          "percentStarted": 28.1
+        },
+        {
+          "id": "4595348",
+          "name": "Malik Nabers",
+          "pos": "WR",
+          "proTeam": "NYG",
+          "projection": 14,
+          "hasProjection": true,
+          "injury": "ACTIVE",
+          "byeWeek": null,
+          "actualPpg": 7.6,
+          "seasonBaseline": 18.5,
+          "draftRank": 33,
+          "percentStarted": 73.2
+        }
+      ],
+      "brokerPackage": [
+        {
+          "id": "12483",
+          "name": "Matthew Stafford",
+          "pos": "QB",
+          "proTeam": "LAR",
+          "projection": 16.8,
+          "hasProjection": true,
+          "injury": "ACTIVE",
+          "byeWeek": null,
+          "actualPpg": 22.3,
+          "seasonBaseline": 16.9,
+          "draftRank": 137,
+          "percentStarted": 41.6
+        },
+        {
+          "id": "4685472",
+          "name": "Tetairoa McMillan",
+          "pos": "WR",
+          "proTeam": "CAR",
+          "projection": 15.4,
+          "hasProjection": true,
+          "injury": "ACTIVE",
+          "byeWeek": null,
+          "actualPpg": 3.7,
+          "seasonBaseline": 14.3,
+          "draftRank": 36,
+          "percentStarted": 84.4
+        }
+      ],
+      "targetPackage": [
+        {
+          "id": "4379399",
+          "name": "James Cook III",
+          "pos": "RB",
+          "proTeam": "BUF",
+          "projection": 18.3,
+          "hasProjection": true,
+          "injury": "ACTIVE",
+          "byeWeek": null,
+          "actualPpg": 21.4,
+          "seasonBaseline": 16.5,
+          "draftRank": 9,
+          "percentStarted": 98.7
+        },
+        {
+          "id": "5083076",
+          "name": "Harold Fannin Jr.",
+          "pos": "TE",
+          "proTeam": "CLE",
+          "projection": 11.4,
+          "hasProjection": true,
+          "injury": "ACTIVE",
+          "byeWeek": null,
+          "actualPpg": 13.2,
+          "seasonBaseline": 3.2,
+          "draftRank": 76,
+          "percentStarted": 68.7
+        }
+      ],
+      "step2GivePackage": [
+        {
+          "id": "4361370",
+          "name": "Chris Olave",
+          "pos": "WR",
+          "proTeam": "NO",
+          "projection": 19,
+          "hasProjection": true,
+          "injury": "ACTIVE",
+          "byeWeek": null,
+          "actualPpg": 21.7,
+          "seasonBaseline": 12.7,
+          "draftRank": 24,
+          "percentStarted": 96.8
+        },
+        {
+          "id": "12483",
+          "name": "Matthew Stafford",
+          "pos": "QB",
+          "proTeam": "LAR",
+          "projection": 16.8,
+          "hasProjection": true,
+          "injury": "ACTIVE",
+          "byeWeek": null,
+          "actualPpg": 22.3,
+          "seasonBaseline": 16.9,
+          "draftRank": 137,
+          "percentStarted": 41.6
+        }
+      ],
+      "netGivePackage": [
+        {
+          "id": "3917315",
+          "name": "Kyler Murray",
+          "pos": "QB",
+          "proTeam": "MIN",
+          "projection": 19.7,
+          "hasProjection": true,
+          "injury": "ACTIVE",
+          "byeWeek": null,
+          "actualPpg": 10.7,
+          "seasonBaseline": 18.8,
+          "draftRank": 149,
+          "percentStarted": 28.1
+        },
+        {
+          "id": "4595348",
+          "name": "Malik Nabers",
+          "pos": "WR",
+          "proTeam": "NYG",
+          "projection": 14,
+          "hasProjection": true,
+          "injury": "ACTIVE",
+          "byeWeek": null,
+          "actualPpg": 7.6,
+          "seasonBaseline": 18.5,
+          "draftRank": 33,
+          "percentStarted": 73.2
+        },
+        {
+          "id": "4361370",
+          "name": "Chris Olave",
+          "pos": "WR",
+          "proTeam": "NO",
+          "projection": 19,
+          "hasProjection": true,
+          "injury": "ACTIVE",
+          "byeWeek": null,
+          "actualPpg": 21.7,
+          "seasonBaseline": 12.7,
+          "draftRank": 24,
+          "percentStarted": 96.8
+        }
+      ],
+      "netReceivePackage": [
+        {
+          "id": "4379399",
+          "name": "James Cook III",
+          "pos": "RB",
+          "proTeam": "BUF",
+          "projection": 18.3,
+          "hasProjection": true,
+          "injury": "ACTIVE",
+          "byeWeek": null,
+          "actualPpg": 21.4,
+          "seasonBaseline": 16.5,
+          "draftRank": 9,
+          "percentStarted": 98.7
+        },
+        {
+          "id": "5083076",
+          "name": "Harold Fannin Jr.",
+          "pos": "TE",
+          "proTeam": "CLE",
+          "projection": 11.4,
+          "hasProjection": true,
+          "injury": "ACTIVE",
+          "byeWeek": null,
+          "actualPpg": 13.2,
+          "seasonBaseline": 3.2,
+          "draftRank": 76,
+          "percentStarted": 68.7
+        },
+        {
+          "id": "4685472",
+          "name": "Tetairoa McMillan",
+          "pos": "WR",
+          "proTeam": "CAR",
+          "projection": 15.4,
+          "hasProjection": true,
+          "injury": "ACTIVE",
+          "byeWeek": null,
+          "actualPpg": 3.7,
+          "seasonBaseline": 14.3,
+          "draftRank": 36,
+          "percentStarted": 84.4
+        }
+      ],
+      "steps": [
+        {
+          "accepted": true,
+          "shape": "2-for-2",
+          "myBefore": 131.4,
+          "myAfter": 131.5,
+          "myGain": 0.1,
+          "partnerGain": 1.5,
+          "market": {
+            "accepted": true,
+            "reason": "",
+            "giveValue": 3328,
+            "receiveValue": 3559,
+            "ratio": 0.9350941275639224,
+            "giveMarkets": [
+              {
+                "tier": 4,
+                "value": 357,
+                "known": true,
+                "source": "FantasyCalc redraft trade values",
+                "asOf": "2026-10-02T01:39:14.105457+00:00"
+              },
+              {
+                "tier": 2,
+                "value": 2971,
+                "known": true,
+                "source": "FantasyCalc redraft trade values",
+                "asOf": "2026-10-02T01:39:14.105457+00:00"
+              }
+            ],
+            "receiveMarkets": [
+              {
+                "tier": 3,
+                "value": 917,
+                "known": true,
+                "source": "FantasyCalc redraft trade values",
+                "asOf": "2026-10-02T01:39:14.105457+00:00"
+              },
+              {
+                "tier": 2,
+                "value": 2642,
+                "known": true,
+                "source": "FantasyCalc redraft trade values",
+                "asOf": "2026-10-02T01:39:14.105457+00:00"
+              }
+            ]
+          }
+        },
+        {
+          "accepted": true,
+          "shape": "2-for-2",
+          "myBefore": 131.5,
+          "myAfter": 132.8,
+          "myGain": 1.4,
+          "partnerGain": 3.9,
+          "market": {
+            "accepted": true,
+            "reason": "",
+            "giveValue": 7212,
+            "receiveValue": 8115,
+            "ratio": 0.888724584103512,
+            "giveMarkets": [
+              {
+                "tier": 2,
+                "value": 6295,
+                "known": true,
+                "source": "FantasyCalc redraft trade values",
+                "asOf": "2026-10-02T01:39:14.105457+00:00"
+              },
+              {
+                "tier": 3,
+                "value": 917,
+                "known": true,
+                "source": "FantasyCalc redraft trade values",
+                "asOf": "2026-10-02T01:39:14.105457+00:00"
+              }
+            ],
+            "receiveMarkets": [
+              {
+                "tier": 2,
+                "value": 7188,
+                "known": true,
+                "source": "FantasyCalc redraft trade values",
+                "asOf": "2026-10-02T01:39:14.105457+00:00"
+              },
+              {
+                "tier": 3,
+                "value": 927,
+                "known": true,
+                "source": "FantasyCalc redraft trade values",
+                "asOf": "2026-10-02T01:39:14.105457+00:00"
+              }
+            ]
+          }
+        }
+      ],
+      "me": {
+        "before": 131.4,
+        "after": 132.8,
+        "gain": 1.4
+      },
+      "a": {
+        "before": 127.1,
+        "after": 128.6,
+        "gain": 1.5
+      },
+      "b": {
+        "before": 126.5,
+        "after": 130.4,
+        "gain": 3.9
+      },
+      "interimGain": 0.1,
+      "directGainForB": 6.9,
+      "upliftVsBestTwoTeam": -1.3,
+      "beatsBestTwoTeam": false,
+      "hasTwoTeamAlternative": true,
+      "designations": []
+    },
+    {
+      "id": "3917315,4595348|5|3912547,4685472|14|3116365,4379399|3912547,4361370",
+      "kind": "PATHWAY",
+      "fitScore": 15,
+      "benefits": {
+        "me": {
+          "accepted": true,
+          "score": 6.673017789660597,
+          "reasons": [
+            "fills RB hole",
+            "fills TE hole",
+            "clears QB surplus",
+            "clears WR surplus"
+          ],
+          "maxLoss": 1.5,
+          "severeScarcity": false
+        },
+        "a": {
+          "accepted": true,
+          "score": 3.597440298671539,
+          "reasons": [
+            "fills QB hole"
+          ],
+          "maxLoss": 1.5,
+          "severeScarcity": false
+        },
+        "b": {
+          "accepted": true,
+          "score": 4.700810070718681,
+          "reasons": [
+            "gains WR depth",
+            "fills QB hole",
+            "clears RB surplus",
+            "clears TE surplus"
+          ],
+          "maxLoss": 1.5,
+          "severeScarcity": true
+        }
+      },
+      "teamA": {
+        "id": "5",
+        "name": "Marvins Squad",
+        "abbrev": "ATTA",
+        "owner": "Mazen Atta (@ESPNfan66922482)",
+        "record": "0-3",
+        "logo": "https://www.si.com/.image/ar_1:1%2Cc_fill%2Ccs_srgb%2Cfl_progressive%2Cq_auto:good%2Cw_1200/MTY4MTI3NDc1OTM0NjM1Mjgx/tunsil-gas-mask-bongjpg.jpg"
+      },
+      "teamB": {
+        "id": "14",
+        "name": "Snits   Steelers",
+        "abbrev": "SV",
+        "owner": "Jack Sanita (@Degenerate Snit)",
+        "record": "1-2",
+        "logo": "https://g.espncdn.com/lm-static/logo-packs/ffl/MickeyAndDonald-Disney/Disney-04.svg"
+      },
+      "give": {
+        "id": "3917315",
+        "name": "Kyler Murray",
+        "pos": "QB",
+        "proTeam": "MIN",
+        "projection": 19.7,
+        "hasProjection": true,
+        "injury": "ACTIVE",
+        "byeWeek": null,
+        "actualPpg": 10.7,
+        "seasonBaseline": 18.8,
+        "draftRank": 149,
+        "percentStarted": 28.1
+      },
+      "broker": {
+        "id": "3912547",
+        "name": "Sam Darnold",
+        "pos": "QB",
+        "proTeam": "SEA",
+        "projection": 15.9,
+        "hasProjection": true,
+        "injury": "ACTIVE",
+        "byeWeek": null,
+        "actualPpg": 28.5,
+        "seasonBaseline": 14.8,
+        "draftRank": 297,
+        "percentStarted": 22.6
+      },
+      "target": {
+        "id": "4379399",
+        "name": "James Cook III",
+        "pos": "RB",
+        "proTeam": "BUF",
+        "projection": 18.3,
+        "hasProjection": true,
+        "injury": "ACTIVE",
+        "byeWeek": null,
+        "actualPpg": 21.4,
+        "seasonBaseline": 16.5,
+        "draftRank": 9,
+        "percentStarted": 98.7
+      },
+      "givePackage": [
+        {
+          "id": "3917315",
+          "name": "Kyler Murray",
+          "pos": "QB",
+          "proTeam": "MIN",
+          "projection": 19.7,
+          "hasProjection": true,
+          "injury": "ACTIVE",
+          "byeWeek": null,
+          "actualPpg": 10.7,
+          "seasonBaseline": 18.8,
+          "draftRank": 149,
+          "percentStarted": 28.1
+        },
+        {
+          "id": "4595348",
+          "name": "Malik Nabers",
+          "pos": "WR",
+          "proTeam": "NYG",
+          "projection": 14,
+          "hasProjection": true,
+          "injury": "ACTIVE",
+          "byeWeek": null,
+          "actualPpg": 7.6,
+          "seasonBaseline": 18.5,
+          "draftRank": 33,
+          "percentStarted": 73.2
+        }
+      ],
+      "brokerPackage": [
+        {
+          "id": "3912547",
+          "name": "Sam Darnold",
+          "pos": "QB",
+          "proTeam": "SEA",
+          "projection": 15.9,
+          "hasProjection": true,
+          "injury": "ACTIVE",
+          "byeWeek": null,
+          "actualPpg": 28.5,
+          "seasonBaseline": 14.8,
+          "draftRank": 297,
+          "percentStarted": 22.6
+        },
+        {
+          "id": "4685472",
+          "name": "Tetairoa McMillan",
+          "pos": "WR",
+          "proTeam": "CAR",
+          "projection": 15.4,
+          "hasProjection": true,
+          "injury": "ACTIVE",
+          "byeWeek": null,
+          "actualPpg": 3.7,
+          "seasonBaseline": 14.3,
+          "draftRank": 36,
+          "percentStarted": 84.4
+        }
+      ],
+      "targetPackage": [
+        {
+          "id": "4379399",
+          "name": "James Cook III",
+          "pos": "RB",
+          "proTeam": "BUF",
+          "projection": 18.3,
+          "hasProjection": true,
+          "injury": "ACTIVE",
+          "byeWeek": null,
+          "actualPpg": 21.4,
+          "seasonBaseline": 16.5,
+          "draftRank": 9,
+          "percentStarted": 98.7
+        },
+        {
+          "id": "3116365",
+          "name": "Mark Andrews",
+          "pos": "TE",
+          "proTeam": "BAL",
+          "projection": 10.2,
+          "hasProjection": true,
+          "injury": "ACTIVE",
+          "byeWeek": null,
+          "actualPpg": 5.4,
+          "seasonBaseline": 10.3,
+          "draftRank": 147,
+          "percentStarted": 32.5
+        }
+      ],
+      "step2GivePackage": [
+        {
+          "id": "4361370",
+          "name": "Chris Olave",
+          "pos": "WR",
+          "proTeam": "NO",
+          "projection": 19,
+          "hasProjection": true,
+          "injury": "ACTIVE",
+          "byeWeek": null,
+          "actualPpg": 21.7,
+          "seasonBaseline": 12.7,
+          "draftRank": 24,
+          "percentStarted": 96.8
+        },
+        {
+          "id": "3912547",
+          "name": "Sam Darnold",
+          "pos": "QB",
+          "proTeam": "SEA",
+          "projection": 15.9,
+          "hasProjection": true,
+          "injury": "ACTIVE",
+          "byeWeek": null,
+          "actualPpg": 28.5,
+          "seasonBaseline": 14.8,
+          "draftRank": 297,
+          "percentStarted": 22.6
+        }
+      ],
+      "netGivePackage": [
+        {
+          "id": "3917315",
+          "name": "Kyler Murray",
+          "pos": "QB",
+          "proTeam": "MIN",
+          "projection": 19.7,
+          "hasProjection": true,
+          "injury": "ACTIVE",
+          "byeWeek": null,
+          "actualPpg": 10.7,
+          "seasonBaseline": 18.8,
+          "draftRank": 149,
+          "percentStarted": 28.1
+        },
+        {
+          "id": "4595348",
+          "name": "Malik Nabers",
+          "pos": "WR",
+          "proTeam": "NYG",
+          "projection": 14,
+          "hasProjection": true,
+          "injury": "ACTIVE",
+          "byeWeek": null,
+          "actualPpg": 7.6,
+          "seasonBaseline": 18.5,
+          "draftRank": 33,
+          "percentStarted": 73.2
+        },
+        {
+          "id": "4361370",
+          "name": "Chris Olave",
+          "pos": "WR",
+          "proTeam": "NO",
+          "projection": 19,
+          "hasProjection": true,
+          "injury": "ACTIVE",
+          "byeWeek": null,
+          "actualPpg": 21.7,
+          "seasonBaseline": 12.7,
+          "draftRank": 24,
+          "percentStarted": 96.8
+        }
+      ],
+      "netReceivePackage": [
+        {
+          "id": "4379399",
+          "name": "James Cook III",
+          "pos": "RB",
+          "proTeam": "BUF",
+          "projection": 18.3,
+          "hasProjection": true,
+          "injury": "ACTIVE",
+          "byeWeek": null,
+          "actualPpg": 21.4,
+          "seasonBaseline": 16.5,
+          "draftRank": 9,
+          "percentStarted": 98.7
+        },
+        {
+          "id": "3116365",
+          "name": "Mark Andrews",
+          "pos": "TE",
+          "proTeam": "BAL",
+          "projection": 10.2,
+          "hasProjection": true,
+          "injury": "ACTIVE",
+          "byeWeek": null,
+          "actualPpg": 5.4,
+          "seasonBaseline": 10.3,
+          "draftRank": 147,
+          "percentStarted": 32.5
+        },
+        {
+          "id": "4685472",
+          "name": "Tetairoa McMillan",
+          "pos": "WR",
+          "proTeam": "CAR",
+          "projection": 15.4,
+          "hasProjection": true,
+          "injury": "ACTIVE",
+          "byeWeek": null,
+          "actualPpg": 3.7,
+          "seasonBaseline": 14.3,
+          "draftRank": 36,
+          "percentStarted": 84.4
+        }
+      ],
+      "steps": [
+        {
+          "accepted": true,
+          "shape": "2-for-2",
+          "myBefore": 131.4,
+          "myAfter": 131.5,
+          "myGain": 0.1,
+          "partnerGain": 1.5,
+          "market": {
+            "accepted": true,
+            "reason": "",
+            "giveValue": 3328,
+            "receiveValue": 3375,
+            "ratio": 0.9860740740740741,
+            "giveMarkets": [
+              {
+                "tier": 4,
+                "value": 357,
+                "known": true,
+                "source": "FantasyCalc redraft trade values",
+                "asOf": "2026-10-02T01:39:14.105457+00:00"
+              },
+              {
+                "tier": 2,
+                "value": 2971,
+                "known": true,
+                "source": "FantasyCalc redraft trade values",
+                "asOf": "2026-10-02T01:39:14.105457+00:00"
+              }
+            ],
+            "receiveMarkets": [
+              {
+                "tier": 3,
+                "value": 733,
+                "known": true,
+                "source": "FantasyCalc redraft trade values",
+                "asOf": "2026-10-02T01:39:14.105457+00:00"
+              },
+              {
+                "tier": 2,
+                "value": 2642,
+                "known": true,
+                "source": "FantasyCalc redraft trade values",
+                "asOf": "2026-10-02T01:39:14.105457+00:00"
+              }
+            ]
+          }
+        },
+        {
+          "accepted": true,
+          "shape": "2-for-2",
+          "myBefore": 131.5,
+          "myAfter": 131.6,
+          "myGain": 0.1,
+          "partnerGain": 4.4,
+          "market": {
+            "accepted": true,
+            "reason": "",
+            "giveValue": 7028,
+            "receiveValue": 7643,
+            "ratio": 0.9195342143137512,
+            "giveMarkets": [
+              {
+                "tier": 2,
+                "value": 6295,
+                "known": true,
+                "source": "FantasyCalc redraft trade values",
+                "asOf": "2026-10-02T01:39:14.105457+00:00"
+              },
+              {
+                "tier": 3,
+                "value": 733,
+                "known": true,
+                "source": "FantasyCalc redraft trade values",
+                "asOf": "2026-10-02T01:39:14.105457+00:00"
+              }
+            ],
+            "receiveMarkets": [
+              {
+                "tier": 2,
+                "value": 7188,
+                "known": true,
+                "source": "FantasyCalc redraft trade values",
+                "asOf": "2026-10-02T01:39:14.105457+00:00"
+              },
+              {
+                "tier": 4,
+                "value": 455,
+                "known": true,
+                "source": "FantasyCalc redraft trade values",
+                "asOf": "2026-10-02T01:39:14.105457+00:00"
+              }
+            ]
+          }
+        }
+      ],
+      "me": {
+        "before": 131.4,
+        "after": 131.6,
+        "gain": 0.2
+      },
+      "a": {
+        "before": 127.1,
+        "after": 128.6,
+        "gain": 1.5
+      },
+      "b": {
+        "before": 126.5,
+        "after": 130.8,
+        "gain": 4.4
+      },
+      "interimGain": 0.1,
+      "directGainForB": 8.1,
+      "upliftVsBestTwoTeam": -2.6,
+      "beatsBestTwoTeam": false,
+      "hasTwoTeamAlternative": true,
+      "designations": []
+    },
+    {
+      "id": "3917315,4428331|5|3912547,4696981|14|4373678,5083076|2576925,3912547",
+      "kind": "PATHWAY",
+      "fitScore": 13.6,
+      "benefits": {
+        "me": {
+          "accepted": true,
+          "score": 6.780299645528125,
+          "reasons": [
+            "fills TE hole",
+            "fills RB hole",
+            "clears QB surplus",
+            "clears WR surplus"
+          ],
+          "maxLoss": 1.5,
+          "severeScarcity": false
+        },
+        "a": {
+          "accepted": true,
+          "score": 3.597440298671539,
+          "reasons": [
+            "fills QB hole",
+            "clears RB surplus"
+          ],
+          "maxLoss": 1.5,
+          "severeScarcity": false
+        },
+        "b": {
+          "accepted": true,
+          "score": 3.2008100707186813,
+          "reasons": [
+            "fills QB hole"
+          ],
+          "maxLoss": 1.5,
+          "severeScarcity": true
+        }
+      },
+      "teamA": {
+        "id": "5",
+        "name": "Marvins Squad",
+        "abbrev": "ATTA",
+        "owner": "Mazen Atta (@ESPNfan66922482)",
+        "record": "0-3",
+        "logo": "https://www.si.com/.image/ar_1:1%2Cc_fill%2Ccs_srgb%2Cfl_progressive%2Cq_auto:good%2Cw_1200/MTY4MTI3NDc1OTM0NjM1Mjgx/tunsil-gas-mask-bongjpg.jpg"
+      },
+      "teamB": {
+        "id": "14",
+        "name": "Snits   Steelers",
+        "abbrev": "SV",
+        "owner": "Jack Sanita (@Degenerate Snit)",
+        "record": "1-2",
+        "logo": "https://g.espncdn.com/lm-static/logo-packs/ffl/MickeyAndDonald-Disney/Disney-04.svg"
+      },
+      "give": {
+        "id": "3917315",
+        "name": "Kyler Murray",
+        "pos": "QB",
+        "proTeam": "MIN",
+        "projection": 19.7,
+        "hasProjection": true,
+        "injury": "ACTIVE",
+        "byeWeek": null,
+        "actualPpg": 10.7,
+        "seasonBaseline": 18.8,
+        "draftRank": 149,
+        "percentStarted": 28.1
+      },
+      "broker": {
+        "id": "4696981",
+        "name": "Cam Skattebo",
+        "pos": "RB",
+        "proTeam": "NYG",
+        "projection": 16.8,
+        "hasProjection": true,
+        "injury": "ACTIVE",
+        "byeWeek": null,
+        "actualPpg": 13,
+        "seasonBaseline": 8.4,
+        "draftRank": 46,
+        "percentStarted": 86.1
+      },
+      "target": {
+        "id": "5083076",
+        "name": "Harold Fannin Jr.",
+        "pos": "TE",
+        "proTeam": "CLE",
+        "projection": 11.4,
+        "hasProjection": true,
+        "injury": "ACTIVE",
+        "byeWeek": null,
+        "actualPpg": 13.2,
+        "seasonBaseline": 3.2,
+        "draftRank": 76,
+        "percentStarted": 68.7
+      },
+      "givePackage": [
+        {
+          "id": "3917315",
+          "name": "Kyler Murray",
+          "pos": "QB",
+          "proTeam": "MIN",
+          "projection": 19.7,
+          "hasProjection": true,
+          "injury": "ACTIVE",
+          "byeWeek": null,
+          "actualPpg": 10.7,
+          "seasonBaseline": 18.8,
+          "draftRank": 149,
+          "percentStarted": 28.1
+        },
+        {
+          "id": "4428331",
+          "name": "Rashee Rice",
+          "pos": "WR",
+          "proTeam": "KC",
+          "projection": 15.3,
+          "hasProjection": true,
+          "injury": "ACTIVE",
+          "byeWeek": null,
+          "actualPpg": 15.8,
+          "seasonBaseline": 9.9,
+          "draftRank": 25,
+          "percentStarted": 86.3
+        }
+      ],
+      "brokerPackage": [
+        {
+          "id": "4696981",
+          "name": "Cam Skattebo",
+          "pos": "RB",
+          "proTeam": "NYG",
+          "projection": 16.8,
+          "hasProjection": true,
+          "injury": "ACTIVE",
+          "byeWeek": null,
+          "actualPpg": 13,
+          "seasonBaseline": 8.4,
+          "draftRank": 46,
+          "percentStarted": 86.1
+        },
+        {
+          "id": "3912547",
+          "name": "Sam Darnold",
+          "pos": "QB",
+          "proTeam": "SEA",
+          "projection": 15.9,
+          "hasProjection": true,
+          "injury": "ACTIVE",
+          "byeWeek": null,
+          "actualPpg": 28.5,
+          "seasonBaseline": 14.8,
+          "draftRank": 297,
+          "percentStarted": 22.6
+        }
+      ],
+      "targetPackage": [
+        {
+          "id": "5083076",
+          "name": "Harold Fannin Jr.",
+          "pos": "TE",
+          "proTeam": "CLE",
+          "projection": 11.4,
+          "hasProjection": true,
+          "injury": "ACTIVE",
+          "byeWeek": null,
+          "actualPpg": 13.2,
+          "seasonBaseline": 3.2,
+          "draftRank": 76,
+          "percentStarted": 68.7
+        },
+        {
+          "id": "4373678",
+          "name": "Khalil Shakir",
+          "pos": "WR",
+          "proTeam": "BUF",
+          "projection": 9.9,
+          "hasProjection": true,
+          "injury": "ACTIVE",
+          "byeWeek": null,
+          "actualPpg": 1.6,
+          "seasonBaseline": 11.8,
+          "draftRank": 132,
+          "percentStarted": 6.2
+        }
+      ],
+      "step2GivePackage": [
+        {
+          "id": "2576925",
+          "name": "Darren Waller",
+          "pos": "TE",
+          "proTeam": "CAR",
+          "projection": 9.4,
+          "hasProjection": true,
+          "injury": "ACTIVE",
+          "byeWeek": null,
+          "actualPpg": 10.1,
+          "seasonBaseline": 7.9,
+          "draftRank": 374,
+          "percentStarted": 12.9
+        },
+        {
+          "id": "3912547",
+          "name": "Sam Darnold",
+          "pos": "QB",
+          "proTeam": "SEA",
+          "projection": 15.9,
+          "hasProjection": true,
+          "injury": "ACTIVE",
+          "byeWeek": null,
+          "actualPpg": 28.5,
+          "seasonBaseline": 14.8,
+          "draftRank": 297,
+          "percentStarted": 22.6
+        }
+      ],
+      "netGivePackage": [
+        {
+          "id": "3917315",
+          "name": "Kyler Murray",
+          "pos": "QB",
+          "proTeam": "MIN",
+          "projection": 19.7,
+          "hasProjection": true,
+          "injury": "ACTIVE",
+          "byeWeek": null,
+          "actualPpg": 10.7,
+          "seasonBaseline": 18.8,
+          "draftRank": 149,
+          "percentStarted": 28.1
+        },
+        {
+          "id": "4428331",
+          "name": "Rashee Rice",
+          "pos": "WR",
+          "proTeam": "KC",
+          "projection": 15.3,
+          "hasProjection": true,
+          "injury": "ACTIVE",
+          "byeWeek": null,
+          "actualPpg": 15.8,
+          "seasonBaseline": 9.9,
+          "draftRank": 25,
+          "percentStarted": 86.3
+        },
+        {
+          "id": "2576925",
+          "name": "Darren Waller",
+          "pos": "TE",
+          "proTeam": "CAR",
+          "projection": 9.4,
+          "hasProjection": true,
+          "injury": "ACTIVE",
+          "byeWeek": null,
+          "actualPpg": 10.1,
+          "seasonBaseline": 7.9,
+          "draftRank": 374,
+          "percentStarted": 12.9
+        }
+      ],
+      "netReceivePackage": [
+        {
+          "id": "5083076",
+          "name": "Harold Fannin Jr.",
+          "pos": "TE",
+          "proTeam": "CLE",
+          "projection": 11.4,
+          "hasProjection": true,
+          "injury": "ACTIVE",
+          "byeWeek": null,
+          "actualPpg": 13.2,
+          "seasonBaseline": 3.2,
+          "draftRank": 76,
+          "percentStarted": 68.7
+        },
+        {
+          "id": "4373678",
+          "name": "Khalil Shakir",
+          "pos": "WR",
+          "proTeam": "BUF",
+          "projection": 9.9,
+          "hasProjection": true,
+          "injury": "ACTIVE",
+          "byeWeek": null,
+          "actualPpg": 1.6,
+          "seasonBaseline": 11.8,
+          "draftRank": 132,
+          "percentStarted": 6.2
+        },
+        {
+          "id": "4696981",
+          "name": "Cam Skattebo",
+          "pos": "RB",
+          "proTeam": "NYG",
+          "projection": 16.8,
+          "hasProjection": true,
+          "injury": "ACTIVE",
+          "byeWeek": null,
+          "actualPpg": 13,
+          "seasonBaseline": 8.4,
+          "draftRank": 46,
+          "percentStarted": 86.1
+        }
+      ],
+      "steps": [
+        {
+          "accepted": true,
+          "shape": "2-for-2",
+          "myBefore": 131.4,
+          "myAfter": 131.5,
+          "myGain": 0.1,
+          "partnerGain": 1.5,
+          "market": {
+            "accepted": true,
+            "reason": "",
+            "giveValue": 3189,
+            "receiveValue": 3661,
+            "ratio": 0.871073477192024,
+            "giveMarkets": [
+              {
+                "tier": 4,
+                "value": 357,
+                "known": true,
+                "source": "FantasyCalc redraft trade values",
+                "asOf": "2026-10-02T01:39:14.105457+00:00"
+              },
+              {
+                "tier": 2,
+                "value": 2832,
+                "known": true,
+                "source": "FantasyCalc redraft trade values",
+                "asOf": "2026-10-02T01:39:14.105457+00:00"
+              }
+            ],
+            "receiveMarkets": [
+              {
+                "tier": 2,
+                "value": 2928,
+                "known": true,
+                "source": "FantasyCalc redraft trade values",
+                "asOf": "2026-10-02T01:39:14.105457+00:00"
+              },
+              {
+                "tier": 3,
+                "value": 733,
+                "known": true,
+                "source": "FantasyCalc redraft trade values",
+                "asOf": "2026-10-02T01:39:14.105457+00:00"
+              }
+            ]
+          }
+        },
+        {
+          "accepted": true,
+          "shape": "2-for-2",
+          "myBefore": 131.5,
+          "myAfter": 133.5,
+          "myGain": 2,
+          "partnerGain": 2.5,
+          "market": {
+            "accepted": true,
+            "reason": "",
+            "giveValue": 1143,
+            "receiveValue": 1149,
+            "ratio": 0.9947780678851175,
+            "giveMarkets": [
+              {
+                "tier": 4,
+                "value": 410,
+                "known": true,
+                "source": "FantasyCalc redraft trade values",
+                "asOf": "2026-10-02T01:39:14.105457+00:00"
+              },
+              {
+                "tier": 3,
+                "value": 733,
+                "known": true,
+                "source": "FantasyCalc redraft trade values",
+                "asOf": "2026-10-02T01:39:14.105457+00:00"
+              }
+            ],
+            "receiveMarkets": [
+              {
+                "tier": 3,
+                "value": 927,
+                "known": true,
+                "source": "FantasyCalc redraft trade values",
+                "asOf": "2026-10-02T01:39:14.105457+00:00"
+              },
+              {
+                "tier": 4,
+                "value": 222,
+                "known": true,
+                "source": "FantasyCalc redraft trade values",
+                "asOf": "2026-10-02T01:39:14.105457+00:00"
+              }
+            ]
+          }
+        }
+      ],
+      "me": {
+        "before": 131.4,
+        "after": 133.5,
+        "gain": 2.1
+      },
+      "a": {
+        "before": 127.1,
+        "after": 128.6,
+        "gain": 1.5
+      },
+      "b": {
+        "before": 126.5,
+        "after": 129,
+        "gain": 2.5
+      },
+      "interimGain": 0.1,
+      "directGainForB": 6.7,
+      "upliftVsBestTwoTeam": -0.6,
+      "beatsBestTwoTeam": false,
+      "hasTwoTeamAlternative": true,
+      "designations": []
+    },
+    {
+      "id": "4360310,4361370|14|4379399,5083076|3|4258173,4569618|4379399,4595348",
+      "kind": "PATHWAY",
+      "fitScore": 12,
+      "benefits": {
+        "me": {
+          "accepted": true,
+          "score": 3.671628476956968,
+          "reasons": [
+            "fills TE hole",
+            "clears QB surplus"
+          ],
+          "maxLoss": 1.5,
+          "severeScarcity": false
+        },
+        "a": {
+          "accepted": true,
+          "score": 4.8322793627376655,
+          "reasons": [
+            "gains WR depth",
+            "fills QB hole",
+            "clears RB surplus",
+            "clears TE surplus"
+          ],
+          "maxLoss": 1.5,
+          "severeScarcity": true
+        },
+        "b": {
+          "accepted": true,
+          "score": 3.5,
+          "reasons": [
+            "fills RB hole",
+            "clears WR surplus"
+          ],
+          "maxLoss": 1.5,
+          "severeScarcity": true
+        }
+      },
+      "teamA": {
+        "id": "14",
+        "name": "Snits   Steelers",
+        "abbrev": "SV",
+        "owner": "Jack Sanita (@Degenerate Snit)",
+        "record": "1-2",
+        "logo": "https://g.espncdn.com/lm-static/logo-packs/ffl/MickeyAndDonald-Disney/Disney-04.svg"
+      },
+      "teamB": {
+        "id": "3",
+        "name": "Chuck E Cheese",
+        "abbrev": "CB",
+        "owner": "Charles Brassington (@espn05304088)",
+        "record": "0-3",
+        "logo": "https://g.espncdn.com/lm-static/logo-packs/ffl/MickeyAndDonald-Disney/Disney-05.svg"
+      },
+      "give": {
+        "id": "4361370",
+        "name": "Chris Olave",
+        "pos": "WR",
+        "proTeam": "NO",
+        "projection": 19,
+        "hasProjection": true,
+        "injury": "ACTIVE",
+        "byeWeek": null,
+        "actualPpg": 21.7,
+        "seasonBaseline": 12.7,
+        "draftRank": 24,
+        "percentStarted": 96.8
+      },
+      "broker": {
+        "id": "4379399",
+        "name": "James Cook III",
+        "pos": "RB",
+        "proTeam": "BUF",
+        "projection": 18.3,
+        "hasProjection": true,
+        "injury": "ACTIVE",
+        "byeWeek": null,
+        "actualPpg": 21.4,
+        "seasonBaseline": 16.5,
+        "draftRank": 9,
+        "percentStarted": 98.7
+      },
+      "target": {
+        "id": "4569618",
+        "name": "Garrett Wilson",
+        "pos": "WR",
+        "proTeam": "NYJ",
+        "projection": 17.1,
+        "hasProjection": true,
+        "injury": "ACTIVE",
+        "byeWeek": null,
+        "actualPpg": 28.7,
+        "seasonBaseline": 14.7,
+        "draftRank": 29,
+        "percentStarted": 92.1
+      },
+      "givePackage": [
+        {
+          "id": "4361370",
+          "name": "Chris Olave",
+          "pos": "WR",
+          "proTeam": "NO",
+          "projection": 19,
+          "hasProjection": true,
+          "injury": "ACTIVE",
+          "byeWeek": null,
+          "actualPpg": 21.7,
+          "seasonBaseline": 12.7,
+          "draftRank": 24,
+          "percentStarted": 96.8
+        },
+        {
+          "id": "4360310",
+          "name": "Trevor Lawrence",
+          "pos": "QB",
+          "proTeam": "JAX",
+          "projection": 18.4,
+          "hasProjection": true,
+          "injury": "ACTIVE",
+          "byeWeek": null,
+          "actualPpg": 19.5,
+          "seasonBaseline": 17.2,
+          "draftRank": 113,
+          "percentStarted": 50.4
+        }
+      ],
+      "brokerPackage": [
+        {
+          "id": "4379399",
+          "name": "James Cook III",
+          "pos": "RB",
+          "proTeam": "BUF",
+          "projection": 18.3,
+          "hasProjection": true,
+          "injury": "ACTIVE",
+          "byeWeek": null,
+          "actualPpg": 21.4,
+          "seasonBaseline": 16.5,
+          "draftRank": 9,
+          "percentStarted": 98.7
+        },
+        {
+          "id": "5083076",
+          "name": "Harold Fannin Jr.",
+          "pos": "TE",
+          "proTeam": "CLE",
+          "projection": 11.4,
+          "hasProjection": true,
+          "injury": "ACTIVE",
+          "byeWeek": null,
+          "actualPpg": 13.2,
+          "seasonBaseline": 3.2,
+          "draftRank": 76,
+          "percentStarted": 68.7
+        }
+      ],
+      "targetPackage": [
+        {
+          "id": "4569618",
+          "name": "Garrett Wilson",
+          "pos": "WR",
+          "proTeam": "NYJ",
+          "projection": 17.1,
+          "hasProjection": true,
+          "injury": "ACTIVE",
+          "byeWeek": null,
+          "actualPpg": 28.7,
+          "seasonBaseline": 14.7,
+          "draftRank": 29,
+          "percentStarted": 92.1
+        },
+        {
+          "id": "4258173",
+          "name": "Nico Collins",
+          "pos": "WR",
+          "proTeam": "HOU",
+          "projection": 15.8,
+          "hasProjection": true,
+          "injury": "QUESTIONABLE",
+          "byeWeek": null,
+          "actualPpg": 0,
+          "seasonBaseline": 17.7,
+          "draftRank": 23,
+          "percentStarted": 49.8
+        }
+      ],
+      "step2GivePackage": [
+        {
+          "id": "4595348",
+          "name": "Malik Nabers",
+          "pos": "WR",
+          "proTeam": "NYG",
+          "projection": 14,
+          "hasProjection": true,
+          "injury": "ACTIVE",
+          "byeWeek": null,
+          "actualPpg": 7.6,
+          "seasonBaseline": 18.5,
+          "draftRank": 33,
+          "percentStarted": 73.2
+        },
+        {
+          "id": "4379399",
+          "name": "James Cook III",
+          "pos": "RB",
+          "proTeam": "BUF",
+          "projection": 18.3,
+          "hasProjection": true,
+          "injury": "ACTIVE",
+          "byeWeek": null,
+          "actualPpg": 21.4,
+          "seasonBaseline": 16.5,
+          "draftRank": 9,
+          "percentStarted": 98.7
+        }
+      ],
+      "netGivePackage": [
+        {
+          "id": "4361370",
+          "name": "Chris Olave",
+          "pos": "WR",
+          "proTeam": "NO",
+          "projection": 19,
+          "hasProjection": true,
+          "injury": "ACTIVE",
+          "byeWeek": null,
+          "actualPpg": 21.7,
+          "seasonBaseline": 12.7,
+          "draftRank": 24,
+          "percentStarted": 96.8
+        },
+        {
+          "id": "4360310",
+          "name": "Trevor Lawrence",
+          "pos": "QB",
+          "proTeam": "JAX",
+          "projection": 18.4,
+          "hasProjection": true,
+          "injury": "ACTIVE",
+          "byeWeek": null,
+          "actualPpg": 19.5,
+          "seasonBaseline": 17.2,
+          "draftRank": 113,
+          "percentStarted": 50.4
+        },
+        {
+          "id": "4595348",
+          "name": "Malik Nabers",
+          "pos": "WR",
+          "proTeam": "NYG",
+          "projection": 14,
+          "hasProjection": true,
+          "injury": "ACTIVE",
+          "byeWeek": null,
+          "actualPpg": 7.6,
+          "seasonBaseline": 18.5,
+          "draftRank": 33,
+          "percentStarted": 73.2
+        }
+      ],
+      "netReceivePackage": [
+        {
+          "id": "4569618",
+          "name": "Garrett Wilson",
+          "pos": "WR",
+          "proTeam": "NYJ",
+          "projection": 17.1,
+          "hasProjection": true,
+          "injury": "ACTIVE",
+          "byeWeek": null,
+          "actualPpg": 28.7,
+          "seasonBaseline": 14.7,
+          "draftRank": 29,
+          "percentStarted": 92.1
+        },
+        {
+          "id": "4258173",
+          "name": "Nico Collins",
+          "pos": "WR",
+          "proTeam": "HOU",
+          "projection": 15.8,
+          "hasProjection": true,
+          "injury": "QUESTIONABLE",
+          "byeWeek": null,
+          "actualPpg": 0,
+          "seasonBaseline": 17.7,
+          "draftRank": 23,
+          "percentStarted": 49.8
+        },
+        {
+          "id": "5083076",
+          "name": "Harold Fannin Jr.",
+          "pos": "TE",
+          "proTeam": "CLE",
+          "projection": 11.4,
+          "hasProjection": true,
+          "injury": "ACTIVE",
+          "byeWeek": null,
+          "actualPpg": 13.2,
+          "seasonBaseline": 3.2,
+          "draftRank": 76,
+          "percentStarted": 68.7
+        }
+      ],
+      "steps": [
+        {
+          "accepted": true,
+          "shape": "2-for-2",
+          "myBefore": 131.4,
+          "myAfter": 132.8,
+          "myGain": 1.4,
+          "partnerGain": 5.6,
+          "market": {
+            "accepted": true,
+            "reason": "",
+            "giveValue": 7725,
+            "receiveValue": 8115,
+            "ratio": 0.9519408502772643,
+            "giveMarkets": [
+              {
+                "tier": 2,
+                "value": 6295,
+                "known": true,
+                "source": "FantasyCalc redraft trade values",
+                "asOf": "2026-10-02T01:39:14.105457+00:00"
+              },
+              {
+                "tier": 3,
+                "value": 1430,
+                "known": true,
+                "source": "FantasyCalc redraft trade values",
+                "asOf": "2026-10-02T01:39:14.105457+00:00"
+              }
+            ],
+            "receiveMarkets": [
+              {
+                "tier": 2,
+                "value": 7188,
+                "known": true,
+                "source": "FantasyCalc redraft trade values",
+                "asOf": "2026-10-02T01:39:14.105457+00:00"
+              },
+              {
+                "tier": 3,
+                "value": 927,
+                "known": true,
+                "source": "FantasyCalc redraft trade values",
+                "asOf": "2026-10-02T01:39:14.105457+00:00"
+              }
+            ]
+          }
+        },
+        {
+          "accepted": true,
+          "shape": "2-for-2",
+          "myBefore": 132.8,
+          "myAfter": 133.2,
+          "myGain": 0.5,
+          "partnerGain": -0.5,
+          "market": {
+            "accepted": true,
+            "reason": "",
+            "giveValue": 10159,
+            "receiveValue": 9309,
+            "ratio": 0.9163303474751452,
+            "giveMarkets": [
+              {
+                "tier": 2,
+                "value": 2971,
+                "known": true,
+                "source": "FantasyCalc redraft trade values",
+                "asOf": "2026-10-02T01:39:14.105457+00:00"
+              },
+              {
+                "tier": 2,
+                "value": 7188,
+                "known": true,
+                "source": "FantasyCalc redraft trade values",
+                "asOf": "2026-10-02T01:39:14.105457+00:00"
+              }
+            ],
+            "receiveMarkets": [
+              {
+                "tier": 2,
+                "value": 4701,
+                "known": true,
+                "source": "FantasyCalc redraft trade values",
+                "asOf": "2026-10-02T01:39:14.105457+00:00"
+              },
+              {
+                "tier": 2,
+                "value": 4608,
+                "known": true,
+                "source": "FantasyCalc redraft trade values",
+                "asOf": "2026-10-02T01:39:14.105457+00:00"
+              }
+            ]
+          }
+        }
+      ],
+      "me": {
+        "before": 131.4,
+        "after": 133.2,
+        "gain": 1.8
+      },
+      "a": {
+        "before": 126.5,
+        "after": 132,
+        "gain": 5.6
+      },
+      "b": {
+        "before": 117.5,
+        "after": 117.1,
+        "gain": -0.5
+      },
+      "interimGain": 1.4,
+      "directGainForB": 1.1,
+      "upliftVsBestTwoTeam": -0.9,
+      "beatsBestTwoTeam": false,
+      "hasTwoTeamAlternative": true,
+      "designations": [
+        "Nico Collins — QUESTIONABLE"
+      ]
+    }
+  ]
+}
