@@ -153,3 +153,30 @@ consecutive sentences.
 This tool only reads. It sends nothing to ESPN, posts nothing, and writes
 nothing outside the file you name with `--out` or `--dump`. Copy a pitch into
 ESPN chat or a DM yourself.
+
+## In-app AI GM Beta: three-team roster fit
+
+`lib/ai-gm.js` powers the in-app desk. Its three-team search prioritizes
+positional holes and usable depth before weekly points. A team can accept a
+neutral or negative delta only when it receives a useful starter or its first
+viable backup and sends a player from positional surplus. A viable player has
+at least 75% of the league's median projection at that position. No deal can
+reduce existing viable coverage below the league's required starter count.
+Weekly losses are capped at the smaller of 2 points and 5% of the lineup.
+
+Every one-for-one exchange, including the intermediate player held after
+Step 1, must pass tier protection. Tiers use ESPN draft pedigree, season
+forecast, established production and starter usage; weekly projections are a
+fallback when season data is absent. Elite assets require elite or comparable
+high-value returns. Streamers cannot become a bridge to an elite asset.
+These are conservative roster heuristics, not a promise of manager acceptance.
+
+Both card types show Step 1 with Team A, Step 2 with Team B, and Final Roster
+Impact, with a reason for each manager. A negative intermediate delta still
+requires agreement from all three managers before submission. The 2-Team
+header reports the actual total packages evaluated, rather than the count of
+positive packages. The 3-Team header reports the number of displayed routes.
+
+`npm run check:aigm` covers neutral and negative depth trades, loss limits,
+elite protection, exhaustive search agreement, deterministic ordering,
+handler access controls, and mobile card rendering.

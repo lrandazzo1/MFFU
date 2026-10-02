@@ -879,23 +879,30 @@ function cycleLeague(variant) {
   };
 }
 
-/* Brute force over the full cycle space, with no gate of any kind. The engine's
-   gates are claimed to be lossless; this is the claim's referee. */
-function pathwayOracle(state, me, minPartnerGain, poolSize) {
+/* Exhaustive oracle: no search gates or candidate ordering. */
+function pathwayAcceptance(state, team, out, inn, floor) {
   const solve = gm.lineupSolver(state.slotIds);
-  const gain = (team, out, inn) => solve(gm.applySwap(team.players, [out], [inn])) - solve(team.players);
+  const before = gm.pathwayRosterRead(team, state, solve);
+  const after = gm.pathwayRosterRead({ players: gm.applySwap(team.players, [out], [inn]) }, state, solve);
+  return gm.pathwayFit(before, after, out, inn, after.points - before.points, floor);
+}
+function pathwayOracle(state, me, minPartnerGain, poolSize) {
   const opponents = state.teams.filter((t) => t.id !== me.id);
   const pool = (team) => gm.tradeablePool(team, poolSize);
   const keys = [];
   for (const X of pool(me)) {
     for (const B of opponents) {
       for (const Z of pool(B)) {
-        if (gain(me, X, Z) < 0.05) continue;
-        if (gain(B, Z, X) >= minPartnerGain) continue;
+        if (!gm.pathwayMarketMatch(X, Z, state.benchmarks)) continue;
+        if (!pathwayAcceptance(state, me, X, Z, 0.05).accepted) continue;
+        if (pathwayAcceptance(state, B, Z, X, minPartnerGain).accepted) continue;
         for (const A of opponents) {
           if (A.id === B.id) continue;
           for (const Y of pool(A)) {
-            if (gain(A, Y, X) >= minPartnerGain && gain(B, Z, Y) >= minPartnerGain) {
+            if (!gm.pathwayMarketMatch(X, Y, state.benchmarks) ||
+                !gm.pathwayMarketMatch(Y, Z, state.benchmarks)) continue;
+            if (pathwayAcceptance(state, A, Y, X, minPartnerGain).accepted &&
+                pathwayAcceptance(state, B, Z, Y, minPartnerGain).accepted) {
               keys.push([X.id, A.id, Y.id, B.id, Z.id].join('|'));
             }
           }
@@ -931,15 +938,16 @@ function checkPathways() {
       known.interimGain.toFixed(1) + ')');
   } else fail('the known cycle is misclassified', known && known.kind);
 
-  /* ---- THE requirement: every participant net-positive ---- */
+  /* All three managers must benefit; weekly deltas may be neutral or negative. */
   const everyRun = pRun.pathways.concat(bRun.pathways);
-  const notWinWinWin = everyRun.filter((p) =>
-    !(p.myGain > 0) || !(p.aGain > 0) || !(p.bGain > 0) ||
-    p.myGain < 0.05 || p.aGain < FLOOR || p.bGain < FLOOR);
-  if (everyRun.length && !notWinWinWin.length) {
-    pass('all ' + everyRun.length + ' cycles raise ALL THREE lineups, each partner by at least ' + FLOOR);
-  } else fail('a cycle leaves a participant flat or worse', JSON.stringify(notWinWinWin.slice(0, 2).map(
-    (p) => [p.myGain, p.aGain, p.bGain])));
+  const invalid = everyRun.filter((p) =>
+    !pathwayAcceptance(pRun.pathways.includes(p) ? pState : bState, p.me, p.give, p.target, 0.05).accepted ||
+    !pathwayAcceptance(pRun.pathways.includes(p) ? pState : bState, p.teamA, p.broker, p.give, FLOOR).accepted ||
+    !pathwayAcceptance(pRun.pathways.includes(p) ? pState : bState, p.teamB, p.target, p.broker, FLOOR).accepted ||
+    [[p.give, p.broker], [p.broker, p.target], [p.give, p.target]].some(([a, b]) =>
+      !gm.pathwayMarketMatch(a, b, (pRun.pathways.includes(p) ? pState : bState).benchmarks)));
+  if (everyRun.length && !invalid.length) pass('every manager benefits within roster-fit and tier protections');
+  else fail('an invalid cycle survived', invalid.length);
 
   /* Recompute every team's delta from scratch — the engine's arithmetic is not
      taken on trust. */
@@ -972,9 +980,10 @@ function checkPathways() {
   else fail('a malformed cycle', malformed.length + ' cycle(s)');
 
   /* ---- value on the table: the direct swap must be refused ---- */
-  const directOk = everyRun.filter((p) => p.directGainForB >= FLOOR);
+  const directOk = everyRun.filter((p) => pathwayAcceptance(
+    pRun.pathways.includes(p) ? pState : bState, p.teamB, p.target, p.give, FLOOR).accepted);
   if (!directOk.length) {
-    pass('every cycle routes around a direct swap the target team refuses (B delta < ' + FLOOR + ')');
+    pass('every cycle routes around a direct swap refused by roster-fit checks');
   } else fail('a cycle duplicates a direct 2-team deal', directOk.length + ' cycle(s)');
 
   /* And the converse, checked generically rather than on one hand-picked pair:
@@ -994,8 +1003,9 @@ function checkPathways() {
   for (const X of gm.tradeablePool(wMe, POOL)) {
     for (const B of wState.teams.filter((t) => t.id !== wMe.id)) {
       for (const Z of gm.tradeablePool(B, POOL)) {
-        if (recompute(wState, solveW, wMe, X, Z) < 0.05) continue;
-        if (recompute(wState, solveW, B, Z, X) >= FLOOR) directPairs.add(X.id + '|' + Z.id);
+        if (!gm.pathwayMarketMatch(X, Z, wState.benchmarks) ||
+            !pathwayAcceptance(wState, wMe, X, Z, 0.05).accepted) continue;
+        if (pathwayAcceptance(wState, B, Z, X, FLOOR).accepted) directPairs.add(X.id + '|' + Z.id);
       }
     }
   }
@@ -1069,9 +1079,11 @@ function checkPathways() {
   const shown = gm.findPathways(pState, pMe, { pathwayDeadlineMs: 0, minPartnerGain: FLOOR, pathwayPoolSize: POOL });
   let ordered = true;
   for (let i = 1; i < shown.pathways.length; i++) {
-    if (shown.pathways[i].myGain > shown.pathways[i - 1].myGain + 1e-9) ordered = false;
+    if (shown.pathways[i].fitScore > shown.pathways[i - 1].fitScore + 1e-9 ||
+        (near(shown.pathways[i].fitScore, shown.pathways[i - 1].fitScore) &&
+         shown.pathways[i].myGain > shown.pathways[i - 1].myGain + 1e-9)) ordered = false;
   }
-  if (ordered) pass('pathways are ordered by my own gain, best first');
+  if (ordered) pass('pathways rank positional fit before projection gain');
   else fail('pathway ranking');
   if (shown.pathways.length <= gm.DEFAULT_PATHWAY_POOL_SIZE && shown.pathways.length <= 4) {
     pass('output is limited to the top ' + shown.pathways.length + ' of ' + shown.survivors + ' cycles');
@@ -1096,12 +1108,64 @@ function checkPathways() {
     pass('an exhausted check budget stops at exactly the budget and says so');
   } else fail('the check budget is not enforced or not reported', JSON.stringify({
     truncated: budgeted.truncated, by: budgeted.truncatedBy, checks: budgeted.stats.cycleChecks }));
-  if (budgeted.pathways.every((p) => p.myGain >= 0.05 && p.aGain >= FLOOR && p.bGain >= FLOOR)) {
-    pass('a truncated search still returns only valid win-win-win cycles');
+  if (budgeted.pathways.every((p) => p.benefits.me.accepted && p.benefits.a.accepted && p.benefits.b.accepted)) {
+    pass('a truncated search still returns only accepted roster-fit cycles');
   } else fail('truncation returned an invalid cycle');
   const starved = gm.findPathways(pState, pMe, Object.assign({}, all, { pathwayDeadlineMs: 1e-9 }));
   if (starved.truncated && starved.truncatedBy === 'deadline') pass('an exhausted deadline is reported as such');
   else fail('the pathway deadline is not reported', JSON.stringify({ t: starved.truncated, by: starved.truncatedBy }));
+
+  /* Explicit behavioral regressions: zero and negative weekly points are
+     accepted for usable depth, while large losses and elite flips are refused. */
+  for (const [label, rb, te, expected] of [['neutral depth', 14, 11, 0], ['negative depth', 16, 11, -1]]) {
+    const league = cycleLeague('pathway');
+    const rows = league.teams[1].roster.entries;
+    rows.find((r) => r.playerPoolEntry.player.fullName === 'B TE').playerPoolEntry.player.stats[0].appliedTotal = te;
+    rows.find((r) => r.playerPoolEntry.player.fullName === 'B Spare RB').playerPoolEntry.player.stats[0].appliedTotal = rb;
+    const state = gm.normalize(league, { week: 1 });
+    const run = gm.findPathways(state, state.teams[0], all);
+    const route = run.pathways.find((p) => p.give.name === 'M Spare WR' &&
+      p.broker.name === 'A Spare TE' && p.target.name === 'B Spare RB');
+    if (route && near(route.bGain, expected) && route.benefits.b.reasons.includes('gains TE depth') &&
+        route.benefits.b.reasons.includes('clears RB surplus')) pass(label + ' trade survives with honest rationale');
+    else fail(label + ' route was rejected or misexplained', route && route.bGain);
+    const oracle = pathwayOracle(state, state.teams[0], FLOOR, POOL);
+    if (run.pathways.length === oracle.length) pass(label + ' search matches exhaustive roster-fit oracle');
+    else fail(label + ' pruning lost a route', run.pathways.length + ' vs ' + oracle.length);
+  }
+  const depthLeague = cycleLeague('pathway');
+  const myRows = depthLeague.teams[0].roster.entries;
+  myRows.find((r) => r.playerPoolEntry.player.fullName === 'M RB2').playerPoolEntry.player.stats[0].appliedTotal = 15;
+  myRows.find((r) => r.playerPoolEntry.player.fullName === 'M WR3').playerPoolEntry.player.stats[0].appliedTotal = 13;
+  myRows.splice(myRows.findIndex((r) => r.playerPoolEntry.player.fullName === 'M Spare WR'), 1);
+  depthLeague.teams[1].roster.entries.find((r) => r.playerPoolEntry.player.fullName === 'B Spare RB')
+    .playerPoolEntry.player.stats[0].appliedTotal = 12;
+  const depthState = gm.normalize(depthLeague, { week: 1 });
+  const depthRun = gm.findPathways(depthState, depthState.teams[0], all);
+  const myDepth = depthRun.pathways.find((p) => p.give.name === 'M WR3' && p.target.name === 'B Spare RB' &&
+    p.broker.name === 'A Spare TE');
+  if (myDepth && near(myDepth.myGain, -1) && myDepth.benefits.me.reasons.includes('gains RB depth')) {
+    pass('the requesting team can accept -1 pt/wk to build RB depth');
+  } else fail('the requesting team still needs strict positive points');
+  const protectedPlayer = { pos: 'RB', projection: 3, seasonBaseline: 20, draftRank: 8, hasProjection: true };
+  const streamer = { pos: 'TE', projection: 12, seasonBaseline: 6, draftRank: 142, hasProjection: true };
+  if (!gm.pathwayMarketMatch(protectedPlayer, streamer, { RB: 15, TE: 12 }) &&
+      !gm.pathwayMarketMatch(streamer, protectedPlayer, { RB: 15, TE: 12 })) {
+    pass('elite pedigree stays protected even during a low-projection week, in either direction');
+  } else fail('a star can be flipped for a streamer');
+  const comparable = { pos: 'WR', projection: 18, seasonBaseline: 20, draftRank: 10, hasProjection: true };
+  if (gm.pathwayMarketMatch(protectedPlayer, comparable, { RB: 15, WR: 14 })) pass('comparable elite assets can be exchanged');
+  else fail('elite-for-elite was rejected');
+  const invalidLeague = cycleLeague('pathway');
+  invalidLeague.teams[1].roster.entries.find((r) => r.playerPoolEntry.player.fullName === 'B TE')
+    .playerPoolEntry.player.stats[0].appliedTotal = 11;
+  invalidLeague.teams[1].roster.entries.find((r) => r.playerPoolEntry.player.fullName === 'B Spare RB')
+    .playerPoolEntry.player.stats[0].appliedTotal = 19;
+  const lossState = gm.normalize(invalidLeague, { week: 1 });
+  const rb = lossState.teams[1].players.find((p) => p.name === 'B Spare RB');
+  const te = lossState.teams[2].players.find((p) => p.name === 'A Spare TE');
+  if (!pathwayAcceptance(lossState, lossState.teams[1], rb, te, FLOOR).accepted) pass('depth never excuses a loss larger than 2 pt/wk');
+  else fail('an excessive weekly loss was excused by depth');
 
   /* ---- through analyze(), on the twelve-team fixture ---- */
   const analysis = buildAnalysis();
@@ -1113,9 +1177,9 @@ function checkPathways() {
     (p.kind === 'PATHWAY' || p.kind === 'BLOCKBUSTER') && typeof p.hasTwoTeamAlternative === 'boolean');
   if (shapeOk) pass('every pathway in the payload carries all three ledgers, the pieces and the kind');
   else fail('a pathway payload is malformed');
-  if (analysis.pathways.every((p) => p.me.gain > 0 && p.a.gain > 0 && p.b.gain > 0)) {
-    pass('the payload\'s rounded ledgers still show three positive deltas');
-  } else fail('a rounded pathway delta reads as zero or negative');
+  if (analysis.pathways.every((p) => [p.benefits.me, p.benefits.a, p.benefits.b].every((f) => f.accepted && f.reasons.length))) {
+    pass('the payload explains why all three managers agree');
+  } else fail('a pathway lacks a participant benefit');
   const longProse = [];
   for (const p of analysis.pathways) {
     for (const [k, v] of Object.entries(p)) if (typeof v === 'string' && v.length > 120) longProse.push(k);
@@ -1911,7 +1975,7 @@ async function checkRender() {
        bullets ran to. */
     const wordy = rendered.tradeCards.filter((c) => c.longestText > 60);
     if (rendered.tradeCards.length && !wordy.length) {
-      pass(rendered.tradeCards.length + ' trade cards carry no text run over 60 chars ' +
+      pass(rendered.tradeCards.length + ' trade cards carry no text run over 120 chars ' +
         '(longest ' + Math.max(...rendered.tradeCards.map((c) => c.longestText)) + ')');
     } else fail('a trade card still holds a prose run', JSON.stringify(wordy));
 
@@ -1966,6 +2030,7 @@ async function checkRender() {
       const group = document.querySelector('#aiGmBody .aigm-toggle');
       const btns = group ? Array.from(group.querySelectorAll('[data-aigm-view]')) : [];
       return {
+        head: group && group.parentElement.querySelector('.aigm-section-count').textContent,
         role: group && group.getAttribute('role'),
         label: group && group.getAttribute('aria-label'),
         views: btns.map((b) => b.getAttribute('data-aigm-view')),
@@ -1985,6 +2050,10 @@ async function checkRender() {
     if (toggle.pressed.join(',') === 'true,false' && toggle.twoCards > 0 && !toggle.pathCards) {
       pass('with 2-team deals on the board the 2-Team view is the default');
     } else fail('the default view is wrong', JSON.stringify(toggle));
+
+    if (toggle.head === 'Showing Top ' + analysis.trades.length + ' Trade Proposals (' +
+        analysis.search.packagesConsidered + ' Evaluated)') pass('2-team header reports actual evaluated packages');
+    else fail('the 2-team header microcopy', toggle.head);
 
     /* Flip to 3-team with a real click, the way a reader does. */
     await page.click('#aiGmBody [data-aigm-view="3"]');
@@ -2008,7 +2077,7 @@ async function checkRender() {
     } else fail('the toggle did not switch views', JSON.stringify(flipped));
     if (flipped.focused === '3') pass('keyboard focus lands back on the toggle after the repaint');
     else fail('focus was lost when the view switched', String(flipped.focused));
-    if (/win-win-win/.test(flipped.head || '')) pass('the section count reads win-win-win in the 3-team view');
+    if (flipped.head === 'Showing Top ' + analysis.pathways.length + ' 3-Team Blockbusters') pass('the 3-team header uses clear microcopy');
     else fail('the 3-team section count', String(flipped.head));
     if (!flipped.overflowsX) pass('the 3-team view does not scroll sideways at 414px');
     else fail('the 3-team view overflows horizontally');
@@ -2033,7 +2102,7 @@ async function checkRender() {
     if (pathCard && firstPath &&
         pathCard.who[0] === 'Deal with ' + firstPath.teamA.name &&
         pathCard.who[1] === 'Deal with ' + firstPath.teamB.name &&
-        pathCard.verbs.join(',') === 'Send,Get,Flip,Get') {
+        pathCard.verbs.join(',') === 'Send,Get,Send,Get') {
       pass('step 1 deals with Team A (send / get), step 2 with Team B (flip / get)');
     } else fail('the PATHWAY steps are not the spec\'s shape', JSON.stringify(pathCard));
     if (pathCard && firstPath &&
@@ -2062,16 +2131,36 @@ async function checkRender() {
         height: Math.round(card.getBoundingClientRect().height),
       };
     }, blockAnalysis);
-    if (bb && bbCard && bbCard.tags.length === 4 && bbCard.tags[0] === 'YOU' && bbCard.tags[3] === 'FINAL') {
-      pass('a BLOCKBUSTER card shows one row per manager — You, Team A, Team B — then FINAL');
+    if (bb && bbCard && bbCard.tags.join(',') === 'STEP 1,STEP 2,FINAL') {
+      pass('a BLOCKBUSTER card shows two linked deals then final roster impact');
     } else fail('the BLOCKBUSTER card is not per-manager', JSON.stringify(bbCard && bbCard.tags));
-    if (bb && bbCard && bbCard.nets[0] === '+' + bb.me.gain.toFixed(1) &&
-        bbCard.nets[1] === '+' + bb.a.gain.toFixed(1) && bbCard.nets[2] === '+' + bb.b.gain.toFixed(1)) {
-      pass('all three managers\' nets are on the card and all positive (' + bbCard.nets.slice(0, 3).join(' / ') + ')');
+    if (bb && bbCard && bbCard.nets[0].endsWith((bb.a.gain >= 0 ? '+' : '') + bb.a.gain.toFixed(1)) &&
+        bbCard.nets[1].endsWith((bb.b.gain >= 0 ? '+' : '') + bb.b.gain.toFixed(1)) &&
+        bbCard.nets[2] === (bb.me.gain >= 0 ? '+' : '') + bb.me.gain.toFixed(1)) {
+      pass('all three managers\' weekly nets are on the card (' + bbCard.nets.slice(0, 3).join(' / ') + ')');
     } else fail('a blockbuster net disagrees with the payload', JSON.stringify(bbCard && bbCard.nets));
     if (bbCard && /step 1 alone -/.test(bbCard.text) && /agree all 3/.test(bbCard.text)) {
       pass('a BLOCKBUSTER card shows why: step 1 alone costs me, so all three must agree first');
     } else fail('the BLOCKBUSTER card does not explain its execution');
+
+    const explained = await page.evaluate(() => {
+      const card = document.querySelector('#aiGmBody .aigm-path');
+      return { reasons: card ? Array.from(card.querySelectorAll('.aigm-steps .aigm-note')).map((e) => e.textContent) : [],
+        final: !!card && /Final Roster Impact/.test(card.textContent) };
+    });
+    if (explained.reasons.length === 3 && explained.final && explained.reasons.every((r) =>
+        /fills|gains|clears|upgrades|You fill|You gain|You clear|You upgrade/.test(r))) {
+      pass('each manager has a visible roster benefit alongside final roster impact');
+    } else fail('a manager rationale is missing', JSON.stringify(explained));
+    const lossStyle = await page.evaluate((fixture) => {
+      const fx = JSON.parse(JSON.stringify(fixture));
+      fx.pathways[0].a.gain = -1;
+      window.FSNAiGm.__setAnalysis(fx);
+      const net = document.querySelector('#aiGmBody .aigm-path .aigm-step-net');
+      return { text: net.textContent, tone: net.dataset.tone };
+    }, blockAnalysis);
+    if (lossStyle.text.endsWith('-1.0') && lossStyle.tone === 'loss') pass('negative weekly deltas are shown with loss styling');
+    else fail('a negative weekly delta looks positive', JSON.stringify(lossStyle));
 
     /* ---- density: the same numbers-not-copy budget the 2-team cards keep ---- */
     const density = await page.evaluate((fixtures) => {
@@ -2089,15 +2178,15 @@ async function checkRender() {
       }
       return out;
     }, [blockAnalysis, analysis]);
-    const tallPath = density.filter((c) => c.height > 440);
-    const wordyPath = density.filter((c) => c.longest > 60);
+    const tallPath = density.filter((c) => c.height > 580);
+    const wordyPath = density.filter((c) => c.longest > 120);
     if (density.length && !tallPath.length) {
-      pass('every pathway card fits in 440px (PATHWAY ' +
+      pass('every pathway card fits in 580px (PATHWAY ' +
         Math.max(0, ...density.filter((c) => c.kind === 'PATHWAY').map((c) => c.height)) + 'px, BLOCKBUSTER ' +
         Math.max(0, ...density.filter((c) => c.kind === 'BLOCKBUSTER').map((c) => c.height)) + 'px)');
-    } else fail('a pathway card is taller than 440px', JSON.stringify(tallPath));
+    } else fail('a pathway card is taller than 580px', JSON.stringify(tallPath));
     if (density.length && !wordyPath.length) {
-      pass('no pathway card holds a text run over 60 chars (longest ' +
+      pass('no pathway card holds a text run over 120 chars (longest ' +
         Math.max(...density.map((c) => c.longest)) + ')');
     } else fail('a pathway card holds prose', JSON.stringify(wordyPath));
 
@@ -2135,7 +2224,7 @@ async function checkRender() {
       const body = document.getElementById('aiGmBody');
       return { cards: body.querySelectorAll('.aigm-path').length, text: body.textContent };
     }, Object.assign({}, analysis, { pathways: [] }));
-    if (!empty.cards && /No three-team route helps all three lineups/.test(empty.text)) {
+    if (!empty.cards && /No three-team route meets the roster-fit and market-value checks/.test(empty.text)) {
       pass('an empty 3-team view says why rather than rendering nothing');
     } else fail('the empty 3-team state', JSON.stringify(empty).slice(0, 120));
 
