@@ -1,7 +1,43 @@
 {
-  "generatedAt": "2026-10-02T18:42:41.898Z",
-  "count": 12,
+  "generatedAt": "2026-10-04T18:22:14.449Z",
+  "count": 13,
   "posts": [
+    {
+      "title": "Sunday Gameday Preview: Week 4 Final Lineup Decisions",
+      "slug": "2026-10-04-sunday-gameday-preview-week-4-final-lineup-decisions",
+      "publishDate": "2026-10-04",
+      "category": "Matchup Preview",
+      "excerpt": "Final lineup decisions for week 4, taken only against the games that have not kicked off: who is still to play, which designations are open, and where the platform is putting its claims.",
+      "author": "FSN Desk",
+      "entityCount": 5,
+      "tracked_players": [
+        {
+          "name": "Emanuel Wilson",
+          "position": "RB",
+          "sleeperPlayerId": "11435"
+        },
+        {
+          "name": "Jauan Jennings",
+          "position": "WR",
+          "sleeperPlayerId": "7049"
+        },
+        {
+          "name": "Brycen Tremayne",
+          "position": "WR",
+          "sleeperPlayerId": "11157"
+        },
+        {
+          "name": "Darren Waller",
+          "position": "TE",
+          "sleeperPlayerId": "2505"
+        },
+        {
+          "name": "Roman Wilson",
+          "position": "WR",
+          "sleeperPlayerId": "11630"
+        }
+      ]
+    },
     {
       "title": "Friday Morning Recap & Weekend Preview: Week 4",
       "slug": "2026-10-02-friday-morning-recap-weekend-preview-week-4",
