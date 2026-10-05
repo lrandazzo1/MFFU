@@ -1,7 +1,43 @@
 {
-  "generatedAt": "2026-10-04T18:22:14.449Z",
-  "count": 13,
+  "generatedAt": "2026-10-05T21:38:30.092Z",
+  "count": 14,
   "posts": [
+    {
+      "title": "Monday Night Preview: What's at Stake & Sunday Recap",
+      "slug": "2026-10-05-monday-night-preview-what-s-at-stake-sunday-recap",
+      "publishDate": "2026-10-05",
+      "category": "Analysis",
+      "excerpt": "Sunday is in the book and Monday night is not. The week 4 finals, the blowouts, the scoring leaders, and the players who are still on the board tonight.",
+      "author": "FSN Desk",
+      "entityCount": 5,
+      "tracked_players": [
+        {
+          "name": "Emanuel Wilson",
+          "position": "RB",
+          "sleeperPlayerId": "11435"
+        },
+        {
+          "name": "Keon Coleman",
+          "position": "WR",
+          "sleeperPlayerId": "11637"
+        },
+        {
+          "name": "Roman Wilson",
+          "position": "WR",
+          "sleeperPlayerId": "11630"
+        },
+        {
+          "name": "Dohnte Meyers",
+          "position": "WR",
+          "sleeperPlayerId": "13264"
+        },
+        {
+          "name": "Brycen Tremayne",
+          "position": "WR",
+          "sleeperPlayerId": "11157"
+        }
+      ]
+    },
     {
       "title": "Sunday Gameday Preview: Week 4 Final Lineup Decisions",
       "slug": "2026-10-04-sunday-gameday-preview-week-4-final-lineup-decisions",
