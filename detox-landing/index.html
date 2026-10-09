@@ -1,0 +1,406 @@
+<!doctype html>
+<html lang="en" class="scroll-smooth">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+<!-- ─── [PLACEHOLDER: META] ─────────────────────────────────────────────── -->
+<title>How the Slot Machine Got Into Your Pocket — UNSCROLL No. 01</title>
+<meta name="description" content="Edition No. 01: a short history of how your attention became the product — and what it costs to buy it back." />
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300..700;1,6..72,300..600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+
+<script src="https://cdn.tailwindcss.com?plugins=forms"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        fontFamily: {
+          serif: ['Newsreader', 'Georgia', 'serif'],
+          sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        },
+        colors: {
+          paper:  '#FBFAF8',   // page background
+          ink:    '#15140F',   // primary text
+          muted:  '#6B6A62',   // secondary text
+          rule:   '#E4E1D9',   // hairlines
+          accent: '#B4411F',   // single accent — links, marks, CTA
+        },
+        maxWidth: { reading: '38rem' },
+      },
+    },
+  };
+</script>
+
+<script>document.documentElement.classList.add('js');</script>
+<style>
+  /* Editorial typography refinements Tailwind doesn't cover. */
+  body { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+  ::selection { background: #B4411F; color: #FBFAF8; }
+
+  .prose-editorial p { margin-bottom: 1.6em; }
+  .prose-editorial p + p { text-indent: 0; }
+
+  /* Drop cap on the opening paragraph. */
+  .dropcap::first-letter {
+    float: left; font-family: Newsreader, Georgia, serif; font-weight: 500;
+    font-size: 4.1rem; line-height: .82; padding: .06em .09em 0 0; color: #15140F;
+  }
+
+  /* Numbered section rule. */
+  .sectionmark::before {
+    content: ''; display: block; width: 2.25rem; height: 1px;
+    background: #B4411F; margin-bottom: 1.25rem;
+  }
+
+  /* ── The gate: progressive blur + gradient fade ──────────────────────── */
+  #gated {
+    position: relative;
+    max-height: 46vh;
+    overflow: hidden;
+    pointer-events: none;
+    user-select: none;
+    -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 18%, rgba(0,0,0,.35) 62%, transparent 100%);
+            mask-image: linear-gradient(to bottom, #000 0%, #000 18%, rgba(0,0,0,.35) 62%, transparent 100%);
+  }
+  /* Three stacked layers of increasing blur — cheaper + smoother than one filter. */
+  #gated .veil { position: absolute; inset: 0; pointer-events: none; }
+  #gated .veil-1 { backdrop-filter: blur(1px);  -webkit-backdrop-filter: blur(1px);  top: 12%; }
+  #gated .veil-2 { backdrop-filter: blur(3px);  -webkit-backdrop-filter: blur(3px);  top: 34%; }
+  #gated .veil-3 { backdrop-filter: blur(7px);  -webkit-backdrop-filter: blur(7px);  top: 58%; }
+  #gated .wash   { position: absolute; inset: 0;
+    background: linear-gradient(to bottom, rgba(251,250,248,0) 0%, rgba(251,250,248,.55) 55%, #FBFAF8 100%); }
+
+  /* Fade-in-on-scroll for the gate card. */
+  /* Reveal-on-scroll only when JS is running, so content is never stranded invisible. */
+  .js .reveal { opacity: 0; transform: translateY(14px); transition: opacity .7s ease, transform .7s cubic-bezier(.2,.7,.2,1); }
+  .js .reveal.is-in { opacity: 1; transform: none; }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .js .reveal { opacity: 1; transform: none; transition: none; }
+  }
+</style>
+</head>
+
+<body class="bg-paper text-ink font-serif antialiased">
+
+<!-- ══ READING PROGRESS ═══════════════════════════════════════════════════ -->
+<div class="fixed inset-x-0 top-0 z-50 h-[2px] bg-transparent">
+  <div id="progress" class="h-full w-0 bg-accent transition-[width] duration-150 ease-out"></div>
+</div>
+
+<!-- ══ MASTHEAD ═══════════════════════════════════════════════════════════ -->
+<header class="border-b border-rule">
+  <div class="mx-auto flex max-w-5xl items-center justify-between px-6 py-5">
+    <!-- [PLACEHOLDER: LOGO / WORDMARK] -->
+    <a href="/" class="font-sans text-[13px] font-semibold uppercase tracking-[0.22em] text-ink">Unscroll</a>
+    <nav class="hidden gap-8 font-sans text-[13px] text-muted sm:flex">
+      <a href="/our-story.html" class="transition-colors hover:text-ink">Our story</a>
+      <a href="/archive" class="transition-colors hover:text-ink">Archive</a>
+      <a href="/protocol.html" class="transition-colors hover:text-ink">The protocol</a>
+    </nav>
+    <a href="#gate" class="font-sans text-[13px] font-medium text-accent underline-offset-4 hover:underline">Subscribe</a>
+  </div>
+</header>
+
+<main>
+  <!-- ══ ARTICLE HEAD ═════════════════════════════════════════════════════ -->
+  <article class="mx-auto max-w-reading px-6">
+    <div class="pt-16 sm:pt-24">
+      <p class="font-sans text-[11px] uppercase tracking-[0.24em] text-muted">
+        Edition No. 01 &nbsp;·&nbsp; The Attention Economy
+      </p>
+
+      <h1 class="mt-6 font-serif text-[2.6rem] font-normal leading-[1.08] tracking-[-0.02em] sm:text-[3.4rem]">
+        How the slot machine got into your pocket
+      </h1>
+
+      <p class="mt-6 font-serif text-xl leading-relaxed text-muted sm:text-[1.35rem]">
+        Your lack of focus is not a character flaw. It is the intended output of
+        about ninety years of behavioral research, compressed into a glass
+        rectangle and handed to you for free.
+      </p>
+
+      <div class="mt-8 flex items-center gap-4 border-y border-rule py-4 font-sans text-[12.5px] text-muted">
+        <!-- [PLACEHOLDER: AUTHOR] -->
+        <span class="text-ink">By the Unscroll Desk</span>
+        <span class="text-rule">|</span>
+        <time datetime="2026-01-14">14 min read</time>
+      </div>
+    </div>
+
+    <!-- ══ FREE PREVIEW ═══════════════════════════════════════════════════ -->
+    <div class="prose-editorial mt-12 font-serif text-[1.18rem] leading-[1.78] text-ink/90">
+
+      <p class="dropcap">
+        In 1931, a graduate student at Harvard built a box. Inside it, a rat
+        pressed a lever and food appeared. B.F. Skinner expected the rat to
+        learn the rhythm — press, eat, press, eat — and settle into something
+        like boredom. Then his pellet dispenser jammed. Rewards started
+        arriving at random. And the rat, deprived of any pattern to rely on,
+        began pressing the lever far more often than before.
+      </p>
+
+      <p>
+        Skinner had stumbled onto the variable-ratio reinforcement schedule:
+        the discovery that unpredictable rewards produce more compulsive
+        behavior than predictable ones. It is the single most reliable finding
+        in the history of behavioral psychology. It is also the reason you
+        reach for your phone before you have decided to.
+      </p>
+
+      <figure class="my-12 border-l-2 border-accent pl-6">
+        <blockquote class="font-serif text-[1.45rem] leading-[1.45] tracking-[-0.01em] text-ink">
+          “A wealth of information creates a poverty of attention.”
+        </blockquote>
+        <figcaption class="mt-3 font-sans text-[12px] uppercase tracking-[0.14em] text-muted">
+          Herbert A. Simon, 1971
+        </figcaption>
+      </figure>
+
+      <h2 class="sectionmark mb-5 mt-14 font-sans text-[12px] font-semibold uppercase tracking-[0.2em] text-ink">
+        I. &nbsp;The price of free
+      </h2>
+
+      <p>
+        The economist Herbert Simon saw the shape of the problem two decades
+        before the web existed. If information is abundant, he argued, then the
+        scarce resource is not information — it is the human capacity to attend
+        to it. Any market built on abundant information will therefore become a
+        market in attention. He wrote that in a conference paper. Nobody built a
+        business model on it for thirty years.
+      </p>
+
+      <p>
+        Then, in 2000, the dot-com crash took the banner ad down with it. The
+        industry's answer was not to charge users money. It was to get far
+        better at knowing them. Targeting replaced reach. And once the unit of
+        sale became a precisely-identified human being rather than a vague
+        audience, the incentive changed permanently: every additional minute a
+        person spent on a page became directly, measurably, saleable.
+      </p>
+
+      <p>
+        This is the part that gets flattened in most retellings. No one sat in a
+        room and decided to make a billion people anxious. What happened is
+        duller and worse: thousands of smart people ran millions of A/B tests,
+        each one optimizing a single number, and the number they were optimizing
+        was <em>time on site</em>. Compulsion was never the goal. It was simply
+        what won the tests.
+      </p>
+
+      <h2 class="sectionmark mb-5 mt-14 font-sans text-[12px] font-semibold uppercase tracking-[0.2em] text-ink">
+        II. &nbsp;Four inventions
+      </h2>
+
+      <p>
+        Four design decisions, shipped between 2006 and 2013, did most of the
+        damage. None of them looked like much at the time.
+      </p>
+
+      <p>
+        <strong class="font-semibold">The infinite scroll</strong> arrived in 2006,
+        sketched by a designer named Aza Raskin who wanted to spare people the
+        friction of clicking “next page.” It worked. It also removed the only
+        natural stopping cue the web had. A page that ends gives you a moment to
+        decide whether to continue. A page that never ends never asks.
+      </p>
+
+      <p>
+        <strong class="font-semibold">The News Feed</strong> followed weeks later —
+        an algorithmically ranked, continuously refreshed river of other
+        people's lives. Users revolted; hundreds of thousands signed petitions
+        against it. Engagement doubled anyway. That gap, between what people
+        said they wanted and what they measurably did, became the industry's
+        permanent justification for ignoring the first number.
+      </p>
+
+      <p>
+        <strong class="font-semibold">Pull-to-refresh</strong> shipped in 2009 in a
+        small Twitter client. You drag the screen down, release, and wait to see
+        what the machine gives you. It is, gesturally and psychologically, the
+        arm of a slot machine. Its own inventor has since called it exactly
+        that.
+      </p>
+
+      <p>
+        <strong class="font-semibold">The push notification</strong> completed the
+        circuit. Until 2009, you had to decide to open the app. After 2009, the
+        app could decide to open you — and, within a few years, could learn the
+        precise hour of your precise day at which you were most likely to be
+        susceptible.
+      </p>
+    </div>
+
+    <!-- ══ THE GATE ═════════════════════════════════════════════════════════
+         Everything below is rendered, then masked, blurred and inert.
+         Swap the contents freely — the mask adapts to any height.
+    ───────────────────────────────────────────────────────────────────────── -->
+    <div id="gated" aria-hidden="true" class="prose-editorial font-serif text-[1.18rem] leading-[1.78] text-ink/90">
+      <h2 class="sectionmark mb-5 mt-14 font-sans text-[12px] font-semibold uppercase tracking-[0.2em] text-ink">
+        III. &nbsp;The streak, and the shape of a modern habit
+      </h2>
+      <p>
+        By 2015 the loop was closed and the industry moved on to a subtler
+        problem: not how to capture attention, but how to make its absence
+        painful. Snapchat's streak counter is the cleanest example ever
+        shipped — a number that only ever goes up, that two people maintain
+        together, and that disappears forever if either one misses a day.
+      </p>
+      <p>
+        What makes it remarkable is that it contains no content. There is
+        nothing to read, nothing to watch, nothing of value transferred. It is
+        pure loss aversion, rendered as a small orange flame, and it reliably
+        pulled teenagers back to an app they had otherwise stopped enjoying.
+      </p>
+      <p>
+        Every major platform now ships some version of it. The streak, the
+        daily goal, the unread badge, the “you have 3 new” — all variations on a
+        single move: manufacture a small debt, then let the user pay it off.
+      </p>
+      <h2 class="sectionmark mb-5 mt-14 font-sans text-[12px] font-semibold uppercase tracking-[0.2em] text-ink">
+        IV. &nbsp;Why willpower is the wrong tool
+      </h2>
+      <p>
+        The standard advice — use less, be present, try harder — fails for a
+        structural reason. You are not competing against your own weakness. You
+        are competing against an adaptive system, running continuous
+        experiments, with a feedback loop measured in milliseconds and a budget
+        measured in billions.
+      </p>
+    </div>
+
+    <!-- ══ SIGN-UP CARD ═══════════════════════════════════════════════════ -->
+    <section id="gate" class="reveal relative z-10 -mt-20 mb-24 scroll-mt-24 sm:-mt-24">
+      <div class="mx-auto max-w-[31rem] rounded-xl border border-rule bg-white px-7 py-9 shadow-[0_1px_2px_rgba(21,20,15,.04),0_18px_50px_-24px_rgba(21,20,15,.22)] sm:px-9">
+        <p class="font-sans text-[11px] uppercase tracking-[0.2em] text-accent">
+          End of the free preview
+        </p>
+
+        <h2 class="mt-4 font-serif text-[1.75rem] leading-[1.2] tracking-[-0.015em] sm:text-[2rem]">
+          Keep reading — and get the playbook.
+        </h2>
+
+        <p class="mt-4 font-serif text-[1.05rem] leading-relaxed text-muted">
+          Subscribe free to finish this breakdown and get one issue a week: the
+          mechanics of an attention trap, and the specific tools and settings
+          that disarm it.
+        </p>
+
+        <!-- [PLACEHOLDER: FORM ACTION — point at ConvertKit / Beehiiv / Loops / your API] -->
+        <form class="mt-7 space-y-3" action="#" method="post" novalidate data-signup>
+          <label for="email-gate" class="sr-only">Email address</label>
+          <input
+            id="email-gate" name="email" type="email" required autocomplete="email"
+            placeholder="you@example.com"
+            class="w-full rounded-lg border border-rule bg-paper px-4 py-3.5 font-sans text-[15px] text-ink placeholder:text-muted/70 focus:border-ink focus:outline-none focus:ring-0" />
+          <button type="submit"
+            class="w-full rounded-lg bg-ink px-4 py-3.5 font-sans text-[15px] font-medium text-paper transition-colors hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-white">
+            Read the rest &rarr;
+          </button>
+          <p data-form-msg role="status" aria-live="polite" class="hidden pt-1 font-sans text-[13px] text-accent"></p>
+        </form>
+
+        <p class="mt-5 font-sans text-[12.5px] leading-relaxed text-muted">
+          Free, weekly, one click to leave.
+          <!-- [PLACEHOLDER: SOCIAL PROOF — e.g. “Joined by 12,400 readers.”] -->
+          <span class="text-ink">Joined by 12,400 readers.</span>
+        </p>
+      </div>
+    </section>
+  </article>
+
+  <!-- ══ FOOTER ═══════════════════════════════════════════════════════════ -->
+  <footer class="border-t border-rule">
+    <div class="mx-auto flex max-w-5xl flex-col gap-4 px-6 py-10 font-sans text-[12.5px] text-muted sm:flex-row sm:items-center sm:justify-between">
+      <p>&copy; <span id="year">2026</span> Unscroll. <!-- [PLACEHOLDER: LEGAL NAME] --></p>
+      <div class="flex gap-6">
+        <a href="/our-story.html" class="hover:text-ink">Our story</a>
+        <a href="/privacy" class="hover:text-ink">Privacy</a>
+        <a href="/archive" class="hover:text-ink">Archive</a>
+      </div>
+    </div>
+  </footer>
+</main>
+
+<!-- ══ STICKY MOBILE CTA — appears mid-read, retires at the gate ═════════ -->
+<div id="stickybar"
+     class="pointer-events-none fixed inset-x-0 bottom-0 z-40 translate-y-full opacity-0 transition-all duration-300 ease-out">
+  <div class="mx-auto mb-4 flex max-w-reading items-center justify-between gap-4 rounded-full border border-rule bg-white/90 px-5 py-3 shadow-[0_10px_30px_-12px_rgba(21,20,15,.3)] backdrop-blur">
+    <p class="font-sans text-[13px] leading-tight text-muted">Finish the issue —</p>
+    <a href="#gate" class="rounded-full bg-ink px-4 py-2 font-sans text-[13px] font-medium text-paper transition-colors hover:bg-accent">Subscribe free</a>
+  </div>
+</div>
+
+<script>
+(function () {
+  var yearEl = document.getElementById('year');
+  if (yearEl) yearEl.textContent = new Date().getFullYear();
+
+  // Reading progress.
+  var bar = document.getElementById('progress');
+  var ticking = false;
+  function onScroll() {
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(function () {
+      var h = document.documentElement.scrollHeight - window.innerHeight;
+      var pct = h > 0 ? Math.min(1, window.scrollY / h) : 0;
+      bar.style.width = (pct * 100).toFixed(2) + '%';
+      ticking = false;
+    });
+  }
+  window.addEventListener('scroll', onScroll, { passive: true });
+  onScroll();
+
+  // Reveal-on-enter.
+  var io = new IntersectionObserver(function (entries) {
+    entries.forEach(function (e) { if (e.isIntersecting) e.target.classList.add('is-in'); });
+  }, { rootMargin: '0px 0px -12% 0px' });
+  document.querySelectorAll('.reveal').forEach(function (el) { io.observe(el); });
+
+  // Sticky bar: show past 35% of the page, hide once the gate card is visible.
+  var sticky = document.getElementById('stickybar');
+  var gate = document.getElementById('gate');
+  var gateVisible = false;
+  new IntersectionObserver(function (entries) {
+    gateVisible = entries[0].isIntersecting;
+    paint();
+  }, { threshold: 0.2 }).observe(gate);
+
+  function paint() {
+    var h = document.documentElement.scrollHeight - window.innerHeight;
+    var deep = h > 0 && window.scrollY / h > 0.35;
+    var show = deep && !gateVisible;
+    sticky.classList.toggle('translate-y-full', !show);
+    sticky.classList.toggle('opacity-0', !show);
+    sticky.classList.toggle('pointer-events-none', !show);
+  }
+  window.addEventListener('scroll', paint, { passive: true });
+  paint();
+
+  // Form stub — replace with your provider's submit.
+  document.querySelectorAll('[data-signup]').forEach(function (form) {
+    form.addEventListener('submit', function (ev) {
+      ev.preventDefault();
+      var msg = form.querySelector('[data-form-msg]');
+      var email = (form.querySelector('input[type=email]') || {}).value || '';
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+        msg.textContent = 'That email looks incomplete.';
+        msg.classList.remove('hidden');
+        return;
+      }
+      // [PLACEHOLDER: POST to your list provider here.]
+      msg.textContent = 'Check your inbox — the rest of the issue is on its way.';
+      msg.classList.remove('hidden');
+      form.querySelector('button[type=submit]').textContent = 'Subscribed';
+    });
+  });
+})();
+</script>
+</body>
+</html>
