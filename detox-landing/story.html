@@ -198,6 +198,33 @@
     </div>
   </section>
 
+  <!-- ══ PLATE — Shuttr, from the store's Files library ════════════════════
+       Source: Shopify CDN (see SHOPIFY.md for how these URLs were pulled).
+       Swap the src/srcset below for any other file URL; the layout is fixed
+       by the aspect ratio, so a different crop will not shift the page.
+  ───────────────────────────────────────────────────────────────────────── -->
+  <figure class="reveal mx-auto mt-20 max-w-[50rem] px-6">
+    <div class="overflow-hidden rounded-xl border border-rule bg-white">
+      <img
+        src="https://cdn.shopify.com/s/files/1/0655/4615/8155/files/shuttr_render_ultra_sharp_4608x3072_1.png?v=1771381338&width=1280"
+        srcset="https://cdn.shopify.com/s/files/1/0655/4615/8155/files/shuttr_render_ultra_sharp_4608x3072_1.png?v=1771381338&width=640 640w,
+              https://cdn.shopify.com/s/files/1/0655/4615/8155/files/shuttr_render_ultra_sharp_4608x3072_1.png?v=1771381338&width=960 960w,
+              https://cdn.shopify.com/s/files/1/0655/4615/8155/files/shuttr_render_ultra_sharp_4608x3072_1.png?v=1771381338&width=1280 1280w,
+              https://cdn.shopify.com/s/files/1/0655/4615/8155/files/shuttr_render_ultra_sharp_4608x3072_1.png?v=1771381338&width=1600 1600w"
+        sizes="(min-width: 50rem) 50rem, 100vw"
+        width="1600" height="1067"
+        loading="lazy" decoding="async"
+        alt="Shuttr: a phone case with a steel shutter panel slid across the screen."
+        class="aspect-[3/2] w-full object-cover" />
+    </div>
+    <figcaption class="mt-3 font-sans text-[12.5px] leading-relaxed text-muted">
+      <span class="text-ink">Shuttr.</span> The first thing we built — a panel
+      you had to slide open with your thumb before the screen was any use to
+      you. One second of friction, deliberately added back.
+      <!-- [PLACEHOLDER: caption — rewrite to match whichever image you keep] -->
+    </figcaption>
+  </figure>
+
   <!-- ══ II. WHACK-A-MOLE ═════════════════════════════════════════════════ -->
   <section class="mx-auto max-w-reading px-6">
     <h2 class="chapter mb-6 mt-20 font-sans text-[12px] font-semibold uppercase tracking-[0.2em] text-ink">
@@ -269,6 +296,47 @@
         done something we found genuinely clarifying: they left it open
         permanently, like a drawbridge nobody bothers to raise.
       </p>
+
+      <!-- ══ TWO-UP — the prototype itself ═════════════════════════════════
+           Both images come from the Shuttr store's Files library via the
+           Shopify CDN. Fixed 4:5 ratios keep the pair aligned whatever the
+           source crops are.
+      ───────────────────────────────────────────────────────────────────── -->
+      <figure class="reveal my-12">
+        <div class="grid grid-cols-2 gap-3 sm:gap-4">
+          <div class="overflow-hidden rounded-lg border border-rule bg-white">
+            <img
+              src="https://cdn.shopify.com/s/files/1/0655/4615/8155/files/IMG_4759.jpg?v=1782190278&width=800"
+              srcset="https://cdn.shopify.com/s/files/1/0655/4615/8155/files/IMG_4759.jpg?v=1782190278&width=400 400w,
+              https://cdn.shopify.com/s/files/1/0655/4615/8155/files/IMG_4759.jpg?v=1782190278&width=600 600w,
+              https://cdn.shopify.com/s/files/1/0655/4615/8155/files/IMG_4759.jpg?v=1782190278&width=800 800w,
+              https://cdn.shopify.com/s/files/1/0655/4615/8155/files/IMG_4759.jpg?v=1782190278&width=1200 1200w"
+              sizes="(min-width: 640px) 19rem, 45vw"
+              width="800" height="1000"
+              loading="lazy" decoding="async"
+              alt="A Shuttr prototype, photographed during the beta."
+              class="aspect-[4/5] w-full object-cover" />
+          </div>
+          <div class="overflow-hidden rounded-lg border border-rule bg-white">
+            <img
+              src="https://cdn.shopify.com/s/files/1/0655/4615/8155/files/ChatGPTImageJun22_2026_06_50_55PM_2.png?v=1782191224&width=800"
+              srcset="https://cdn.shopify.com/s/files/1/0655/4615/8155/files/ChatGPTImageJun22_2026_06_50_55PM_2.png?v=1782191224&width=400 400w,
+              https://cdn.shopify.com/s/files/1/0655/4615/8155/files/ChatGPTImageJun22_2026_06_50_55PM_2.png?v=1782191224&width=600 600w,
+              https://cdn.shopify.com/s/files/1/0655/4615/8155/files/ChatGPTImageJun22_2026_06_50_55PM_2.png?v=1782191224&width=800 800w,
+              https://cdn.shopify.com/s/files/1/0655/4615/8155/files/ChatGPTImageJun22_2026_06_50_55PM_2.png?v=1782191224&width=1200 1200w"
+              sizes="(min-width: 640px) 19rem, 45vw"
+              width="800" height="1000"
+              loading="lazy" decoding="async"
+              alt="The Shuttr case with the shutter closed over the screen."
+              class="aspect-[4/5] w-full object-cover" />
+          </div>
+        </div>
+        <figcaption class="mt-3 font-sans text-[12.5px] leading-relaxed text-muted">
+          Shipped to 140 testers. Screen time fell by a third in week one, and
+          was halfway back by week two.
+          <!-- [PLACEHOLDER: caption — rewrite to match whichever images you keep] -->
+        </figcaption>
+      </figure>
 
       <p>
         So we iterated. A charging dock with a timed lock — defeated by one
