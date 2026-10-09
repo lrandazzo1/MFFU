@@ -1,7 +1,43 @@
 {
-  "generatedAt": "2026-10-09T00:40:41.252Z",
-  "count": 16,
+  "generatedAt": "2026-10-09T19:01:05.640Z",
+  "count": 17,
   "posts": [
+    {
+      "title": "Friday Morning Recap & Weekend Preview: Week 5",
+      "slug": "2026-10-09-friday-morning-recap-weekend-preview-week-5",
+      "publishDate": "2026-10-09",
+      "category": "Analysis",
+      "excerpt": "Thursday night is final and the weekend is not. The Thursday result, the games still to come, and the add counts that moved in the twenty four hours between them.",
+      "author": "FSN Desk",
+      "entityCount": 5,
+      "tracked_players": [
+        {
+          "name": "Roman Wilson",
+          "position": "WR",
+          "sleeperPlayerId": "11630"
+        },
+        {
+          "name": "Dameon Pierce",
+          "position": "RB",
+          "sleeperPlayerId": "8129"
+        },
+        {
+          "name": "Dohnte Meyers",
+          "position": "WR",
+          "sleeperPlayerId": "13264"
+        },
+        {
+          "name": "Tyler Higbee",
+          "position": "TE",
+          "sleeperPlayerId": "3271"
+        },
+        {
+          "name": "Keaton Mitchell",
+          "position": "RB",
+          "sleeperPlayerId": "9511"
+        }
+      ]
+    },
     {
       "title": "Thursday Night Kickoff Preview: Week 5 Slate",
       "slug": "2026-10-08-thursday-night-kickoff-preview-week-5-slate",
