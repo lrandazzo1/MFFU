@@ -6,9 +6,15 @@ into any frontend project / landing-page builder.
 
 | File | Purpose |
 |---|---|
-| `index.html` | Edition No. 01 — long-form scrolly article with a blur/gradient paywall gate and sign-up card |
-| `our-story.html` | Founder's note: why hardware alone failed, and the pivot to a framework |
+| `index.html` | **The landing page.** Part one is Edition No. 01 — the long-form article with a blur/gradient gate and sign-up card. Part two, at `#our-story`, is the founder's note. One scroll, two linked destinations. |
 | `protocol.html` | Standalone lead-magnet page for *The 30-Day Digital Detox Protocol* |
+
+`index.html` is a single page with two anchors. The sticky masthead links
+`#top` ("Edition No. 01") and `#our-story`, and highlights whichever half you
+are currently reading. A reader who doesn't convert at the gate is handed a
+soft exit — *"Not yet? Read why we stopped selling hardware"* — into the story,
+which ends at a second capture form (`#join`). Deep links work:
+`/index.html#our-story` opens straight to part two.
 
 ## Shared design system
 
@@ -38,8 +44,9 @@ Every editable spot is marked with a `[PLACEHOLDER: …]` HTML comment. Search f
   and replace the `// [PLACEHOLDER: POST …]` line in the script at the bottom.
 - **Social proof** — subscriber counts, the avatar circles, the testimonial and
   the press-logo strip on `protocol.html`. Use real numbers or delete the block.
-- **Author / signature** — `[Founder Name]` and the grey avatar circle on
-  `our-story.html`.
+- **Author / signature** — `[Founder Name]` and the grey avatar circle at the
+  end of the story.
+- **Beta numbers** — the 140 testers in part two.
 - **Nav links** — `/archive`, `/privacy` point nowhere yet.
 
 ## How the gate on `index.html` works
@@ -60,8 +67,11 @@ logged-out visitors — the CSS mask is a presentation layer, not a security one
 - Scroll reveals are gated behind a `.js` class on `<html>`, so with JS disabled
   every section is visible rather than stranded at `opacity: 0`.
 - `prefers-reduced-motion` disables the reveal transitions and smooth scrolling.
-- `index.html` has a reading-progress bar and a sticky mobile CTA that appears
-  past 35% scroll and retires once the sign-up card is on screen.
+- `index.html` has a reading-progress bar spanning the whole page and a sticky
+  CTA that appears past 35% scroll and retires whenever either capture form
+  (`#gate` or `#join`) is on screen.
+- The 186 / 6 / 43 stat counters animate up on entry. The final values are the
+  HTML text, so with JS off or reduced motion they simply sit there.
 
 ## Going to production
 
