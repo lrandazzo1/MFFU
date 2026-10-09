@@ -1,7 +1,43 @@
 {
-  "generatedAt": "2026-10-06T18:45:25.436Z",
-  "count": 15,
+  "generatedAt": "2026-10-09T00:40:41.252Z",
+  "count": 16,
   "posts": [
+    {
+      "title": "Thursday Night Kickoff Preview: Week 5 Slate",
+      "slug": "2026-10-08-thursday-night-kickoff-preview-week-5-slate",
+      "publishDate": "2026-10-08",
+      "category": "Matchup Preview",
+      "excerpt": "Week 5 opens Thursday night. The games that have not been played yet, the players the platform is claiming ahead of them, and the designations worth checking before your lineup locks.",
+      "author": "FSN Desk",
+      "entityCount": 5,
+      "tracked_players": [
+        {
+          "name": "Dohnte Meyers",
+          "position": "WR",
+          "sleeperPlayerId": "13264"
+        },
+        {
+          "name": "Roman Wilson",
+          "position": "WR",
+          "sleeperPlayerId": "11630"
+        },
+        {
+          "name": "Dameon Pierce",
+          "position": "RB",
+          "sleeperPlayerId": "8129"
+        },
+        {
+          "name": "Tyler Higbee",
+          "position": "TE",
+          "sleeperPlayerId": "3271"
+        },
+        {
+          "name": "Keon Coleman",
+          "position": "WR",
+          "sleeperPlayerId": "11637"
+        }
+      ]
+    },
     {
       "title": "Tuesday Morning Final Recap: Week 4 Winners & Losers",
       "slug": "2026-10-06-tuesday-morning-final-recap-week-4-winners-losers",
