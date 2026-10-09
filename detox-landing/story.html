@@ -1,0 +1,550 @@
+<!doctype html>
+<html lang="en" class="scroll-smooth">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+<!-- ─── [PLACEHOLDER: META] ─────────────────────────────────────────────── -->
+<title>Our Story — 43 hours a week, and what we got wrong about fixing it</title>
+<meta name="description" content="We built Shuttr, a phone case with a mechanical shutter, to break the loop. The math — and our own beta testers — taught us why no single product can cure an attention monopoly." />
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300..700;1,6..72,300..600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+
+<script src="https://cdn.tailwindcss.com?plugins=forms"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        fontFamily: {
+          serif: ['Newsreader', 'Georgia', 'serif'],
+          sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        },
+        colors: {
+          paper:  '#FBFAF8',   // page background
+          ink:    '#15140F',   // primary text
+          muted:  '#6B6A62',   // secondary text
+          rule:   '#E4E1D9',   // hairlines
+          accent: '#B4411F',   // single accent — marks, links, CTA hover
+        },
+        maxWidth: { reading: '38rem' },
+      },
+    },
+  };
+</script>
+
+<script>document.documentElement.classList.add('js');</script>
+<style>
+  body { -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; }
+  ::selection { background: #B4411F; color: #FBFAF8; }
+
+  /* Editorial rhythm. */
+  .prose-editorial p { margin-bottom: 1.6em; }
+  .prose-editorial p:last-child { margin-bottom: 0; }
+
+  .dropcap::first-letter {
+    float: left; font-family: Newsreader, Georgia, serif; font-weight: 500;
+    font-size: 4.1rem; line-height: .82; padding: .06em .09em 0 0; color: #15140F;
+  }
+
+  /* Chapter heading rule. */
+  .chapter::before {
+    content: ''; display: block; width: 2.25rem; height: 1px;
+    background: #B4411F; margin-bottom: 1.25rem;
+  }
+
+  /* Tabular figures so the counters don't jitter while they tick. */
+  .tnum { font-variant-numeric: tabular-nums lining-nums; }
+
+  /* Reveal-on-scroll only when JS is running, so nothing is stranded invisible. */
+  .js .reveal { opacity: 0; transform: translateY(16px); transition: opacity .8s ease, transform .8s cubic-bezier(.2,.7,.2,1); }
+  .js .reveal.is-in { opacity: 1; transform: none; }
+  .js .reveal-d1 { transition-delay: .09s; }
+  .js .reveal-d2 { transition-delay: .18s; }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .js .reveal { opacity: 1; transform: none; transition: none; }
+  }
+</style>
+</head>
+
+<body class="bg-paper text-ink font-serif antialiased">
+
+<!-- ══ READING PROGRESS ═══════════════════════════════════════════════════ -->
+<div class="fixed inset-x-0 top-0 z-50 h-[2px]">
+  <div id="progress" class="h-full w-0 bg-accent transition-[width] duration-150 ease-out"></div>
+</div>
+
+<!-- ══ MASTHEAD ═══════════════════════════════════════════════════════════ -->
+<header class="sticky top-0 z-40 border-b border-rule bg-paper/85 backdrop-blur">
+  <div class="mx-auto flex max-w-5xl items-center justify-between px-6 py-4">
+    <!-- [PLACEHOLDER: LOGO / WORDMARK] -->
+    <a href="index.html" class="font-sans text-[13px] font-semibold uppercase tracking-[0.22em] text-ink">Unscroll</a>
+    <nav class="hidden gap-8 font-sans text-[13px] text-muted sm:flex">
+      <a href="index.html" class="transition-colors hover:text-ink">Edition No. 01</a>
+      <a href="story.html" class="text-ink transition-colors" aria-current="page">Our story</a>
+    </nav>
+    <a href="#join" class="font-sans text-[13px] font-medium text-accent underline-offset-4 hover:underline">Subscribe</a>
+  </div>
+</header>
+
+<main>
+
+  <!-- ══ TITLE ════════════════════════════════════════════════════════════ -->
+  <section class="mx-auto max-w-reading px-6 pt-16 sm:pt-24">
+    <p class="font-sans text-[11px] uppercase tracking-[0.24em] text-muted">Our story</p>
+
+    <h1 class="mt-7 font-serif text-[2.7rem] font-normal leading-[1.04] tracking-[-0.025em] sm:text-[3.6rem]">
+      Your hand knows<br class="hidden sm:block" /> before you do.
+    </h1>
+
+    <p class="mt-7 font-serif text-xl leading-[1.55] text-muted sm:text-[1.4rem]">
+      We spent two years trying to put a wall between people and their phones.
+      The math — and our own beta testers — taught us why that was the wrong
+      shape of solution.
+    </p>
+
+    <div class="mt-9 flex flex-wrap items-center gap-x-4 gap-y-2 border-y border-rule py-4 font-sans text-[12.5px] text-muted">
+      <!-- [PLACEHOLDER: AUTHOR + DATE] -->
+      <span class="text-ink">By [Founder Name], co-founder</span>
+      <span class="text-rule">|</span>
+      <time datetime="2026-01-07">January 2026</time>
+      <span class="text-rule">|</span>
+      <span>7 min read</span>
+    </div>
+  </section>
+
+  <!-- ══ I. THE REFLEX ════════════════════════════════════════════════════ -->
+  <section class="mx-auto max-w-reading px-6">
+    <h2 class="chapter mb-6 mt-16 font-sans text-[12px] font-semibold uppercase tracking-[0.2em] text-ink">
+      I. &nbsp;The reflex
+    </h2>
+
+    <div class="prose-editorial font-serif text-[1.18rem] leading-[1.78] text-ink/90">
+      <p class="dropcap">
+        Watch your own hand for one day. Not your screen time — your hand. You
+        will catch it moving toward your pocket in the four seconds between
+        sitting down and the meeting starting. On the walk from the desk to the
+        kitchen. At a red light. In the half-second lull in a conversation with
+        someone you love.
+      </p>
+
+      <p>
+        The phone stopped being a tool somewhere along the way and became a
+        reflex. A tool is something you decide to pick up. A reflex happens
+        first, and your reasons get written afterward — <em>I was checking the
+        time, I was expecting a message, I was just seeing if</em>. By the time
+        the sentence forms, the screen is already lit.
+      </p>
+
+      <p>
+        That distinction is the whole thing. You cannot reason your way out of a
+        movement that starts before the reasoning does. Which is why advice
+        like “be more present” lands the way “sleep better” lands at 3 a.m.:
+        accurate, useless, faintly insulting.
+      </p>
+    </div>
+  </section>
+
+  <!-- ══ THE MATH — stat block ════════════════════════════════════════════ -->
+  <section class="mt-16 border-y border-rule bg-white/60">
+    <div class="mx-auto max-w-reading px-6 py-16">
+      <p class="font-sans text-[11px] uppercase tracking-[0.2em] text-muted">
+        The math nobody does
+      </p>
+
+      <dl class="mt-10 space-y-10">
+        <div class="reveal">
+          <dt class="font-serif text-[3.6rem] leading-none tracking-[-0.03em] text-ink tnum sm:text-[4.5rem]">
+            <span data-count-to="186">186</span>
+          </dt>
+          <dd class="mt-3 border-t border-rule pt-3 font-serif text-[1.08rem] leading-relaxed text-muted">
+            pickups a day for the average person. Not minutes — separate,
+            discrete reaches for the same rectangle.
+          </dd>
+        </div>
+
+        <div class="reveal reveal-d1">
+          <dt class="font-serif text-[3.6rem] leading-none tracking-[-0.03em] text-ink tnum sm:text-[4.5rem]">
+            <span data-count-to="6">6</span><span class="text-[2.2rem] sm:text-[2.8rem]"> hours</span>
+          </dt>
+          <dd class="mt-3 border-t border-rule pt-3 font-serif text-[1.08rem] leading-relaxed text-muted">
+            At a conservative two minutes a pickup, that is over six hours of
+            your day. Most people guess two, and are not lying — the time
+            genuinely does not register.
+          </dd>
+        </div>
+
+        <div class="reveal reveal-d2">
+          <dt class="font-serif text-[3.6rem] leading-none tracking-[-0.03em] text-ink tnum sm:text-[4.5rem]">
+            <span data-count-to="43">43</span><span class="text-[2.2rem] sm:text-[2.8rem]"> hours</span>
+          </dt>
+          <dd class="mt-3 border-t border-rule pt-3 font-serif text-[1.08rem] leading-relaxed text-muted">
+            A week. A full-time job, worked every week, unpaid, spent staring at
+            glass — with no promotion at the end of it.
+          </dd>
+        </div>
+      </dl>
+
+      <p class="mt-12 font-serif text-[1.18rem] leading-[1.78] text-ink/90">
+        Run that number against your own life and the arithmetic gets personal
+        fast. Forty-three hours is a language. It is a draft of the book. It is
+        every bedtime story your kid will remember. It is not that the time is
+        wasted, exactly — it is that nobody ever agreed to spend it.
+      </p>
+    </div>
+  </section>
+
+  <!-- ══ II. WHACK-A-MOLE ═════════════════════════════════════════════════ -->
+  <section class="mx-auto max-w-reading px-6">
+    <h2 class="chapter mb-6 mt-20 font-sans text-[12px] font-semibold uppercase tracking-[0.2em] text-ink">
+      II. &nbsp;Digital whack-a-mole
+    </h2>
+
+    <div class="prose-editorial font-serif text-[1.18rem] leading-[1.78] text-ink/90">
+      <p>
+        So you do the obvious thing. You delete Instagram. And for about four
+        days it works beautifully — right up until you notice you have started
+        refreshing LinkedIn, an app you have never once enjoyed, with the exact
+        cadence you used to give Instagram.
+      </p>
+
+      <p>
+        Then it is the weather app, checked six times for a forecast that has
+        not changed. Then a mobile game you downloaded for a flight in 2023.
+        Then the news, then your email, then — and this one is almost funny —
+        your own camera roll, scrolled backward like a feed.
+      </p>
+
+      <figure class="my-12 border-l-2 border-accent pl-6">
+        <blockquote class="font-serif text-[1.45rem] leading-[1.45] tracking-[-0.01em] text-ink">
+          “Delete one app and the reflex doesn't die. It just goes looking for
+          the next slot machine.”
+        </blockquote>
+      </figure>
+
+      <p>
+        This is the part people blame themselves for, and shouldn't. The habit
+        was never loyal to the app. It was loyal to the loop: a flicker of
+        boredom, a reach, a variable reward, a return to boredom slightly
+        faster than before. The icon on the home screen is interchangeable. The
+        loop is the product.
+      </p>
+
+      <p>
+        Which means every solution built around removing <em>a</em> thing is
+        playing the carnival game. You hit one mole, another pops up two feet to
+        the left, and the machine keeps the quarter either way.
+      </p>
+    </div>
+  </section>
+
+  <!-- ══ III. SHUTTR ══════════════════════════════════════════════════════ -->
+  <section class="mx-auto max-w-reading px-6">
+    <h2 class="chapter mb-6 mt-20 font-sans text-[12px] font-semibold uppercase tracking-[0.2em] text-ink">
+      III. &nbsp;What we built first
+    </h2>
+
+    <div class="prose-editorial font-serif text-[1.18rem] leading-[1.78] text-ink/90">
+      <p>
+        Our first answer was a physical one. We called it
+        <!-- [PLACEHOLDER: PRODUCT NAME] -->
+        <strong class="font-semibold">Shuttr</strong> — a phone case with a
+        mechanical shutter, a small steel panel you had to deliberately slide
+        open with your thumb before the screen was any use to you. The idea was
+        to reinstall the pause that the reflex had deleted. One second of
+        friction, one moment where a decision could fit.
+      </p>
+
+      <p>
+        We loved it. Honestly, we still do; there is a box of them in the
+        office. And it worked — for about nine days.
+        <!-- [PLACEHOLDER: swap in your real beta numbers] -->
+        We shipped it to 140 testers and asked them every evening. Week one,
+        screen time fell by a third. Week two, it was halfway back. By week four
+        most people had stopped sliding the shutter closed at all, and a few had
+        done something we found genuinely clarifying: they left it open
+        permanently, like a drawbridge nobody bothers to raise.
+      </p>
+
+      <p>
+        So we iterated. A charging dock with a timed lock — defeated by one
+        tester with a butter knife, and by another with the purchase of a second
+        phone. A software-assisted Shuttr, very clever, very well reviewed by
+        us. Every time, the same curve: a sharp drop, a slow return, a quiet
+        abandonment. Nobody failed. The design did.
+      </p>
+
+      <figure class="my-12 border-l-2 border-accent pl-6">
+        <blockquote class="font-serif text-[1.45rem] leading-[1.45] tracking-[-0.01em] text-ink">
+          “The barrier was never the hard part. Knowing what to do with the
+          twenty minutes behind it — that was the hard part.”
+        </blockquote>
+        <figcaption class="mt-3 font-sans text-[12px] uppercase tracking-[0.14em] text-muted">
+          Shuttr beta tester #0094
+        </figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <!-- ══ THE UNCOMFORTABLE REALIZATION — full-bleed inverted panel ════════ -->
+  <section class="mt-16 border-y border-rule bg-ink text-paper">
+    <div class="mx-auto max-w-reading px-6 py-20">
+      <p class="font-sans text-[11px] uppercase tracking-[0.2em] text-paper/50">
+        The uncomfortable part
+      </p>
+      <p class="reveal mt-7 font-serif text-[1.7rem] leading-[1.35] tracking-[-0.015em] sm:text-[2.15rem]">
+        We tried to build a physical solution to get people off their screens,
+        but we realized something uncomfortable: no single product can cure an
+        attention monopoly.
+      </p>
+      <p class="reveal reveal-d1 mt-8 font-serif text-[1.12rem] leading-[1.75] text-paper/70">
+        People don't just need a barrier. They need a framework. You cannot
+        hardware-engineer your way out of a psychological ecosystem — not when
+        the other side ships updates weekly, runs experiments continuously, and
+        uses your own behaviour as the training data.
+      </p>
+    </div>
+  </section>
+
+  <!-- ══ WHAT THE PROTOTYPES TAUGHT US ════════════════════════════════════ -->
+  <section class="mx-auto max-w-reading px-6 py-20">
+    <h2 class="chapter mb-8 font-sans text-[12px] font-semibold uppercase tracking-[0.2em] text-ink">
+      Four things four prototypes taught us
+    </h2>
+
+    <ol class="space-y-8">
+      <li class="reveal border-t border-rule pt-5">
+        <span class="block font-sans text-[11px] uppercase tracking-[0.18em] text-accent">01</span>
+        <p class="mt-2 font-serif text-[1.12rem] leading-[1.7] text-ink/90">
+          <strong class="font-semibold">Friction decays.</strong> Any obstacle you
+          can defeat the same way twice stops being an obstacle. Habits route
+          around a static barrier in roughly two weeks.
+        </p>
+      </li>
+      <li class="reveal border-t border-rule pt-5">
+        <span class="block font-sans text-[11px] uppercase tracking-[0.18em] text-accent">02</span>
+        <p class="mt-2 font-serif text-[1.12rem] leading-[1.7] text-ink/90">
+          <strong class="font-semibold">Removal needs replacement.</strong> Every
+          hour you subtract has to be spent somewhere. Detoxes that skip this
+          step fail quietly, then blame the person.
+        </p>
+      </li>
+      <li class="reveal border-t border-rule pt-5">
+        <span class="block font-sans text-[11px] uppercase tracking-[0.18em] text-accent">03</span>
+        <p class="mt-2 font-serif text-[1.12rem] leading-[1.7] text-ink/90">
+          <strong class="font-semibold">The trigger beats the app.</strong>
+          Deleting one app moves the behaviour next door. Disarming the trigger —
+          the notification, the unlock reflex, the bedside charger — moves all of
+          them at once.
+        </p>
+      </li>
+      <li class="reveal border-t border-rule pt-5">
+        <span class="block font-sans text-[11px] uppercase tracking-[0.18em] text-accent">04</span>
+        <p class="mt-2 font-serif text-[1.12rem] leading-[1.7] text-ink/90">
+          <strong class="font-semibold">Nobody is loyal to a tool.</strong> They
+          are loyal to a result. Which is ultimately why we stopped selling ours.
+        </p>
+      </li>
+    </ol>
+  </section>
+
+  <!-- ══ IV. THE NEW MISSION ══════════════════════════════════════════════ -->
+  <section class="mx-auto max-w-reading px-6">
+    <h2 class="chapter mb-6 font-sans text-[12px] font-semibold uppercase tracking-[0.2em] text-ink">
+      IV. &nbsp;What we're building now
+    </h2>
+
+    <div class="prose-editorial font-serif text-[1.18rem] leading-[1.78] text-ink/90">
+      <p>
+        So we went agnostic. No device to defend, no engagement metric to
+        protect, no sponsorships from the apps we write about — which buys us
+        the one thing a hardware company can never afford to say: sometimes the
+        best answer is a free setting you already own, and it will take you four
+        minutes.
+      </p>
+
+      <p>
+        What we make now is two things, and they are designed to work together.
+      </p>
+    </div>
+
+    <div class="mt-10 grid gap-10 sm:grid-cols-2">
+      <div class="reveal border-t border-ink pt-5">
+        <p class="font-sans text-[11px] uppercase tracking-[0.18em] text-accent">The journalism</p>
+        <h3 class="mt-3 font-serif text-[1.4rem] leading-snug">Teach you how it works</h3>
+        <p class="mt-3 font-serif text-[1.05rem] leading-[1.7] text-muted">
+          Deep-dive reporting on the mechanics of a single attention trap — the
+          psychology, the business model, the specific design decision — written
+          the way a financial journalist would explain a market. You cannot
+          disarm a loop you cannot see.
+        </p>
+      </div>
+      <div class="reveal reveal-d1 border-t border-ink pt-5">
+        <p class="font-sans text-[11px] uppercase tracking-[0.18em] text-accent">The toolkit</p>
+        <h3 class="mt-3 font-serif text-[1.4rem] leading-snug">Hand you what to do</h3>
+        <p class="mt-3 font-serif text-[1.05rem] leading-[1.7] text-muted">
+          The actual digital tools to execute it: the settings, the scripts, the
+          swaps, the audits — each tested, each specific, each runnable the same
+          evening you read about it. Ours when ours is best, somebody else's
+          when theirs is.
+        </p>
+      </div>
+    </div>
+
+    <div class="prose-editorial mt-12 font-serif text-[1.18rem] leading-[1.78] text-ink/90">
+      <p>
+        A framework instead of a wall. Over a few months it compounds into the
+        thing a product never gave our testers: a way of thinking they can adapt
+        themselves, in January and again in June, when the platforms inevitably
+        change the rules.
+      </p>
+
+      <p>
+        We still lend out the Shuttr prototypes sometimes. They do work — for
+        about nine days. The difference is that now we can also tell you what to
+        do on day ten.
+      </p>
+    </div>
+
+    <!-- [PLACEHOLDER: SIGNATURE — swap for a signature image or handwritten SVG] -->
+    <div class="mt-12 flex items-center gap-4 border-t border-rule pt-8">
+      <div class="h-12 w-12 shrink-0 rounded-full bg-rule" aria-hidden="true"></div>
+      <div class="font-sans text-[13px] leading-snug">
+        <p class="font-medium text-ink">[Founder Name]</p>
+        <p class="text-muted">Co-founder, Unscroll</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══ JOIN ═════════════════════════════════════════════════════════════ -->
+  <section id="join" class="mt-20 scroll-mt-16 border-t border-rule bg-white/60">
+    <div class="mx-auto max-w-reading px-6 py-20">
+      <p class="font-sans text-[11px] uppercase tracking-[0.2em] text-accent">Join the movement</p>
+
+      <h2 class="mt-5 font-serif text-[2.1rem] leading-[1.12] tracking-[-0.02em] sm:text-[2.6rem]">
+        Take back the forty-three hours.
+      </h2>
+
+      <p class="mt-5 font-serif text-[1.15rem] leading-[1.7] text-muted">
+        One dispatch a week: how a single attention trap is built, and the exact
+        tools to dismantle it. Start with
+        <a href="index.html" class="text-ink underline decoration-rule underline-offset-4 transition-colors hover:text-accent hover:decoration-accent">Edition No. 01</a> —
+        a history of how the slot machine got into your pocket.
+      </p>
+
+      <!-- [PLACEHOLDER: FORM ACTION — point at ConvertKit / Beehiiv / Loops / your API] -->
+      <form class="mt-9" action="#" method="post" novalidate data-signup>
+        <div class="flex flex-col gap-3 sm:flex-row">
+          <label for="email-join" class="sr-only">Email address</label>
+          <input
+            id="email-join" name="email" type="email" required autocomplete="email"
+            placeholder="you@example.com"
+            class="w-full flex-1 rounded-lg border border-ink/15 bg-white px-4 py-4 font-sans text-[16px] text-ink shadow-[0_1px_2px_rgba(21,20,15,.04)] placeholder:text-muted/70 focus:border-ink focus:outline-none focus:ring-0" />
+          <button type="submit"
+            class="shrink-0 rounded-lg bg-ink px-7 py-4 font-sans text-[16px] font-medium text-paper transition-colors hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-paper">
+            Read the first dispatch
+          </button>
+        </div>
+        <p data-form-msg role="status" aria-live="polite" class="hidden pt-3 font-sans text-[13.5px] text-accent"></p>
+        <p class="pt-3 font-sans text-[13px] leading-relaxed text-muted">
+          Free, weekly, one click to leave.
+          <!-- [PLACEHOLDER: SOCIAL PROOF — real numbers only] -->
+          <span class="text-ink">Joined by 12,400 readers.</span>
+          No sponsorships from the apps we write about.
+        </p>
+      </form>
+    </div>
+  </section>
+</main>
+
+<!-- ══ FOOTER ═══════════════════════════════════════════════════════════════ -->
+<footer class="border-t border-rule">
+  <div class="mx-auto flex max-w-5xl flex-col gap-4 px-6 py-10 font-sans text-[12.5px] text-muted sm:flex-row sm:items-center sm:justify-between">
+    <p>&copy; <span id="year">2026</span> Unscroll. <!-- [PLACEHOLDER: LEGAL NAME] --></p>
+    <div class="flex gap-6">
+      <a href="index.html" class="hover:text-ink">Edition No. 01</a>
+      <a href="story.html" class="hover:text-ink">Our story</a>
+      <a href="/privacy" class="hover:text-ink">Privacy</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+(function () {
+  var yearEl = document.getElementById('year');
+  if (yearEl) yearEl.textContent = new Date().getFullYear();
+
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // ── Reading progress ───────────────────────────────────────────────────
+  var bar = document.getElementById('progress');
+  var ticking = false;
+  function onScroll() {
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(function () {
+      var h = document.documentElement.scrollHeight - window.innerHeight;
+      bar.style.width = ((h > 0 ? Math.min(1, window.scrollY / h) : 0) * 100).toFixed(2) + '%';
+      ticking = false;
+    });
+  }
+  window.addEventListener('scroll', onScroll, { passive: true });
+  window.addEventListener('resize', onScroll);
+  onScroll();
+
+  // ── Reveal on enter ────────────────────────────────────────────────────
+  var io = new IntersectionObserver(function (entries) {
+    entries.forEach(function (e) { if (e.isIntersecting) e.target.classList.add('is-in'); });
+  }, { rootMargin: '0px 0px -12% 0px' });
+  document.querySelectorAll('.reveal').forEach(function (el) { io.observe(el); });
+
+  // ── Stat counters ──────────────────────────────────────────────────────
+  // The final value is already in the HTML, so this is purely decorative —
+  // with JS off, or motion reduced, the numbers simply sit there.
+  if (!reduce) {
+    var counters = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (!e.isIntersecting) return;
+        counters.unobserve(e.target);
+        var target = parseInt(e.target.getAttribute('data-count-to'), 10);
+        if (isNaN(target)) return;
+        var start = null, dur = 900;
+        e.target.textContent = '0';
+        requestAnimationFrame(function step(ts) {
+          if (start === null) start = ts;
+          var t = Math.min(1, (ts - start) / dur);
+          var eased = 1 - Math.pow(1 - t, 3);
+          e.target.textContent = Math.round(target * eased);
+          if (t < 1) requestAnimationFrame(step);
+          else e.target.textContent = target;
+        });
+      });
+    }, { threshold: 0.6 });
+    document.querySelectorAll('[data-count-to]').forEach(function (el) { counters.observe(el); });
+  }
+
+  // ── Form stub — replace with your provider's submit ────────────────────
+  document.querySelectorAll('[data-signup]').forEach(function (form) {
+    form.addEventListener('submit', function (ev) {
+      ev.preventDefault();
+      var msg = form.querySelector('[data-form-msg]');
+      var email = (form.querySelector('input[type=email]') || {}).value || '';
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+        msg.textContent = 'That email looks incomplete.';
+        msg.classList.remove('hidden');
+        return;
+      }
+      // [PLACEHOLDER: POST to your list provider here.]
+      msg.textContent = 'You are in. The first dispatch is on its way.';
+      msg.classList.remove('hidden');
+      form.querySelector('button[type=submit]').textContent = 'Subscribed';
+    });
+  });
+})();
+</script>
+</body>
+</html>
