@@ -73,6 +73,20 @@
   #gated .wash   { position: absolute; inset: 0;
     background: linear-gradient(to bottom, rgba(251,250,248,0) 0%, rgba(251,250,248,.55) 55%, #FBFAF8 100%); }
 
+  /* ── Unlocking ─────────────────────────────────────────────────────────
+     A successful subscribe drops the mask and grows #gated from its clipped
+     height to its own. max-height is set to the measured value first so the
+     growth animates, then released to none so later reflows are never clipped. */
+  #gated { transition: max-height .8s cubic-bezier(.2,.7,.2,1); }
+  #gated.is-unlocked {
+    -webkit-mask-image: none;
+            mask-image: none;
+    pointer-events: auto;
+    user-select: auto;
+  }
+  #gate { transition: opacity .35s ease, transform .35s ease; }
+  #gate.is-dismissed { opacity: 0; transform: translateY(-8px); pointer-events: none; }
+
   /* Reveal-on-scroll only when JS is running, so content is never stranded invisible. */
   .js .reveal { opacity: 0; transform: translateY(14px); transition: opacity .7s ease, transform .7s cubic-bezier(.2,.7,.2,1); }
   .js .reveal.is-in { opacity: 1; transform: none; }
@@ -80,6 +94,7 @@
   @media (prefers-reduced-motion: reduce) {
     html { scroll-behavior: auto; }
     .js .reveal { opacity: 1; transform: none; transition: none; }
+    #gated, #gate { transition: none !important; }
   }
 </style>
 </head>
@@ -358,19 +373,49 @@
   var bar = document.getElementById('progress');
 
   // ── Sticky CTA: past 35% of the page, hidden while the card is on screen
+  //    and gone for good once the issue is unlocked.
   var sticky = document.getElementById('stickybar');
   var gate = document.getElementById('gate');
+  var gated = document.getElementById('gated');
   var gateVisible = false;
+  var unlocked = false;
 
   function paint() {
     var h = document.documentElement.scrollHeight - window.innerHeight;
     var pct = h > 0 ? Math.min(1, window.scrollY / h) : 0;
     bar.style.width = (pct * 100).toFixed(2) + '%';
 
-    var show = pct > 0.35 && !gateVisible;
+    var show = !unlocked && pct > 0.35 && !gateVisible;
     sticky.classList.toggle('translate-y-full', !show);
     sticky.classList.toggle('opacity-0', !show);
     sticky.classList.toggle('pointer-events-none', !show);
+  }
+
+  // ── Unlock: drop the mask, expand the rest of the issue, retire the card ──
+  function unlock() {
+    if (unlocked) return;
+    unlocked = true;
+
+    // Start from the clipped height so the growth has something to animate.
+    gated.style.maxHeight = gated.getBoundingClientRect().height + 'px';
+    gated.classList.add('is-unlocked');
+    gated.removeAttribute('aria-hidden');
+
+    requestAnimationFrame(function () {
+      gated.style.maxHeight = gated.scrollHeight + 'px';
+    });
+    gated.addEventListener('transitionend', function done(ev) {
+      if (ev.propertyName !== 'max-height') return;
+      gated.style.maxHeight = 'none';   // never clip a later reflow
+      gated.removeEventListener('transitionend', done);
+      paint();
+    });
+
+    // The card and its two exit links have done their job.
+    gate.classList.add('is-dismissed');
+    setTimeout(function () { gate.style.display = 'none'; paint(); }, 400);
+
+    paint();
   }
 
   new IntersectionObserver(function (entries) {
@@ -404,10 +449,19 @@
         msg.classList.remove('hidden');
         return;
       }
-      // [PLACEHOLDER: POST to your list provider here.]
-      msg.textContent = 'Check your inbox — the rest of the issue is on its way.';
-      msg.classList.remove('hidden');
+      // [PLACEHOLDER: POST to your list provider, then call unlock() on a
+      //  resolved response — e.g.
+      //    fetch('/api/subscribe', {...}).then(function (res) {
+      //      if (!res.ok) throw new Error('That did not go through.');
+      //      unlock();
+      //    }).catch(function (err) {
+      //      msg.textContent = err.message;
+      //      msg.classList.remove('hidden');
+      //    });
+      //  Until then the subscribe resolves immediately. ]
+      msg.classList.add('hidden');
       form.querySelector('button[type=submit]').textContent = 'Subscribed';
+      unlock();
     });
   });
 })();
