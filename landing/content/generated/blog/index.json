@@ -1,7 +1,43 @@
 {
-  "generatedAt": "2026-10-09T19:01:05.640Z",
-  "count": 17,
+  "generatedAt": "2026-10-11T19:10:49.899Z",
+  "count": 18,
   "posts": [
+    {
+      "title": "Sunday Gameday Preview: Week 5 Final Lineup Decisions",
+      "slug": "2026-10-11-sunday-gameday-preview-week-5-final-lineup-decisions",
+      "publishDate": "2026-10-11",
+      "category": "Matchup Preview",
+      "excerpt": "Final lineup decisions for week 5, taken only against the games that have not kicked off: who is still to play, which designations are open, and where the platform is putting its claims.",
+      "author": "FSN Desk",
+      "entityCount": 5,
+      "tracked_players": [
+        {
+          "name": "Kendrick Bourne",
+          "position": "WR",
+          "sleeperPlayerId": "4454"
+        },
+        {
+          "name": "Tyler Higbee",
+          "position": "TE",
+          "sleeperPlayerId": "3271"
+        },
+        {
+          "name": "Tre' Harris",
+          "position": "WR",
+          "sleeperPlayerId": "12509"
+        },
+        {
+          "name": "Keaton Mitchell",
+          "position": "RB",
+          "sleeperPlayerId": "9511"
+        },
+        {
+          "name": "Keon Coleman",
+          "position": "WR",
+          "sleeperPlayerId": "11637"
+        }
+      ]
+    },
     {
       "title": "Friday Morning Recap & Weekend Preview: Week 5",
       "slug": "2026-10-09-friday-morning-recap-weekend-preview-week-5",
