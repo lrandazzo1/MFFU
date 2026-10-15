@@ -1,7 +1,43 @@
 {
-  "generatedAt": "2026-10-13T19:43:47.397Z",
-  "count": 20,
+  "generatedAt": "2026-10-15T23:18:37.506Z",
+  "count": 21,
   "posts": [
+    {
+      "title": "Thursday Night Kickoff Preview: Week 6 Slate",
+      "slug": "2026-10-15-thursday-night-kickoff-preview-week-6-slate",
+      "publishDate": "2026-10-15",
+      "category": "Matchup Preview",
+      "excerpt": "Week 6 opens Thursday night. The games that have not been played yet, the players the platform is claiming ahead of them, and the designations worth checking before your lineup locks.",
+      "author": "FSN Desk",
+      "entityCount": 5,
+      "tracked_players": [
+        {
+          "name": "Tanner McKee",
+          "position": "QB",
+          "sleeperPlayerId": "9230"
+        },
+        {
+          "name": "Dameon Pierce",
+          "position": "RB",
+          "sleeperPlayerId": "8129"
+        },
+        {
+          "name": "Nick Folk",
+          "position": "K",
+          "sleeperPlayerId": "650"
+        },
+        {
+          "name": "Kirk Cousins",
+          "position": "QB",
+          "sleeperPlayerId": "1166"
+        },
+        {
+          "name": "Darius Cooper",
+          "position": "WR",
+          "sleeperPlayerId": "13150"
+        }
+      ]
+    },
     {
       "title": "Tuesday Morning Final Recap: Week 5 Winners & Losers",
       "slug": "2026-10-13-tuesday-morning-final-recap-week-5-winners-losers",
