@@ -1,7 +1,43 @@
 {
-  "generatedAt": "2026-10-15T23:18:37.506Z",
-  "count": 21,
+  "generatedAt": "2026-10-16T17:42:14.260Z",
+  "count": 22,
   "posts": [
+    {
+      "title": "Friday Morning Recap & Weekend Preview: Week 6",
+      "slug": "2026-10-16-friday-morning-recap-weekend-preview-week-6",
+      "publishDate": "2026-10-16",
+      "category": "Analysis",
+      "excerpt": "Thursday night is final and the weekend is not. The Thursday result, the games still to come, and the add counts that moved in the twenty four hours between them.",
+      "author": "FSN Desk",
+      "entityCount": 5,
+      "tracked_players": [
+        {
+          "name": "Tanner McKee",
+          "position": "QB",
+          "sleeperPlayerId": "9230"
+        },
+        {
+          "name": "Dameon Pierce",
+          "position": "RB",
+          "sleeperPlayerId": "8129"
+        },
+        {
+          "name": "Nick Folk",
+          "position": "K",
+          "sleeperPlayerId": "650"
+        },
+        {
+          "name": "Kirk Cousins",
+          "position": "QB",
+          "sleeperPlayerId": "1166"
+        },
+        {
+          "name": "Darius Cooper",
+          "position": "WR",
+          "sleeperPlayerId": "13150"
+        }
+      ]
+    },
     {
       "title": "Thursday Night Kickoff Preview: Week 6 Slate",
       "slug": "2026-10-15-thursday-night-kickoff-preview-week-6-slate",
