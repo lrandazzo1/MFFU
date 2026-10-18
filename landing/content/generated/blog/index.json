@@ -1,7 +1,43 @@
 {
-  "generatedAt": "2026-10-16T17:42:14.260Z",
-  "count": 22,
+  "generatedAt": "2026-10-18T17:33:21.227Z",
+  "count": 23,
   "posts": [
+    {
+      "title": "Sunday Gameday Preview: Week 6 Final Lineup Decisions",
+      "slug": "2026-10-18-sunday-gameday-preview-week-6-final-lineup-decisions",
+      "publishDate": "2026-10-18",
+      "category": "Matchup Preview",
+      "excerpt": "Final lineup decisions for week 6, taken only against the games that have not kicked off: who is still to play, which designations are open, and where the platform is putting its claims.",
+      "author": "FSN Desk",
+      "entityCount": 5,
+      "tracked_players": [
+        {
+          "name": "Tyler Higbee",
+          "position": "TE",
+          "sleeperPlayerId": "3271"
+        },
+        {
+          "name": "Tyler Allgeier",
+          "position": "RB",
+          "sleeperPlayerId": "8132"
+        },
+        {
+          "name": "Rachaad White",
+          "position": "RB",
+          "sleeperPlayerId": "8136"
+        },
+        {
+          "name": "Kirk Cousins",
+          "position": "QB",
+          "sleeperPlayerId": "1166"
+        },
+        {
+          "name": "Dameon Pierce",
+          "position": "RB",
+          "sleeperPlayerId": "8129"
+        }
+      ]
+    },
     {
       "title": "Friday Morning Recap & Weekend Preview: Week 6",
       "slug": "2026-10-16-friday-morning-recap-weekend-preview-week-6",
