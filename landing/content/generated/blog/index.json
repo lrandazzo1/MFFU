@@ -1,7 +1,43 @@
 {
-  "generatedAt": "2026-10-18T17:33:21.227Z",
-  "count": 23,
+  "generatedAt": "2026-10-19T20:12:29.317Z",
+  "count": 24,
   "posts": [
+    {
+      "title": "Monday Night Preview: What's at Stake & Sunday Recap",
+      "slug": "2026-10-19-monday-night-preview-what-s-at-stake-sunday-recap",
+      "publishDate": "2026-10-19",
+      "category": "Analysis",
+      "excerpt": "Sunday is in the book and Monday night is not. The week 6 finals, the blowouts, the scoring leaders, and the players who are still on the board tonight.",
+      "author": "FSN Desk",
+      "entityCount": 5,
+      "tracked_players": [
+        {
+          "name": "Omar Cooper",
+          "position": "WR",
+          "sleeperPlayerId": "13276"
+        },
+        {
+          "name": "Kyle Pitts",
+          "position": "TE",
+          "sleeperPlayerId": "7553"
+        },
+        {
+          "name": "Cleveland Browns",
+          "position": "DEF",
+          "sleeperPlayerId": "CLE"
+        },
+        {
+          "name": "C.J. Stroud",
+          "position": "QB",
+          "sleeperPlayerId": "9758"
+        },
+        {
+          "name": "Keon Coleman",
+          "position": "WR",
+          "sleeperPlayerId": "11637"
+        }
+      ]
+    },
     {
       "title": "Sunday Gameday Preview: Week 6 Final Lineup Decisions",
       "slug": "2026-10-18-sunday-gameday-preview-week-6-final-lineup-decisions",
