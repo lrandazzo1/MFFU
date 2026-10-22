@@ -1,7 +1,43 @@
 {
-  "generatedAt": "2026-10-20T17:45:45.027Z",
-  "count": 25,
+  "generatedAt": "2026-10-22T23:37:19.576Z",
+  "count": 26,
   "posts": [
+    {
+      "title": "Thursday Night Kickoff Preview: Week 7 Slate",
+      "slug": "2026-10-22-thursday-night-kickoff-preview-week-7-slate",
+      "publishDate": "2026-10-22",
+      "category": "Matchup Preview",
+      "excerpt": "Week 7 opens Thursday night. The games that have not been played yet, the players the platform is claiming ahead of them, and the designations worth checking before your lineup locks.",
+      "author": "FSN Desk",
+      "entityCount": 5,
+      "tracked_players": [
+        {
+          "name": "Roschon Johnson",
+          "position": "RB",
+          "sleeperPlayerId": "10235"
+        },
+        {
+          "name": "Konata Mumpfield",
+          "position": "WR",
+          "sleeperPlayerId": "12718"
+        },
+        {
+          "name": "Chase McLaughlin",
+          "position": "K",
+          "sleeperPlayerId": "6650"
+        },
+        {
+          "name": "Cleveland Browns",
+          "position": "DEF",
+          "sleeperPlayerId": "CLE"
+        },
+        {
+          "name": "Michael Mayer",
+          "position": "TE",
+          "sleeperPlayerId": "9482"
+        }
+      ]
+    },
     {
       "title": "Tuesday Morning Final Recap: Week 6 Winners & Losers",
       "slug": "2026-10-20-tuesday-morning-final-recap-week-6-winners-losers",
