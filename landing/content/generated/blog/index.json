@@ -1,7 +1,43 @@
 {
-  "generatedAt": "2026-10-22T23:37:19.576Z",
-  "count": 26,
+  "generatedAt": "2026-10-23T17:58:07.549Z",
+  "count": 27,
   "posts": [
+    {
+      "title": "Friday Morning Recap & Weekend Preview: Week 7",
+      "slug": "2026-10-23-friday-morning-recap-weekend-preview-week-7",
+      "publishDate": "2026-10-23",
+      "category": "Analysis",
+      "excerpt": "Thursday night is final and the weekend is not. The Thursday result, the games still to come, and the add counts that moved in the twenty four hours between them.",
+      "author": "FSN Desk",
+      "entityCount": 5,
+      "tracked_players": [
+        {
+          "name": "Konata Mumpfield",
+          "position": "WR",
+          "sleeperPlayerId": "12718"
+        },
+        {
+          "name": "Tyler Higbee",
+          "position": "TE",
+          "sleeperPlayerId": "3271"
+        },
+        {
+          "name": "Chase McLaughlin",
+          "position": "K",
+          "sleeperPlayerId": "6650"
+        },
+        {
+          "name": "Seth McGowan",
+          "position": "RB",
+          "sleeperPlayerId": "13424"
+        },
+        {
+          "name": "Michael Mayer",
+          "position": "TE",
+          "sleeperPlayerId": "9482"
+        }
+      ]
+    },
     {
       "title": "Thursday Night Kickoff Preview: Week 7 Slate",
       "slug": "2026-10-22-thursday-night-kickoff-preview-week-7-slate",
