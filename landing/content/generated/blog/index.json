@@ -1,7 +1,43 @@
 {
-  "generatedAt": "2026-10-23T17:58:07.549Z",
-  "count": 27,
+  "generatedAt": "2026-10-25T17:52:07.539Z",
+  "count": 28,
   "posts": [
+    {
+      "title": "Sunday Gameday Preview: Week 7 Final Lineup Decisions",
+      "slug": "2026-10-25-sunday-gameday-preview-week-7-final-lineup-decisions",
+      "publishDate": "2026-10-25",
+      "category": "Matchup Preview",
+      "excerpt": "Final lineup decisions for week 7, taken only against the games that have not kicked off: who is still to play, which designations are open, and where the platform is putting its claims.",
+      "author": "FSN Desk",
+      "entityCount": 5,
+      "tracked_players": [
+        {
+          "name": "Darius Cooper",
+          "position": "WR",
+          "sleeperPlayerId": "13150"
+        },
+        {
+          "name": "Konata Mumpfield",
+          "position": "WR",
+          "sleeperPlayerId": "12718"
+        },
+        {
+          "name": "Tyler Higbee",
+          "position": "TE",
+          "sleeperPlayerId": "3271"
+        },
+        {
+          "name": "Emanuel Wilson",
+          "position": "RB",
+          "sleeperPlayerId": "11435"
+        },
+        {
+          "name": "Makai Lemon",
+          "position": "WR",
+          "sleeperPlayerId": "13294"
+        }
+      ]
+    },
     {
       "title": "Friday Morning Recap & Weekend Preview: Week 7",
       "slug": "2026-10-23-friday-morning-recap-weekend-preview-week-7",
