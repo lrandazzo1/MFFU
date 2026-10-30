@@ -1,7 +1,43 @@
 {
-  "generatedAt": "2026-10-30T00:25:03.794Z",
-  "count": 31,
+  "generatedAt": "2026-10-30T18:52:59.440Z",
+  "count": 32,
   "posts": [
+    {
+      "title": "Friday Morning Recap & Weekend Preview: Week 8",
+      "slug": "2026-10-30-friday-morning-recap-weekend-preview-week-8",
+      "publishDate": "2026-10-30",
+      "category": "Analysis",
+      "excerpt": "Thursday night is final and the weekend is not. The Thursday result, the games still to come, and the add counts that moved in the twenty four hours between them.",
+      "author": "FSN Desk",
+      "entityCount": 5,
+      "tracked_players": [
+        {
+          "name": "Washington Commanders",
+          "position": "DEF",
+          "sleeperPlayerId": "WAS"
+        },
+        {
+          "name": "Elijah Mitchell",
+          "position": "RB",
+          "sleeperPlayerId": "7561"
+        },
+        {
+          "name": "Jaydon Blue",
+          "position": "RB",
+          "sleeperPlayerId": "12457"
+        },
+        {
+          "name": "Tampa Bay Buccaneers",
+          "position": "DEF",
+          "sleeperPlayerId": "TB"
+        },
+        {
+          "name": "Ryan Flournoy",
+          "position": "WR",
+          "sleeperPlayerId": "11783"
+        }
+      ]
+    },
     {
       "title": "Thursday Night Kickoff Preview: Week 8 Slate",
       "slug": "2026-10-29-thursday-night-kickoff-preview-week-8-slate",

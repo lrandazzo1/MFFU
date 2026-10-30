@@ -1,0 +1,64 @@
+{
+  "title": "Friday Morning Recap & Weekend Preview: Week 8",
+  "slug": "2026-10-30-friday-morning-recap-weekend-preview-week-8",
+  "publishDate": "2026-10-30",
+  "category": "Analysis",
+  "excerpt": "Thursday night is final and the weekend is not. The Thursday result, the games still to come, and the add counts that moved in the twenty four hours between them.",
+  "author": "FSN Desk",
+  "format": "markdown",
+  "entities": [
+    {
+      "name": "Washington Commanders",
+      "position": "DEF",
+      "sleeperPlayerId": "WAS"
+    },
+    {
+      "name": "Elijah Mitchell",
+      "position": "RB",
+      "sleeperPlayerId": "7561"
+    },
+    {
+      "name": "Jaydon Blue",
+      "position": "RB",
+      "sleeperPlayerId": "12457"
+    },
+    {
+      "name": "Tampa Bay Buccaneers",
+      "position": "DEF",
+      "sleeperPlayerId": "TB"
+    },
+    {
+      "name": "Ryan Flournoy",
+      "position": "WR",
+      "sleeperPlayerId": "11783"
+    }
+  ],
+  "tracked_players": [
+    {
+      "name": "Washington Commanders",
+      "position": "DEF",
+      "sleeperPlayerId": "WAS"
+    },
+    {
+      "name": "Elijah Mitchell",
+      "position": "RB",
+      "sleeperPlayerId": "7561"
+    },
+    {
+      "name": "Jaydon Blue",
+      "position": "RB",
+      "sleeperPlayerId": "12457"
+    },
+    {
+      "name": "Tampa Bay Buccaneers",
+      "position": "DEF",
+      "sleeperPlayerId": "TB"
+    },
+    {
+      "name": "Ryan Flournoy",
+      "position": "WR",
+      "sleeperPlayerId": "11783"
+    }
+  ],
+  "bodyHtml": "<h2>Thursday Night Recap</h2>\n<ul><li><strong>GB 27</strong>, CAR 19, by 8.</li></ul>\n<p>The scoreboard's own statistical leaders out of it:</p>\n<ul><li><strong>Jordan Love</strong>, Passing Leader: 30/41, 288 YDS, 3 TD, 1 INT (CAR at GB).</li></ul>\n<ul><li><strong>Chuba Hubbard</strong>, Rushing Leader: 22 CAR, 81 YDS, 1 TD (CAR at GB).</li></ul>\n<ul><li><strong>Christian Watson</strong>, Receiving Leader: 8 REC, 113 YDS (CAR at GB).</li></ul>\n<h2>The weekend ahead</h2>\n<p>Every game that has not kicked off. These are the only ones previewed here.</p>\n<ul><li><strong>ARI</strong> at <strong>DAL</strong>, Sunday 1:00 PM ET.</li></ul>\n<ul><li><strong>ATL</strong> at <strong>TB</strong>, Sunday 1:00 PM ET, divisional.</li></ul>\n<ul><li><strong>BAL</strong> at <strong>BUF</strong>, Sunday 1:00 PM ET.</li></ul>\n<ul><li><strong>CLE</strong> at <strong>PIT</strong>, Sunday 1:00 PM ET, divisional.</li></ul>\n<ul><li><strong>IND</strong> at <strong>JAX</strong>, Sunday 1:00 PM ET, divisional.</li></ul>\n<ul><li><strong>LV</strong> at <strong>NYJ</strong>, Sunday 1:00 PM ET.</li></ul>\n<ul><li><strong>MIN</strong> at <strong>DET</strong>, Sunday 1:00 PM ET, divisional.</li></ul>\n<ul><li><strong>TEN</strong> at <strong>CIN</strong>, Sunday 1:00 PM ET.</li></ul>\n<ul><li><strong>LAC</strong> at <strong>LAR</strong>, Sunday 4:05 PM ET.</li></ul>\n<ul><li><strong>KC</strong> at <strong>DEN</strong>, Sunday 4:25 PM ET, divisional.</li></ul>\n<ul><li><strong>NE</strong> at <strong>MIA</strong>, Sunday 4:25 PM ET, divisional.</li></ul>\n<ul><li><strong>PHI</strong> at <strong>WSH</strong>, Sunday 8:20 PM ET, divisional.</li></ul>\n<ul><li><strong>CHI</strong> at <strong>SEA</strong>, Monday 8:15 PM ET.</li></ul>\n<h2>The weekend board</h2>\n<p>These are Sleeper's platform-wide add counts for week 8 of the 2026 season: how many leagues across the whole platform claimed each player in the last 24 hours. Read them as demand rather than as value. Grouped by game below, in the order the week is played. The twenty four hours these counts cover contain Thursday night, which is why a Friday board rarely looks like a Wednesday one.</p>\n<p><strong>ARI at DAL</strong>, Sunday 1:00 PM ET.</p>\n<p><strong>Ryan Flournoy</strong> is third at WR for DAL. At 190,032 adds the wire is pricing an injury that has not happened yet.</p>\n<p><strong>ATL at TB</strong>, Sunday 1:00 PM ET, divisional.</p>\n<p>First NFL season for <strong>Tampa Bay Buccaneers</strong>, and ATL is the assignment that settles whether 196,540 adds were early or just loud. Sleeper lists <strong>Chase McLaughlin</strong> first on the TB depth chart at K, which is the entire case, and 145,040 managers have already acted on it.</p>\n<p><strong>IND at JAX</strong>, Sunday 1:00 PM ET, divisional.</p>\n<p><strong>Brenton Strange</strong> draws IND, a divisional game, and a defence that has seen this offence twice a year for as long as either roster has been together. First NFL season for <strong>Jacksonville Jaguars</strong>, and IND is the assignment that settles whether 149,790 adds were early or just loud.</p>\n<p><strong>PHI at WSH</strong>, Sunday 8:20 PM ET, divisional.</p>\n<p><strong>Washington Commanders</strong> is the name the whole platform is already on: 472,766 adds in a day stops being a tip and starts being an auction, and PHI is the game everyone paid for. <strong>Elijah Mitchell</strong> draws WSH, a divisional game, and a defence that has seen this offence twice a year for as long as either roster has been together. Second season for <strong>Jaydon Blue</strong>, first week the wire has cared: 335,536 adds, with WSH next.</p>\n<p><em>Sources: Sleeper public API for add counts over the last 24 hours, and the public NFL scoreboard for kickoff times, game states, final scores and box scores.</em></p>"
+}
