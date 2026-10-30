@@ -1,7 +1,43 @@
 {
-  "generatedAt": "2026-10-27T18:32:14.355Z",
-  "count": 30,
+  "generatedAt": "2026-10-30T00:25:03.794Z",
+  "count": 31,
   "posts": [
+    {
+      "title": "Thursday Night Kickoff Preview: Week 8 Slate",
+      "slug": "2026-10-29-thursday-night-kickoff-preview-week-8-slate",
+      "publishDate": "2026-10-29",
+      "category": "Matchup Preview",
+      "excerpt": "Week 8 opens Thursday night. The games that have not been played yet, the players the platform is claiming ahead of them, and the designations worth checking before your lineup locks.",
+      "author": "FSN Desk",
+      "entityCount": 5,
+      "tracked_players": [
+        {
+          "name": "Elijah Mitchell",
+          "position": "RB",
+          "sleeperPlayerId": "7561"
+        },
+        {
+          "name": "Washington Commanders",
+          "position": "DEF",
+          "sleeperPlayerId": "WAS"
+        },
+        {
+          "name": "Jaydon Blue",
+          "position": "RB",
+          "sleeperPlayerId": "12457"
+        },
+        {
+          "name": "Jacksonville Jaguars",
+          "position": "DEF",
+          "sleeperPlayerId": "JAX"
+        },
+        {
+          "name": "Tampa Bay Buccaneers",
+          "position": "DEF",
+          "sleeperPlayerId": "TB"
+        }
+      ]
+    },
     {
       "title": "Tuesday Morning Final Recap: Week 7 Winners & Losers",
       "slug": "2026-10-27-tuesday-morning-final-recap-week-7-winners-losers",
