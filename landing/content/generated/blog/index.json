@@ -1,7 +1,43 @@
 {
-  "generatedAt": "2026-10-30T18:52:59.440Z",
-  "count": 32,
+  "generatedAt": "2026-11-01T19:12:39.433Z",
+  "count": 33,
   "posts": [
+    {
+      "title": "Sunday Gameday Preview: Week 8 Final Lineup Decisions",
+      "slug": "2026-11-01-sunday-gameday-preview-week-8-final-lineup-decisions",
+      "publishDate": "2026-11-01",
+      "category": "Matchup Preview",
+      "excerpt": "Final lineup decisions for week 8, taken only against the games that have not kicked off: who is still to play, which designations are open, and where the platform is putting its claims.",
+      "author": "FSN Desk",
+      "entityCount": 5,
+      "tracked_players": [
+        {
+          "name": "Washington Commanders",
+          "position": "DEF",
+          "sleeperPlayerId": "WAS"
+        },
+        {
+          "name": "Corey Kiner",
+          "position": "RB",
+          "sleeperPlayerId": "12491"
+        },
+        {
+          "name": "Makai Lemon",
+          "position": "WR",
+          "sleeperPlayerId": "13294"
+        },
+        {
+          "name": "Devin Singletary",
+          "position": "RB",
+          "sleeperPlayerId": "6130"
+        },
+        {
+          "name": "Seth McGowan",
+          "position": "RB",
+          "sleeperPlayerId": "13424"
+        }
+      ]
+    },
     {
       "title": "Friday Morning Recap & Weekend Preview: Week 8",
       "slug": "2026-10-30-friday-morning-recap-weekend-preview-week-8",
