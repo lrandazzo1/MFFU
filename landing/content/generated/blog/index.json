@@ -1,7 +1,43 @@
 {
-  "generatedAt": "2026-11-03T19:56:53.381Z",
-  "count": 35,
+  "generatedAt": "2026-11-06T01:08:17.966Z",
+  "count": 36,
   "posts": [
+    {
+      "title": "Thursday Night Kickoff Preview: Week 9 Slate",
+      "slug": "2026-11-05-thursday-night-kickoff-preview-week-9-slate",
+      "publishDate": "2026-11-05",
+      "category": "Matchup Preview",
+      "excerpt": "Week 9 opens Thursday night. The games that have not been played yet, the players the platform is claiming ahead of them, and the designations worth checking before your lineup locks.",
+      "author": "FSN Desk",
+      "entityCount": 5,
+      "tracked_players": [
+        {
+          "name": "Chris Rodriguez Jr.",
+          "position": "RB",
+          "sleeperPlayerId": "10219"
+        },
+        {
+          "name": "Devin Singletary",
+          "position": "RB",
+          "sleeperPlayerId": "6130"
+        },
+        {
+          "name": "Detroit Lions",
+          "position": "DEF",
+          "sleeperPlayerId": "DET"
+        },
+        {
+          "name": "Carson Wentz",
+          "position": "QB",
+          "sleeperPlayerId": "3161"
+        },
+        {
+          "name": "Adonai Mitchell",
+          "position": "WR",
+          "sleeperPlayerId": "11625"
+        }
+      ]
+    },
     {
       "title": "Tuesday Morning Final Recap: Week 8 Winners & Losers",
       "slug": "2026-11-03-tuesday-morning-final-recap-week-8-winners-losers",
