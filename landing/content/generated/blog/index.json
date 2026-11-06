@@ -1,7 +1,43 @@
 {
-  "generatedAt": "2026-11-06T01:08:17.966Z",
-  "count": 36,
+  "generatedAt": "2026-11-06T20:05:58.078Z",
+  "count": 37,
   "posts": [
+    {
+      "title": "Friday Morning Recap & Weekend Preview: Week 9",
+      "slug": "2026-11-06-friday-morning-recap-weekend-preview-week-9",
+      "publishDate": "2026-11-06",
+      "category": "Analysis",
+      "excerpt": "Thursday night is final and the weekend is not. The Thursday result, the games still to come, and the add counts that moved in the twenty four hours between them.",
+      "author": "FSN Desk",
+      "entityCount": 5,
+      "tracked_players": [
+        {
+          "name": "Devin Singletary",
+          "position": "RB",
+          "sleeperPlayerId": "6130"
+        },
+        {
+          "name": "Carson Wentz",
+          "position": "QB",
+          "sleeperPlayerId": "3161"
+        },
+        {
+          "name": "Demarcus Robinson",
+          "position": "WR",
+          "sleeperPlayerId": "3286"
+        },
+        {
+          "name": "Detroit Lions",
+          "position": "DEF",
+          "sleeperPlayerId": "DET"
+        },
+        {
+          "name": "Adonai Mitchell",
+          "position": "WR",
+          "sleeperPlayerId": "11625"
+        }
+      ]
+    },
     {
       "title": "Thursday Night Kickoff Preview: Week 9 Slate",
       "slug": "2026-11-05-thursday-night-kickoff-preview-week-9-slate",
