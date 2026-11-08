@@ -1,7 +1,43 @@
 {
-  "generatedAt": "2026-11-06T20:05:58.078Z",
-  "count": 37,
+  "generatedAt": "2026-11-08T19:09:38.855Z",
+  "count": 38,
   "posts": [
+    {
+      "title": "Week 9 trending adds: where the waiver money is going",
+      "slug": "2026-11-08-week-9-trending-adds-where-the-waiver-money-is-going",
+      "publishDate": "2026-11-08",
+      "category": "Waiver Wire",
+      "excerpt": "Sleeper's platform-wide add counts for week 9. Devin Singletary, Demarcus Robinson and Audric Estime are the most claimed players of the last 24 hours, and the gap between the top of the board and the bottom is the part worth acting on.",
+      "author": "FSN Desk",
+      "entityCount": 5,
+      "tracked_players": [
+        {
+          "name": "Devin Singletary",
+          "position": "RB",
+          "sleeperPlayerId": "6130"
+        },
+        {
+          "name": "Demarcus Robinson",
+          "position": "WR",
+          "sleeperPlayerId": "3286"
+        },
+        {
+          "name": "Audric Estime",
+          "position": "RB",
+          "sleeperPlayerId": "11579"
+        },
+        {
+          "name": "Ryan Flournoy",
+          "position": "WR",
+          "sleeperPlayerId": "11783"
+        },
+        {
+          "name": "Alvin Kamara",
+          "position": "RB",
+          "sleeperPlayerId": "4035"
+        }
+      ]
+    },
     {
       "title": "Friday Morning Recap & Weekend Preview: Week 9",
       "slug": "2026-11-06-friday-morning-recap-weekend-preview-week-9",
