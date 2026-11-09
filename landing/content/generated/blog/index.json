@@ -1,7 +1,43 @@
 {
-  "generatedAt": "2026-11-08T19:09:38.855Z",
-  "count": 38,
+  "generatedAt": "2026-11-09T23:34:49.043Z",
+  "count": 39,
   "posts": [
+    {
+      "title": "Monday Night Preview: What's at Stake & Sunday Recap",
+      "slug": "2026-11-09-monday-night-preview-what-s-at-stake-sunday-recap",
+      "publishDate": "2026-11-09",
+      "category": "Analysis",
+      "excerpt": "Sunday is in the book and Monday night is not. The week 9 finals, the blowouts, the scoring leaders, and the players who are still on the board tonight.",
+      "author": "FSN Desk",
+      "entityCount": 5,
+      "tracked_players": [
+        {
+          "name": "Tank Dell",
+          "position": "WR",
+          "sleeperPlayerId": "9502"
+        },
+        {
+          "name": "Corey Kiner",
+          "position": "RB",
+          "sleeperPlayerId": "12491"
+        },
+        {
+          "name": "Audric Estime",
+          "position": "RB",
+          "sleeperPlayerId": "11579"
+        },
+        {
+          "name": "Konata Mumpfield",
+          "position": "WR",
+          "sleeperPlayerId": "12718"
+        },
+        {
+          "name": "Darren Waller",
+          "position": "TE",
+          "sleeperPlayerId": "2505"
+        }
+      ]
+    },
     {
       "title": "Week 9 trending adds: where the waiver money is going",
       "slug": "2026-11-08-week-9-trending-adds-where-the-waiver-money-is-going",
