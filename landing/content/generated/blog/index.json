@@ -1,7 +1,43 @@
 {
-  "generatedAt": "2026-11-09T23:34:49.043Z",
-  "count": 39,
+  "generatedAt": "2026-11-10T20:12:00.038Z",
+  "count": 40,
   "posts": [
+    {
+      "title": "Tuesday Morning Final Recap: Week 9 Winners & Losers",
+      "slug": "2026-11-10-tuesday-morning-final-recap-week-9-winners-losers",
+      "publishDate": "2026-11-10",
+      "category": "Recap",
+      "excerpt": "Week 9 is final. Every result, the widest margins, the highest scoring games, and the first names worth a claim before the midweek deadline.",
+      "author": "FSN Desk",
+      "entityCount": 5,
+      "tracked_players": [
+        {
+          "name": "Tank Dell",
+          "position": "WR",
+          "sleeperPlayerId": "9502"
+        },
+        {
+          "name": "Corey Kiner",
+          "position": "RB",
+          "sleeperPlayerId": "12491"
+        },
+        {
+          "name": "Konata Mumpfield",
+          "position": "WR",
+          "sleeperPlayerId": "12718"
+        },
+        {
+          "name": "Darren Waller",
+          "position": "TE",
+          "sleeperPlayerId": "2505"
+        },
+        {
+          "name": "Audric Estime",
+          "position": "RB",
+          "sleeperPlayerId": "11579"
+        }
+      ]
+    },
     {
       "title": "Monday Night Preview: What's at Stake & Sunday Recap",
       "slug": "2026-11-09-monday-night-preview-what-s-at-stake-sunday-recap",
