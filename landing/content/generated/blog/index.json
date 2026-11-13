@@ -1,7 +1,43 @@
 {
-  "generatedAt": "2026-11-13T01:29:00.991Z",
-  "count": 41,
+  "generatedAt": "2026-11-13T20:39:29.888Z",
+  "count": 42,
   "posts": [
+    {
+      "title": "Friday Morning Recap & Weekend Preview: Week 10",
+      "slug": "2026-11-13-friday-morning-recap-weekend-preview-week-10",
+      "publishDate": "2026-11-13",
+      "category": "Analysis",
+      "excerpt": "Thursday night is final and the weekend is not. The Thursday result, the games still to come, and the add counts that moved in the twenty four hours between them.",
+      "author": "FSN Desk",
+      "entityCount": 5,
+      "tracked_players": [
+        {
+          "name": "Darren Waller",
+          "position": "TE",
+          "sleeperPlayerId": "2505"
+        },
+        {
+          "name": "Konata Mumpfield",
+          "position": "WR",
+          "sleeperPlayerId": "12718"
+        },
+        {
+          "name": "Tutu Atwell",
+          "position": "WR",
+          "sleeperPlayerId": "7562"
+        },
+        {
+          "name": "Corey Kiner",
+          "position": "RB",
+          "sleeperPlayerId": "12491"
+        },
+        {
+          "name": "Justice Hill",
+          "position": "RB",
+          "sleeperPlayerId": "5995"
+        }
+      ]
+    },
     {
       "title": "Thursday Night Kickoff Preview: Week 10 Slate",
       "slug": "2026-11-12-thursday-night-kickoff-preview-week-10-slate",
