@@ -1,7 +1,43 @@
 {
-  "generatedAt": "2026-11-10T20:12:00.038Z",
-  "count": 40,
+  "generatedAt": "2026-11-13T01:29:00.991Z",
+  "count": 41,
   "posts": [
+    {
+      "title": "Thursday Night Kickoff Preview: Week 10 Slate",
+      "slug": "2026-11-12-thursday-night-kickoff-preview-week-10-slate",
+      "publishDate": "2026-11-12",
+      "category": "Matchup Preview",
+      "excerpt": "Week 10 opens Thursday night. The games that have not been played yet, the players the platform is claiming ahead of them, and the designations worth checking before your lineup locks.",
+      "author": "FSN Desk",
+      "entityCount": 5,
+      "tracked_players": [
+        {
+          "name": "Corey Kiner",
+          "position": "RB",
+          "sleeperPlayerId": "12491"
+        },
+        {
+          "name": "Konata Mumpfield",
+          "position": "WR",
+          "sleeperPlayerId": "12718"
+        },
+        {
+          "name": "Darren Waller",
+          "position": "TE",
+          "sleeperPlayerId": "2505"
+        },
+        {
+          "name": "Tutu Atwell",
+          "position": "WR",
+          "sleeperPlayerId": "7562"
+        },
+        {
+          "name": "Justice Hill",
+          "position": "RB",
+          "sleeperPlayerId": "5995"
+        }
+      ]
+    },
     {
       "title": "Tuesday Morning Final Recap: Week 9 Winners & Losers",
       "slug": "2026-11-10-tuesday-morning-final-recap-week-9-winners-losers",
