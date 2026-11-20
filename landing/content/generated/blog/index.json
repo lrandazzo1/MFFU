@@ -1,7 +1,43 @@
 {
-  "generatedAt": "2026-11-17T21:29:19.511Z",
-  "count": 45,
+  "generatedAt": "2026-11-20T01:54:28.559Z",
+  "count": 46,
   "posts": [
+    {
+      "title": "Thursday Night Kickoff Preview: Week 11 Slate",
+      "slug": "2026-11-19-thursday-night-kickoff-preview-week-11-slate",
+      "publishDate": "2026-11-19",
+      "category": "Matchup Preview",
+      "excerpt": "Week 11 opens Thursday night. The games that have not been played yet, the players the platform is claiming ahead of them, and the designations worth checking before your lineup locks.",
+      "author": "FSN Desk",
+      "entityCount": 5,
+      "tracked_players": [
+        {
+          "name": "Detroit Lions",
+          "position": "DEF",
+          "sleeperPlayerId": "DET"
+        },
+        {
+          "name": "Chimere Dike",
+          "position": "WR",
+          "sleeperPlayerId": "12540"
+        },
+        {
+          "name": "Cairo Santos",
+          "position": "K",
+          "sleeperPlayerId": "2020"
+        },
+        {
+          "name": "Michael Mayer",
+          "position": "TE",
+          "sleeperPlayerId": "9482"
+        },
+        {
+          "name": "Pat Bryant",
+          "position": "WR",
+          "sleeperPlayerId": "12492"
+        }
+      ]
+    },
     {
       "title": "Tuesday Morning Final Recap: Week 10 Winners & Losers",
       "slug": "2026-11-17-tuesday-morning-final-recap-week-10-winners-losers",
