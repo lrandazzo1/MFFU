@@ -1,7 +1,43 @@
 {
-  "generatedAt": "2026-11-27T03:17:12.908Z",
-  "count": 51,
+  "generatedAt": "2026-11-27T22:20:42.020Z",
+  "count": 52,
   "posts": [
+    {
+      "title": "Friday Morning Recap & Weekend Preview: Week 12",
+      "slug": "2026-11-27-friday-morning-recap-weekend-preview-week-12",
+      "publishDate": "2026-11-27",
+      "category": "Analysis",
+      "excerpt": "Thursday night is final and the weekend is not. The Thursday result, the games still to come, and the add counts that moved in the twenty four hours between them.",
+      "author": "FSN Desk",
+      "entityCount": 5,
+      "tracked_players": [
+        {
+          "name": "Brian Thomas Jr.",
+          "position": "WR",
+          "sleeperPlayerId": "11631"
+        },
+        {
+          "name": "Josh Cameron",
+          "position": "WR",
+          "sleeperPlayerId": "13394"
+        },
+        {
+          "name": "Chris Rodriguez Jr.",
+          "position": "RB",
+          "sleeperPlayerId": "10219"
+        },
+        {
+          "name": "Jakobi Meyers",
+          "position": "WR",
+          "sleeperPlayerId": "5947"
+        },
+        {
+          "name": "Deshaun Watson",
+          "position": "QB",
+          "sleeperPlayerId": "4017"
+        }
+      ]
+    },
     {
       "title": "Thursday Night Kickoff Preview: Week 12 Slate",
       "slug": "2026-11-26-thursday-night-kickoff-preview-week-12-slate",
